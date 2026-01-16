@@ -1,0 +1,42 @@
+[package]
+name = "qb64fresh"
+version = "0.1.0"
+edition = "2024"
+description = "A modern BASIC compiler compatible with QBasic/QuickBASIC and QB64"
+repository = "https://github.com/TODO/qb64fresh"
+license = "MIT"
+keywords = ["basic", "compiler", "qbasic", "quickbasic", "qb64"]
+categories = ["compilers", "development-tools"]
+
+[dependencies]
+# Lexer generation
+logos = "0.14"
+
+# Error reporting with nice diagnostics
+ariadne = "0.4"
+
+# CLI argument parsing
+clap = { version = "4", features = ["derive"] }
+
+# Logging
+log = "0.4"
+env_logger = "0.11"
+
+# Error handling
+thiserror = "1.0"
+
+[dev-dependencies]
+# Testing utilities
+pretty_assertions = "1.4"
+
+[profile.release]
+lto = true
+codegen-units = 1
+
+[[bin]]
+name = "qb64fresh"
+path = "src/main.rs"
+
+[lib]
+name = "qb64fresh"
+path = "src/lib.rs"

@@ -4,39 +4,257 @@
 
 QB64Fresh is a complete ground-up rewrite of QB64, a modern BASIC compiler. This is NOT a fork - it's a fresh implementation informed by analyzing the original QB64 Phoenix Edition.
 
+**Implementation Language:** Rust
+**Code Generation:** C intermediate (with trait-based abstraction for future backends)
+**IDE Strategy:** LSP-based (no built-in IDE)
+
 ## Directory Context
 
 - **QB64pe/** - Original QB64 Phoenix Edition source (READ ONLY - for analysis)
 - **QB64Fresh/** - New implementation (this project - WRITE HERE)
 
-## Working Guidelines
+---
 
-### Code Style
-- Prefer clarity over cleverness
-- Document architectural decisions
-- Write self-documenting code with meaningful names
-- Include comments for non-obvious logic
+## Core Principles
 
-### Logging Requirements
-- Update AgenticLogs/ at the end of each significant work session
-- Log format: `YYYY-MM-DD_session-NNN_brief-description.md`
-- Sanitize logs: use relative paths only, no sensitive system info
+### 1. Educational Value
 
-### When Analyzing QB64pe
-- Focus on understanding behavior and architecture
-- Note design decisions (good and bad)
-- Identify what to preserve vs. what to improve
+This project should serve as an excellent learning resource for:
+- **Rust learners** - Idiomatic Rust patterns, ownership, traits, error handling
+- **Compiler enthusiasts** - How to build a real language from scratch
+- **Software architects** - Clean separation of concerns, extensible design
 
-### When Writing QB64Fresh
-- Modern, clean architecture
-- Well-structured, maintainable code
-- Comprehensive error handling
-- Testable design from the start
+**In practice:**
+- Write clear, well-commented code (explain the "why", not just the "what")
+- Use idiomatic Rust patterns and explain them when non-obvious
+- Structure code so each module demonstrates a compiler concept
+- Include doc comments that teach, not just describe
+- Reference relevant compiler theory where appropriate
 
-## Architecture Notes
+### 2. Pragmatic Engineering
 
-(To be populated as design decisions are made)
+Balance well-designed software with practical delivery:
+
+**DO:**
+- Build clean abstractions at natural boundaries
+- Write tests for complex logic
+- Design interfaces before implementations
+- Refactor when it genuinely improves the code
+
+**DON'T:**
+- Over-engineer for hypothetical futures (YAGNI)
+- Add abstraction layers "just in case"
+- Optimize before profiling
+- Gold-plate features nobody asked for
+
+**The test:** If an abstraction doesn't make the current code simpler or more testable, it's probably premature.
+
+### 3. Clean Architecture
+
+Follow the natural compiler pipeline with clear boundaries:
+
+```
+Source → Lexer → Parser → AST → Semantic Analysis → Typed IR → CodeGen → Output
+                                                              ↑
+                                                    Backend trait interface
+```
+
+Each phase should be:
+- Independently testable
+- Single responsibility
+- Well-documented
+
+---
+
+## Logging System (IMPORTANT)
+
+We use a **tiered logging system** to balance readability with completeness:
+
+### Tier 1: AgenticLogs/ (Version Controlled)
+**Purpose:** High-level session documentation for public review
+
+**Format:** `YYYY-MM-DD_session-NNN_brief-description.md`
+
+**Content:**
+- Decisions made with rationale
+- Major implementation milestones
+- High-level problem summaries (link to Tier 2 for details)
+- What was accomplished
+
+**Update frequency:** Throughout each session, not just at end
+
+### Tier 2: AgenticLogs/IndividualProblems/ (Version Controlled)
+**Purpose:** Detailed troubleshooting documentation for education
+
+**Format:** `YYYY-MM-DD_problem-brief-name.md` (use template in `_TEMPLATE.md`)
+
+**When to create:**
+- Problem investigation becomes lengthy (3+ attempts)
+- Dead ends and false starts have educational value
+- Root cause wasn't obvious and discovery process is interesting
+
+**Content:**
+- Full investigation path including failed attempts
+- What we tried and why
+- What we learned from each attempt
+- Root cause and resolution
+- Key takeaways for future reference
+
+**Workflow:**
+1. Start documenting in AgenticLogs as normal
+2. If problem becomes complex, create IndividualProblem doc
+3. Add brief summary + link in AgenticLogs
+4. Continue detailed documentation in IndividualProblem doc
+
+### Tier 3: FullLogs/ (NOT Version Controlled)
+**Purpose:** Raw interaction history for reconstruction when needed
+
+**Content:** Complete session transcripts
+
+**Usage guidelines:**
+- Write to FullLogs continuously during sessions
+- DO NOT read from FullLogs routinely (too verbose)
+- Only consult when:
+  - Creating IndividualProblem docs that span sessions
+  - Need exact details that weren't captured in other tiers
+  - Debugging a problem requires exact reproduction steps
+- Try documentation, web search, and refined logs FIRST
+
+**Why separate:** Raw logs are too verbose for version control and regular use, but valuable as backup for detailed reconstruction.
+
+### Logging Best Practices
+- Sanitize all logs: relative paths only, no sensitive system info
+- Link between tiers when referencing related content
+- Err on the side of more detail in IndividualProblems - it's educational
+- AgenticLogs should be readable standalone (no required links to understand)
+
+---
+
+## Code Style Guidelines
+
+### Rust Conventions
+- Follow standard Rust formatting (`cargo fmt`)
+- Use `clippy` lints
+- Prefer `Result` over panics for recoverable errors
+- Use meaningful type names that reflect domain concepts
+
+### Documentation
+- All public items get doc comments
+- Module-level docs explain the "what" and "why"
+- Include examples in doc comments where helpful
+- Link to relevant compiler concepts/theory
+
+### Naming
+```rust
+// Types: PascalCase, domain-specific
+struct BinaryExpr { ... }
+enum Statement { ... }
+
+// Functions: snake_case, verb phrases
+fn parse_expression() -> Result<Expr, ParseError>
+fn emit_c_code(ir: &TypedProgram) -> String
+
+// Modules: snake_case, noun phrases
+mod lexer;
+mod semantic_analysis;
+mod c_backend;
+```
+
+### Error Handling
+- Use custom error types with good messages
+- Errors should help users fix their code
+- Include source locations in all diagnostics
+
+---
+
+## Architecture Decisions Record
+
+### Decision 1: Implementation Language
+**Choice:** Rust
+**Rationale:** Memory safety, excellent pattern matching for AST work, strong ecosystem for compiler tooling (logos, chumsky, ariadne), good FFI for C runtime integration.
+
+### Decision 2: Code Generation Backend
+**Choice:** C intermediate with trait-based abstraction
+**Rationale:**
+- C backend is proven (QB64pe uses C++), simple, portable
+- Trait interface allows future backends (LLVM, Cranelift) without changing existing code
+- Follows YAGNI - build one backend, but design the interface cleanly
+
+```rust
+pub trait CodeGenerator {
+    fn generate(&self, program: &TypedProgram) -> Result<GeneratedOutput, CodeGenError>;
+}
+```
+
+### Decision 3: Runtime Library Approach
+**Choice:** Hybrid Rust + established crates
+**Rationale:**
+- Write runtime in Rust for unified, safe codebase
+- Use proven crates: `sdl2`/`winit` (graphics), `rodio` (audio), `image` (images)
+- Avoids inheriting QB64pe's C++ technical debt
+- May have subtle behavioral differences - document and test carefully
+
+---
 
 ## Key Files Reference
 
 (To be populated as implementation progresses)
+
+### Planned Structure
+```
+QB64Fresh/
+├── src/
+│   ├── lexer/        # Tokenization
+│   ├── parser/       # AST construction
+│   ├── ast/          # AST type definitions
+│   ├── semantic/     # Type checking, symbol resolution
+│   ├── ir/           # Typed intermediate representation
+│   ├── codegen/      # Backend trait + implementations
+│   │   ├── mod.rs    # CodeGenerator trait
+│   │   └── c/        # C backend
+│   ├── runtime/      # Runtime library interface
+│   └── lsp/          # Language server
+├── tests/
+├── docs/
+└── AgenticLogs/
+```
+
+---
+
+## Lessons Learned
+
+### Tooling (Verified 2026-01)
+
+**Cargo tools:**
+- `cargo-watch` is **deprecated** - use `bacon` instead
+- `cargo-tree` is built into cargo - no install needed, just use `cargo tree`
+- `cargo-nextest` is genuinely faster (up to 3x) - worth using
+- `cargo-audit` is essential for security scanning
+
+**VS Code extensions:**
+- `serayuzgur.crates` is deprecated → use `fill-labs.dependi` instead
+- `rust-analyzer` is the only Rust extension needed (the old `rust-lang.rust` is deprecated)
+- `errorlens` is nice-to-have but not essential - rust-analyzer's diagnostics are sufficient
+
+**When recommending tools:**
+- Always verify current status before recommending - ecosystems change
+- Check for deprecation notices in READMEs
+- Search for "[tool] vs [alternative] [current year]" to find recent comparisons
+
+### Rust Patterns for This Project
+
+(To be populated as we implement)
+
+### Common Pitfalls
+
+(To be populated as we encounter issues)
+
+---
+
+## Reference Material
+
+When implementing, refer to:
+- `QB64pe/source/qb64pe.bas` - Original compiler logic
+- `QB64pe/source/subs_functions/` - Built-in function definitions
+- `QB64pe/internal/c/libqb*` - Runtime library implementation
+- `QB64pe/tests/` - Compatibility test cases

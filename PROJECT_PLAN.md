@@ -62,53 +62,113 @@ Analysis of QB64pe revealed the following key insights:
 
 ---
 
-## Technology Decisions (In Progress)
+## Technology Decisions (Complete)
 
 ### Decision 1: Implementation Language
 
-**Options:**
-| Language | Pros | Cons |
-|----------|------|------|
-| **Rust** | Memory safety, excellent for compilers, good tooling, pattern matching | Steeper learning curve, longer compile times |
-| **Go** | Simple, fast compilation, good concurrency | Less expressive type system, no generics until recently |
-| **TypeScript** | LSP-first natural fit, wide ecosystem | Runtime overhead, not traditional for compilers |
-| **C++** | Familiar (runtime is C++), mature tooling | Manual memory management, complexity |
-| **Zig** | Simple, C interop, no hidden control flow | Younger ecosystem |
+**Choice: Rust**
 
-**Status:** Pending discussion
+**Rationale:**
+- Memory safety without garbage collection - predictable performance
+- Excellent pattern matching via `enum` - perfect for AST representation
+- Strong compiler tooling ecosystem (`logos`, `chumsky`, `ariadne`, `tower-lsp`)
+- Good FFI to C for runtime library integration
+- Cargo provides excellent build system and dependency management
+- Educational value - demonstrates idiomatic Rust patterns
+
+**Considered alternatives:** Go (less expressive), TypeScript (runtime overhead), C++ (manual memory management risks)
+
+**Status:** Decided
 
 ### Decision 2: Code Generation Backend
 
-**Options:**
-| Approach | Pros | Cons |
-|----------|------|------|
-| **C Intermediate** | Simple, portable, proven (QB64pe uses this) | Extra compilation step, limited optimization control |
-| **LLVM** | Excellent optimization, multiple targets, JIT possible | Complex integration, large dependency |
-| **Cranelift** | Rust-native, fast compilation, simpler than LLVM | Less optimization than LLVM, newer |
-| **Direct x86/ARM** | Maximum control, no dependencies | Enormous effort, platform-specific |
-| **WebAssembly** | Browser deployment, sandboxed | Limited system access, graphics challenges |
+**Choice: C Intermediate with trait-based backend abstraction**
 
-**Status:** Pending discussion
+**Rationale:**
+- C backend is proven (QB64pe uses C++), simple to implement, highly portable
+- Emitting C text is straightforward - no complex APIs to learn
+- Generated C is debuggable/readable
+- Trait-based interface allows future backends without changing existing code:
+
+```rust
+pub trait CodeGenerator {
+    fn generate(&self, program: &TypedProgram) -> Result<GeneratedOutput, CodeGenError>;
+}
+```
+
+**Architecture:**
+- Build ONE backend (C) following YAGNI
+- Design the `CodeGenerator` trait interface cleanly
+- Future contributors can add LLVM, Cranelift, etc. as separate implementations
+- Adding a backend = adding code, not changing existing code (Open/Closed principle)
+
+**Considered alternatives:** LLVM (complex, large dependency), Cranelift (less mature), direct machine code (enormous effort)
+
+**Status:** Decided
 
 ### Decision 3: Runtime Library Approach
 
-**Options:**
-| Approach | Pros | Cons |
-|----------|------|------|
-| **Port existing C++** | Known working, compatible | Carries technical debt |
-| **Rewrite in impl language** | Clean design, consistent codebase | Significant effort |
-| **Hybrid** | Pragmatic, incremental | Two codebases to maintain |
-| **Wrap existing via FFI** | Quick start, full compatibility | FFI complexity, maintenance burden |
+**Choice: Hybrid Rust + established crates**
 
-**Status:** Pending discussion
+**Rationale:**
+- Write runtime "glue" in Rust for clean, safe code
+- Leverage battle-tested Rust crates for heavy lifting:
+  - **Graphics/Windowing**: `sdl2` or `winit` + `pixels`/`softbuffer`
+  - **Audio**: `rodio` (built on `cpal`)
+  - **Image loading**: `image` crate
+  - **Font rendering**: `fontdue` or `rusttype`
+- Avoids inheriting QB64pe's C++ technical debt
+- Unified Rust codebase is easier to maintain and understand
+
+**Tradeoffs acknowledged:**
+- May have subtle behavioral differences from QB64pe
+- Need to carefully map QB64 semantics to library capabilities
+- Graphics modes and SCREEN compatibility will need careful design
+
+**Implementation approach:**
+- Define Rust traits for runtime capabilities (similar to codegen backend)
+- Implement using chosen crates
+- Test against QB64pe's test suite for compatibility
+- Document any intentional deviations
+
+**Status:** Decided
 
 ### Decision 4: Build System and Tooling
 
-**Status:** Depends on implementation language choice
+**Choice: Cargo (Rust's standard build system)**
+
+**Rationale:**
+- Cargo is the standard for Rust projects - excellent dependency management
+- Supports workspaces for multi-crate projects
+- Built-in test runner, benchmarking, documentation generation
+- `cargo fmt` and `cargo clippy` for code quality
+
+**Additional tooling:**
+- `just` or `make` for orchestrating multi-step builds (compile QB64 code → run C compiler)
+- CI/CD via GitHub Actions with standard Rust workflows
+
+**Status:** Decided
 
 ### Decision 5: Testing Framework
 
-**Status:** Depends on implementation language choice
+**Choice: Built-in Rust testing + QB64pe test suite**
+
+**Rationale:**
+- Rust's built-in `#[test]` is sufficient for unit tests
+- `#[cfg(test)]` modules keep tests close to code
+- Integration tests in `tests/` directory
+
+**Testing strategy:**
+1. **Unit tests**: Each compiler phase tested in isolation
+2. **Integration tests**: End-to-end compilation of sample programs
+3. **Compatibility tests**: Run QB64pe's test suite against QB64Fresh
+4. **Golden tests**: Compare output against expected results
+
+**Key test categories from QB64pe to port:**
+- `tests/compile_tests/` - Feature-specific compilation tests
+- `tests/qbasic_testcases/` - Classic QBasic program compatibility
+
+**Status:** Decided
 
 ---
 

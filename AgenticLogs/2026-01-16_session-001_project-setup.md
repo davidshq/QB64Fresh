@@ -143,11 +143,156 @@ Comprehensive analysis documented in `docs/QB64PE_ARCHITECTURE_ANALYSIS.md`
 
 ---
 
+## Technology Decisions (All Complete)
+
+### Decision 1: Implementation Language
+**Choice:** Rust
+
+**Rationale:**
+- Memory safety without GC - predictable performance
+- Excellent pattern matching via `enum` - perfect for AST work
+- Strong ecosystem: `logos` (lexer), `chumsky` (parser), `ariadne` (errors), `tower-lsp`
+- Good FFI to C for runtime integration
+- Educational value - demonstrates idiomatic Rust
+
+### Decision 2: Code Generation Backend
+**Choice:** C intermediate with trait-based abstraction
+
+**Rationale:**
+- C backend is proven (QB64pe uses C++), simple, portable
+- Trait interface allows future backends without changing existing code
+- YAGNI compliant - build one backend, but design interface cleanly
+
+```rust
+pub trait CodeGenerator {
+    fn generate(&self, program: &TypedProgram) -> Result<GeneratedOutput, CodeGenError>;
+}
+```
+
+### Decision 3: Runtime Library Approach
+**Choice:** Hybrid Rust + established crates
+
+**Rationale:**
+- Write runtime in Rust for unified, safe codebase
+- Use proven crates: `sdl2`/`winit` (graphics), `rodio` (audio), `image` (images)
+- Avoids inheriting QB64pe's C++ technical debt
+- May have subtle behavioral differences - document and test carefully
+
+### Decision 4: Build System
+**Choice:** Cargo (Rust standard)
+
+### Decision 5: Testing Framework
+**Choice:** Built-in Rust testing + QB64pe test suite compatibility
+
+---
+
+## Project Principles Established
+
+1. **Educational Value**: Code should teach Rust and compiler construction
+2. **Pragmatic Engineering**: Balance good design with YAGNI
+3. **Clean Architecture**: Natural compiler phases with clear boundaries
+4. **Regular Logging**: Update AgenticLogs throughout sessions, not just at end
+
+---
+
+## Development Environment Setup
+
+### Verified Existing Tools
+- Rust 1.88.0, Cargo 1.88.0, clippy, rustfmt, rust-src
+- GCC 13.3.0 (for C backend)
+- VS Code 1.108.1
+
+### Tooling Research & Corrections
+
+During setup, we verified current best practices and found several outdated recommendations:
+
+| Original Recommendation | Status | Correction |
+|------------------------|--------|------------|
+| `cargo-watch` | Deprecated | Use `bacon` instead |
+| `cargo-tree` | Unnecessary | Built into cargo since 1.44 |
+| `serayuzgur.crates` | Deprecated | Use `fill-labs.dependi` |
+
+### Installed Tools
+
+**VS Code Extensions:**
+- `rust-lang.rust-analyzer` - Rust language support
+- `tamasfe.even-better-toml` - TOML file support
+- `fill-labs.dependi` - Dependency management
+- `vadimcn.vscode-lldb` - Debugging
+
+**Cargo Tools:**
+- `bacon` - File watcher with TUI (replaces cargo-watch)
+- `cargo-nextest` - Faster test runner
+- `cargo-audit` - Security scanning
+
+### Developer Documentation Created
+
+- `README.md` - Project overview and entry point
+- `DEVELOPMENT.md` - Comprehensive developer onboarding guide
+
+---
+
+## Logging System Established
+
+Created tiered logging system:
+- **Tier 1**: `AgenticLogs/` - High-level session documentation
+- **Tier 2**: `AgenticLogs/IndividualProblems/` - Detailed troubleshooting
+- **Tier 3**: `FullLogs/` - Raw interaction logs (git-ignored)
+
+---
+
+## Implementation Started
+
+### Rust Project Initialized
+
+Created `Cargo.toml` with initial dependencies:
+- `logos` 0.14 - Lexer generation
+- `ariadne` 0.4 - Error reporting
+- `clap` 4 - CLI argument parsing
+- `thiserror` 1.0 - Error handling
+- `log` + `env_logger` - Logging
+
+### Lexer Module Implemented
+
+Created `src/lexer/` with:
+- `mod.rs` - Lexer wrapper with iterator interface
+- `token.rs` - Token definitions using logos macros
+
+**Token categories implemented:**
+- Control flow keywords (IF, THEN, ELSE, FOR, WHILE, etc.)
+- Declaration keywords (DIM, AS, CONST, SUB, FUNCTION, etc.)
+- Type keywords (INTEGER, LONG, STRING, plus QB64 extensions)
+- I/O keywords (PRINT, INPUT, OPEN, etc.)
+- Operators (arithmetic, comparison, logical)
+- Literals (integers, floats, hex, octal, binary, strings)
+- Punctuation and delimiters
+- Comments (both ' and REM styles)
+- QB64 metacommands ($INCLUDE, etc.)
+
+### Tests Passing
+
+- 14 unit tests
+- 7 doc tests
+- All passing
+
+### CLI Working
+
+Basic CLI implemented with:
+- `qb64fresh <file.bas>` - Shows compilation status
+- `qb64fresh <file.bas> --tokens` - Dumps lexer output
+- `qb64fresh <file.bas> --verbose` - Verbose mode
+
+### Example File Created
+
+`examples/hello.bas` - Test file demonstrating various BASIC constructs
+
+---
+
 ## Next Steps
 
-1. **Technology Discussion**: Choose implementation language, dependencies, tooling
-2. **Design Document**: Define QB64Fresh architecture based on analysis
-3. **Begin Implementation**: Start with lexer/tokenizer
+1. Implement parser (AST construction)
+2. Define AST types
+3. Build expression parser with precedence climbing
 
 ---
 
@@ -157,6 +302,7 @@ Comprehensive analysis documented in `docs/QB64PE_ARCHITECTURE_ANALYSIS.md`
 - Project Type: Compiler/Language implementation (BASIC → executable)
 - Target: Complete rewrite, not a fork or patch
 - IDE Strategy: LSP-based, not built-in IDE
+- Implementation: Rust with C code generation
 
 ---
 

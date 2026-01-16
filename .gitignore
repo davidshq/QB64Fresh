@@ -1,0 +1,33 @@
+# Build artifacts
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Full interaction logs - too verbose for version control
+# These are raw session logs used for reconstructing troubleshooting history
+/FullLogs/
+
+# Generated files
+*.o
+*.a
+*.so
+*.dylib
+
+# Test artifacts
+/tmp/
+
+
+# Added by cargo
+
+/target
