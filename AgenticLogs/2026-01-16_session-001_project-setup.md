@@ -288,11 +288,109 @@ Basic CLI implemented with:
 
 ---
 
+## Development Tooling Setup (Continued)
+
+### Project Setup Evaluation
+
+Performed comprehensive review of project tooling:
+
+**Already in place:**
+- CLAUDE.md - comprehensive project configuration
+- DEVELOPMENT.md - developer onboarding guide
+- Git repository with proper .gitignore
+- VS Code basic settings
+
+**Identified gaps:**
+- No .editorconfig (cross-editor consistency)
+- No VS Code recommended extensions
+- No debug configurations
+- No pre-commit hooks
+- No CI/CD pipeline
+
+### Tooling Additions
+
+#### 1. EditorConfig (`.editorconfig`)
+Cross-editor formatting consistency for all file types:
+- UTF-8 encoding, LF line endings
+- 4-space indentation for Rust/TOML
+- 2-space indentation for Markdown/YAML/JSON
+- Tabs for Makefiles
+
+#### 2. VS Code Configuration
+- `.vscode/extensions.json` - Recommended extensions:
+  - rust-analyzer (essential)
+  - Even Better TOML
+  - Dependi (dependency management)
+  - CodeLLDB (debugging)
+  - EditorConfig support
+- `.vscode/launch.json` - Debug configurations:
+  - Debug QB64Fresh binary
+  - Debug with file selection
+  - Debug unit tests
+  - Debug specific test by name
+
+#### 3. Pre-commit Hooks (cargo-husky)
+Added `cargo-husky` to enforce quality on every commit:
+- Runs `cargo clippy -- -D warnings`
+- Runs `cargo fmt -- --check`
+- Blocks commits with formatting/lint issues
+
+#### 4. Formatting Configuration
+Created `rustfmt.toml` documenting formatting intent (using defaults).
+
+#### 5. Claude Permissions Updated
+Added permissions for common commands:
+- `cargo fmt`, `cargo nextest`, `cargo audit`, `cargo add`, `cargo tree`
+- `bacon` (file watcher)
+- Read-only git commands (status, diff, log, branch, show)
+
+#### 6. Updated .gitignore
+Changed from ignoring all of `.vscode/` to selective ignore:
+- Ignores user-specific settings
+- Tracks `extensions.json`, `launch.json`, `tasks.json`
+
+### Formatting Applied
+
+Running `cargo fmt` after adding rustfmt.toml reformatted existing code:
+- `src/lexer/mod.rs` - assert_eq! macro formatting
+- `src/lexer/token.rs` - removed blank lines after section comments, reformatted vec! macros
+- `src/main.rs` - import ordering, builder pattern formatting
+
+All tests still pass (14 unit tests, 7 doc tests).
+
+#### 7. GitHub Actions CI (`.github/workflows/ci.yml`)
+
+Created comprehensive CI pipeline:
+
+**Jobs:**
+- **lint** - Runs on ubuntu-latest only (fast)
+  - `cargo fmt --check`
+  - `cargo clippy -- -D warnings`
+- **test** - Runs on matrix: ubuntu, macos, windows
+  - `cargo build`
+  - `cargo test`
+  - `cargo test --doc`
+- **audit** - Security vulnerability scanning
+  - `cargo audit`
+- **docs** - Documentation build with warnings as errors
+  - `cargo doc --no-deps -D warnings`
+
+**Triggers:**
+- Push to main branch
+- Pull requests to main branch
+
+**Optimizations:**
+- Cargo registry caching for faster builds
+- Parallel job execution
+- `fail-fast: false` on test matrix (don't cancel other platforms on failure)
+
+---
+
 ## Next Steps
 
 1. Implement parser (AST construction)
-2. Define AST types
-3. Build expression parser with precedence climbing
+3. Define AST types
+4. Build expression parser with precedence climbing
 
 ---
 
@@ -306,4 +404,4 @@ Basic CLI implemented with:
 
 ---
 
-*Session completed: 2026-01-16*
+*Session ongoing: 2026-01-16*

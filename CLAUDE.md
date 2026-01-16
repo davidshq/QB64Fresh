@@ -198,25 +198,48 @@ pub trait CodeGenerator {
 
 ## Key Files Reference
 
-(To be populated as implementation progresses)
+### Current Implementation (as of 2026-01-16)
 
-### Planned Structure
+| File | Purpose | Status |
+|------|---------|--------|
+| `src/lib.rs` | Library root, module exports, prelude | ✓ Complete |
+| `src/main.rs` | CLI entry point (clap-based) | ✓ Complete |
+| `src/lexer/mod.rs` | Lexer wrapper with iterator interface | ✓ Complete |
+| `src/lexer/token.rs` | Token definitions using logos macros | ✓ Complete |
+| `examples/hello.bas` | Test BASIC file for development | ✓ Complete |
+
+### Configuration Files
+
+| File | Purpose |
+|------|---------|
+| `Cargo.toml` | Rust package manifest and dependencies |
+| `rustfmt.toml` | Code formatting configuration |
+| `.editorconfig` | Cross-editor formatting rules |
+| `.vscode/launch.json` | VS Code debug configurations |
+| `.vscode/extensions.json` | Recommended VS Code extensions |
+| `.github/workflows/ci.yml` | GitHub Actions CI pipeline |
+
+### Documentation
+
+| File | Purpose |
+|------|---------|
+| `CLAUDE.md` | AI assistant configuration (this file) |
+| `DEVELOPMENT.md` | Developer onboarding guide |
+| `PROJECT_PLAN.md` | Project roadmap and phases |
+| `docs/QB64PE_ARCHITECTURE_ANALYSIS.md` | Original QB64 architecture analysis |
+
+### Planned Structure (TODO)
 ```
-QB64Fresh/
-├── src/
-│   ├── lexer/        # Tokenization
-│   ├── parser/       # AST construction
-│   ├── ast/          # AST type definitions
-│   ├── semantic/     # Type checking, symbol resolution
-│   ├── ir/           # Typed intermediate representation
-│   ├── codegen/      # Backend trait + implementations
-│   │   ├── mod.rs    # CodeGenerator trait
-│   │   └── c/        # C backend
-│   ├── runtime/      # Runtime library interface
-│   └── lsp/          # Language server
-├── tests/
-├── docs/
-└── AgenticLogs/
+src/
+├── parser/       # AST construction (next milestone)
+├── ast/          # AST type definitions
+├── semantic/     # Type checking, symbol resolution
+├── ir/           # Typed intermediate representation
+├── codegen/      # Backend trait + implementations
+│   ├── mod.rs    # CodeGenerator trait
+│   └── c/        # C backend
+├── runtime/      # Runtime library interface
+└── lsp/          # Language server
 ```
 
 ---
