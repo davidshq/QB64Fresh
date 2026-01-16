@@ -14,59 +14,9 @@ QB64Fresh is a complete ground-up rewrite of QB64, a modern BASIC compiler. This
 - **QB64Fresh/** - New implementation (this project - WRITE HERE)
 
 ---
-
-## Core Principles
-
-### 1. Educational Value
-
-This project should serve as an excellent learning resource for:
-- **Rust learners** - Idiomatic Rust patterns, ownership, traits, error handling
-- **Compiler enthusiasts** - How to build a real language from scratch
-- **Software architects** - Clean separation of concerns, extensible design
-
-**In practice:**
-- Write clear, well-commented code (explain the "why", not just the "what")
-- Use idiomatic Rust patterns and explain them when non-obvious
-- Structure code so each module demonstrates a compiler concept
-- Include doc comments that teach, not just describe
-- Reference relevant compiler theory where appropriate
-
-### 2. Pragmatic Engineering
-
-Balance well-designed software with practical delivery:
-
-**DO:**
-- Build clean abstractions at natural boundaries
-- Write tests for complex logic
-- Design interfaces before implementations
-- Refactor when it genuinely improves the code
-
-**DON'T:**
-- Over-engineer for hypothetical futures (YAGNI)
-- Add abstraction layers "just in case"
-- Optimize before profiling
-- Gold-plate features nobody asked for
-
-**The test:** If an abstraction doesn't make the current code simpler or more testable, it's probably premature.
-
-### 3. Clean Architecture
-
-Follow the natural compiler pipeline with clear boundaries:
-
-```
-Source → Lexer → Parser → AST → Semantic Analysis → Typed IR → CodeGen → Output
-                                                              ↑
-                                                    Backend trait interface
-```
-
-Each phase should be:
-- Independently testable
-- Single responsibility
-- Well-documented
-
----
-
 ## Logging System (IMPORTANT)
+
+**THE INFORMATION IN THIS SECTION IS QUINTESSENTIAL, MAKE SURE YOU ALWAYS FOLLOW IT. WE CAN FIX OTHER THINGS, BUT WE NEED TO KNOW WHAT HAPPENED!**
 
 We use a **tiered logging system** to balance readability with completeness:
 
@@ -127,6 +77,57 @@ We use a **tiered logging system** to balance readability with completeness:
 - Link between tiers when referencing related content
 - Err on the side of more detail in IndividualProblems - it's educational
 - AgenticLogs should be readable standalone (no required links to understand)
+
+---
+
+## Core Principles
+
+### 1. Educational Value
+
+This project should serve as an excellent learning resource for:
+- **Rust learners** - Idiomatic Rust patterns, ownership, traits, error handling
+- **Compiler enthusiasts** - How to build a real language from scratch
+- **Software architects** - Clean separation of concerns, extensible design
+
+**In practice:**
+- Write clear, well-commented code (explain the "why", not just the "what")
+- Use idiomatic Rust patterns and explain them when non-obvious
+- Structure code so each module demonstrates a compiler concept
+- Include doc comments that teach, not just describe
+- Reference relevant compiler theory where appropriate
+
+### 2. Pragmatic Engineering
+
+Balance well-designed software with practical delivery:
+
+**DO:**
+- Build clean abstractions at natural boundaries
+- Write tests for complex logic
+- Design interfaces before implementations
+- Refactor when it genuinely improves the code
+
+**DON'T:**
+- Over-engineer for hypothetical futures (YAGNI)
+- Add abstraction layers "just in case"
+- Optimize before profiling
+- Gold-plate features nobody asked for
+
+**The test:** If an abstraction doesn't make the current code simpler or more testable, it's probably premature.
+
+### 3. Clean Architecture
+
+Follow the natural compiler pipeline with clear boundaries:
+
+```
+Source → Lexer → Parser → AST → Semantic Analysis → Typed IR → CodeGen → Output
+                                                              ↑
+                                                    Backend trait interface
+```
+
+Each phase should be:
+- Independently testable
+- Single responsibility
+- Well-documented
 
 ---
 
@@ -227,6 +228,7 @@ pub trait CodeGenerator {
 | `DEVELOPMENT.md` | Developer onboarding guide |
 | `PROJECT_PLAN.md` | Project roadmap and phases |
 | `docs/QB64PE_ARCHITECTURE_ANALYSIS.md` | Original QB64 architecture analysis |
+| `docs/PARSER_PLAN.md` | Detailed parser implementation plan |
 
 ### Planned Structure (TODO)
 ```
@@ -281,3 +283,16 @@ When implementing, refer to:
 - `QB64pe/source/subs_functions/` - Built-in function definitions
 - `QB64pe/internal/c/libqb*` - Runtime library implementation
 - `QB64pe/tests/` - Compatibility test cases
+
+### Compatibility Test Suite
+
+`QB64pe/tests/qbasic_testcases/` contains **143 BASIC programs**:
+
+| Directory | Relevance | Notes |
+|-----------|-----------|-------|
+| `qb45com/` | **High** | QB4.5 compatibility - our core target |
+| `misc/` | Medium | Mixed; many use QB64-specific extensions |
+| `n54/`, `pete/`, `thebob/` | Medium | Contributor collections; check for QB64 extensions |
+| `open_gl/` | **Skip** | Uses `_GL` commands - we're using SDL2/winit, not raw OpenGL |
+
+**Future milestone:** Start with `qb45com/` for core language compatibility. Programs using `_` prefixed commands (like `_SNDPLAYFILE`, `_GL*`, `_UNSIGNED`) are QB64 extensions that may not be in our initial scope.

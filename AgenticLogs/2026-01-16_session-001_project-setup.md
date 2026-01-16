@@ -386,11 +386,59 @@ Created comprehensive CI pipeline:
 
 ---
 
+## Parser Planning
+
+Created comprehensive parser implementation plan: `docs/PARSER_PLAN.md`
+
+Key design decisions:
+- **Parsing technique:** Pratt parsing (precedence climbing) for expressions
+- **Error handling:** Collect errors and continue (don't stop at first error)
+- **AST ownership:** Owned nodes (no lifetimes) for simplicity
+- **Location tracking:** Span on every node for error messages
+
+Implementation phases:
+1. Foundation - AST types + parser shell
+2. Expression parsing - Pratt parser with precedence table
+3. Statement parsing - PRINT, LET, IF, FOR, WHILE, DIM
+4. Integration - CLI updates, full program parsing, tests
+
+See `docs/PARSER_PLAN.md` for detailed steps and code sketches.
+
+---
+
+## Compatibility Test Suite Evaluation
+
+Reviewed `QB64pe/tests/qbasic_testcases/` (143 test files):
+
+| Directory | Relevance | Notes |
+|-----------|-----------|-------|
+| `qb45com/` | **High** | QB4.5 compatibility - our core target |
+| `misc/` | Medium | Mixed; many use QB64-specific extensions |
+| `open_gl/` | **Skip** | Uses `_GL` commands - we're using SDL2/winit |
+
+Programs using `_` prefixed commands are QB64 extensions that may not be in initial scope.
+
+---
+
+## Issues Encountered
+
+### CI Workflow Action Name Error
+
+**Problem:** GitHub Actions failed with "Unable to resolve action dtolnay/rust-action, repository not found"
+
+**Cause:** Used incorrect action name `dtolnay/rust-action` instead of `dtolnay/rust-toolchain`
+
+**Fix:** Updated `.github/workflows/ci.yml` to use correct action name
+
+**Lesson:** Always verify GitHub Action names exist before committing CI workflows. The dtolnay actions are:
+- `dtolnay/rust-toolchain` - Install Rust toolchain
+- `dtolnay/install` - Install cargo binaries (different purpose)
+
+---
+
 ## Next Steps
 
-1. Implement parser (AST construction)
-3. Define AST types
-4. Build expression parser with precedence climbing
+1. Implement parser following `docs/PARSER_PLAN.md`
 
 ---
 
