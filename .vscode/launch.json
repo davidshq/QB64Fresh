@@ -1,0 +1,85 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug QB64Fresh",
+      "cargo": {
+        "args": ["build", "--bin=qb64fresh", "--package=qb64fresh"],
+        "filter": {
+          "name": "qb64fresh",
+          "kind": "bin"
+        }
+      },
+      "args": ["${workspaceFolder}/examples/hello.bas"],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "RUST_LOG": "debug",
+        "RUST_BACKTRACE": "1"
+      }
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug QB64Fresh (select file)",
+      "cargo": {
+        "args": ["build", "--bin=qb64fresh", "--package=qb64fresh"],
+        "filter": {
+          "name": "qb64fresh",
+          "kind": "bin"
+        }
+      },
+      "args": ["${file}"],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "RUST_LOG": "debug",
+        "RUST_BACKTRACE": "1"
+      }
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug Unit Tests",
+      "cargo": {
+        "args": ["test", "--no-run", "--lib", "--package=qb64fresh"],
+        "filter": {
+          "kind": "lib"
+        }
+      },
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "RUST_BACKTRACE": "1"
+      }
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug Specific Test",
+      "cargo": {
+        "args": [
+          "test",
+          "--no-run",
+          "--lib",
+          "--package=qb64fresh",
+          "--",
+          "${input:testName}"
+        ],
+        "filter": {
+          "kind": "lib"
+        }
+      },
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "RUST_BACKTRACE": "1"
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "id": "testName",
+      "type": "promptString",
+      "description": "Enter the test name or pattern to run"
+    }
+  ]
+}

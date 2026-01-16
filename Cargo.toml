@@ -29,6 +29,9 @@ thiserror = "1.0"
 # Testing utilities
 pretty_assertions = "1.4"
 
+# Git hooks management - runs fmt/clippy on commit
+cargo-husky = { version = "1", default-features = false, features = ["precommit-hook", "run-cargo-fmt", "run-cargo-clippy"] }
+
 [profile.release]
 lto = true
 codegen-units = 1

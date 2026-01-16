@@ -5,10 +5,15 @@ Cargo.lock
 
 # IDE
 .idea/
-.vscode/
 *.swp
 *.swo
 *~
+
+# VS Code - ignore user-specific settings, keep shared configs
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
 
 # OS
 .DS_Store

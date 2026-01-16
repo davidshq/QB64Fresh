@@ -1,0 +1,18 @@
+# rustfmt configuration for QB64Fresh
+# https://rust-lang.github.io/rustfmt/
+#
+# This file documents our formatting choices. Currently using all defaults.
+# Add overrides here as the project evolves and we identify preferences.
+
+# Rust edition for parsing (matches Cargo.toml)
+edition = "2024"
+
+# All other settings use rustfmt defaults:
+# - max_width = 100
+# - tab_spaces = 4
+# - use_small_heuristics = "Default"
+# - imports_granularity = "Preserve"
+# - group_imports = "Preserve"
+#
+# To see all available options: rustfmt --help=config
+# To check current effective config: rustfmt --print-config current .

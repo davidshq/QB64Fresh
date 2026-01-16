@@ -204,15 +204,18 @@ mod tests {
 
         // Should get: x, =, 1, newline, y, =, 2
         let kinds: Vec<_> = tokens.iter().map(|t| &t.kind).collect();
-        assert_eq!(kinds, vec![
-            &TokenKind::Identifier,
-            &TokenKind::Equals,
-            &TokenKind::IntegerLiteral,
-            &TokenKind::Newline,
-            &TokenKind::Identifier,
-            &TokenKind::Equals,
-            &TokenKind::IntegerLiteral,
-        ]);
+        assert_eq!(
+            kinds,
+            vec![
+                &TokenKind::Identifier,
+                &TokenKind::Equals,
+                &TokenKind::IntegerLiteral,
+                &TokenKind::Newline,
+                &TokenKind::Identifier,
+                &TokenKind::Equals,
+                &TokenKind::IntegerLiteral,
+            ]
+        );
     }
 
     #[test]
@@ -239,18 +242,21 @@ mod tests {
         let tokens = lex(source);
         let kinds: Vec<_> = tokens.iter().map(|t| &t.kind).collect();
 
-        assert_eq!(kinds, vec![
-            &TokenKind::Identifier,    // result
-            &TokenKind::Equals,        // =
-            &TokenKind::LeftParen,     // (
-            &TokenKind::Identifier,    // a
-            &TokenKind::Plus,          // +
-            &TokenKind::Identifier,    // b
-            &TokenKind::RightParen,    // )
-            &TokenKind::Star,          // *
-            &TokenKind::IntegerLiteral,// 2
-            &TokenKind::Slash,         // /
-            &TokenKind::FloatLiteral,  // 3.14
-        ]);
+        assert_eq!(
+            kinds,
+            vec![
+                &TokenKind::Identifier,     // result
+                &TokenKind::Equals,         // =
+                &TokenKind::LeftParen,      // (
+                &TokenKind::Identifier,     // a
+                &TokenKind::Plus,           // +
+                &TokenKind::Identifier,     // b
+                &TokenKind::RightParen,     // )
+                &TokenKind::Star,           // *
+                &TokenKind::IntegerLiteral, // 2
+                &TokenKind::Slash,          // /
+                &TokenKind::FloatLiteral,   // 3.14
+            ]
+        );
     }
 }

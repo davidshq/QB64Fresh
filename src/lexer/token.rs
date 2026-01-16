@@ -50,7 +50,6 @@ impl Token {
 #[logos(skip r"[ \t\r]+")] // Skip horizontal whitespace (but not newlines!)
 pub enum TokenKind {
     // ==================== Control Flow Keywords ====================
-
     /// IF keyword - begins conditional statement
     #[token("IF", ignore(ascii_case))]
     If,
@@ -132,7 +131,6 @@ pub enum TokenKind {
     Exit,
 
     // ==================== Declaration Keywords ====================
-
     /// DIM keyword - variable declaration
     #[token("DIM", ignore(ascii_case))]
     Dim,
@@ -178,7 +176,6 @@ pub enum TokenKind {
     Let,
 
     // ==================== Type Keywords ====================
-
     /// INTEGER type
     #[token("INTEGER", ignore(ascii_case))]
     Integer,
@@ -197,7 +194,7 @@ pub enum TokenKind {
 
     /// STRING type
     #[token("STRING", ignore(ascii_case))]
-    String_,  // Underscore to avoid conflict with Rust's String
+    String_, // Underscore to avoid conflict with Rust's String
 
     // QB64 extended types
     /// _BYTE type (QB64)
@@ -221,7 +218,6 @@ pub enum TokenKind {
     Unsigned,
 
     // ==================== I/O Keywords ====================
-
     /// PRINT statement
     #[token("PRINT", ignore(ascii_case))]
     Print,
@@ -267,7 +263,6 @@ pub enum TokenKind {
     Line,
 
     // ==================== Logical Operators (Keywords) ====================
-
     /// AND operator
     #[token("AND", ignore(ascii_case))]
     And,
@@ -297,7 +292,6 @@ pub enum TokenKind {
     Mod,
 
     // ==================== Arithmetic Operators ====================
-
     /// + addition or string concatenation
     #[token("+")]
     Plus,
@@ -323,7 +317,6 @@ pub enum TokenKind {
     Caret,
 
     // ==================== Comparison Operators ====================
-
     /// = equals (assignment or comparison)
     #[token("=")]
     Equals,
@@ -349,7 +342,6 @@ pub enum TokenKind {
     GreaterEquals,
 
     // ==================== Punctuation ====================
-
     /// ( left parenthesis
     #[token("(")]
     LeftParen,
@@ -380,7 +372,6 @@ pub enum TokenKind {
 
     // ==================== Type Suffixes ====================
     // These appear at the end of identifiers to indicate type
-
     /// $ string type suffix
     #[token("$")]
     DollarSign,
@@ -433,7 +424,6 @@ pub enum TokenKind {
     StringLiteral,
 
     // ==================== Identifiers ====================
-
     /// Identifier (variable, function, or label name)
     /// Must start with letter, can contain letters, digits, and underscores
     /// May end with type suffix ($, %, &, !, #)
@@ -441,7 +431,6 @@ pub enum TokenKind {
     Identifier,
 
     // ==================== Special Tokens ====================
-
     /// Comment - starts with '
     #[regex(r"'[^\n]*")]
     Comment,
@@ -460,7 +449,6 @@ pub enum TokenKind {
     LineContinuation,
 
     // ==================== Preprocessor (QB64) ====================
-
     /// $INCLUDE directive
     #[regex(r"\$INCLUDE\s*:\s*'[^']*'", ignore(ascii_case))]
     IncludeDirective,
@@ -500,9 +488,7 @@ mod tests {
 
     /// Helper to collect all tokens from source
     fn lex_all(source: &str) -> Vec<TokenKind> {
-        TokenKind::lexer(source)
-            .filter_map(|r| r.ok())
-            .collect()
+        TokenKind::lexer(source).filter_map(|r| r.ok()).collect()
     }
 
     #[test]
@@ -516,78 +502,87 @@ mod tests {
     #[test]
     fn test_simple_print_statement() {
         let tokens = lex_all(r#"PRINT "Hello, World!""#);
-        assert_eq!(tokens, vec![
-            TokenKind::Print,
-            TokenKind::StringLiteral,
-        ]);
+        assert_eq!(tokens, vec![TokenKind::Print, TokenKind::StringLiteral,]);
     }
 
     #[test]
     fn test_arithmetic_expression() {
         let tokens = lex_all("1 + 2 * 3");
-        assert_eq!(tokens, vec![
-            TokenKind::IntegerLiteral,
-            TokenKind::Plus,
-            TokenKind::IntegerLiteral,
-            TokenKind::Star,
-            TokenKind::IntegerLiteral,
-        ]);
+        assert_eq!(
+            tokens,
+            vec![
+                TokenKind::IntegerLiteral,
+                TokenKind::Plus,
+                TokenKind::IntegerLiteral,
+                TokenKind::Star,
+                TokenKind::IntegerLiteral,
+            ]
+        );
     }
 
     #[test]
     fn test_if_statement() {
         let tokens = lex_all("IF x > 10 THEN PRINT x");
-        assert_eq!(tokens, vec![
-            TokenKind::If,
-            TokenKind::Identifier,
-            TokenKind::GreaterThan,
-            TokenKind::IntegerLiteral,
-            TokenKind::Then,
-            TokenKind::Print,
-            TokenKind::Identifier,
-        ]);
+        assert_eq!(
+            tokens,
+            vec![
+                TokenKind::If,
+                TokenKind::Identifier,
+                TokenKind::GreaterThan,
+                TokenKind::IntegerLiteral,
+                TokenKind::Then,
+                TokenKind::Print,
+                TokenKind::Identifier,
+            ]
+        );
     }
 
     #[test]
     fn test_hex_literal() {
         let tokens = lex_all("&HFF &h1a");
-        assert_eq!(tokens, vec![
-            TokenKind::HexLiteral,
-            TokenKind::HexLiteral,
-        ]);
+        assert_eq!(tokens, vec![TokenKind::HexLiteral, TokenKind::HexLiteral,]);
     }
 
     #[test]
     fn test_float_literals() {
         let tokens = lex_all("1.5 .5 1.5E10 1D-3");
-        assert_eq!(tokens, vec![
-            TokenKind::FloatLiteral,
-            TokenKind::FloatLiteral,
-            TokenKind::FloatLiteral,
-            TokenKind::FloatLiteral,
-        ]);
+        assert_eq!(
+            tokens,
+            vec![
+                TokenKind::FloatLiteral,
+                TokenKind::FloatLiteral,
+                TokenKind::FloatLiteral,
+                TokenKind::FloatLiteral,
+            ]
+        );
     }
 
     #[test]
     fn test_comment() {
         let tokens = lex_all("x = 1 ' this is a comment");
-        assert_eq!(tokens, vec![
-            TokenKind::Identifier,
-            TokenKind::Equals,
-            TokenKind::IntegerLiteral,
-            TokenKind::Comment,
-        ]);
+        assert_eq!(
+            tokens,
+            vec![
+                TokenKind::Identifier,
+                TokenKind::Equals,
+                TokenKind::IntegerLiteral,
+                TokenKind::Comment,
+            ]
+        );
     }
 
     #[test]
     fn test_type_suffixes() {
         let tokens = lex_all("name$ count% total& value! num#");
-        assert_eq!(tokens, vec![
-            TokenKind::Identifier,  // name$ - suffix included in identifier
-            TokenKind::Identifier,  // count%
-            TokenKind::Identifier,  // total&
-            TokenKind::Identifier,  // value!
-            TokenKind::Identifier,  // num#
-        ]);
+        assert_eq!(
+            tokens,
+            vec![
+                TokenKind::Identifier, // name$ - suffix included in identifier
+                TokenKind::Identifier, // count%
+                TokenKind::Identifier, // total&
+                TokenKind::Identifier, // value!
+                TokenKind::Identifier, // num#
+            ]
+        );
     }
 }

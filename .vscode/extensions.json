@@ -1,0 +1,22 @@
+{
+  "recommendations": [
+    // Essential - Rust language support
+    "rust-lang.rust-analyzer",
+
+    // Highly recommended - TOML support for Cargo.toml
+    "tamasfe.even-better-toml",
+
+    // Dependency management - shows crate versions, updates
+    "fill-labs.dependi",
+
+    // Debugging - LLDB debugger for Rust
+    "vadimcn.vscode-lldb",
+
+    // EditorConfig support
+    "editorconfig.editorconfig"
+  ],
+  "unwantedRecommendations": [
+    // Deprecated Rust extension - use rust-analyzer instead
+    "rust-lang.rust"
+  ]
+}

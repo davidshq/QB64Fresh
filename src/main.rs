@@ -6,7 +6,7 @@ use clap::Parser;
 use std::fs;
 use std::path::PathBuf;
 
-use qb64fresh::lexer::{lex, TokenKind};
+use qb64fresh::lexer::{TokenKind, lex};
 
 /// QB64Fresh - A modern BASIC compiler
 #[derive(Parser, Debug)]
@@ -32,9 +32,7 @@ struct Args {
 
 fn main() {
     // Initialize logging
-    env_logger::Builder::from_env(
-        env_logger::Env::default().default_filter_or("info")
-    ).init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     let args = Args::parse();
 
