@@ -223,7 +223,10 @@ pub trait CodeGenerator {
    - Document synchronization (open/change/close)
    - Real-time diagnostics (parser + semantic errors)
    - Basic hover support (token info)
-7. **VSCode Extension** - 🔲 TODO
+7. **VSCode Extension** - ✅ Complete (../vscode-qb64fresh/)
+   - LSP client with auto-detection of server binary
+   - Syntax highlighting (TextMate grammar)
+   - Language configuration (comments, brackets, folding)
 
 ### Test Coverage
 - 107 tests passing (compiler: 86, runtime: 21)
@@ -269,4 +272,4 @@ All work is documented in `AgenticLogs/` with session logs capturing:
 ---
 
 *Document created: 2026-01-16*
-*Last updated: 2026-01-16 (Phase 3.6 LSP Server basic implementation completed)*
+*Last updated: 2026-01-16 (Phase 3.7 VSCode Extension completed)*
