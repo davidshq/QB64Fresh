@@ -78,6 +78,42 @@ We use a **tiered logging system** to balance readability with completeness:
 - Err on the side of more detail in IndividualProblems - it's educational
 - AgenticLogs should be readable standalone (no required links to understand)
 
+### Session Start Checklist
+
+**At the START of every session, Claude MUST:**
+
+1. **Add a logging todo item** to the todo list:
+   ```
+   - [ ] Update AgenticLogs (keep in_progress throughout session)
+   ```
+
+2. **Check for existing session logs** - determine the next session number:
+   ```bash
+   ls AgenticLogs/
+   ```
+
+3. **Create the session log file early** - don't wait until the end
+
+4. **For complex problems** - create IndividualProblems doc AS SOON AS the problem requires 3+ attempts, not after resolution
+
+### Pre-Commit Checklist
+
+**BEFORE making any git commit, Claude MUST verify:**
+
+1. **AgenticLogs updated?**
+   - [ ] Session log exists for today's work
+   - [ ] Major decisions and milestones documented
+   - [ ] Any complex problems have IndividualProblems entries
+
+2. **FullLogs updated?**
+   - [ ] Session transcript written to FullLogs/
+
+3. **If logs are NOT updated:**
+   - STOP and update them BEFORE committing
+   - This is a hard requirement, not optional
+
+**This checklist is a safety net. Ideally, logs are updated incrementally throughout the session, making this just a quick verification.**
+
 ---
 
 ## Core Principles
@@ -204,9 +240,14 @@ pub trait CodeGenerator {
 | File | Purpose | Status |
 |------|---------|--------|
 | `src/lib.rs` | Library root, module exports, prelude | ✓ Complete |
-| `src/main.rs` | CLI entry point (clap-based) | ✓ Complete |
+| `src/main.rs` | CLI entry point (clap-based, --tokens, --ast) | ✓ Complete |
 | `src/lexer/mod.rs` | Lexer wrapper with iterator interface | ✓ Complete |
 | `src/lexer/token.rs` | Token definitions using logos macros | ✓ Complete |
+| `src/ast/mod.rs` | AST root: Span, Program types | ✓ Complete |
+| `src/ast/expr.rs` | Expression AST nodes | ✓ Complete |
+| `src/ast/stmt.rs` | Statement AST nodes | ✓ Complete |
+| `src/parser/mod.rs` | Pratt parser + recursive descent (~1600 lines) | ✓ Complete |
+| `src/parser/error.rs` | Parse error types with spans | ✓ Complete |
 | `examples/hello.bas` | Test BASIC file for development | ✓ Complete |
 
 ### Configuration Files
@@ -231,18 +272,18 @@ pub trait CodeGenerator {
 | `docs/PARSER_PLAN.md` | Detailed parser implementation plan |
 | `docs/QB64_SYNTAX_REFERENCE.md` | QB64 language syntax quick reference |
 
-### Planned Structure (TODO)
+### Project Structure
 ```
 src/
-├── parser/       # AST construction (next milestone)
-├── ast/          # AST type definitions
-├── semantic/     # Type checking, symbol resolution
-├── ir/           # Typed intermediate representation
-├── codegen/      # Backend trait + implementations
+├── ast/          # ✓ AST type definitions (complete)
+├── parser/       # ✓ Pratt parser + recursive descent (complete)
+├── semantic/     # Type checking, symbol resolution (TODO)
+├── ir/           # Typed intermediate representation (TODO)
+├── codegen/      # Backend trait + implementations (TODO)
 │   ├── mod.rs    # CodeGenerator trait
 │   └── c/        # C backend
-├── runtime/      # Runtime library interface
-└── lsp/          # Language server
+├── runtime/      # Runtime library interface (TODO)
+└── lsp/          # Language server (TODO)
 ```
 
 ---
@@ -269,11 +310,44 @@ src/
 
 ### Rust Patterns for This Project
 
-(To be populated as we implement)
+**Borrow checker with error handling:**
+When you need token/borrowed data for error messages while also accessing `self.errors`:
+```rust
+// DON'T - closure captures self.errors while self is borrowed
+let token = self.peek().ok_or_else(|| {
+    self.errors.push(ParseError::eof("expression"));
+})?;
+
+// DO - extract values first, then handle error
+let token = match self.peek() {
+    Some(t) => t,
+    None => {
+        self.errors.push(ParseError::eof("expression"));
+        return Err(());
+    }
+};
+
+// For complex cases, clone needed values before error handling:
+let token_kind = token.kind.clone();
+let token_span: Span = token.span.clone().into();
+// Now token borrow is released, can use self.errors
+```
+
+**Range<T> is not Copy:**
+Even when T is Copy, Range<T> must be cloned:
+```rust
+// DON'T
+let span: Span = token.span.into();  // Error: can't move from borrow
+
+// DO
+let span: Span = token.span.clone().into();
+```
 
 ### Common Pitfalls
 
-(To be populated as we encounter issues)
+**API assumptions:** Always read the actual type definitions before writing dependent code. The parser was written assuming `Token<'a>` but Token owns its data - causing 34+ compilation errors.
+
+**Closure borrowing:** Closures in `.ok_or_else()`, `.map_err()`, etc. capture their environment. If that conflicts with an existing borrow, use explicit `match` instead.
 
 ---
 
@@ -297,3 +371,5 @@ When implementing, refer to:
 | `open_gl/` | **Skip** | Uses `_GL` commands - we're using SDL2/winit, not raw OpenGL |
 
 **Future milestone:** Start with `qb45com/` for core language compatibility. Programs using `_` prefixed commands (like `_SNDPLAYFILE`, `_GL*`, `_UNSIGNED`) are QB64 extensions that may not be in our initial scope.
+
+**THE MOST IMPORTANT PART OF THIS ENTIRE DOCUMENT IS THE Logging System SECTION, MAKE SURE YOU ALWAYS, ALWAYS, ALWAYS FOLLOW IT!**

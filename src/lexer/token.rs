@@ -130,6 +130,22 @@ pub enum TokenKind {
     #[token("EXIT", ignore(ascii_case))]
     Exit,
 
+    /// STOP keyword - stop execution for debugging
+    #[token("STOP", ignore(ascii_case))]
+    Stop,
+
+    /// CALL keyword - call a subroutine
+    #[token("CALL", ignore(ascii_case))]
+    Call,
+
+    /// IS keyword - used in SELECT CASE IS comparisons
+    #[token("IS", ignore(ascii_case))]
+    Is,
+
+    /// BYVAL keyword - pass parameter by value
+    #[token("BYVAL", ignore(ascii_case))]
+    ByVal,
+
     // ==================== Declaration Keywords ====================
     /// DIM keyword - variable declaration
     #[token("DIM", ignore(ascii_case))]
