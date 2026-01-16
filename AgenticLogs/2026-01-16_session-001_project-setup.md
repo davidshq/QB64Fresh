@@ -436,6 +436,27 @@ Programs using `_` prefixed commands are QB64 extensions that may not be in init
 
 ---
 
+## QB64 Syntax Reference Created
+
+Fetched and consolidated QB64 Wiki content into `docs/QB64_SYNTAX_REFERENCE.md`:
+
+**Content includes:**
+- Data types (all numeric types, strings, QB64 extensions)
+- Complete operator precedence table
+- Control flow syntax (IF, SELECT CASE, GOTO/GOSUB)
+- Loop syntax (FOR, WHILE, DO)
+- Variable declarations (DIM, CONST, DEFtype)
+- I/O statements (PRINT, INPUT)
+- Procedure syntax (SUB, FUNCTION)
+- Literal formats (integers, floats, hex, strings)
+- Keywords organized by category
+
+**Source:** [QB64 Phoenix Edition Wiki](https://qb64phoenix.com/qb64wiki/)
+
+This serves as a quick reference during parser implementation, avoiding repeated wiki lookups.
+
+---
+
 ## Next Steps
 
 1. Implement parser following `docs/PARSER_PLAN.md`

@@ -229,6 +229,7 @@ pub trait CodeGenerator {
 | `PROJECT_PLAN.md` | Project roadmap and phases |
 | `docs/QB64PE_ARCHITECTURE_ANALYSIS.md` | Original QB64 architecture analysis |
 | `docs/PARSER_PLAN.md` | Detailed parser implementation plan |
+| `docs/QB64_SYNTAX_REFERENCE.md` | QB64 language syntax quick reference |
 
 ### Planned Structure (TODO)
 ```
