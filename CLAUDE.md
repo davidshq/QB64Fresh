@@ -240,7 +240,7 @@ pub trait CodeGenerator {
 | File | Purpose | Status |
 |------|---------|--------|
 | `src/lib.rs` | Library root, module exports, prelude | ✓ Complete |
-| `src/main.rs` | CLI entry point (clap-based, --tokens, --ast) | ✓ Complete |
+| `src/main.rs` | CLI entry point (--tokens, --ast, --typed-ir, --emit-c) | ✓ Complete |
 | `src/lexer/mod.rs` | Lexer wrapper with iterator interface | ✓ Complete |
 | `src/lexer/token.rs` | Token definitions using logos macros | ✓ Complete |
 | `src/ast/mod.rs` | AST root: Span, Program types | ✓ Complete |
@@ -248,7 +248,17 @@ pub trait CodeGenerator {
 | `src/ast/stmt.rs` | Statement AST nodes | ✓ Complete |
 | `src/parser/mod.rs` | Pratt parser + recursive descent (~1600 lines) | ✓ Complete |
 | `src/parser/error.rs` | Parse error types with spans | ✓ Complete |
+| `src/semantic/mod.rs` | Semantic analyzer entry point, built-ins | ✓ Complete |
+| `src/semantic/error.rs` | Semantic error types with spans | ✓ Complete |
+| `src/semantic/types.rs` | BasicType enum, type inference, conversions | ✓ Complete |
+| `src/semantic/symbols.rs` | Symbol table with scope management | ✓ Complete |
+| `src/semantic/checker.rs` | Type checker for expressions/statements | ✓ Complete |
+| `src/semantic/typed_ir.rs` | Typed IR output for codegen | ✓ Complete |
+| `src/codegen/mod.rs` | CodeGenerator trait, GeneratedOutput | ✓ Complete |
+| `src/codegen/error.rs` | Code generation error types | ✓ Complete |
+| `src/codegen/c_backend.rs` | C code generation (~1100 lines) | ✓ Complete |
 | `examples/hello.bas` | Test BASIC file for development | ✓ Complete |
+| `examples/simple.bas` | Simpler test BASIC file | ✓ Complete |
 
 ### Configuration Files
 
@@ -277,11 +287,11 @@ pub trait CodeGenerator {
 src/
 ├── ast/          # ✓ AST type definitions (complete)
 ├── parser/       # ✓ Pratt parser + recursive descent (complete)
-├── semantic/     # Type checking, symbol resolution (TODO)
-├── ir/           # Typed intermediate representation (TODO)
-├── codegen/      # Backend trait + implementations (TODO)
+├── semantic/     # ✓ Type checking, symbol resolution (complete)
+├── codegen/      # ✓ Backend trait + C implementation (complete)
 │   ├── mod.rs    # CodeGenerator trait
-│   └── c/        # C backend
+│   ├── error.rs  # CodeGenError types
+│   └── c_backend.rs  # C code generation
 ├── runtime/      # Runtime library interface (TODO)
 └── lsp/          # Language server (TODO)
 ```

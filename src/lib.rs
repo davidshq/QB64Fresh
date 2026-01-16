@@ -15,8 +15,9 @@
 //! - [`lexer`] - Tokenizes source code into a stream of tokens
 //! - [`parser`] - Builds an Abstract Syntax Tree from tokens
 //! - [`ast`] - AST type definitions
-//! - `semantic` - (TODO) Type checking and symbol resolution
-//! - `codegen` - (TODO) Code generation backends
+//! - [`semantic`] - Type checking and symbol resolution
+//! - [`codegen`] - Code generation backends (C backend implemented)
+//! - [`lsp`] - Language Server Protocol implementation for IDE integration
 //!
 //! ## Example
 //!
@@ -37,17 +38,17 @@
 //! ```
 
 pub mod ast;
+pub mod codegen;
 pub mod lexer;
+pub mod lsp;
 pub mod parser;
-
-// Future modules (uncomment as implemented):
-// pub mod semantic;
-// pub mod ir;
-// pub mod codegen;
+pub mod semantic;
 
 /// Re-export commonly used types for convenience
 pub mod prelude {
     pub use crate::ast::{Expr, ExprKind, Program, Span, Statement, StatementKind};
+    pub use crate::codegen::{CBackend, CodeGenError, CodeGenerator, GeneratedOutput, RuntimeMode};
     pub use crate::lexer::{Lexer, Token, TokenKind};
     pub use crate::parser::{ParseError, Parser};
+    pub use crate::semantic::{BasicType, SemanticAnalyzer, SemanticError, TypedProgram};
 }

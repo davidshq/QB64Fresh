@@ -1,3 +1,7 @@
+[workspace]
+members = [".", "runtime"]
+resolver = "2"
+
 [package]
 name = "qb64fresh"
 version = "0.1.0"
@@ -25,6 +29,12 @@ env_logger = "0.11"
 # Error handling
 thiserror = "1.0"
 
+# LSP server
+tower-lsp = "0.20"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
 [dev-dependencies]
 # Testing utilities
 pretty_assertions = "1.4"
@@ -39,6 +49,10 @@ codegen-units = 1
 [[bin]]
 name = "qb64fresh"
 path = "src/main.rs"
+
+[[bin]]
+name = "qb64fresh-lsp"
+path = "src/lsp/main.rs"
 
 [lib]
 name = "qb64fresh"

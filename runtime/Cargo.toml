@@ -1,0 +1,29 @@
+[package]
+name = "qb64fresh-runtime"
+version = "0.1.0"
+edition = "2021"
+description = "Runtime library for QB64Fresh compiled programs"
+license = "MIT"
+
+[lib]
+name = "qb64fresh_rt"
+# Build as both a Rust library (for tests) and a C-compatible static library
+crate-type = ["lib", "staticlib"]
+
+[dependencies]
+# C library bindings (for strcmp, etc.)
+libc = "0.2"
+
+# For future graphics support
+# sdl2 = { version = "0.37", optional = true }
+
+# For future audio support
+# rodio = { version = "0.19", optional = true }
+
+[features]
+default = []
+# graphics = ["sdl2"]
+# audio = ["rodio"]
+
+[dev-dependencies]
+# For testing

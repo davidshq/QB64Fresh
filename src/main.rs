@@ -6,8 +6,10 @@ use clap::Parser as ClapParser;
 use std::fs;
 use std::path::PathBuf;
 
+use qb64fresh::codegen::{CBackend, CodeGenerator, RuntimeMode};
 use qb64fresh::lexer::{TokenKind, lex};
 use qb64fresh::parser::Parser;
+use qb64fresh::semantic::SemanticAnalyzer;
 
 /// QB64Fresh - A modern BASIC compiler
 #[derive(ClapParser, Debug)]
@@ -29,6 +31,18 @@ struct Args {
     /// Parse and print AST (for debugging)
     #[arg(long)]
     ast: bool,
+
+    /// Run semantic analysis and print typed IR (for debugging)
+    #[arg(long)]
+    typed_ir: bool,
+
+    /// Generate C code and write to output file
+    #[arg(long = "emit-c")]
+    emit_c: bool,
+
+    /// Runtime mode: 'inline' (default) or 'external'
+    #[arg(long, default_value = "inline")]
+    runtime: String,
 
     /// Verbose output
     #[arg(short, long)]
@@ -81,24 +95,94 @@ fn main() {
     }
 
     // Parser phase
+    let mut parser = Parser::new(&tokens);
+    let program = match parser.parse() {
+        Ok(p) => p,
+        Err(errors) => {
+            eprintln!("Parse errors:");
+            for err in errors {
+                eprintln!("  {}", err);
+            }
+            std::process::exit(1);
+        }
+    };
+
     if args.ast {
         println!("AST for {}:", args.input.display());
         println!("{:-<60}", "");
+        println!("Parsed {} statements:\n", program.statements.len());
+        for (i, stmt) in program.statements.iter().enumerate() {
+            println!("{}. {:?}", i + 1, stmt);
+            println!();
+        }
+        return;
+    }
 
-        let mut parser = Parser::new(&tokens);
-        match parser.parse() {
-            Ok(program) => {
-                println!("Parsed {} statements:\n", program.statements.len());
-                for (i, stmt) in program.statements.iter().enumerate() {
-                    println!("{}. {:?}", i + 1, stmt);
-                    println!();
+    // Semantic analysis phase
+    let mut analyzer = SemanticAnalyzer::new();
+    let typed_program = match analyzer.analyze(&program) {
+        Ok(tp) => tp,
+        Err(errors) => {
+            eprintln!("Semantic errors:");
+            for err in &errors {
+                eprintln!("  {}", err);
+            }
+            std::process::exit(1);
+        }
+    };
+
+    if args.typed_ir {
+        println!("Typed IR for {}:", args.input.display());
+        println!("{:-<60}", "");
+        println!("Analyzed {} statements:\n", typed_program.statements.len());
+        for (i, stmt) in typed_program.statements.iter().enumerate() {
+            println!("{}. {:?}", i + 1, stmt);
+            println!();
+        }
+        return;
+    }
+
+    // Code generation phase
+    if args.emit_c {
+        // Parse runtime mode
+        let runtime_mode = match args.runtime.to_lowercase().as_str() {
+            "inline" => RuntimeMode::Inline,
+            "external" => RuntimeMode::External,
+            other => {
+                eprintln!(
+                    "Unknown runtime mode: '{}'. Use 'inline' or 'external'.",
+                    other
+                );
+                std::process::exit(1);
+            }
+        };
+
+        let backend = CBackend::with_runtime_mode(runtime_mode);
+        let output = match backend.generate(&typed_program) {
+            Ok(o) => o,
+            Err(e) => {
+                eprintln!("Code generation error: {}", e);
+                std::process::exit(1);
+            }
+        };
+
+        // Determine output file path
+        let output_path = args.output.unwrap_or_else(|| {
+            let mut p = args.input.clone();
+            p.set_extension("c");
+            p
+        });
+
+        match fs::write(&output_path, &output.code) {
+            Ok(()) => {
+                println!("Generated: {}", output_path.display());
+                if args.verbose {
+                    println!("Output size: {} bytes", output.code.len());
+                    println!("Runtime mode: {:?}", runtime_mode);
                 }
             }
-            Err(errors) => {
-                eprintln!("Parse errors:");
-                for err in errors {
-                    eprintln!("  {}", err);
-                }
+            Err(e) => {
+                eprintln!("Error writing '{}': {}", output_path.display(), e);
                 std::process::exit(1);
             }
         }
@@ -106,28 +190,19 @@ fn main() {
     }
 
     // Default: show pipeline status
-    let mut parser = Parser::new(&tokens);
-    let parse_result = parser.parse();
-
     println!("QB64Fresh v{}", env!("CARGO_PKG_VERSION"));
     println!();
     println!("Lexer: OK ({} tokens)", tokens.len());
-
-    match parse_result {
-        Ok(program) => {
-            println!("Parser: OK ({} statements)", program.statements.len());
-        }
-        Err(errors) => {
-            println!("Parser: FAILED ({} errors)", errors.len());
-            for err in &errors {
-                eprintln!("  {}", err);
-            }
-        }
-    }
-
-    println!("Semantic analysis: Not yet implemented");
-    println!("Code generation: Not yet implemented");
+    println!("Parser: OK ({} statements)", program.statements.len());
+    println!(
+        "Semantic analysis: OK ({} typed statements)",
+        typed_program.statements.len()
+    );
+    println!("Code generation: Ready (use --emit-c to generate C code)");
     println!();
-    println!("Use --tokens to see lexer output.");
-    println!("Use --ast to see parsed AST.");
+    println!("Options:");
+    println!("  --tokens     Show lexer output");
+    println!("  --ast        Show parsed AST");
+    println!("  --typed-ir   Show typed IR after semantic analysis");
+    println!("  --emit-c     Generate C code to .c file");
 }
