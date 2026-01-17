@@ -1126,17 +1126,39 @@ impl<'a> TypeChecker<'a> {
             }
         }
 
-        // Evaluate array dimensions (simplified - assumes constant expressions)
+        // Evaluate array dimensions - bounds must be constant expressions
         let typed_dims: Vec<TypedArrayDimension> = dimensions
             .iter()
             .map(|d| {
-                let lower = d
-                    .lower
-                    .as_ref()
-                    .map(|_| 0)
-                    .unwrap_or(self.symbols.option_base());
-                // For now, just use a placeholder upper bound
-                let upper = 10; // Would need constant evaluation
+                // Evaluate lower bound (if provided)
+                let lower = if let Some(lower_expr) = &d.lower {
+                    let typed_lower = self.check_expr(lower_expr);
+                    match self.try_evaluate_const_expr(&typed_lower) {
+                        Some(crate::semantic::symbols::ConstValue::Integer(v)) => v,
+                        Some(crate::semantic::symbols::ConstValue::Float(v)) => v as i64,
+                        _ => {
+                            self.errors.push(SemanticError::NonConstantExpression {
+                                span: lower_expr.span,
+                            });
+                            0 // Default on error
+                        }
+                    }
+                } else {
+                    self.symbols.option_base()
+                };
+
+                // Evaluate upper bound (required)
+                let typed_upper = self.check_expr(&d.upper);
+                let upper = match self.try_evaluate_const_expr(&typed_upper) {
+                    Some(crate::semantic::symbols::ConstValue::Integer(v)) => v,
+                    Some(crate::semantic::symbols::ConstValue::Float(v)) => v as i64,
+                    _ => {
+                        self.errors
+                            .push(SemanticError::NonConstantExpression { span: d.upper.span });
+                        10 // Default on error
+                    }
+                };
+
                 TypedArrayDimension { lower, upper }
             })
             .collect();
@@ -1187,18 +1209,12 @@ impl<'a> TypeChecker<'a> {
     /// Type checks a CONST statement.
     fn check_const(&mut self, name: &str, value: &Expr, span: crate::ast::Span) -> TypedStatement {
         let typed_value = self.check_expr(value);
-
-        // TODO: Validate that value is a constant expression
-
         let basic_type = typed_value.basic_type.clone();
 
-        let const_value = match &typed_value.kind {
-            TypedExprKind::IntegerLiteral(v) => crate::semantic::symbols::ConstValue::Integer(*v),
-            TypedExprKind::FloatLiteral(v) => crate::semantic::symbols::ConstValue::Float(*v),
-            TypedExprKind::StringLiteral(v) => {
-                crate::semantic::symbols::ConstValue::String(v.clone())
-            }
-            _ => {
+        // Try to evaluate the expression as a compile-time constant
+        let const_value = match self.try_evaluate_const_expr(&typed_value) {
+            Some(cv) => cv,
+            None => {
                 self.errors
                     .push(SemanticError::NonConstantExpression { span: value.span });
                 crate::semantic::symbols::ConstValue::Integer(0)
@@ -1230,6 +1246,258 @@ impl<'a> TypeChecker<'a> {
             },
             span,
         )
+    }
+
+    /// Attempts to evaluate a typed expression as a compile-time constant.
+    ///
+    /// Returns `Some(ConstValue)` if the expression can be evaluated at compile time,
+    /// `None` if it contains non-constant elements (like variable references).
+    fn try_evaluate_const_expr(
+        &self,
+        expr: &TypedExpr,
+    ) -> Option<crate::semantic::symbols::ConstValue> {
+        use crate::semantic::symbols::ConstValue;
+
+        match &expr.kind {
+            // Direct literals
+            TypedExprKind::IntegerLiteral(v) => Some(ConstValue::Integer(*v)),
+            TypedExprKind::FloatLiteral(v) => Some(ConstValue::Float(*v)),
+            TypedExprKind::StringLiteral(v) => Some(ConstValue::String(v.clone())),
+
+            // Grouped expressions - just unwrap
+            TypedExprKind::Grouped(inner) => self.try_evaluate_const_expr(inner),
+
+            // Binary operations on constants
+            TypedExprKind::Binary { left, op, right } => {
+                let left_val = self.try_evaluate_const_expr(left)?;
+                let right_val = self.try_evaluate_const_expr(right)?;
+                self.evaluate_binary_const(*op, left_val, right_val)
+            }
+
+            // Unary operations on constants
+            TypedExprKind::Unary { op, operand } => {
+                let operand_val = self.try_evaluate_const_expr(operand)?;
+                self.evaluate_unary_const(*op, operand_val)
+            }
+
+            // Variable references - check if it's a constant
+            TypedExprKind::Variable(name) => {
+                if let Some(symbol) = self.symbols.lookup_symbol(name)
+                    && let SymbolKind::Constant { value } = &symbol.kind
+                {
+                    return Some(value.clone());
+                }
+                None // Not a constant
+            }
+
+            // Type conversions - evaluate inner and convert
+            TypedExprKind::Convert {
+                expr: inner,
+                to_type,
+            } => {
+                let inner_val = self.try_evaluate_const_expr(inner)?;
+                self.convert_const_value(inner_val, to_type)
+            }
+
+            // Function calls and array access are not constant
+            TypedExprKind::FunctionCall { .. } | TypedExprKind::ArrayAccess { .. } => None,
+        }
+    }
+
+    /// Evaluates a binary operation on constant values.
+    fn evaluate_binary_const(
+        &self,
+        op: BinaryOp,
+        left: crate::semantic::symbols::ConstValue,
+        right: crate::semantic::symbols::ConstValue,
+    ) -> Option<crate::semantic::symbols::ConstValue> {
+        use crate::semantic::symbols::ConstValue;
+
+        match (left, right) {
+            // Integer operations
+            (ConstValue::Integer(l), ConstValue::Integer(r)) => {
+                let result = match op {
+                    BinaryOp::Add => l.checked_add(r)?,
+                    BinaryOp::Subtract => l.checked_sub(r)?,
+                    BinaryOp::Multiply => l.checked_mul(r)?,
+                    BinaryOp::Divide => l.checked_div(r)?,
+                    BinaryOp::IntDivide => l.checked_div(r)?,
+                    BinaryOp::Modulo => l.checked_rem(r)?,
+                    BinaryOp::Power => l.checked_pow(r.try_into().ok()?)?,
+                    BinaryOp::And => l & r,
+                    BinaryOp::Or => l | r,
+                    BinaryOp::Xor => l ^ r,
+                    BinaryOp::Eqv => !(l ^ r),
+                    BinaryOp::Imp => !l | r,
+                    BinaryOp::Equal => {
+                        if l == r {
+                            -1
+                        } else {
+                            0
+                        }
+                    }
+                    BinaryOp::NotEqual => {
+                        if l != r {
+                            -1
+                        } else {
+                            0
+                        }
+                    }
+                    BinaryOp::LessThan => {
+                        if l < r {
+                            -1
+                        } else {
+                            0
+                        }
+                    }
+                    BinaryOp::LessEqual => {
+                        if l <= r {
+                            -1
+                        } else {
+                            0
+                        }
+                    }
+                    BinaryOp::GreaterThan => {
+                        if l > r {
+                            -1
+                        } else {
+                            0
+                        }
+                    }
+                    BinaryOp::GreaterEqual => {
+                        if l >= r {
+                            -1
+                        } else {
+                            0
+                        }
+                    }
+                };
+                Some(ConstValue::Integer(result))
+            }
+
+            // Float operations
+            (ConstValue::Float(l), ConstValue::Float(r)) => {
+                let result = match op {
+                    BinaryOp::Add => l + r,
+                    BinaryOp::Subtract => l - r,
+                    BinaryOp::Multiply => l * r,
+                    BinaryOp::Divide => l / r,
+                    BinaryOp::Power => l.powf(r),
+                    BinaryOp::Equal => {
+                        if l == r {
+                            -1.0
+                        } else {
+                            0.0
+                        }
+                    }
+                    BinaryOp::NotEqual => {
+                        if l != r {
+                            -1.0
+                        } else {
+                            0.0
+                        }
+                    }
+                    BinaryOp::LessThan => {
+                        if l < r {
+                            -1.0
+                        } else {
+                            0.0
+                        }
+                    }
+                    BinaryOp::LessEqual => {
+                        if l <= r {
+                            -1.0
+                        } else {
+                            0.0
+                        }
+                    }
+                    BinaryOp::GreaterThan => {
+                        if l > r {
+                            -1.0
+                        } else {
+                            0.0
+                        }
+                    }
+                    BinaryOp::GreaterEqual => {
+                        if l >= r {
+                            -1.0
+                        } else {
+                            0.0
+                        }
+                    }
+                    _ => return None, // Bitwise ops not valid on floats
+                };
+                Some(ConstValue::Float(result))
+            }
+
+            // Mixed int/float - promote to float
+            (ConstValue::Integer(l), ConstValue::Float(r)) => {
+                self.evaluate_binary_const(op, ConstValue::Float(l as f64), ConstValue::Float(r))
+            }
+            (ConstValue::Float(l), ConstValue::Integer(r)) => {
+                self.evaluate_binary_const(op, ConstValue::Float(l), ConstValue::Float(r as f64))
+            }
+
+            // String concatenation
+            (ConstValue::String(l), ConstValue::String(r)) => match op {
+                BinaryOp::Add => Some(ConstValue::String(l + &r)),
+                BinaryOp::Equal => Some(ConstValue::Integer(if l == r { -1 } else { 0 })),
+                BinaryOp::NotEqual => Some(ConstValue::Integer(if l != r { -1 } else { 0 })),
+                BinaryOp::LessThan => Some(ConstValue::Integer(if l < r { -1 } else { 0 })),
+                BinaryOp::LessEqual => Some(ConstValue::Integer(if l <= r { -1 } else { 0 })),
+                BinaryOp::GreaterThan => Some(ConstValue::Integer(if l > r { -1 } else { 0 })),
+                BinaryOp::GreaterEqual => Some(ConstValue::Integer(if l >= r { -1 } else { 0 })),
+                _ => None,
+            },
+
+            // String + non-string not allowed
+            _ => None,
+        }
+    }
+
+    /// Evaluates a unary operation on a constant value.
+    fn evaluate_unary_const(
+        &self,
+        op: UnaryOp,
+        operand: crate::semantic::symbols::ConstValue,
+    ) -> Option<crate::semantic::symbols::ConstValue> {
+        use crate::semantic::symbols::ConstValue;
+
+        match (op, operand) {
+            (UnaryOp::Negate, ConstValue::Integer(v)) => Some(ConstValue::Integer(-v)),
+            (UnaryOp::Negate, ConstValue::Float(v)) => Some(ConstValue::Float(-v)),
+            (UnaryOp::Not, ConstValue::Integer(v)) => Some(ConstValue::Integer(!v)),
+            _ => None,
+        }
+    }
+
+    /// Converts a constant value to a different type.
+    fn convert_const_value(
+        &self,
+        value: crate::semantic::symbols::ConstValue,
+        to_type: &BasicType,
+    ) -> Option<crate::semantic::symbols::ConstValue> {
+        use crate::semantic::symbols::ConstValue;
+
+        match (value, to_type) {
+            // Integer to float
+            (ConstValue::Integer(v), BasicType::Single | BasicType::Double) => {
+                Some(ConstValue::Float(v as f64))
+            }
+            // Float to integer (truncate)
+            (ConstValue::Float(v), BasicType::Integer | BasicType::Long) => {
+                Some(ConstValue::Integer(v as i64))
+            }
+            // Same type - no conversion needed
+            (v @ ConstValue::Integer(_), BasicType::Integer | BasicType::Long) => Some(v),
+            (v @ ConstValue::Float(_), BasicType::Single | BasicType::Double) => Some(v),
+            (v @ ConstValue::String(_), BasicType::String) => Some(v),
+            // Unsigned types
+            (ConstValue::Integer(v), BasicType::UnsignedInteger | BasicType::UnsignedLong) => {
+                Some(ConstValue::Integer(v))
+            }
+            _ => None,
+        }
     }
 
     /// Type checks a SUB definition.
@@ -1391,6 +1659,287 @@ mod tests {
 
     fn make_str_expr(val: &str) -> Expr {
         Expr::new(ExprKind::StringLiteral(val.to_string()), Span::new(0, 1))
+    }
+
+    fn make_ident_expr(name: &str) -> Expr {
+        Expr::new(ExprKind::Identifier(name.to_string()), Span::new(0, 1))
+    }
+
+    #[test]
+    fn test_const_with_literal() {
+        let mut symbols = SymbolTable::new();
+        let mut checker = TypeChecker::new(&mut symbols);
+
+        // CONST X = 42 should succeed
+        let stmt = Statement::new(
+            StatementKind::Const {
+                name: "X".to_string(),
+                value: make_int_expr(42),
+            },
+            Span::new(0, 10),
+        );
+
+        let _typed = checker.check_statement(&stmt);
+        assert!(
+            checker.errors.is_empty(),
+            "CONST with literal should not error"
+        );
+    }
+
+    #[test]
+    fn test_const_with_variable_errors() {
+        let mut symbols = SymbolTable::new();
+
+        // First define a variable before creating the checker
+        let _ = symbols.define_symbol(Symbol {
+            name: "someVar".to_string(),
+            kind: SymbolKind::Variable,
+            basic_type: BasicType::Long,
+            span: Span::new(0, 7),
+            is_mutable: true,
+        });
+
+        let mut checker = TypeChecker::new(&mut symbols);
+
+        // CONST X = someVar should error
+        let stmt = Statement::new(
+            StatementKind::Const {
+                name: "X".to_string(),
+                value: make_ident_expr("someVar"),
+            },
+            Span::new(0, 15),
+        );
+
+        let _typed = checker.check_statement(&stmt);
+        assert!(
+            !checker.errors.is_empty(),
+            "CONST with variable should error"
+        );
+        assert!(
+            matches!(
+                checker.errors[0],
+                SemanticError::NonConstantExpression { .. }
+            ),
+            "Expected NonConstantExpression error"
+        );
+    }
+
+    #[test]
+    fn test_const_with_constant_expr() {
+        let mut symbols = SymbolTable::new();
+        let mut checker = TypeChecker::new(&mut symbols);
+
+        // CONST X = 1 + 2 should succeed (constant expression)
+        let stmt = Statement::new(
+            StatementKind::Const {
+                name: "X".to_string(),
+                value: Expr::new(
+                    ExprKind::Binary {
+                        left: Box::new(make_int_expr(1)),
+                        op: BinaryOp::Add,
+                        right: Box::new(make_int_expr(2)),
+                    },
+                    Span::new(0, 5),
+                ),
+            },
+            Span::new(0, 15),
+        );
+
+        let _typed = checker.check_statement(&stmt);
+        assert!(
+            checker.errors.is_empty(),
+            "CONST with constant expression should not error: {:?}",
+            checker.errors
+        );
+    }
+
+    #[test]
+    fn test_const_referencing_other_const() {
+        let mut symbols = SymbolTable::new();
+
+        // First define a constant A = 10
+        let _ = symbols.define_symbol(Symbol {
+            name: "A".to_string(),
+            kind: SymbolKind::Constant {
+                value: crate::semantic::symbols::ConstValue::Integer(10),
+            },
+            basic_type: BasicType::Long,
+            span: Span::new(0, 10),
+            is_mutable: false,
+        });
+
+        let mut checker = TypeChecker::new(&mut symbols);
+
+        // CONST B = A should succeed (reference to another constant)
+        let stmt = Statement::new(
+            StatementKind::Const {
+                name: "B".to_string(),
+                value: make_ident_expr("A"),
+            },
+            Span::new(0, 10),
+        );
+
+        let _typed = checker.check_statement(&stmt);
+        assert!(
+            checker.errors.is_empty(),
+            "CONST referencing another CONST should not error: {:?}",
+            checker.errors
+        );
+    }
+
+    #[test]
+    fn test_dim_with_constant_bounds() {
+        let mut symbols = SymbolTable::new();
+        let mut checker = TypeChecker::new(&mut symbols);
+
+        // DIM arr(10) should succeed
+        let stmt = Statement::new(
+            StatementKind::Dim {
+                name: "arr".to_string(),
+                dimensions: vec![crate::ast::ArrayDimension {
+                    lower: None,
+                    upper: make_int_expr(10),
+                }],
+                type_spec: Some(crate::ast::TypeSpec::Integer),
+                shared: false,
+            },
+            Span::new(0, 15),
+        );
+
+        let typed = checker.check_statement(&stmt);
+        assert!(
+            checker.errors.is_empty(),
+            "DIM with constant bounds should not error: {:?}",
+            checker.errors
+        );
+
+        // Verify the dimensions were correctly evaluated
+        if let TypedStatementKind::Dim { dimensions, .. } = &typed.kind {
+            assert_eq!(dimensions.len(), 1);
+            assert_eq!(dimensions[0].lower, 0); // Default OPTION BASE
+            assert_eq!(dimensions[0].upper, 10);
+        } else {
+            panic!("Expected Dim statement");
+        }
+    }
+
+    #[test]
+    fn test_dim_with_expression_bounds() {
+        let mut symbols = SymbolTable::new();
+        let mut checker = TypeChecker::new(&mut symbols);
+
+        // DIM arr(5 + 5) should succeed and evaluate to 10
+        let stmt = Statement::new(
+            StatementKind::Dim {
+                name: "arr".to_string(),
+                dimensions: vec![crate::ast::ArrayDimension {
+                    lower: None,
+                    upper: Expr::new(
+                        ExprKind::Binary {
+                            left: Box::new(make_int_expr(5)),
+                            op: BinaryOp::Add,
+                            right: Box::new(make_int_expr(5)),
+                        },
+                        Span::new(0, 5),
+                    ),
+                }],
+                type_spec: Some(crate::ast::TypeSpec::Integer),
+                shared: false,
+            },
+            Span::new(0, 20),
+        );
+
+        let typed = checker.check_statement(&stmt);
+        assert!(
+            checker.errors.is_empty(),
+            "DIM with constant expression bounds should not error: {:?}",
+            checker.errors
+        );
+
+        // Verify the dimensions were correctly evaluated
+        if let TypedStatementKind::Dim { dimensions, .. } = &typed.kind {
+            assert_eq!(dimensions[0].upper, 10);
+        } else {
+            panic!("Expected Dim statement");
+        }
+    }
+
+    #[test]
+    fn test_dim_with_lower_and_upper_bounds() {
+        let mut symbols = SymbolTable::new();
+        let mut checker = TypeChecker::new(&mut symbols);
+
+        // DIM arr(1 TO 10) should succeed
+        let stmt = Statement::new(
+            StatementKind::Dim {
+                name: "arr".to_string(),
+                dimensions: vec![crate::ast::ArrayDimension {
+                    lower: Some(make_int_expr(1)),
+                    upper: make_int_expr(10),
+                }],
+                type_spec: Some(crate::ast::TypeSpec::Integer),
+                shared: false,
+            },
+            Span::new(0, 20),
+        );
+
+        let typed = checker.check_statement(&stmt);
+        assert!(
+            checker.errors.is_empty(),
+            "DIM with lower TO upper should not error: {:?}",
+            checker.errors
+        );
+
+        // Verify both bounds
+        if let TypedStatementKind::Dim { dimensions, .. } = &typed.kind {
+            assert_eq!(dimensions[0].lower, 1);
+            assert_eq!(dimensions[0].upper, 10);
+        } else {
+            panic!("Expected Dim statement");
+        }
+    }
+
+    #[test]
+    fn test_dim_with_variable_bound_errors() {
+        let mut symbols = SymbolTable::new();
+
+        // Define a variable (not a constant)
+        let _ = symbols.define_symbol(Symbol {
+            name: "size".to_string(),
+            kind: SymbolKind::Variable,
+            basic_type: BasicType::Long,
+            span: Span::new(0, 4),
+            is_mutable: true,
+        });
+
+        let mut checker = TypeChecker::new(&mut symbols);
+
+        // DIM arr(size) should error - variable bounds not allowed
+        let stmt = Statement::new(
+            StatementKind::Dim {
+                name: "arr".to_string(),
+                dimensions: vec![crate::ast::ArrayDimension {
+                    lower: None,
+                    upper: make_ident_expr("size"),
+                }],
+                type_spec: Some(crate::ast::TypeSpec::Integer),
+                shared: false,
+            },
+            Span::new(0, 15),
+        );
+
+        let _typed = checker.check_statement(&stmt);
+        assert!(
+            !checker.errors.is_empty(),
+            "DIM with variable bound should error"
+        );
+        assert!(
+            matches!(
+                checker.errors[0],
+                SemanticError::NonConstantExpression { .. }
+            ),
+            "Expected NonConstantExpression error"
+        );
     }
 
     #[test]

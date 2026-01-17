@@ -38,41 +38,33 @@ struct QbStringHeader {
 
 /// Opaque string handle passed to/from C code.
 ///
-/// This is actually a pointer to the character data, with the header
-/// stored immediately before it. This layout allows C code to access
-/// the string data directly while Rust manages the header.
-#[repr(transparent)]
+/// This is an opaque type - the pointer IS the string data pointer directly,
+/// with the header stored immediately before it. There's no extra wrapper
+/// struct allocation; the QbString "type" is just a marker for the pointer.
+///
+/// Memory layout: [QbStringHeader][character data...][null]
+///                                 ^-- pointer points here
+///
+/// This design eliminates the double indirection that would occur if
+/// we boxed a wrapper struct containing the data pointer.
+#[repr(C)]
 pub struct QbString {
-    /// Pointer to the first character (header is before this)
-    data: *mut c_char,
+    // Opaque type - never instantiated, just used as a pointer target
+    _opaque: [u8; 0],
 }
 
-impl QbString {
-    /// Gets the header for this string.
-    #[inline]
-    fn header(&self) -> &QbStringHeader {
-        unsafe {
-            let header_ptr = (self.data as *mut QbStringHeader).offset(-1);
-            &*header_ptr
-        }
-    }
+/// Gets the header for a string pointer.
+#[inline]
+unsafe fn get_header(data_ptr: *const c_char) -> &'static QbStringHeader {
+    let header_ptr = (data_ptr as *const QbStringHeader).offset(-1);
+    &*header_ptr
+}
 
-    /// Gets the mutable header for this string.
-    #[inline]
-    fn header_mut(&mut self) -> &mut QbStringHeader {
-        unsafe {
-            let header_ptr = (self.data as *mut QbStringHeader).offset(-1);
-            &mut *header_ptr
-        }
-    }
-
-    /// Returns true if this is the only reference to the string.
-    /// (Reserved for future copy-on-write optimization)
-    #[inline]
-    #[allow(dead_code)]
-    fn is_unique(&self) -> bool {
-        self.header().ref_count == 1
-    }
+/// Gets the mutable header for a string pointer.
+#[inline]
+unsafe fn get_header_mut(data_ptr: *mut c_char) -> &'static mut QbStringHeader {
+    let header_ptr = (data_ptr as *mut QbStringHeader).offset(-1);
+    &mut *header_ptr
 }
 
 /// Calculate the layout for a string allocation.
@@ -140,10 +132,9 @@ pub unsafe extern "C" fn qb_string_from_bytes(data: *const u8, len: usize) -> *m
     // Null-terminate
     *data_ptr.add(len) = 0;
 
-    // Return as QbString pointer (we're returning a pointer to the struct on the heap)
-    // Actually, we need to box the QbString itself
-    let qb_str = Box::new(QbString { data: data_ptr });
-    Box::into_raw(qb_str)
+    // Return data pointer directly as *mut QbString
+    // (QbString is opaque - the pointer IS the string handle)
+    data_ptr as *mut QbString
 }
 
 /// Increment the reference count of a string.
@@ -156,8 +147,8 @@ pub unsafe extern "C" fn qb_string_retain(s: *mut QbString) -> *mut QbString {
         return s;
     }
 
-    let str_ref = &mut *s;
-    str_ref.header_mut().ref_count += 1;
+    let data_ptr = s as *mut c_char;
+    get_header_mut(data_ptr).ref_count += 1;
     s
 }
 
@@ -172,19 +163,27 @@ pub unsafe extern "C" fn qb_string_release(s: *mut QbString) {
         return;
     }
 
-    let str_ref = &mut *s;
-    let header = str_ref.header_mut();
+    let data_ptr = s as *mut c_char;
+    let header = get_header_mut(data_ptr);
+
+    // Guard against underflow - if ref_count is already 0, this is a double-free bug
+    if header.ref_count == 0 {
+        // Already freed or corrupted - don't double-free
+        // In debug builds, this would indicate a bug in the calling code
+        #[cfg(debug_assertions)]
+        panic!("qb_string_release: ref_count already 0 (double-free detected)");
+        #[cfg(not(debug_assertions))]
+        return;
+    }
 
     header.ref_count -= 1;
     if header.ref_count == 0 {
-        // Free the string data
+        // Free the string allocation (header + data in one block)
         let capacity = header.capacity;
         let layout = string_layout(capacity);
-        let header_ptr = (str_ref.data as *mut QbStringHeader).offset(-1);
+        let header_ptr = (data_ptr as *mut QbStringHeader).offset(-1);
         dealloc(header_ptr as *mut u8, layout);
-
-        // Free the QbString struct itself
-        drop(Box::from_raw(s));
+        // No extra Box to free - we return data pointer directly
     }
 }
 
@@ -197,7 +196,7 @@ pub unsafe extern "C" fn qb_string_len(s: *const QbString) -> usize {
     if s.is_null() {
         return 0;
     }
-    (*s).header().len
+    get_header(s as *const c_char).len
 }
 
 /// Get a pointer to the string's character data (null-terminated).
@@ -210,7 +209,8 @@ pub unsafe extern "C" fn qb_string_data(s: *const QbString) -> *const c_char {
     if s.is_null() {
         return b"\0".as_ptr() as *const c_char;
     }
-    (*s).data
+    // The QbString pointer IS the data pointer
+    s as *const c_char
 }
 
 /// Concatenate two strings, returning a new string.
@@ -254,10 +254,8 @@ pub unsafe extern "C" fn qb_string_concat(a: *const QbString, b: *const QbString
     // Null-terminate
     *data_ptr.add(new_len) = 0;
 
-    let qb_str = Box::new(QbString {
-        data: data_ptr as *mut c_char,
-    });
-    Box::into_raw(qb_str)
+    // Return data pointer directly as *mut QbString
+    data_ptr as *mut c_char as *mut QbString
 }
 
 /// Compare two strings.
@@ -405,8 +403,12 @@ pub unsafe extern "C" fn qb_instr(
     let h_data = slice::from_raw_parts(qb_string_data(haystack) as *const u8, h_len);
     let n_data = slice::from_raw_parts(qb_string_data(needle) as *const u8, n_len);
 
+    // Use saturating_sub to avoid potential underflow panic in debug mode
+    // (Even though we checked n_len <= h_len above, this is defensive coding)
+    let search_end = h_len.saturating_sub(n_len);
+
     // Simple substring search
-    for i in start_idx..=(h_len - n_len) {
+    for i in start_idx..=search_end {
         if &h_data[i..i + n_len] == n_data {
             return (i + 1) as i32; // Return 1-based position
         }
@@ -677,6 +679,32 @@ mod tests {
 
             qb_string_release(haystack);
             qb_string_release(needle);
+        }
+    }
+
+    #[test]
+    fn test_instr_edge_cases() {
+        unsafe {
+            let short = qb_string_new(b"Hi\0".as_ptr() as *const c_char);
+            let long = qb_string_new(b"Hello World\0".as_ptr() as *const c_char);
+            let empty = qb_string_empty();
+
+            // Needle longer than haystack - should return 0, not panic
+            assert_eq!(qb_instr(1, short, long), 0);
+
+            // Empty needle - should return start position
+            assert_eq!(qb_instr(1, short, empty), 1);
+            assert_eq!(qb_instr(5, short, empty), 5);
+
+            // Start position past haystack length
+            assert_eq!(qb_instr(100, short, short), 0);
+
+            // Both empty
+            assert_eq!(qb_instr(1, empty, empty), 1);
+
+            qb_string_release(short);
+            qb_string_release(long);
+            qb_string_release(empty);
         }
     }
 

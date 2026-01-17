@@ -32,7 +32,7 @@ This document describes the high-level architecture of QB64Fresh, a BASIC compil
         ▼
 ┌───────────────┐
 │   CodeGen     │  Generates target code via backend trait
-│ (src/codegen) │  [TODO] Initial backend: C
+│ (src/codegen) │  C backend implemented (~1375 lines)
 └───────┬───────┘
         │ Generated C code
         ▼
@@ -73,14 +73,26 @@ src/
 │   ├── typed_ir.rs     # TypedProgram, TypedExpr, TypedStatement
 │   └── error.rs        # Semantic error types
 │
-├── codegen/            # Phase 4: Code Generation [TODO]
-│   ├── mod.rs          # CodeGenerator trait
-│   └── c/              # C backend
-│       ├── mod.rs      # C code generator
-│       └── runtime.rs  # Runtime library bindings
+├── codegen/            # Phase 4: Code Generation ✓
+│   ├── mod.rs          # CodeGenerator trait, GeneratedOutput
+│   ├── error.rs        # CodeGenError types
+│   └── c_backend.rs    # C code generator (~1375 lines)
 │
-└── runtime/            # Runtime Library Interface [TODO]
-    └── mod.rs          # Runtime function declarations
+├── lsp/                # Language Server Protocol ✓
+│   ├── mod.rs          # LSP server implementation
+│   └── main.rs         # qb64fresh-lsp binary entry
+│
+├── lib.rs              # Library crate root
+└── main.rs             # CLI binary entry
+
+runtime/                # Runtime Library (workspace member) ✓
+├── src/
+│   ├── lib.rs          # Crate root, init/shutdown
+│   ├── string.rs       # Reference-counted strings (~730 lines)
+│   ├── io.rs           # PRINT, INPUT, console (~305 lines)
+│   └── math.rs         # Math functions (~390 lines)
+└── include/
+    └── qb64fresh_rt.h  # C header for FFI
 ```
 
 ## Key Components
@@ -193,7 +205,7 @@ pub enum BasicType { Integer, Long, Single, Double, String, ... }
 pub struct TypedProgram { statements: Vec<TypedStatement> }
 ```
 
-### Code Generation (`src/codegen/`) [TODO]
+### Code Generation (`src/codegen/`)
 
 Uses a trait-based design for backend flexibility:
 
@@ -203,8 +215,12 @@ pub trait CodeGenerator {
 }
 ```
 
-**Initial backend: C**
+**C Backend (implemented):**
 - Proven approach (QB64pe uses C++)
+- ~1375 lines in `c_backend.rs`
+- Two runtime modes: `inline` (self-contained) and `external` (library-linked)
+- Handles all statements: assignments, control flow, procedures
+- Type conversions, string operations, built-in functions
 - Portable across platforms
 - Delegates optimization to C compiler
 

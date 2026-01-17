@@ -439,6 +439,12 @@ pub enum TokenKind {
     #[regex(r#""[^"]*""#)]
     StringLiteral,
 
+    /// Unterminated string literal (missing closing quote)
+    /// Matches a quote followed by non-quote, non-newline chars without closing quote
+    /// This is an error token - strings in BASIC cannot span lines
+    #[regex(r#""[^"\n]*"#)]
+    UnterminatedString,
+
     // ==================== Identifiers ====================
     /// Identifier (variable, function, or label name)
     /// Must start with letter, can contain letters, digits, and underscores
@@ -600,5 +606,19 @@ mod tests {
                 TokenKind::Identifier, // num#
             ]
         );
+    }
+
+    #[test]
+    fn test_unterminated_string() {
+        // String without closing quote should be recognized as UnterminatedString
+        let tokens = lex_all("PRINT \"hello");
+        assert_eq!(
+            tokens,
+            vec![TokenKind::Print, TokenKind::UnterminatedString]
+        );
+
+        // Complete string should still work
+        let tokens = lex_all("PRINT \"hello\"");
+        assert_eq!(tokens, vec![TokenKind::Print, TokenKind::StringLiteral]);
     }
 }

@@ -219,13 +219,13 @@ impl CBackend {
         writeln!(output, "}} qb_string;").unwrap();
         writeln!(output).unwrap();
 
-        // String functions
+        // String functions - using memcpy with explicit lengths for safety
         writeln!(output, "qb_string* qb_string_new(const char* s) {{").unwrap();
         writeln!(output, "    qb_string* str = malloc(sizeof(qb_string));").unwrap();
         writeln!(output, "    str->len = strlen(s);").unwrap();
         writeln!(output, "    str->capacity = str->len + 1;").unwrap();
         writeln!(output, "    str->data = malloc(str->capacity);").unwrap();
-        writeln!(output, "    strcpy(str->data, s);").unwrap();
+        writeln!(output, "    memcpy(str->data, s, str->len + 1);").unwrap();
         writeln!(output, "    return str;").unwrap();
         writeln!(output, "}}").unwrap();
         writeln!(output).unwrap();
@@ -244,8 +244,12 @@ impl CBackend {
         writeln!(output, "    result->len = a->len + b->len;").unwrap();
         writeln!(output, "    result->capacity = result->len + 1;").unwrap();
         writeln!(output, "    result->data = malloc(result->capacity);").unwrap();
-        writeln!(output, "    strcpy(result->data, a->data);").unwrap();
-        writeln!(output, "    strcat(result->data, b->data);").unwrap();
+        writeln!(output, "    memcpy(result->data, a->data, a->len);").unwrap();
+        writeln!(
+            output,
+            "    memcpy(result->data + a->len, b->data, b->len + 1);"
+        )
+        .unwrap();
         writeln!(output, "    return result;").unwrap();
         writeln!(output, "}}").unwrap();
         writeln!(output).unwrap();
@@ -391,6 +395,23 @@ impl CBackend {
                     return self.emit_string_comparison(&left_code, &right_code, op);
                 }
 
+                // Handle operators that can't be expressed as simple C binary operators
+                match op {
+                    BinaryOp::Power => {
+                        // Use pow() from math.h for exponentiation
+                        return Ok(format!("pow({}, {})", left_code, right_code));
+                    }
+                    BinaryOp::Eqv => {
+                        // EQV (equivalence) = bitwise XNOR = ~(a ^ b)
+                        return Ok(format!("(~({} ^ {}))", left_code, right_code));
+                    }
+                    BinaryOp::Imp => {
+                        // IMP (implication) = ~a | b
+                        return Ok(format!("((~{}) | {})", left_code, right_code));
+                    }
+                    _ => {}
+                }
+
                 let op_str = self.c_binary_op(op, &left.basic_type)?;
                 Ok(format!("({} {} {})", left_code, op_str, right_code))
             }
@@ -449,10 +470,8 @@ impl CBackend {
             BinaryOp::IntDivide => "/".to_string(), // Integer division in C when both operands are int
             BinaryOp::Modulo => "%".to_string(),
             BinaryOp::Power => {
-                // Use pow() function - caller needs to wrap
-                return Err(CodeGenError::internal(
-                    "Power operator should be handled specially",
-                ));
+                // Handled specially in emit_expr using pow()
+                unreachable!("Power operator should be handled in emit_expr")
             }
             BinaryOp::Equal => "==".to_string(),
             BinaryOp::NotEqual => "!=".to_string(),
@@ -463,8 +482,14 @@ impl CBackend {
             BinaryOp::And => "&".to_string(), // Bitwise AND in BASIC
             BinaryOp::Or => "|".to_string(),  // Bitwise OR
             BinaryOp::Xor => "^".to_string(), // Bitwise XOR
-            BinaryOp::Eqv => "~^".to_string(), // Equivalence: ~(a ^ b)
-            BinaryOp::Imp => "|~".to_string(), // Implication: ~a | b (simplified)
+            BinaryOp::Eqv => {
+                // Handled specially in emit_expr as ~(a ^ b)
+                unreachable!("EQV operator should be handled in emit_expr")
+            }
+            BinaryOp::Imp => {
+                // Handled specially in emit_expr as (~a) | b
+                unreachable!("IMP operator should be handled in emit_expr")
+            }
         })
     }
 
@@ -533,8 +558,12 @@ impl CBackend {
     }
 
     /// Escapes a string for C string literal.
+    ///
+    /// This function ensures the string is safe to embed in generated C code by
+    /// escaping special characters. Non-ASCII characters are escaped as `\xNN`
+    /// sequences for maximum C compiler portability.
     fn escape_string(&self, s: &str) -> String {
-        let mut result = String::with_capacity(s.len());
+        let mut result = String::with_capacity(s.len() * 2); // Worst case: all escapes
         for c in s.chars() {
             match c {
                 '"' => result.push_str("\\\""),
@@ -542,10 +571,23 @@ impl CBackend {
                 '\n' => result.push_str("\\n"),
                 '\r' => result.push_str("\\r"),
                 '\t' => result.push_str("\\t"),
-                c if c.is_ascii_control() => {
-                    result.push_str(&format!("\\x{:02x}", c as u8));
+                // Escape all control characters (ASCII and Unicode)
+                c if c.is_control() => {
+                    // For ASCII control chars, use \xNN
+                    // For Unicode control chars, escape each UTF-8 byte
+                    for byte in c.to_string().as_bytes() {
+                        result.push_str(&format!("\\x{:02x}", byte));
+                    }
                 }
-                c => result.push(c),
+                // Keep printable ASCII as-is
+                c if c.is_ascii() => result.push(c),
+                // Escape non-ASCII characters as UTF-8 byte sequences
+                // This ensures C compiler compatibility regardless of source encoding
+                c => {
+                    for byte in c.to_string().as_bytes() {
+                        result.push_str(&format!("\\x{:02x}", byte));
+                    }
+                }
             }
         }
         result
@@ -769,8 +811,14 @@ impl CBackend {
                     loop_type: ExitType::For,
                 });
 
-                // BASIC FOR loops always execute at least once and check at end
-                // Also need to handle negative steps
+                // Store end and step in temp variables to avoid multiple evaluation
+                // (important if they contain side effects like function calls)
+                let end_var = self.next_label("for_end_val");
+                let step_var = self.next_label("for_step");
+                writeln!(output, "{}{} {} = {};", indent, c_type, end_var, end_code).unwrap();
+                writeln!(output, "{}{} {} = {};", indent, c_type, step_var, step_code).unwrap();
+
+                // BASIC FOR loops check condition based on step direction
                 writeln!(
                     output,
                     "{}for ({} {} = {}; ({} > 0) ? ({} <= {}) : ({} >= {}); {} += {}) {{",
@@ -778,13 +826,13 @@ impl CBackend {
                     c_type,
                     c_var,
                     start_code,
-                    step_code,
+                    step_var,
                     c_var,
-                    end_code,
+                    end_var,
                     c_var,
-                    end_code,
+                    end_var,
                     c_var,
-                    step_code
+                    step_var
                 )
                 .unwrap();
 
@@ -1371,5 +1419,78 @@ mod tests {
         let result = backend.generate(&program).unwrap();
 
         assert!(result.code.contains("x = 42LL"));
+    }
+
+    #[test]
+    fn test_emit_power_operator() {
+        let backend = CBackend::new();
+        // 2 ^ 3
+        let expr = TypedExpr::new(
+            TypedExprKind::Binary {
+                left: Box::new(TypedExpr::integer(2, Span::new(0, 1))),
+                op: BinaryOp::Power,
+                right: Box::new(TypedExpr::integer(3, Span::new(4, 5))),
+            },
+            BasicType::Double,
+            Span::new(0, 5),
+        );
+        let result = backend.emit_expr(&expr).unwrap();
+        assert_eq!(result, "pow(2LL, 3LL)");
+    }
+
+    #[test]
+    fn test_emit_eqv_operator() {
+        let backend = CBackend::new();
+        // a EQV b  =>  ~(a ^ b)
+        let expr = TypedExpr::new(
+            TypedExprKind::Binary {
+                left: Box::new(TypedExpr::integer(5, Span::new(0, 1))),
+                op: BinaryOp::Eqv,
+                right: Box::new(TypedExpr::integer(3, Span::new(6, 7))),
+            },
+            BasicType::Long,
+            Span::new(0, 7),
+        );
+        let result = backend.emit_expr(&expr).unwrap();
+        assert_eq!(result, "(~(5LL ^ 3LL))");
+    }
+
+    #[test]
+    fn test_emit_imp_operator() {
+        let backend = CBackend::new();
+        // a IMP b  =>  (~a) | b
+        let expr = TypedExpr::new(
+            TypedExprKind::Binary {
+                left: Box::new(TypedExpr::integer(5, Span::new(0, 1))),
+                op: BinaryOp::Imp,
+                right: Box::new(TypedExpr::integer(3, Span::new(6, 7))),
+            },
+            BasicType::Long,
+            Span::new(0, 7),
+        );
+        let result = backend.emit_expr(&expr).unwrap();
+        assert_eq!(result, "((~5LL) | 3LL)");
+    }
+
+    #[test]
+    fn test_escape_string() {
+        let backend = CBackend::new();
+
+        // Basic escapes
+        assert_eq!(backend.escape_string("Hello"), "Hello");
+        assert_eq!(backend.escape_string("Say \"Hi\""), "Say \\\"Hi\\\"");
+        assert_eq!(backend.escape_string("path\\file"), "path\\\\file");
+        assert_eq!(backend.escape_string("line1\nline2"), "line1\\nline2");
+        assert_eq!(backend.escape_string("tab\there"), "tab\\there");
+
+        // ASCII control characters
+        assert_eq!(backend.escape_string("\x00\x1f"), "\\x00\\x1f");
+
+        // Non-ASCII characters are escaped as UTF-8 bytes for C portability
+        // 'é' (U+00E9) is encoded as bytes [0xC3, 0xA9] in UTF-8
+        assert_eq!(backend.escape_string("é"), "\\xc3\\xa9");
+
+        // Emoji: '😀' (U+1F600) is encoded as bytes [0xF0, 0x9F, 0x98, 0x80]
+        assert_eq!(backend.escape_string("😀"), "\\xf0\\x9f\\x98\\x80");
     }
 }

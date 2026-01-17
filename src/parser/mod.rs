@@ -276,6 +276,12 @@ impl<'a> Parser<'a> {
             TokenKind::OctalLiteral => self.parse_octal_literal(),
             TokenKind::BinaryLiteral => self.parse_binary_literal(),
             TokenKind::StringLiteral => self.parse_string_literal(),
+            TokenKind::UnterminatedString => {
+                let span = token.span.clone().into();
+                self.advance(); // Consume the unterminated string token
+                self.errors.push(ParseError::UnterminatedString { span });
+                Err(())
+            }
             TokenKind::Identifier => self.parse_identifier_or_call(),
             TokenKind::LeftParen => self.parse_grouped(),
             TokenKind::Minus => self.parse_unary(UnaryOp::Negate),
@@ -422,11 +428,26 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses a string literal.
+    ///
+    /// # QBasic String Escape Semantics
+    ///
+    /// QBasic/QB64 does NOT support C-style escape sequences (`\n`, `\t`, etc.).
+    /// The only escape sequence is a doubled quote (`""`) which represents a
+    /// single literal quote character.
+    ///
+    /// Examples:
+    /// - `"Hello World"` → `Hello World`
+    /// - `"Say ""Hi""!"` → `Say "Hi"!`
+    /// - `"Path\nName"` → `Path\nName` (literal backslash-n, not newline)
+    ///
+    /// To include special characters like newlines, QBasic programs use CHR$():
+    /// - `"Line1" + CHR$(10) + "Line2"` for a string with embedded newline
     fn parse_string_literal(&mut self) -> Result<Expr, ()> {
         let token = self.advance().unwrap();
         let span: Span = token.span.clone().into();
 
-        // Remove surrounding quotes and handle escaped quotes
+        // Remove surrounding quotes and handle doubled-quote escape (QBasic style)
+        // Note: Backslashes are literal characters, not escape introducers
         let text = &token.text;
         let inner = &text[1..text.len() - 1];
         let value = inner.replace("\"\"", "\"");
@@ -1693,5 +1714,17 @@ PRINT x
         )
         .unwrap();
         assert_eq!(program.statements.len(), 3);
+    }
+
+    #[test]
+    fn test_parse_unterminated_string() {
+        // Unterminated string (missing closing quote)
+        let result = parse(r#"PRINT "Hello"#);
+        assert!(result.is_err());
+
+        // The error should be an UnterminatedString error
+        let errors = result.unwrap_err();
+        assert!(!errors.is_empty());
+        assert!(matches!(errors[0], ParseError::UnterminatedString { .. }));
     }
 }

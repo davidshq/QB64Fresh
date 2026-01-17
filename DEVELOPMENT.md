@@ -122,29 +122,66 @@ Bacon provides a TUI that shows compilation errors, warnings, and test results a
 ## Project Structure
 
 ```
-QB64Fresh/
-├── src/                    # Source code
-│   ├── lib.rs             # Library root
-│   ├── main.rs            # CLI entry point
-│   ├── lexer/             # Tokenization
-│   ├── parser/            # AST construction
-│   ├── ast/               # AST type definitions
-│   ├── semantic/          # Type checking, symbol resolution
-│   ├── ir/                # Typed intermediate representation
-│   ├── codegen/           # Code generation backends
-│   │   ├── mod.rs         # CodeGenerator trait
-│   │   └── c/             # C backend implementation
-│   ├── runtime/           # Runtime library interface
-│   └── lsp/               # Language server implementation
-├── tests/                  # Integration tests
-├── docs/                   # Documentation
-│   └── QB64PE_ARCHITECTURE_ANALYSIS.md
-├── AgenticLogs/           # Development history and decisions
-│   └── IndividualProblems/ # Detailed troubleshooting docs
-├── CLAUDE.md              # AI assistant configuration
-├── PROJECT_PLAN.md        # Project roadmap and decisions
-└── Cargo.toml             # Rust package manifest
+QB64Fresh/                      # Main compiler workspace
+├── src/
+│   ├── lib.rs                  # Library root
+│   ├── main.rs                 # CLI entry point (qb64fresh binary)
+│   ├── lexer/                  # Tokenization (logos-based)
+│   │   ├── mod.rs              # Lexer wrapper
+│   │   └── token.rs            # Token definitions
+│   ├── parser/                 # AST construction (Pratt + recursive descent)
+│   │   ├── mod.rs              # Parser implementation
+│   │   └── error.rs            # Parse error types
+│   ├── ast/                    # AST type definitions
+│   │   ├── mod.rs              # Span, Program
+│   │   ├── expr.rs             # Expression nodes
+│   │   └── stmt.rs             # Statement nodes
+│   ├── semantic/               # Type checking, symbol resolution
+│   │   ├── mod.rs              # Analyzer entry point
+│   │   ├── types.rs            # BasicType enum
+│   │   ├── symbols.rs          # Symbol table
+│   │   ├── checker.rs          # Type checker
+│   │   ├── typed_ir.rs         # Typed IR output
+│   │   └── error.rs            # Semantic errors
+│   ├── codegen/                # Code generation
+│   │   ├── mod.rs              # CodeGenerator trait
+│   │   ├── c_backend.rs        # C code generator (~1450 lines)
+│   │   └── error.rs            # CodeGen errors
+│   └── lsp/                    # Language Server Protocol
+│       ├── mod.rs              # LSP server implementation
+│       └── main.rs             # qb64fresh-lsp binary entry
+├── runtime/                    # Runtime library (workspace member)
+│   ├── src/
+│   │   ├── lib.rs              # Crate root
+│   │   ├── string.rs           # Reference-counted strings
+│   │   ├── io.rs               # PRINT, INPUT, console
+│   │   └── math.rs             # Math functions
+│   └── include/
+│       └── qb64fresh_rt.h      # C header for FFI
+├── examples/                   # Test BASIC files
+├── docs/                       # Documentation
+├── AgenticLogs/                # Development history and decisions
+├── CLAUDE.md                   # AI assistant configuration
+├── PROJECT_PLAN.md             # Project roadmap
+└── Cargo.toml                  # Workspace manifest
+
+vscode-qb64fresh/               # VSCode extension (sibling project)
+├── src/extension.ts            # LSP client
+├── syntaxes/                   # TextMate grammar
+└── package.json                # Extension manifest
 ```
+
+### Dual Binary Architecture
+
+The project builds two binaries:
+- **`qb64fresh`** - Compiler CLI (lexer → parser → semantic → codegen)
+- **`qb64fresh-lsp`** - Language server for IDE integration (stdio JSON-RPC)
+
+### Runtime Modes
+
+Code generation supports two modes via `--runtime` flag:
+- **`inline`** (default) - Self-contained C with embedded runtime functions
+- **`external`** - Links against `libqb64fresh_rt` static library
 
 ---
 
@@ -414,4 +451,4 @@ docs(readme): update build instructions
 
 ---
 
-*Last updated: 2026-01-16*
+*Last updated: 2026-01-17*

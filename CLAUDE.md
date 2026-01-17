@@ -235,7 +235,7 @@ pub trait CodeGenerator {
 
 ## Key Files Reference
 
-### Current Implementation (as of 2026-01-16)
+### Current Implementation (as of 2026-01-17)
 
 | File | Purpose | Status |
 |------|---------|--------|
@@ -256,7 +256,7 @@ pub trait CodeGenerator {
 | `src/semantic/typed_ir.rs` | Typed IR output for codegen | ✓ Complete |
 | `src/codegen/mod.rs` | CodeGenerator trait, GeneratedOutput | ✓ Complete |
 | `src/codegen/error.rs` | Code generation error types | ✓ Complete |
-| `src/codegen/c_backend.rs` | C code generation (~1100 lines) | ✓ Complete |
+| `src/codegen/c_backend.rs` | C code generation (~1450 lines) | ✓ Complete |
 | `examples/hello.bas` | Test BASIC file for development | ✓ Complete |
 | `examples/simple.bas` | Simpler test BASIC file | ✓ Complete |
 
@@ -284,17 +284,44 @@ pub trait CodeGenerator {
 
 ### Project Structure
 ```
-src/
-├── ast/          # ✓ AST type definitions (complete)
-├── parser/       # ✓ Pratt parser + recursive descent (complete)
-├── semantic/     # ✓ Type checking, symbol resolution (complete)
-├── codegen/      # ✓ Backend trait + C implementation (complete)
-│   ├── mod.rs    # CodeGenerator trait
-│   ├── error.rs  # CodeGenError types
-│   └── c_backend.rs  # C code generation
-├── runtime/      # Runtime library interface (TODO)
-└── lsp/          # Language server (TODO)
+QB64Fresh/                    # Main compiler workspace
+├── src/
+│   ├── ast/                  # ✓ AST type definitions
+│   ├── lexer/                # ✓ Logos-based tokenizer
+│   ├── parser/               # ✓ Pratt parser + recursive descent
+│   ├── semantic/             # ✓ Type checking, symbol resolution
+│   ├── codegen/              # ✓ Backend trait + C implementation
+│   │   ├── mod.rs            # CodeGenerator trait
+│   │   ├── error.rs          # CodeGenError types
+│   │   └── c_backend.rs      # C code generation (~1375 lines)
+│   ├── lsp/                  # ✓ Language Server Protocol
+│   │   ├── mod.rs            # LSP server implementation
+│   │   └── main.rs           # qb64fresh-lsp binary entry
+│   ├── lib.rs                # Library crate root
+│   └── main.rs               # qb64fresh binary entry
+├── runtime/                  # ✓ Runtime library (workspace member)
+│   ├── src/
+│   │   ├── string.rs         # Reference-counted strings
+│   │   ├── io.rs             # PRINT, INPUT, console
+│   │   └── math.rs           # Math functions
+│   └── include/
+│       └── qb64fresh_rt.h    # C header for FFI
+└── examples/                 # Test BASIC files
+
+vscode-qb64fresh/             # VSCode extension (sibling project)
+├── src/extension.ts          # LSP client
+├── syntaxes/                 # TextMate grammar
+└── package.json              # Extension manifest
 ```
+
+### Dual Binary Architecture
+- `qb64fresh` - Compiler CLI (lexer → parser → semantic → codegen)
+- `qb64fresh-lsp` - Language server for IDE integration (stdio JSON-RPC)
+
+### Runtime Modes
+Code generation supports two modes via `--runtime` flag:
+- `inline` (default) - Self-contained C with embedded runtime
+- `external` - Links against `libqb64fresh_rt` static library
 
 ---
 

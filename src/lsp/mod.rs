@@ -283,6 +283,10 @@ fn span_to_range(source: &str, start: usize, end: usize) -> Range {
 }
 
 /// Converts a byte offset to an LSP Position (line, character).
+///
+/// LSP uses UTF-16 code units for character positions, so we must count
+/// UTF-16 code units rather than Unicode code points. Characters outside
+/// the Basic Multilingual Plane (like emojis) take 2 UTF-16 code units.
 fn offset_to_position(source: &str, offset: usize) -> Position {
     let mut line = 0u32;
     let mut character = 0u32;
@@ -295,7 +299,8 @@ fn offset_to_position(source: &str, offset: usize) -> Position {
             line += 1;
             character = 0;
         } else {
-            character += 1;
+            // Count UTF-16 code units (1 for BMP chars, 2 for supplementary)
+            character += c.len_utf16() as u32;
         }
     }
 
@@ -303,6 +308,16 @@ fn offset_to_position(source: &str, offset: usize) -> Position {
 }
 
 /// Converts an LSP Position to a byte offset.
+///
+/// LSP uses UTF-16 code units for character positions, so we must count
+/// UTF-16 code units rather than Unicode code points.
+///
+/// # Edge Cases
+///
+/// - If `position.character` exceeds the line length, returns the offset of
+///   the newline character (end of line). This clamping behavior is intentional
+///   for robustness when handling positions from potentially buggy clients.
+/// - If `position.line` exceeds the number of lines, returns `None`.
 fn position_to_offset(source: &str, position: Position) -> Option<usize> {
     let mut current_line = 0u32;
     let mut current_char = 0u32;
@@ -319,7 +334,8 @@ fn position_to_offset(source: &str, position: Position) -> Option<usize> {
             current_line += 1;
             current_char = 0;
         } else {
-            current_char += 1;
+            // Count UTF-16 code units (1 for BMP chars, 2 for supplementary)
+            current_char += c.len_utf16() as u32;
         }
     }
 
@@ -426,6 +442,97 @@ mod tests {
                 line: 0,
                 character: 5
             }
+        );
+    }
+
+    #[test]
+    fn test_utf16_position_handling() {
+        // Test with emoji (U+1F600 = 😀) which is outside BMP
+        // In UTF-16, this takes 2 code units (surrogate pair)
+        // In UTF-8, it's 4 bytes. In Rust chars, it's 1 code point.
+        let source = "a😀b";
+
+        // 'a' is at byte 0, char position 0
+        assert_eq!(
+            offset_to_position(source, 0),
+            Position {
+                line: 0,
+                character: 0
+            }
+        );
+
+        // '😀' starts at byte 1, char position 1
+        assert_eq!(
+            offset_to_position(source, 1),
+            Position {
+                line: 0,
+                character: 1
+            }
+        );
+
+        // 'b' starts at byte 5 (1 + 4 for emoji), char position 3 (1 + 2 UTF-16 units)
+        assert_eq!(
+            offset_to_position(source, 5),
+            Position {
+                line: 0,
+                character: 3
+            }
+        );
+
+        // Reverse: position 3 should map to byte 5
+        assert_eq!(
+            position_to_offset(
+                source,
+                Position {
+                    line: 0,
+                    character: 3
+                }
+            ),
+            Some(5)
+        );
+    }
+
+    #[test]
+    fn test_position_past_end_of_line() {
+        // Test that positions past end of line are clamped to end of line
+        let source = "abc\ndefgh\n";
+
+        // Line 0 is "abc\n" - valid positions are 0, 1, 2, 3 (where 3 is at newline)
+        // Position 10 (way past end) should clamp to the newline at byte 3
+        assert_eq!(
+            position_to_offset(
+                source,
+                Position {
+                    line: 0,
+                    character: 10
+                }
+            ),
+            Some(3) // Clamped to newline position
+        );
+
+        // Line 1 is "defgh\n" - valid positions are 0-5 (where 5 is at newline)
+        // Position 100 should clamp to newline at byte 9
+        assert_eq!(
+            position_to_offset(
+                source,
+                Position {
+                    line: 1,
+                    character: 100
+                }
+            ),
+            Some(9) // Clamped to newline position
+        );
+
+        // Invalid line number should return None
+        assert_eq!(
+            position_to_offset(
+                source,
+                Position {
+                    line: 10,
+                    character: 0
+                }
+            ),
+            None
         );
     }
 }
