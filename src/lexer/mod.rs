@@ -116,22 +116,16 @@ impl<'source> Lexer<'source> {
     /// assert!(lexer.next_token().is_none());
     /// ```
     pub fn next_token(&mut self) -> Option<Token> {
-        loop {
-            let kind = self.inner.next()?;
+        let kind = self.inner.next()?;
+        let span = self.inner.span();
+        let text = self.inner.slice().to_string();
 
-            match kind {
-                Ok(kind) => {
-                    let span = self.inner.span();
-                    let text = self.inner.slice().to_string();
-                    return Some(Token::new(kind, span, text));
-                }
-                Err(()) => {
-                    // Skip unrecognized characters for now
-                    // TODO: Consider returning an Error token instead
-                    continue;
-                }
-            }
-        }
+        let token_kind = match kind {
+            Ok(k) => k,
+            Err(()) => TokenKind::Error, // Unrecognized character
+        };
+
+        Some(Token::new(token_kind, span, text))
     }
 
     /// Collect all remaining tokens into a vector.

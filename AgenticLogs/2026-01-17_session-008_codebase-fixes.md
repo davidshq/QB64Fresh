@@ -5,7 +5,7 @@
 
 ## Summary
 
-Resolved 7 remaining issues from the 2026-01-16 codebase review. All fixes include tests and documentation updates. Test count increased from 99 to 102.
+Resolved 10 total issues: 7 from the initial codebase review + 3 additional issues identified later. All fixes include tests and documentation updates. Test count increased from 99 to 109.
 
 ## Issues Fixed
 
@@ -94,9 +94,12 @@ New tests added:
 | File | Changes |
 |------|---------|
 | `runtime/src/string.rs` | Refactored to eliminate double indirection, added safety checks |
-| `src/parser/mod.rs` | Added UnterminatedString handling, documented string escapes |
+| `src/parser/mod.rs` | Added UnterminatedString handling, documented string escapes, INPUT prompt fix |
 | `src/lsp/mod.rs` | Documented clamping behavior, added edge case test |
 | `src/codegen/c_backend.rs` | Enhanced string escaping for C portability |
+| `src/semantic/types.rs` | Optimized type suffix extraction using byte slicing |
+| `src/ast/stmt.rs` | Added `next_variable` field to For statement |
+| `src/semantic/checker.rs` | Added NEXT variable validation |
 
 ## Architecture Notes
 
@@ -106,3 +109,51 @@ The runtime string refactor is a significant change that:
 3. Maintains the same external C API (`QbString*` is still opaque)
 
 This matches the documented "header before data" design more closely.
+
+---
+
+## Additional Issues Fixed (Second Batch)
+
+### 8. Performance Bug: Inefficient Type Suffix Extraction
+**File:** `src/semantic/types.rs:257`
+
+Changed from O(n) double char reversal to O(1) byte slicing:
+- **Before:** `name.chars().rev().take(2).collect().chars().rev().collect()` + allocations
+- **After:** `&bytes[len-2..]` - direct byte slice comparison
+
+Since BASIC type suffixes are all ASCII, byte matching is safe and eliminates unnecessary allocations.
+
+### 9. Incomplete Implementation: NEXT Variable Matching
+**Files:** `src/ast/stmt.rs`, `src/parser/mod.rs`, `src/semantic/checker.rs`
+
+Added validation that NEXT variable matches FOR variable:
+- Added `next_variable: Option<String>` field to ForStatement AST
+- Parser now captures the variable name after NEXT
+- Semantic checker validates case-insensitive match
+- Uses existing `SemanticError::ForNextMismatch` error type
+
+Now `FOR i = 1 TO 10 ... NEXT j` correctly produces an error.
+
+### 10. Bug: INPUT Statement Prompt Handling
+**File:** `src/parser/mod.rs:1353-1371`
+
+Made separator required after INPUT prompt per QB spec:
+- **Before:** `INPUT "Name" x$` was accepted (missing separator)
+- **After:** Requires `INPUT "Name"; x$` or `INPUT "Name", x$`
+
+The separator determines whether "?" is shown after the prompt.
+
+## Updated Test Results
+
+```
+test result: ok. 109 passed; 0 failed; 0 ignored
+```
+
+Additional tests:
+- `test_for_next_variable_mismatch` - Validates NEXT variable error
+- `test_for_next_variable_match` - Matching variables OK
+- `test_for_next_variable_case_insensitive` - Case-insensitive comparison
+- `test_parse_input_with_prompt_semicolon` - INPUT with ; separator
+- `test_parse_input_with_prompt_comma` - INPUT with , separator
+- `test_parse_input_prompt_missing_separator` - Missing separator errors
+- `test_parse_input_no_prompt` - INPUT without prompt

@@ -49,6 +49,18 @@ pub enum StatementKind {
     /// Assignment statement. The LET keyword is optional in modern BASIC.
     Let { name: String, value: Expr },
 
+    /// `array(indices) = expression`
+    ///
+    /// Array element assignment statement.
+    ArrayAssignment {
+        /// Array name.
+        name: String,
+        /// Index expressions.
+        indices: Vec<Expr>,
+        /// Value to assign.
+        value: Expr,
+    },
+
     /// `DIM variable AS type` or `DIM array(size) AS type`
     Dim {
         /// Variable name.
@@ -99,6 +111,8 @@ pub enum StatementKind {
         step: Option<Expr>,
         /// Loop body.
         body: Vec<Statement>,
+        /// Variable name after NEXT (if specified, must match loop variable).
+        next_variable: Option<String>,
     },
 
     /// `WHILE condition ... WEND`
@@ -137,6 +151,20 @@ pub enum StatementKind {
     /// `STOP` - Stop execution (for debugging)
     Stop,
 
+    /// `SWAP var1, var2` - Exchange values of two variables
+    Swap {
+        /// First variable to swap.
+        left: Expr,
+        /// Second variable to swap.
+        right: Expr,
+    },
+
+    /// `_CONTINUE` - Continue to the next loop iteration (QB64)
+    Continue {
+        /// The type of loop to continue (For, While, Do).
+        continue_type: ContinueType,
+    },
+
     /// `INPUT [;]["prompt"{;|,}] variable[, variable...]`
     Input {
         /// Optional prompt string.
@@ -153,6 +181,32 @@ pub enum StatementKind {
         prompt: Option<String>,
         /// Variable to read into (must be string).
         variable: String,
+    },
+
+    /// `DATA value1, value2, ...` - compile-time data definition
+    ///
+    /// DATA statements define a pool of values that can be read using READ.
+    /// Values can be numeric literals or string literals.
+    Data {
+        /// The literal values in this DATA statement.
+        values: Vec<DataValue>,
+    },
+
+    /// `READ var1, var2, ...` - read from DATA pool
+    ///
+    /// READ statements consume values from the DATA pool in order.
+    Read {
+        /// Variables to read into.
+        variables: Vec<String>,
+    },
+
+    /// `RESTORE [label]` - reset DATA pointer
+    ///
+    /// RESTORE resets the DATA read position. Optional label specifies
+    /// a specific DATA statement to restore to.
+    Restore {
+        /// Optional label to restore to.
+        label: Option<String>,
     },
 
     /// Label definition: `labelName:`
@@ -175,6 +229,22 @@ pub enum StatementKind {
         is_static: bool,
     },
 
+    /// `TYPE TypeName ... END TYPE` - User-defined type definition
+    ///
+    /// Example:
+    /// ```basic
+    /// TYPE Person
+    ///     name AS STRING * 20
+    ///     age AS INTEGER
+    /// END TYPE
+    /// ```
+    TypeDefinition {
+        /// The name of the user-defined type.
+        name: String,
+        /// The members of the type.
+        members: Vec<TypeMember>,
+    },
+
     /// `CALL SubName(args)` or `SubName args`
     Call { name: String, args: Vec<Expr> },
 
@@ -183,6 +253,42 @@ pub enum StatementKind {
 
     /// Comment: `' text` or `REM text`
     Comment(String),
+
+    // ==================== Preprocessor Directives (QB64) ====================
+    /// `$INCLUDE: 'filename'` - Include another source file
+    ///
+    /// This is a compile-time directive that inserts the contents of another
+    /// file at this location. The actual file inclusion is handled during
+    /// preprocessing, not during parsing.
+    IncludeDirective {
+        /// The path to the file to include (without quotes).
+        path: String,
+    },
+
+    /// `$IF condition THEN` ... `$ELSEIF` ... `$ELSE` ... `$END IF`
+    ///
+    /// Conditional compilation blocks. The condition is typically a compile-time
+    /// constant like `WIN`, `LINUX`, `MAC`, or a user-defined symbol.
+    ConditionalBlock {
+        /// The condition expression (e.g., "WIN", "LINUX = -1").
+        condition: String,
+        /// Statements in the $IF block.
+        then_branch: Vec<Statement>,
+        /// $ELSEIF clauses (condition + statements).
+        elseif_branches: Vec<(String, Vec<Statement>)>,
+        /// $ELSE block statements.
+        else_branch: Option<Vec<Statement>>,
+    },
+
+    /// Other `$metacommand` directives (e.g., $DYNAMIC, $STATIC, $ERROR, etc.)
+    ///
+    /// These are stored as-is for later processing.
+    MetaCommand {
+        /// The command name without the $ prefix (e.g., "DYNAMIC", "STATIC").
+        command: String,
+        /// Any arguments following the command.
+        args: Option<String>,
+    },
 }
 
 /// An item in a PRINT statement.
@@ -306,6 +412,14 @@ pub enum ExitType {
     Function,
 }
 
+/// Continue statement type (QB64 _CONTINUE).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ContinueType {
+    For,
+    While,
+    Do,
+}
+
 /// Parameter definition for SUB/FUNCTION.
 #[derive(Debug, Clone)]
 pub struct Parameter {
@@ -315,6 +429,28 @@ pub struct Parameter {
     pub type_spec: Option<TypeSpec>,
     /// Whether this is a BYVAL parameter.
     pub by_val: bool,
+}
+
+/// Member definition for TYPE (user-defined type).
+///
+/// Represents a field within a TYPE...END TYPE block.
+#[derive(Debug, Clone)]
+pub struct TypeMember {
+    /// Member name (field name).
+    pub name: String,
+    /// Member type specification.
+    pub type_spec: TypeSpec,
+}
+
+/// A literal value in a DATA statement.
+#[derive(Debug, Clone)]
+pub enum DataValue {
+    /// Integer literal.
+    Integer(i64),
+    /// Floating-point literal.
+    Float(f64),
+    /// String literal.
+    String(String),
 }
 
 #[cfg(test)]

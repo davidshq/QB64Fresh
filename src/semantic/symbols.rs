@@ -7,6 +7,7 @@
 //! - **SHARED variables**: Access to module-level variables from procedures
 //! - **Case-insensitive lookups**: Following BASIC tradition
 //! - **DEFtype defaults**: Type defaults by variable first letter
+//! - **Type suffix normalization**: `x%`, `x$`, and `x` map to base name "X"
 //!
 //! # Scope Rules
 //!
@@ -17,7 +18,7 @@
 //! - Labels are scope-local (can't GOTO into/out of procedures)
 
 use crate::ast::Span;
-use crate::semantic::types::BasicType;
+use crate::semantic::types::{BasicType, strip_suffix};
 use std::collections::HashMap;
 
 /// Unique identifier for a scope.
@@ -125,6 +126,26 @@ pub struct ParameterInfo {
     pub by_val: bool,
 }
 
+/// A user-defined TYPE definition.
+#[derive(Debug, Clone)]
+pub struct UserTypeDefinition {
+    /// Type name.
+    pub name: String,
+    /// Type members.
+    pub members: Vec<UserTypeMember>,
+    /// Where the type was defined.
+    pub span: Span,
+}
+
+/// A member of a user-defined TYPE.
+#[derive(Debug, Clone)]
+pub struct UserTypeMember {
+    /// Member name.
+    pub name: String,
+    /// Member type.
+    pub basic_type: BasicType,
+}
+
 /// A label for GOTO/GOSUB.
 #[derive(Debug, Clone)]
 pub struct LabelEntry {
@@ -186,6 +207,9 @@ pub struct SymbolTable {
 
     /// OPTION BASE setting (0 or 1, default 0).
     option_base: i64,
+
+    /// User-defined TYPE definitions (globally scoped).
+    user_types: HashMap<String, UserTypeDefinition>,
 }
 
 impl SymbolTable {
@@ -211,6 +235,7 @@ impl SymbolTable {
             procedures: HashMap::new(),
             shared_vars: HashMap::new(),
             default_types: std::array::from_fn(|_| BasicType::Single),
+            user_types: HashMap::new(),
             option_base: 0,
         }
     }
@@ -272,9 +297,14 @@ impl SymbolTable {
     /// Defines a symbol in the current scope.
     ///
     /// Returns `Err((existing, new))` if a symbol with this name already exists.
+    ///
+    /// Note: Type suffixes are stripped for lookup purposes, so `x%` and `x$`
+    /// and `x` all map to the same base name. This follows BASIC convention
+    /// where suffixes are type declarations, not part of the variable name.
     pub fn define_symbol(&mut self, symbol: Symbol) -> Result<(), Box<(Symbol, Symbol)>> {
         let scope = self.scopes.get_mut(&self.current_scope).unwrap();
-        let name_upper = symbol.name.to_uppercase();
+        // Strip suffix for consistent lookups: x%, x$, x -> X
+        let name_upper = strip_suffix(&symbol.name).to_uppercase();
 
         if let Some(existing) = scope.symbols.get(&name_upper) {
             return Err(Box::new((existing.clone(), symbol)));
@@ -288,8 +318,12 @@ impl SymbolTable {
     ///
     /// In BASIC, procedure scopes (SUB/FUNCTION) are isolated from global scope.
     /// Variables from global scope are only visible if explicitly SHARED.
+    ///
+    /// Type suffixes are stripped for lookups, so `x%`, `x$`, and `x` all
+    /// resolve to the same symbol.
     pub fn lookup_symbol(&self, name: &str) -> Option<&Symbol> {
-        let name_upper = name.to_uppercase();
+        // Strip suffix for consistent lookups: x%, x$, x -> X
+        let name_upper = strip_suffix(name).to_uppercase();
         let scope = self.scopes.get(&self.current_scope)?;
 
         // Check current scope first
@@ -299,9 +333,11 @@ impl SymbolTable {
 
         // If in a procedure scope, only SHARED variables are visible from global
         if matches!(scope.kind, ScopeKind::Sub | ScopeKind::Function) {
-            // Check if this variable is SHARED
+            // Check if this variable is SHARED (strip suffix for comparison)
             if let Some(shared_names) = self.shared_vars.get(&self.current_scope)
-                && shared_names.iter().any(|n| n.to_uppercase() == name_upper)
+                && shared_names
+                    .iter()
+                    .any(|n| strip_suffix(n).to_uppercase() == name_upper)
             {
                 // Look up in global scope only
                 if let Some(global) = self.scopes.get(&ScopeId::GLOBAL) {
@@ -317,8 +353,11 @@ impl SymbolTable {
     }
 
     /// Checks if a symbol exists in the current scope only (not parent scopes).
+    ///
+    /// Type suffixes are stripped for lookups.
     pub fn symbol_in_current_scope(&self, name: &str) -> bool {
-        let name_upper = name.to_uppercase();
+        // Strip suffix for consistent lookups: x%, x$, x -> X
+        let name_upper = strip_suffix(name).to_uppercase();
         self.scopes
             .get(&self.current_scope)
             .map(|s| s.symbols.contains_key(&name_upper))
@@ -388,8 +427,10 @@ impl SymbolTable {
     /// Gets the default type for a variable based on its first letter.
     ///
     /// By default, all variables are SINGLE. DEFtype statements change this.
+    /// Type suffixes are stripped before determining the first letter.
     pub fn default_type_for(&self, name: &str) -> BasicType {
-        let first = name.chars().next().unwrap_or('A').to_ascii_uppercase();
+        let base_name = strip_suffix(name);
+        let first = base_name.chars().next().unwrap_or('A').to_ascii_uppercase();
 
         if first.is_ascii_uppercase() {
             self.default_types[(first as usize) - ('A' as usize)].clone()
@@ -419,6 +460,43 @@ impl SymbolTable {
     /// Sets the OPTION BASE (0 or 1).
     pub fn set_option_base(&mut self, base: i64) {
         self.option_base = base;
+    }
+
+    /// Defines a user-defined TYPE.
+    ///
+    /// Returns `Err(existing)` if a type with this name already exists.
+    pub fn define_user_type(
+        &mut self,
+        definition: UserTypeDefinition,
+    ) -> Result<(), UserTypeDefinition> {
+        let name_upper = definition.name.to_uppercase();
+
+        if let Some(existing) = self.user_types.get(&name_upper) {
+            return Err(existing.clone());
+        }
+
+        self.user_types.insert(name_upper, definition);
+        Ok(())
+    }
+
+    /// Looks up a user-defined TYPE by name.
+    pub fn lookup_user_type(&self, name: &str) -> Option<&UserTypeDefinition> {
+        self.user_types.get(&name.to_uppercase())
+    }
+
+    /// Looks up a field in a user-defined TYPE.
+    ///
+    /// Returns the member's type if found, None otherwise.
+    pub fn lookup_type_member(&self, type_name: &str, field_name: &str) -> Option<BasicType> {
+        let type_def = self.user_types.get(&type_name.to_uppercase())?;
+        let field_upper = field_name.to_uppercase();
+
+        for member in &type_def.members {
+            if member.name.to_uppercase() == field_upper {
+                return Some(member.basic_type.clone());
+            }
+        }
+        None
     }
 }
 
@@ -617,5 +695,59 @@ mod tests {
         // Duplicate label should fail
         let result = table.define_label("Start".to_string(), Span::new(10, 15));
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_type_suffix_stripping() {
+        let mut table = SymbolTable::new();
+
+        // Define a variable with a type suffix
+        let symbol = Symbol {
+            name: "name$".to_string(),
+            kind: SymbolKind::Variable,
+            basic_type: BasicType::String,
+            span: Span::new(0, 5),
+            is_mutable: true,
+        };
+        table.define_symbol(symbol).unwrap();
+
+        // Should be findable by any variant (suffix stripped for lookup)
+        assert!(table.lookup_symbol("name$").is_some(), "Should find name$");
+        assert!(
+            table.lookup_symbol("name").is_some(),
+            "Should find via name (no suffix)"
+        );
+        assert!(
+            table.lookup_symbol("NAME").is_some(),
+            "Should find via NAME (case insensitive)"
+        );
+
+        // Defining with different suffix should fail (same base name)
+        let symbol2 = Symbol {
+            name: "name%".to_string(),
+            kind: SymbolKind::Variable,
+            basic_type: BasicType::Integer,
+            span: Span::new(10, 15),
+            is_mutable: true,
+        };
+        let result = table.define_symbol(symbol2);
+        assert!(
+            result.is_err(),
+            "Should fail: name$ and name% have same base name"
+        );
+
+        // Defining with no suffix should also fail
+        let symbol3 = Symbol {
+            name: "name".to_string(),
+            kind: SymbolKind::Variable,
+            basic_type: BasicType::Single,
+            span: Span::new(20, 24),
+            is_mutable: true,
+        };
+        let result = table.define_symbol(symbol3);
+        assert!(
+            result.is_err(),
+            "Should fail: name and name$ have same base name"
+        );
     }
 }

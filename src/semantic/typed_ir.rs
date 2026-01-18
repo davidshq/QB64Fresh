@@ -11,7 +11,7 @@
 //! - **Explicit conversions**: Implicit conversions become explicit `Convert` nodes
 //! - **Ready for codegen**: No further analysis needed
 
-use crate::ast::{BinaryOp, ExitType, PrintSeparator, Span, UnaryOp};
+use crate::ast::{BinaryOp, ContinueType, ExitType, PrintSeparator, Span, UnaryOp};
 use crate::semantic::types::BasicType;
 
 /// A type-annotated expression.
@@ -62,9 +62,15 @@ pub enum TypedExprKind {
     FunctionCall { name: String, args: Vec<TypedExpr> },
 
     /// Array access with typed indices.
+    ///
+    /// For multi-dimensional arrays, the dimensions field contains the
+    /// bounds of each dimension, which is needed for calculating the
+    /// linear index in row-major order.
     ArrayAccess {
         name: String,
         indices: Vec<TypedExpr>,
+        /// Dimension bounds for index calculation (empty for 1D arrays).
+        dimensions: Vec<TypedArrayDimension>,
     },
 
     /// Explicit type conversion (inserted by type checker for implicit conversions).
@@ -73,6 +79,16 @@ pub enum TypedExprKind {
     Convert {
         expr: Box<TypedExpr>,
         to_type: BasicType,
+    },
+
+    /// Field access on a user-defined type.
+    ///
+    /// Example: `person.name`, `record.data.value`
+    FieldAccess {
+        /// The object expression being accessed.
+        object: Box<TypedExpr>,
+        /// The field name.
+        field: String,
     },
 }
 
@@ -137,6 +153,17 @@ pub enum TypedStatementKind {
         value: TypedExpr,
         /// The type of the target variable (for codegen to emit conversion).
         target_type: BasicType,
+    },
+
+    /// Array element assignment with target type.
+    ArrayAssignment {
+        name: String,
+        indices: Vec<TypedExpr>,
+        value: TypedExpr,
+        /// Dimension info for linear index calculation.
+        dimensions: Vec<TypedArrayDimension>,
+        /// The element type.
+        element_type: BasicType,
     },
 
     /// PRINT statement with typed items.
@@ -258,6 +285,102 @@ pub enum TypedStatementKind {
 
     /// Expression used as statement (e.g., bare function call).
     Expression(TypedExpr),
+
+    // ==================== Preprocessor Directives ====================
+    /// $INCLUDE directive (file inclusion).
+    IncludeDirective {
+        /// Path to include.
+        path: String,
+    },
+
+    /// $IF conditional compilation block.
+    ConditionalBlock {
+        /// The compile-time condition.
+        condition: String,
+        /// Statements in the $IF block.
+        then_branch: Vec<TypedStatement>,
+        /// $ELSEIF clauses.
+        elseif_branches: Vec<(String, Vec<TypedStatement>)>,
+        /// $ELSE block.
+        else_branch: Option<Vec<TypedStatement>>,
+    },
+
+    /// Other meta-command directive.
+    MetaCommand {
+        /// Command name without $.
+        command: String,
+        /// Command arguments.
+        args: Option<String>,
+    },
+
+    /// SWAP statement - exchange values of two variables.
+    Swap {
+        /// First variable/expression to swap.
+        left: TypedExpr,
+        /// Second variable/expression to swap.
+        right: TypedExpr,
+    },
+
+    /// _CONTINUE statement - skip to next loop iteration.
+    Continue {
+        /// The type of loop to continue.
+        continue_type: ContinueType,
+    },
+
+    /// TYPE definition - user-defined type.
+    TypeDefinition {
+        /// The type name.
+        name: String,
+        /// The type members with their types.
+        members: Vec<TypedMember>,
+    },
+
+    /// DATA statement - compile-time data values.
+    ///
+    /// DATA values are collected into a global pool that READ consumes.
+    Data {
+        /// The literal values in this DATA statement.
+        values: Vec<TypedDataValue>,
+    },
+
+    /// READ statement - read from DATA pool.
+    ///
+    /// Each READ consumes values from the DATA pool in order.
+    Read {
+        /// Variables to read into, paired with their types.
+        variables: Vec<(String, BasicType)>,
+    },
+
+    /// RESTORE statement - reset DATA pointer.
+    ///
+    /// RESTORE resets the DATA read position to the beginning
+    /// or to a labeled DATA statement.
+    Restore {
+        /// Optional label to restore to.
+        label: Option<String>,
+    },
+}
+
+/// A typed member of a TYPE definition.
+#[derive(Debug, Clone)]
+pub struct TypedMember {
+    /// Member name.
+    pub name: String,
+    /// Member type.
+    pub basic_type: BasicType,
+}
+
+/// A typed value from a DATA statement.
+///
+/// DATA values are typed during semantic analysis based on their literal form.
+#[derive(Debug, Clone)]
+pub enum TypedDataValue {
+    /// An integer literal.
+    Integer(i64),
+    /// A floating-point literal.
+    Float(f64),
+    /// A string literal.
+    String(String),
 }
 
 impl TypedStatement {

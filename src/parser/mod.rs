@@ -33,9 +33,9 @@ mod error;
 pub use error::ParseError;
 
 use crate::ast::{
-    ArrayDimension, BinaryOp, CaseClause, CaseCompareOp, CaseMatch, DoCondition, ExitType, Expr,
-    ExprKind, Parameter, PrintItem, PrintSeparator, Program, Span, Statement, StatementKind,
-    TypeSpec, UnaryOp,
+    ArrayDimension, BinaryOp, CaseClause, CaseCompareOp, CaseMatch, ContinueType, DataValue,
+    DoCondition, ExitType, Expr, ExprKind, Parameter, PrintItem, PrintSeparator, Program, Span,
+    Statement, StatementKind, TypeMember, TypeSpec, UnaryOp,
 };
 use crate::lexer::{Token, TokenKind};
 
@@ -165,7 +165,7 @@ impl<'a> Parser<'a> {
     /// Expects the current token to match, or records an error.
     fn expect(&mut self, kind: &TokenKind, expected_desc: &str) -> Result<&Token, ()> {
         if self.check(kind) {
-            Ok(self.advance().unwrap())
+            Ok(self.advance().expect("advance after check"))
         } else {
             let (found, span) = if let Some(token) = self.peek() {
                 (format!("{:?}", token.kind), token.span.clone().into())
@@ -346,7 +346,7 @@ impl<'a> Parser<'a> {
 
     /// Parses an integer literal.
     fn parse_integer_literal(&mut self) -> Result<Expr, ()> {
-        let token = self.advance().unwrap();
+        let token = self.advance().expect("integer literal token");
         let span: Span = token.span.clone().into();
 
         let value: i64 = token.text.parse().map_err(|e| {
@@ -361,7 +361,7 @@ impl<'a> Parser<'a> {
 
     /// Parses a floating-point literal.
     fn parse_float_literal(&mut self) -> Result<Expr, ()> {
-        let token = self.advance().unwrap();
+        let token = self.advance().expect("float literal token");
         let span: Span = token.span.clone().into();
 
         // BASIC uses D for double exponents, convert to E for Rust parsing
@@ -378,7 +378,7 @@ impl<'a> Parser<'a> {
 
     /// Parses a hexadecimal literal (&HFF).
     fn parse_hex_literal(&mut self) -> Result<Expr, ()> {
-        let token = self.advance().unwrap();
+        let token = self.advance().expect("hex literal token");
         let span: Span = token.span.clone().into();
 
         // Skip the &H prefix
@@ -395,7 +395,7 @@ impl<'a> Parser<'a> {
 
     /// Parses an octal literal (&O77).
     fn parse_octal_literal(&mut self) -> Result<Expr, ()> {
-        let token = self.advance().unwrap();
+        let token = self.advance().expect("octal literal token");
         let span: Span = token.span.clone().into();
 
         // Skip the &O prefix
@@ -412,7 +412,7 @@ impl<'a> Parser<'a> {
 
     /// Parses a binary literal (&B1010).
     fn parse_binary_literal(&mut self) -> Result<Expr, ()> {
-        let token = self.advance().unwrap();
+        let token = self.advance().expect("binary literal token");
         let span: Span = token.span.clone().into();
 
         // Skip the &B prefix
@@ -443,7 +443,7 @@ impl<'a> Parser<'a> {
     /// To include special characters like newlines, QBasic programs use CHR$():
     /// - `"Line1" + CHR$(10) + "Line2"` for a string with embedded newline
     fn parse_string_literal(&mut self) -> Result<Expr, ()> {
-        let token = self.advance().unwrap();
+        let token = self.advance().expect("string literal token");
         let span: Span = token.span.clone().into();
 
         // Remove surrounding quotes and handle doubled-quote escape (QBasic style)
@@ -455,27 +455,50 @@ impl<'a> Parser<'a> {
         Ok(Expr::new(ExprKind::StringLiteral(value), span))
     }
 
-    /// Parses an identifier or function call.
+    /// Parses an identifier, function call, or field access chain.
+    ///
+    /// Handles:
+    /// - Simple identifiers: `x`
+    /// - Function calls / array access: `func(args)` / `arr(i)`
+    /// - Field access: `obj.field`
+    /// - Chained access: `obj.field.subfield`, `arr(i).field`
     fn parse_identifier_or_call(&mut self) -> Result<Expr, ()> {
-        let token = self.advance().unwrap();
+        let token = self.advance().expect("identifier token");
         let name = token.text.to_string();
         let start_span: Span = token.span.clone().into();
 
         // Check for function call (identifier followed by parenthesis)
-        if self.check(&TokenKind::LeftParen) {
+        let mut expr = if self.check(&TokenKind::LeftParen) {
             self.advance(); // consume (
             let args = self.parse_argument_list()?;
             self.expect(&TokenKind::RightParen, ")")?;
             let span = self.span_from(start_span.start);
-            Ok(Expr::new(ExprKind::FunctionCall { name, args }, span))
+            Expr::new(ExprKind::FunctionCall { name, args }, span)
         } else {
-            Ok(Expr::new(ExprKind::Identifier(name), start_span))
+            Expr::new(ExprKind::Identifier(name), start_span)
+        };
+
+        // Handle field access chain: obj.field.subfield
+        while self.check(&TokenKind::Dot) {
+            self.advance(); // consume .
+            let field_token = self.expect(&TokenKind::Identifier, "field name after `.`")?;
+            let field = field_token.text.to_string();
+            let span = self.span_from(start_span.start);
+            expr = Expr::new(
+                ExprKind::FieldAccess {
+                    object: Box::new(expr),
+                    field,
+                },
+                span,
+            );
         }
+
+        Ok(expr)
     }
 
     /// Parses a parenthesized expression.
     fn parse_grouped(&mut self) -> Result<Expr, ()> {
-        let start = self.advance().unwrap().span.start; // consume (
+        let start = self.advance().expect("left paren").span.start; // consume (
         let inner = self.parse_expression()?;
         self.expect(&TokenKind::RightParen, ")")?;
         let span = self.span_from(start);
@@ -484,7 +507,7 @@ impl<'a> Parser<'a> {
 
     /// Parses a unary expression.
     fn parse_unary(&mut self, op: UnaryOp) -> Result<Expr, ()> {
-        let start = self.advance().unwrap().span.start; // consume operator
+        let start = self.advance().expect("unary operator").span.start; // consume operator
         let operand = self.parse_expr_precedence(Precedence::Unary)?;
         let span = self.span_from(start);
         Ok(Expr::new(
@@ -521,10 +544,13 @@ impl<'a> Parser<'a> {
             TokenKind::Plus | TokenKind::Minus => Precedence::Additive,
             TokenKind::Equals
             | TokenKind::NotEquals
+            | TokenKind::NotEqualsLegacy
             | TokenKind::LessThan
             | TokenKind::LessEquals
+            | TokenKind::LessEqualsLegacy
             | TokenKind::GreaterThan
-            | TokenKind::GreaterEquals => Precedence::Comparison,
+            | TokenKind::GreaterEquals
+            | TokenKind::GreaterEqualsLegacy => Precedence::Comparison,
             TokenKind::And => Precedence::And,
             TokenKind::Or | TokenKind::Xor => Precedence::Or,
             TokenKind::Eqv | TokenKind::Imp => Precedence::EqvImp,
@@ -543,11 +569,13 @@ impl<'a> Parser<'a> {
             TokenKind::Mod => Some(BinaryOp::Modulo),
             TokenKind::Caret => Some(BinaryOp::Power),
             TokenKind::Equals => Some(BinaryOp::Equal),
-            TokenKind::NotEquals => Some(BinaryOp::NotEqual),
+            TokenKind::NotEquals | TokenKind::NotEqualsLegacy => Some(BinaryOp::NotEqual),
             TokenKind::LessThan => Some(BinaryOp::LessThan),
-            TokenKind::LessEquals => Some(BinaryOp::LessEqual),
+            TokenKind::LessEquals | TokenKind::LessEqualsLegacy => Some(BinaryOp::LessEqual),
             TokenKind::GreaterThan => Some(BinaryOp::GreaterThan),
-            TokenKind::GreaterEquals => Some(BinaryOp::GreaterEqual),
+            TokenKind::GreaterEquals | TokenKind::GreaterEqualsLegacy => {
+                Some(BinaryOp::GreaterEqual)
+            }
             TokenKind::And => Some(BinaryOp::And),
             TokenKind::Or => Some(BinaryOp::Or),
             TokenKind::Xor => Some(BinaryOp::Xor),
@@ -588,11 +616,19 @@ impl<'a> Parser<'a> {
             TokenKind::End => self.parse_end(),
             TokenKind::Stop => self.parse_stop(),
             TokenKind::Input => self.parse_input(),
+            TokenKind::Swap => self.parse_swap(),
+            TokenKind::Continue => self.parse_continue(),
             TokenKind::Sub => self.parse_sub(),
             TokenKind::Function => self.parse_function(),
+            TokenKind::Type => self.parse_type_definition(),
+            TokenKind::Data => self.parse_data(),
+            TokenKind::Read => self.parse_read(),
+            TokenKind::Restore => self.parse_restore(),
             TokenKind::Comment => self.parse_comment(),
             TokenKind::Identifier => self.parse_identifier_statement(),
             TokenKind::Call => self.parse_call(),
+            TokenKind::IncludeDirective => self.parse_include_directive(),
+            TokenKind::MetaCommand => self.parse_meta_command(),
             _ => {
                 let span: Span = token.span.clone().into();
                 self.errors.push(ParseError::InvalidStatement {
@@ -607,7 +643,7 @@ impl<'a> Parser<'a> {
 
     /// Parses a PRINT statement.
     fn parse_print(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().unwrap().span.start; // consume PRINT
+        let start = self.advance().expect("PRINT keyword").span.start; // consume PRINT
         let mut values: Vec<PrintItem> = Vec::new();
         let mut newline = true;
 
@@ -660,7 +696,7 @@ impl<'a> Parser<'a> {
 
     /// Parses a LET statement (explicit LET keyword).
     fn parse_let_explicit(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().unwrap().span.start; // consume LET
+        let start = self.advance().expect("LET keyword").span.start; // consume LET
         self.parse_assignment(start)
     }
 
@@ -677,15 +713,60 @@ impl<'a> Parser<'a> {
         Ok(Statement::new(StatementKind::Let { name, value }, span))
     }
 
+    /// Parses an array element assignment: `array(i, j, ...) = value`
+    fn parse_array_assignment(&mut self, start: usize) -> Result<Statement, ()> {
+        let name_token = self.expect(&TokenKind::Identifier, "array name")?;
+        let name = name_token.text.to_string();
+
+        self.expect(&TokenKind::LeftParen, "(")?;
+
+        // Parse index expressions
+        let mut indices = Vec::new();
+        loop {
+            let idx = self.parse_expression()?;
+            indices.push(idx);
+
+            if !self.match_token(&TokenKind::Comma) {
+                break;
+            }
+        }
+
+        self.expect(&TokenKind::RightParen, ")")?;
+        self.expect(&TokenKind::Equals, "=")?;
+
+        let value = self.parse_expression()?;
+        let span = self.span_from(start);
+
+        Ok(Statement::new(
+            StatementKind::ArrayAssignment {
+                name,
+                indices,
+                value,
+            },
+            span,
+        ))
+    }
+
     /// Parses an identifier statement (assignment or procedure call).
     fn parse_identifier_statement(&mut self) -> Result<Statement, ()> {
-        let start = self.peek().unwrap().span.start;
+        let start = self.peek().expect("identifier token").span.start;
 
         // Look ahead to determine if this is assignment or call
         if let Some(next) = self.peek_ahead(1)
             && next.kind == TokenKind::Equals
         {
             return self.parse_assignment(start);
+        }
+
+        // Check for array assignment: identifier(...)  = value
+        // We need to look for identifier followed by ( ... ) followed by =
+        if let Some(next) = self.peek_ahead(1)
+            && next.kind == TokenKind::LeftParen
+        {
+            // Try to find the matching ) and check if = follows
+            if self.is_array_assignment() {
+                return self.parse_array_assignment(start);
+            }
         }
 
         // Otherwise, parse as a procedure call or expression statement
@@ -709,9 +790,36 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Checks if the current tokens form an array assignment pattern: id(...) =
+    fn is_array_assignment(&self) -> bool {
+        // Start after the identifier (at position self.current + 1 should be LeftParen)
+        let mut depth = 0;
+        let mut pos = self.current + 1;
+
+        while pos < self.tokens.len() {
+            match self.tokens[pos].kind {
+                TokenKind::LeftParen => depth += 1,
+                TokenKind::RightParen => {
+                    depth -= 1;
+                    if depth == 0 {
+                        // Check if next token is =
+                        if pos + 1 < self.tokens.len() {
+                            return self.tokens[pos + 1].kind == TokenKind::Equals;
+                        }
+                        return false;
+                    }
+                }
+                TokenKind::Newline | TokenKind::Colon => return false,
+                _ => {}
+            }
+            pos += 1;
+        }
+        false
+    }
+
     /// Parses a DIM statement.
     fn parse_dim(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().unwrap().span.start; // consume DIM
+        let start = self.advance().expect("DIM keyword").span.start; // consume DIM
 
         let shared = self.match_token(&TokenKind::Shared);
 
@@ -863,7 +971,7 @@ impl<'a> Parser<'a> {
 
     /// Parses a CONST statement.
     fn parse_const(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().unwrap().span.start; // consume CONST
+        let start = self.advance().expect("CONST keyword").span.start; // consume CONST
 
         let name_token = self.expect(&TokenKind::Identifier, "constant name")?;
         let name = name_token.text.to_string();
@@ -878,7 +986,7 @@ impl<'a> Parser<'a> {
 
     /// Parses an IF statement.
     fn parse_if(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().unwrap().span.start; // consume IF
+        let start = self.advance().expect("IF keyword").span.start; // consume IF
 
         let condition = self.parse_expression()?;
         self.expect(&TokenKind::Then, "THEN")?;
@@ -1003,7 +1111,7 @@ impl<'a> Parser<'a> {
 
     /// Parses a SELECT CASE statement.
     fn parse_select_case(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().unwrap().span.start; // consume SELECT
+        let start = self.advance().expect("SELECT keyword").span.start; // consume SELECT
         self.expect(&TokenKind::Case, "CASE")?;
 
         let test_expr = self.parse_expression()?;
@@ -1132,7 +1240,7 @@ impl<'a> Parser<'a> {
 
     /// Parses a FOR loop.
     fn parse_for(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().unwrap().span.start; // consume FOR
+        let start = self.advance().expect("FOR keyword").span.start; // consume FOR
 
         let var_token = self.expect(&TokenKind::Identifier, "loop variable")?;
         let variable = var_token.text.to_string();
@@ -1164,10 +1272,13 @@ impl<'a> Parser<'a> {
 
         self.expect(&TokenKind::Next, "NEXT")?;
 
-        // Optional variable name after NEXT
-        if self.check(&TokenKind::Identifier) {
-            self.advance();
-        }
+        // Optional variable name after NEXT (for validation in semantic analysis)
+        let next_variable = if self.check(&TokenKind::Identifier) {
+            let token = self.advance().expect("NEXT variable");
+            Some(token.text.to_string())
+        } else {
+            None
+        };
 
         let span = self.span_from(start);
         Ok(Statement::new(
@@ -1177,6 +1288,7 @@ impl<'a> Parser<'a> {
                 end: end_expr,
                 step,
                 body,
+                next_variable,
             },
             span,
         ))
@@ -1184,7 +1296,7 @@ impl<'a> Parser<'a> {
 
     /// Parses a WHILE loop.
     fn parse_while(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().unwrap().span.start; // consume WHILE
+        let start = self.advance().expect("WHILE keyword").span.start; // consume WHILE
 
         let condition = self.parse_expression()?;
         self.skip_newlines();
@@ -1210,7 +1322,7 @@ impl<'a> Parser<'a> {
 
     /// Parses a DO loop.
     fn parse_do_loop(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().unwrap().span.start; // consume DO
+        let start = self.advance().expect("DO keyword").span.start; // consume DO
 
         // Check for pre-condition (DO WHILE/UNTIL)
         let pre_condition = if self.match_token(&TokenKind::While) {
@@ -1269,7 +1381,7 @@ impl<'a> Parser<'a> {
 
     /// Parses a GOTO statement.
     fn parse_goto(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().unwrap().span.start; // consume GOTO
+        let start = self.advance().expect("GOTO keyword").span.start; // consume GOTO
         let target_token = self.expect(&TokenKind::Identifier, "label")?;
         let target = target_token.text.to_string();
         let span = self.span_from(start);
@@ -1278,7 +1390,7 @@ impl<'a> Parser<'a> {
 
     /// Parses a GOSUB statement.
     fn parse_gosub(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().unwrap().span.start; // consume GOSUB
+        let start = self.advance().expect("GOSUB keyword").span.start; // consume GOSUB
         let target_token = self.expect(&TokenKind::Identifier, "label")?;
         let target = target_token.text.to_string();
         let span = self.span_from(start);
@@ -1287,14 +1399,14 @@ impl<'a> Parser<'a> {
 
     /// Parses a RETURN statement.
     fn parse_return(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().unwrap().span.start; // consume RETURN
+        let start = self.advance().expect("RETURN keyword").span.start; // consume RETURN
         let span = self.span_from(start);
         Ok(Statement::new(StatementKind::Return, span))
     }
 
     /// Parses an EXIT statement.
     fn parse_exit(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().unwrap().span.start; // consume EXIT
+        let start = self.advance().expect("EXIT keyword").span.start; // consume EXIT
 
         let token = match self.peek() {
             Some(t) => t,
@@ -1334,35 +1446,236 @@ impl<'a> Parser<'a> {
 
     /// Parses an END statement.
     fn parse_end(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().unwrap().span.start; // consume END
+        let start = self.advance().expect("END keyword").span.start; // consume END
         let span = self.span_from(start);
         Ok(Statement::new(StatementKind::End, span))
     }
 
     /// Parses a STOP statement.
     fn parse_stop(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().unwrap().span.start; // consume STOP
+        let start = self.advance().expect("STOP keyword").span.start; // consume STOP
         let span = self.span_from(start);
         Ok(Statement::new(StatementKind::Stop, span))
     }
 
+    /// Parses a SWAP statement.
+    ///
+    /// Syntax: `SWAP var1, var2`
+    ///
+    /// Exchanges the values of two variables. Both must be of the same type.
+    fn parse_swap(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("SWAP keyword").span.start; // consume SWAP
+
+        // Parse first variable (as expression to allow array elements)
+        let left = self.parse_expression()?;
+
+        // Expect comma
+        self.expect(&TokenKind::Comma, "`,` between SWAP variables")?;
+
+        // Parse second variable
+        let right = self.parse_expression()?;
+
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::Swap { left, right }, span))
+    }
+
+    /// Parses a _CONTINUE statement.
+    ///
+    /// Syntax: `_CONTINUE` or `_CONTINUE FOR|WHILE|DO`
+    ///
+    /// Skips to the next iteration of a loop.
+    fn parse_continue(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_CONTINUE keyword").span.start; // consume _CONTINUE
+
+        // Check for optional loop type specifier
+        let continue_type = if self.match_token(&TokenKind::For) {
+            ContinueType::For
+        } else if self.match_token(&TokenKind::While) {
+            ContinueType::While
+        } else if self.match_token(&TokenKind::Do) {
+            ContinueType::Do
+        } else {
+            // Default to innermost loop - use Do as a generic marker
+            // Semantic analysis will verify we're in a loop
+            ContinueType::Do
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::Continue { continue_type },
+            span,
+        ))
+    }
+
+    /// Parses a DATA statement.
+    ///
+    /// Syntax: `DATA value1, value2, value3, ...`
+    ///
+    /// DATA statements define literal values that can be read using READ.
+    /// Values can be numeric literals or string literals.
+    fn parse_data(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("DATA keyword").span.start; // consume DATA
+
+        let mut values = Vec::new();
+
+        loop {
+            // Parse a literal value (numeric or string)
+            let value = self.parse_data_value()?;
+            values.push(value);
+
+            if !self.match_token(&TokenKind::Comma) {
+                break;
+            }
+        }
+
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::Data { values }, span))
+    }
+
+    /// Parses a single DATA value (numeric or string literal).
+    fn parse_data_value(&mut self) -> Result<DataValue, ()> {
+        // Check for negative number
+        let negative = self.match_token(&TokenKind::Minus);
+
+        if let Some(token) = self.peek() {
+            match &token.kind {
+                TokenKind::IntegerLiteral => {
+                    let token = self.advance().expect("integer literal");
+                    let mut value: i64 = token
+                        .text
+                        .replace('_', "") // Allow underscores as digit separators
+                        .parse()
+                        .unwrap_or(0);
+                    if negative {
+                        value = -value;
+                    }
+                    Ok(DataValue::Integer(value))
+                }
+                TokenKind::FloatLiteral => {
+                    let token = self.advance().expect("float literal");
+                    let mut value: f64 = token.text.replace('_', "").parse().unwrap_or(0.0);
+                    if negative {
+                        value = -value;
+                    }
+                    Ok(DataValue::Float(value))
+                }
+                TokenKind::StringLiteral => {
+                    if negative {
+                        let span: Span = token.span.clone().into();
+                        self.errors.push(ParseError::syntax(
+                            "unexpected `-` before string literal",
+                            span,
+                        ));
+                        return Err(());
+                    }
+                    let str_token = self.advance().expect("string literal");
+                    // Remove surrounding quotes
+                    let text = &str_token.text[1..str_token.text.len() - 1];
+                    Ok(DataValue::String(text.to_string()))
+                }
+                // Unquoted strings in DATA - anything that's not a literal is treated as unquoted string
+                TokenKind::Identifier => {
+                    if negative {
+                        let span: Span = token.span.clone().into();
+                        self.errors.push(ParseError::syntax(
+                            "unexpected `-` before identifier in DATA",
+                            span,
+                        ));
+                        return Err(());
+                    }
+                    let id_token = self.advance().expect("identifier");
+                    Ok(DataValue::String(id_token.text.to_string()))
+                }
+                _ => {
+                    let span: Span = token.span.clone().into();
+                    self.errors.push(ParseError::syntax(
+                        "expected numeric or string literal in DATA statement",
+                        span,
+                    ));
+                    Err(())
+                }
+            }
+        } else {
+            self.errors.push(ParseError::eof("DATA value"));
+            Err(())
+        }
+    }
+
+    /// Parses a READ statement.
+    ///
+    /// Syntax: `READ var1, var2, var3, ...`
+    ///
+    /// READ consumes values from the DATA pool in order.
+    fn parse_read(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("READ keyword").span.start; // consume READ
+
+        let mut variables = Vec::new();
+
+        loop {
+            let var_token = self.expect(&TokenKind::Identifier, "variable name")?;
+            variables.push(var_token.text.to_string());
+
+            if !self.match_token(&TokenKind::Comma) {
+                break;
+            }
+        }
+
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::Read { variables }, span))
+    }
+
+    /// Parses a RESTORE statement.
+    ///
+    /// Syntax: `RESTORE [label]`
+    ///
+    /// RESTORE resets the DATA read pointer. Optional label specifies
+    /// which DATA statement to restore to.
+    fn parse_restore(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("RESTORE keyword").span.start; // consume RESTORE
+
+        // Optional label
+        let label = if self.check(&TokenKind::Identifier) {
+            let token = self.advance().expect("label");
+            Some(token.text.to_string())
+        } else {
+            None
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::Restore { label }, span))
+    }
+
     /// Parses an INPUT statement.
+    ///
+    /// Syntax: `INPUT [;] ["prompt"{;|,}] variable[, variable...]`
+    ///
+    /// - Semicolon after prompt: shows "?" after the prompt
+    /// - Comma after prompt: no "?" shown
+    /// - A separator (`;` or `,`) is REQUIRED after a prompt string per QB spec
     fn parse_input(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().unwrap().span.start; // consume INPUT
+        let start = self.advance().expect("INPUT keyword").span.start; // consume INPUT
 
         let mut prompt = None;
         let mut show_question_mark = true;
 
         // Check for prompt string
         if self.check(&TokenKind::StringLiteral) {
-            let token = self.advance().unwrap();
+            let token = self.advance().expect("prompt string");
+            let prompt_span: Span = token.span.clone().into();
             prompt = Some(token.text[1..token.text.len() - 1].to_string());
 
-            // Check separator after prompt
+            // Separator after prompt is REQUIRED per QB spec
             if self.match_token(&TokenKind::Semicolon) {
                 show_question_mark = true;
             } else if self.match_token(&TokenKind::Comma) {
                 show_question_mark = false;
+            } else {
+                // Missing separator is a syntax error
+                self.errors.push(ParseError::syntax(
+                    "expected `;` or `,` after INPUT prompt string",
+                    prompt_span,
+                ));
+                return Err(());
             }
         }
 
@@ -1390,7 +1703,7 @@ impl<'a> Parser<'a> {
 
     /// Parses a SUB definition.
     fn parse_sub(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().unwrap().span.start; // consume SUB
+        let start = self.advance().expect("SUB keyword").span.start; // consume SUB
 
         let name_token = self.expect(&TokenKind::Identifier, "SUB name")?;
         let name = name_token.text.to_string();
@@ -1445,7 +1758,7 @@ impl<'a> Parser<'a> {
 
     /// Parses a FUNCTION definition.
     fn parse_function(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().unwrap().span.start; // consume FUNCTION
+        let start = self.advance().expect("FUNCTION keyword").span.start; // consume FUNCTION
 
         let name_token = self.expect(&TokenKind::Identifier, "FUNCTION name")?;
         let name = name_token.text.to_string();
@@ -1506,6 +1819,81 @@ impl<'a> Parser<'a> {
         false
     }
 
+    /// Parses a TYPE definition.
+    ///
+    /// Syntax:
+    /// ```basic
+    /// TYPE TypeName
+    ///     member1 AS type1
+    ///     member2 AS type2
+    ///     ...
+    /// END TYPE
+    /// ```
+    fn parse_type_definition(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("TYPE keyword").span.start; // consume TYPE
+
+        // Parse type name
+        let name_token = self.expect(&TokenKind::Identifier, "type name")?;
+        let name = name_token.text.to_string();
+
+        // Skip any newlines after the type name
+        self.skip_newlines();
+
+        // Parse member definitions until END TYPE
+        let mut members = Vec::new();
+        while !self.check_end_type() && !self.is_at_end() {
+            // Skip empty lines
+            if self.check(&TokenKind::Newline) {
+                self.advance();
+                continue;
+            }
+
+            // Skip comments inside TYPE
+            if self.check(&TokenKind::Comment) {
+                self.advance();
+                continue;
+            }
+
+            // Parse member: name AS type
+            let member_name_token = self.expect(&TokenKind::Identifier, "member name")?;
+            let member_name = member_name_token.text.to_string();
+
+            self.expect(&TokenKind::As, "AS in type member definition")?;
+
+            let type_spec = self.parse_type_spec()?;
+
+            members.push(TypeMember {
+                name: member_name,
+                type_spec,
+            });
+
+            // Skip newline after member
+            if self.check(&TokenKind::Newline) {
+                self.advance();
+            }
+        }
+
+        // Consume END TYPE
+        self.expect(&TokenKind::End, "END")?;
+        self.expect(&TokenKind::Type, "TYPE")?;
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::TypeDefinition { name, members },
+            span,
+        ))
+    }
+
+    /// Checks for END TYPE.
+    fn check_end_type(&self) -> bool {
+        if self.check(&TokenKind::End)
+            && let Some(next) = self.peek_ahead(1)
+        {
+            return next.kind == TokenKind::Type;
+        }
+        false
+    }
+
     /// Parses a parameter list for SUB/FUNCTION.
     fn parse_parameter_list(&mut self) -> Result<Vec<Parameter>, ()> {
         let mut params = Vec::new();
@@ -1542,7 +1930,7 @@ impl<'a> Parser<'a> {
 
     /// Parses a CALL statement.
     fn parse_call(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().unwrap().span.start; // consume CALL
+        let start = self.advance().expect("CALL keyword").span.start; // consume CALL
 
         let name_token = self.expect(&TokenKind::Identifier, "procedure name")?;
         let name = name_token.text.to_string();
@@ -1561,10 +1949,200 @@ impl<'a> Parser<'a> {
 
     /// Parses a comment.
     fn parse_comment(&mut self) -> Result<Statement, ()> {
-        let token = self.advance().unwrap();
+        let token = self.advance().expect("comment token");
         let text = token.text.to_string();
         let span: Span = token.span.clone().into();
         Ok(Statement::new(StatementKind::Comment(text), span))
+    }
+
+    // ==================== Preprocessor Directives ====================
+
+    /// Parses a `$INCLUDE: 'filename'` directive.
+    ///
+    /// The lexer captures the entire directive as a single token in the format:
+    /// `$INCLUDE: 'path/to/file.bas'`
+    fn parse_include_directive(&mut self) -> Result<Statement, ()> {
+        let token = self.advance().expect("$INCLUDE directive");
+        let span: Span = token.span.clone().into();
+
+        // Extract the path from the directive text
+        // Format: $INCLUDE: 'path'
+        let text = &token.text;
+        let path = if let Some(start) = text.find('\'') {
+            let after_quote = &text[start + 1..];
+            if let Some(end) = after_quote.find('\'') {
+                after_quote[..end].to_string()
+            } else {
+                text.to_string() // Fallback if malformed
+            }
+        } else {
+            text.to_string() // Fallback if malformed
+        };
+
+        Ok(Statement::new(
+            StatementKind::IncludeDirective { path },
+            span,
+        ))
+    }
+
+    /// Parses a `$metacommand` directive.
+    ///
+    /// Handles `$IF`, `$ELSEIF`, `$ELSE`, `$END IF`, and other meta-commands.
+    fn parse_meta_command(&mut self) -> Result<Statement, ()> {
+        let token = self.advance().expect("meta-command token");
+        let span: Span = token.span.clone().into();
+        let text = token.text.to_string();
+
+        // Extract command name (after the $)
+        let command = text[1..].to_uppercase();
+
+        // Check for $IF (conditional compilation)
+        if command == "IF" {
+            return self.parse_conditional_block(span);
+        }
+
+        // For $ELSEIF, $ELSE, $END - these are handled within parse_conditional_block
+        // If we see them at the top level, they're mismatched
+        if command == "ELSEIF" || command == "ELSE" || command == "END" {
+            self.errors.push(ParseError::syntax(
+                format!("${} without matching $IF", command),
+                span,
+            ));
+            return Err(());
+        }
+
+        // Other meta-commands (e.g., $DYNAMIC, $STATIC, $ERROR)
+        // Parse any arguments on the rest of the line
+        let args = self.parse_meta_command_args();
+
+        Ok(Statement::new(
+            StatementKind::MetaCommand { command, args },
+            span,
+        ))
+    }
+
+    /// Parses a `$IF ... $END IF` conditional compilation block.
+    fn parse_conditional_block(&mut self, start_span: Span) -> Result<Statement, ()> {
+        // Parse the condition (rest of line after $IF)
+        let condition = self.parse_meta_command_args().unwrap_or_default();
+
+        // Skip THEN if present (optional in QB64 $IF)
+        self.match_token(&TokenKind::Then);
+        self.skip_newlines();
+
+        let mut then_branch = Vec::new();
+        let mut elseif_branches = Vec::new();
+        let mut else_branch = None;
+
+        // Parse until $END IF, $ELSEIF, or $ELSE
+        loop {
+            self.skip_newlines();
+
+            if self.is_at_end() {
+                self.errors.push(ParseError::syntax(
+                    "$IF without matching $END IF",
+                    start_span,
+                ));
+                return Err(());
+            }
+
+            // Check for $ELSEIF, $ELSE, $END IF
+            if let Some(token) = self.peek()
+                && token.kind == TokenKind::MetaCommand
+            {
+                let cmd = token.text[1..].to_uppercase();
+                if cmd == "END" {
+                    // $END IF
+                    self.advance();
+                    // Skip IF if present
+                    self.match_token(&TokenKind::If);
+                    break;
+                } else if cmd == "ELSEIF" {
+                    self.advance();
+                    let elseif_condition = self.parse_meta_command_args().unwrap_or_default();
+                    self.match_token(&TokenKind::Then);
+                    self.skip_newlines();
+
+                    let mut elseif_body = Vec::new();
+                    loop {
+                        self.skip_newlines();
+                        if self.is_at_end() || self.check_meta_command_end() {
+                            break;
+                        }
+                        elseif_body.push(self.parse_statement()?);
+                        self.skip_newlines();
+                    }
+                    elseif_branches.push((elseif_condition, elseif_body));
+                    continue;
+                } else if cmd == "ELSE" {
+                    self.advance();
+                    self.skip_newlines();
+
+                    let mut else_body = Vec::new();
+                    loop {
+                        self.skip_newlines();
+                        if self.is_at_end() || self.check_meta_command_end() {
+                            break;
+                        }
+                        else_body.push(self.parse_statement()?);
+                        self.skip_newlines();
+                    }
+                    else_branch = Some(else_body);
+
+                    // After $ELSE body, expect $END IF
+                    if let Some(token) = self.peek()
+                        && token.kind == TokenKind::MetaCommand
+                        && token.text[1..].to_uppercase() == "END"
+                    {
+                        self.advance();
+                        self.match_token(&TokenKind::If);
+                    }
+                    break;
+                }
+            }
+
+            // Parse regular statement
+            then_branch.push(self.parse_statement()?);
+            self.skip_newlines();
+        }
+
+        let span = self.span_from(start_span.start);
+        Ok(Statement::new(
+            StatementKind::ConditionalBlock {
+                condition,
+                then_branch,
+                elseif_branches,
+                else_branch,
+            },
+            span,
+        ))
+    }
+
+    /// Checks if current token is $END, $ELSEIF, or $ELSE.
+    fn check_meta_command_end(&self) -> bool {
+        if let Some(token) = self.peek()
+            && token.kind == TokenKind::MetaCommand
+        {
+            let cmd = token.text[1..].to_uppercase();
+            return cmd == "END" || cmd == "ELSEIF" || cmd == "ELSE";
+        }
+        false
+    }
+
+    /// Parses meta-command arguments (rest of line until newline).
+    fn parse_meta_command_args(&mut self) -> Option<String> {
+        let mut args = String::new();
+
+        while !self.is_at_end() && !self.check(&TokenKind::Newline) {
+            if let Some(token) = self.advance() {
+                if !args.is_empty() {
+                    args.push(' ');
+                }
+                args.push_str(&token.text);
+            }
+        }
+
+        if args.is_empty() { None } else { Some(args) }
     }
 }
 
@@ -1726,5 +2304,53 @@ PRINT x
         let errors = result.unwrap_err();
         assert!(!errors.is_empty());
         assert!(matches!(errors[0], ParseError::UnterminatedString { .. }));
+    }
+
+    #[test]
+    fn test_parse_input_with_prompt_semicolon() {
+        // INPUT "Name"; x$ - valid, shows "?"
+        let program = parse(r#"INPUT "Enter name"; name$"#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::Input {
+                prompt: Some(_),
+                show_question_mark: true,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn test_parse_input_with_prompt_comma() {
+        // INPUT "Name", x$ - valid, no "?"
+        let program = parse(r#"INPUT "Enter name", name$"#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::Input {
+                prompt: Some(_),
+                show_question_mark: false,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn test_parse_input_prompt_missing_separator() {
+        // INPUT "Name" x$ - invalid, missing separator
+        let result = parse(r#"INPUT "Enter name" name$"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_input_no_prompt() {
+        // INPUT x$ - valid, no prompt
+        let program = parse("INPUT name$").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::Input { prompt: None, .. }
+        ));
     }
 }

@@ -29,7 +29,6 @@ cargo run -- examples/hello.bas --tokens
 ## Docs
 
 - [DEVELOPMENT.md](DEVELOPMENT.md) — Setup & contributing
-- [PROJECT_PLAN.md](PROJECT_PLAN.md) — Decisions & roadmap
 - [AgenticLogs/](AgenticLogs/) — Development history
 
 ## License

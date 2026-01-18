@@ -162,7 +162,6 @@ QB64Fresh/                      # Main compiler workspace
 ├── docs/                       # Documentation
 ├── AgenticLogs/                # Development history and decisions
 ├── CLAUDE.md                   # AI assistant configuration
-├── PROJECT_PLAN.md             # Project roadmap
 └── Cargo.toml                  # Workspace manifest
 
 vscode-qb64fresh/               # VSCode extension (sibling project)
@@ -330,8 +329,6 @@ C Source → C Compiler → Native Executable
 1. **Trait-based backends**: `CodeGenerator` trait allows multiple backends
 2. **Rust runtime**: Using Rust crates (sdl2, rodio) instead of porting C++
 3. **LSP-first**: No built-in IDE; provide LSP for editor integration
-
-See `PROJECT_PLAN.md` for full decision rationale.
 
 ---
 

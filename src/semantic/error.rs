@@ -47,6 +47,14 @@ pub enum SemanticError {
         duplicate_span: Span,
     },
 
+    /// TYPE defined more than once.
+    #[error("TYPE `{name}` already defined")]
+    DuplicateType {
+        name: String,
+        original_span: Span,
+        duplicate_span: Span,
+    },
+
     // === Type Errors ===
     /// Expected one type but found another.
     #[error("type mismatch: expected {expected}, found {found}")]
@@ -173,6 +181,7 @@ impl SemanticError {
             SemanticError::DuplicateVariable { duplicate_span, .. } => *duplicate_span,
             SemanticError::DuplicateLabel { duplicate_span, .. } => *duplicate_span,
             SemanticError::DuplicateProcedure { duplicate_span, .. } => *duplicate_span,
+            SemanticError::DuplicateType { duplicate_span, .. } => *duplicate_span,
             SemanticError::TypeMismatch { span, .. } => *span,
             SemanticError::InvalidConversion { span, .. } => *span,
             SemanticError::InvalidBinaryOp { span, .. } => *span,

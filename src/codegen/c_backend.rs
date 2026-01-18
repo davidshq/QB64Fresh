@@ -43,8 +43,8 @@ use crate::ast::{BinaryOp, ExitType, PrintSeparator, UnaryOp};
 use crate::codegen::error::CodeGenError;
 use crate::codegen::{CodeGenerator, GeneratedOutput};
 use crate::semantic::typed_ir::{
-    TypedCaseCompareOp, TypedCaseMatch, TypedDoCondition, TypedExpr, TypedExprKind, TypedParameter,
-    TypedPrintItem, TypedProgram, TypedStatement, TypedStatementKind,
+    TypedCaseCompareOp, TypedCaseMatch, TypedDataValue, TypedDoCondition, TypedExpr, TypedExprKind,
+    TypedParameter, TypedPrintItem, TypedProgram, TypedStatement, TypedStatementKind,
 };
 use crate::semantic::types::BasicType;
 use std::fmt::Write;
@@ -71,6 +71,8 @@ pub struct CBackend {
     loop_stack: Vec<LoopContext>,
     /// Runtime mode.
     runtime_mode: RuntimeMode,
+    /// Map of DATA labels to their indices (for RESTORE with label).
+    data_label_indices: std::collections::HashMap<String, usize>,
 }
 
 /// Context for the current loop (for EXIT statement handling).
@@ -80,6 +82,20 @@ struct LoopContext {
     break_label: String,
     /// Type of loop (For, While, Do).
     loop_type: ExitType,
+}
+
+/// Information collected from DATA statements for code generation.
+///
+/// This includes both the data values and a mapping of labels to their
+/// positions in the data pool (for RESTORE with label support).
+struct DataPoolInfo {
+    /// The data values as (value_string, type_tag) tuples.
+    values: Vec<(String, &'static str)>,
+    /// Map of uppercase label names to their DATA pool index.
+    ///
+    /// When a label appears before a DATA statement, it maps to the index
+    /// of the first value in that DATA statement.
+    label_indices: std::collections::HashMap<String, usize>,
 }
 
 impl Default for CBackend {
@@ -96,6 +112,7 @@ impl CBackend {
             indent: 0,
             loop_stack: Vec::new(),
             runtime_mode: RuntimeMode::Inline,
+            data_label_indices: std::collections::HashMap::new(),
         }
     }
 
@@ -106,6 +123,7 @@ impl CBackend {
             indent: 0,
             loop_stack: Vec::new(),
             runtime_mode,
+            data_label_indices: std::collections::HashMap::new(),
         }
     }
 
@@ -181,6 +199,7 @@ impl CBackend {
         writeln!(output, "#include <stdbool.h>").unwrap();
         writeln!(output, "#include <string.h>").unwrap();
         writeln!(output, "#include <math.h>").unwrap();
+        writeln!(output, "#include <ctype.h>").unwrap();
         writeln!(output).unwrap();
 
         match self.runtime_mode {
@@ -351,6 +370,239 @@ impl CBackend {
         .unwrap();
         writeln!(output, "}}").unwrap();
         writeln!(output).unwrap();
+
+        // Math helper functions
+        writeln!(output, "int32_t qb_sgn(double n) {{").unwrap();
+        writeln!(output, "    return (n > 0) - (n < 0);").unwrap();
+        writeln!(output, "}}").unwrap();
+        writeln!(output).unwrap();
+
+        writeln!(output, "double qb_pi(void) {{").unwrap();
+        writeln!(output, "    return 3.14159265358979323846;").unwrap();
+        writeln!(output, "}}").unwrap();
+        writeln!(output).unwrap();
+
+        writeln!(
+            output,
+            "double qb_clamp(double value, double min, double max) {{"
+        )
+        .unwrap();
+        writeln!(
+            output,
+            "    return value < min ? min : (value > max ? max : value);"
+        )
+        .unwrap();
+        writeln!(output, "}}").unwrap();
+        writeln!(output).unwrap();
+
+        writeln!(output, "float qb_rnd(float seed) {{").unwrap();
+        writeln!(output, "    (void)seed; /* QB RND ignores seed for now */").unwrap();
+        writeln!(output, "    return (float)rand() / (float)RAND_MAX;").unwrap();
+        writeln!(output, "}}").unwrap();
+        writeln!(output).unwrap();
+
+        // String functions
+        // LEFT$(s$, n) - returns first n characters
+        writeln!(output, "qb_string* qb_left(qb_string* s, int32_t n) {{").unwrap();
+        writeln!(output, "    if (n <= 0) return qb_string_new(\"\");").unwrap();
+        writeln!(
+            output,
+            "    size_t len = (size_t)n < s->len ? (size_t)n : s->len;"
+        )
+        .unwrap();
+        writeln!(output, "    qb_string* result = malloc(sizeof(qb_string));").unwrap();
+        writeln!(output, "    result->len = len;").unwrap();
+        writeln!(output, "    result->capacity = len + 1;").unwrap();
+        writeln!(output, "    result->data = malloc(result->capacity);").unwrap();
+        writeln!(output, "    memcpy(result->data, s->data, len);").unwrap();
+        writeln!(output, "    result->data[len] = '\\0';").unwrap();
+        writeln!(output, "    return result;").unwrap();
+        writeln!(output, "}}").unwrap();
+        writeln!(output).unwrap();
+
+        // RIGHT$(s$, n) - returns last n characters
+        writeln!(output, "qb_string* qb_right(qb_string* s, int32_t n) {{").unwrap();
+        writeln!(output, "    if (n <= 0) return qb_string_new(\"\");").unwrap();
+        writeln!(
+            output,
+            "    size_t len = (size_t)n < s->len ? (size_t)n : s->len;"
+        )
+        .unwrap();
+        writeln!(output, "    size_t start = s->len - len;").unwrap();
+        writeln!(output, "    qb_string* result = malloc(sizeof(qb_string));").unwrap();
+        writeln!(output, "    result->len = len;").unwrap();
+        writeln!(output, "    result->capacity = len + 1;").unwrap();
+        writeln!(output, "    result->data = malloc(result->capacity);").unwrap();
+        writeln!(output, "    memcpy(result->data, s->data + start, len);").unwrap();
+        writeln!(output, "    result->data[len] = '\\0';").unwrap();
+        writeln!(output, "    return result;").unwrap();
+        writeln!(output, "}}").unwrap();
+        writeln!(output).unwrap();
+
+        // MID$(s$, start, len) - returns substring (1-based index)
+        writeln!(
+            output,
+            "qb_string* qb_mid(qb_string* s, int32_t start, int32_t n) {{"
+        )
+        .unwrap();
+        writeln!(
+            output,
+            "    if (start < 1 || n <= 0 || (size_t)start > s->len) return qb_string_new(\"\");"
+        )
+        .unwrap();
+        writeln!(output, "    size_t idx = (size_t)(start - 1);").unwrap();
+        writeln!(
+            output,
+            "    size_t len = (idx + (size_t)n > s->len) ? s->len - idx : (size_t)n;"
+        )
+        .unwrap();
+        writeln!(output, "    qb_string* result = malloc(sizeof(qb_string));").unwrap();
+        writeln!(output, "    result->len = len;").unwrap();
+        writeln!(output, "    result->capacity = len + 1;").unwrap();
+        writeln!(output, "    result->data = malloc(result->capacity);").unwrap();
+        writeln!(output, "    memcpy(result->data, s->data + idx, len);").unwrap();
+        writeln!(output, "    result->data[len] = '\\0';").unwrap();
+        writeln!(output, "    return result;").unwrap();
+        writeln!(output, "}}").unwrap();
+        writeln!(output).unwrap();
+
+        // INSTR(start, s$, find$) - find substring (1-based, returns 0 if not found)
+        writeln!(
+            output,
+            "int32_t qb_instr(int32_t start, qb_string* s, qb_string* find) {{"
+        )
+        .unwrap();
+        writeln!(
+            output,
+            "    if (start < 1 || (size_t)start > s->len || find->len == 0) return 0;"
+        )
+        .unwrap();
+        writeln!(
+            output,
+            "    char* pos = strstr(s->data + start - 1, find->data);"
+        )
+        .unwrap();
+        writeln!(output, "    return pos ? (int32_t)(pos - s->data + 1) : 0;").unwrap();
+        writeln!(output, "}}").unwrap();
+        writeln!(output).unwrap();
+
+        // STR$(n) - convert number to string
+        writeln!(output, "qb_string* qb_str(double n) {{").unwrap();
+        writeln!(output, "    char buf[64];").unwrap();
+        writeln!(output, "    snprintf(buf, sizeof(buf), \" %g\", n);").unwrap();
+        writeln!(output, "    return qb_string_new(buf);").unwrap();
+        writeln!(output, "}}").unwrap();
+        writeln!(output).unwrap();
+
+        // VAL(s$) - convert string to number
+        writeln!(output, "double qb_val(qb_string* s) {{").unwrap();
+        writeln!(output, "    return atof(s->data);").unwrap();
+        writeln!(output, "}}").unwrap();
+        writeln!(output).unwrap();
+
+        // UCASE$(s$) - convert to uppercase
+        writeln!(output, "qb_string* qb_ucase(qb_string* s) {{").unwrap();
+        writeln!(output, "    qb_string* result = malloc(sizeof(qb_string));").unwrap();
+        writeln!(output, "    result->len = s->len;").unwrap();
+        writeln!(output, "    result->capacity = s->len + 1;").unwrap();
+        writeln!(output, "    result->data = malloc(result->capacity);").unwrap();
+        writeln!(
+            output,
+            "    for (size_t i = 0; i < s->len; i++) result->data[i] = toupper(s->data[i]);"
+        )
+        .unwrap();
+        writeln!(output, "    result->data[s->len] = '\\0';").unwrap();
+        writeln!(output, "    return result;").unwrap();
+        writeln!(output, "}}").unwrap();
+        writeln!(output).unwrap();
+
+        // LCASE$(s$) - convert to lowercase
+        writeln!(output, "qb_string* qb_lcase(qb_string* s) {{").unwrap();
+        writeln!(output, "    qb_string* result = malloc(sizeof(qb_string));").unwrap();
+        writeln!(output, "    result->len = s->len;").unwrap();
+        writeln!(output, "    result->capacity = s->len + 1;").unwrap();
+        writeln!(output, "    result->data = malloc(result->capacity);").unwrap();
+        writeln!(
+            output,
+            "    for (size_t i = 0; i < s->len; i++) result->data[i] = tolower(s->data[i]);"
+        )
+        .unwrap();
+        writeln!(output, "    result->data[s->len] = '\\0';").unwrap();
+        writeln!(output, "    return result;").unwrap();
+        writeln!(output, "}}").unwrap();
+        writeln!(output).unwrap();
+
+        // LTRIM$(s$) - remove leading spaces
+        writeln!(output, "qb_string* qb_ltrim(qb_string* s) {{").unwrap();
+        writeln!(output, "    size_t start = 0;").unwrap();
+        writeln!(
+            output,
+            "    while (start < s->len && s->data[start] == ' ') start++;"
+        )
+        .unwrap();
+        writeln!(output, "    return qb_right(s, (int32_t)(s->len - start));").unwrap();
+        writeln!(output, "}}").unwrap();
+        writeln!(output).unwrap();
+
+        // RTRIM$(s$) - remove trailing spaces
+        writeln!(output, "qb_string* qb_rtrim(qb_string* s) {{").unwrap();
+        writeln!(output, "    size_t end = s->len;").unwrap();
+        writeln!(
+            output,
+            "    while (end > 0 && s->data[end - 1] == ' ') end--;"
+        )
+        .unwrap();
+        writeln!(output, "    return qb_left(s, (int32_t)end);").unwrap();
+        writeln!(output, "}}").unwrap();
+        writeln!(output).unwrap();
+
+        // SPACE$(n) - return n spaces
+        writeln!(output, "qb_string* qb_space(int32_t n) {{").unwrap();
+        writeln!(output, "    if (n <= 0) return qb_string_new(\"\");").unwrap();
+        writeln!(output, "    qb_string* result = malloc(sizeof(qb_string));").unwrap();
+        writeln!(output, "    result->len = (size_t)n;").unwrap();
+        writeln!(output, "    result->capacity = result->len + 1;").unwrap();
+        writeln!(output, "    result->data = malloc(result->capacity);").unwrap();
+        writeln!(output, "    memset(result->data, ' ', result->len);").unwrap();
+        writeln!(output, "    result->data[result->len] = '\\0';").unwrap();
+        writeln!(output, "    return result;").unwrap();
+        writeln!(output, "}}").unwrap();
+        writeln!(output).unwrap();
+
+        // STRING$(n, char$) - return n copies of first char of string
+        writeln!(
+            output,
+            "qb_string* qb_string_fill(int32_t n, qb_string* c) {{"
+        )
+        .unwrap();
+        writeln!(
+            output,
+            "    if (n <= 0 || c->len == 0) return qb_string_new(\"\");"
+        )
+        .unwrap();
+        writeln!(output, "    qb_string* result = malloc(sizeof(qb_string));").unwrap();
+        writeln!(output, "    result->len = (size_t)n;").unwrap();
+        writeln!(output, "    result->capacity = result->len + 1;").unwrap();
+        writeln!(output, "    result->data = malloc(result->capacity);").unwrap();
+        writeln!(output, "    memset(result->data, c->data[0], result->len);").unwrap();
+        writeln!(output, "    result->data[result->len] = '\\0';").unwrap();
+        writeln!(output, "    return result;").unwrap();
+        writeln!(output, "}}").unwrap();
+        writeln!(output).unwrap();
+
+        // qb_str_from_c - create qb_string from C string (alias for qb_string_new)
+        writeln!(output, "qb_string* qb_str_from_c(const char* s) {{").unwrap();
+        writeln!(output, "    return qb_string_new(s);").unwrap();
+        writeln!(output, "}}").unwrap();
+        writeln!(output).unwrap();
+
+        // qb_str_float - convert float to string (used by DATA/READ)
+        writeln!(output, "qb_string* qb_str_float(double n) {{").unwrap();
+        writeln!(output, "    char buf[64];").unwrap();
+        writeln!(output, "    snprintf(buf, sizeof(buf), \"%g\", n);").unwrap();
+        writeln!(output, "    return qb_string_new(buf);").unwrap();
+        writeln!(output, "}}").unwrap();
+        writeln!(output).unwrap();
     }
 
     /// Emits an expression, returning the C code.
@@ -438,12 +690,48 @@ impl CBackend {
                 Ok(format!("{}({})", c_name, args_str))
             }
 
-            TypedExprKind::ArrayAccess { name, indices } => {
+            TypedExprKind::ArrayAccess {
+                name,
+                indices,
+                dimensions,
+            } => {
                 let c_name = self.c_identifier(name);
                 let indices_code: Result<Vec<_>, _> =
                     indices.iter().map(|idx| self.emit_expr(idx)).collect();
-                let indices_str = indices_code?.join("][");
-                Ok(format!("{}[{}]", c_name, indices_str))
+                let indices_code = indices_code?;
+
+                if dimensions.is_empty() || indices_code.len() == 1 {
+                    // 1D array - simple index (subtracting lower bound)
+                    if let Some(dim) = dimensions.first() {
+                        Ok(format!("{}[{} - {}]", c_name, indices_code[0], dim.lower))
+                    } else {
+                        // No dimension info, use index as-is (shouldn't happen)
+                        Ok(format!("{}[{}]", c_name, indices_code[0]))
+                    }
+                } else {
+                    // Multi-dimensional array - calculate linear index
+                    // For 2D: arr(i, j) -> arr[(i - lower1) * size2 + (j - lower2)]
+                    // General formula: sum of (adjusted_index * stride)
+                    let mut linear_parts = Vec::new();
+
+                    for (i, (idx, dim)) in indices_code.iter().zip(dimensions.iter()).enumerate() {
+                        let adjusted = format!("({} - {})", idx, dim.lower);
+
+                        if i < dimensions.len() - 1 {
+                            // Calculate stride: product of all remaining dimension sizes
+                            let stride: i64 = dimensions[i + 1..]
+                                .iter()
+                                .map(|d| d.upper - d.lower + 1)
+                                .product();
+                            linear_parts.push(format!("{} * {}", adjusted, stride));
+                        } else {
+                            // Last dimension, no stride multiplication
+                            linear_parts.push(adjusted);
+                        }
+                    }
+
+                    Ok(format!("{}[{}]", c_name, linear_parts.join(" + ")))
+                }
             }
 
             TypedExprKind::Convert { expr, to_type } => {
@@ -456,6 +744,12 @@ impl CBackend {
                 }
 
                 Ok(format!("(({})({}))", c_type, inner_code))
+            }
+
+            TypedExprKind::FieldAccess { object, field } => {
+                let obj_code = self.emit_expr(object)?;
+                let c_field = self.c_identifier(field);
+                Ok(format!("{}.{}", obj_code, c_field))
             }
         }
     }
@@ -534,6 +828,18 @@ impl CBackend {
             "INT" => "floor".to_string(),
             "SGN" => "qb_sgn".to_string(),
             "RND" => "qb_rnd".to_string(),
+
+            // QB64 extended math functions
+            "_PI" => "qb_pi".to_string(),
+            "_ASIN" => "asin".to_string(),
+            "_ACOS" => "acos".to_string(),
+            "_ATAN2" => "atan2".to_string(),
+            "_HYPOT" => "hypot".to_string(),
+            "_CEIL" => "ceil".to_string(),
+            "_ROUND" => "round".to_string(),
+            "_MIN" => "fmin".to_string(),
+            "_MAX" => "fmax".to_string(),
+            "_CLAMP" => "qb_clamp".to_string(),
 
             // String functions
             "LEN" => "qb_len".to_string(),
@@ -621,6 +927,68 @@ impl CBackend {
                     .unwrap();
                 } else {
                     writeln!(output, "{}{} = {};", indent, c_name, value_code).unwrap();
+                }
+            }
+
+            TypedStatementKind::ArrayAssignment {
+                name,
+                indices,
+                value,
+                dimensions,
+                element_type,
+            } => {
+                let c_name = self.c_identifier(name);
+                let value_code = self.emit_expr(value)?;
+
+                // Calculate the linear index
+                let indices_code: Result<Vec<_>, _> =
+                    indices.iter().map(|idx| self.emit_expr(idx)).collect();
+                let indices_code = indices_code?;
+
+                let index_expr = if dimensions.is_empty() || indices_code.len() == 1 {
+                    // 1D array
+                    if let Some(dim) = dimensions.first() {
+                        format!("{} - {}", indices_code[0], dim.lower)
+                    } else {
+                        indices_code[0].clone()
+                    }
+                } else {
+                    // Multi-dimensional array - calculate linear index
+                    let mut linear_parts = Vec::new();
+
+                    for (i, (idx, dim)) in indices_code.iter().zip(dimensions.iter()).enumerate() {
+                        let adjusted = format!("({} - {})", idx, dim.lower);
+
+                        if i < dimensions.len() - 1 {
+                            let stride: i64 = dimensions[i + 1..]
+                                .iter()
+                                .map(|d| d.upper - d.lower + 1)
+                                .product();
+                            linear_parts.push(format!("{} * {}", adjusted, stride));
+                        } else {
+                            linear_parts.push(adjusted);
+                        }
+                    }
+
+                    linear_parts.join(" + ")
+                };
+
+                // Handle type conversion if needed
+                if value.basic_type != *element_type {
+                    let c_type = self.c_type(element_type);
+                    writeln!(
+                        output,
+                        "{}{}[{}] = ({})({});",
+                        indent, c_name, index_expr, c_type, value_code
+                    )
+                    .unwrap();
+                } else {
+                    writeln!(
+                        output,
+                        "{}{}[{}] = {};",
+                        indent, c_name, index_expr, value_code
+                    )
+                    .unwrap();
                 }
             }
 
@@ -1052,16 +1420,17 @@ impl CBackend {
                     let init = self.default_init(basic_type);
                     writeln!(output, "{}{} {} = {};", indent, c_type, c_name, init).unwrap();
                 } else {
-                    // Array - calculate total size
+                    // Array - declare pointer and allocate
                     let sizes: Vec<String> = dimensions
                         .iter()
                         .map(|d| format!("({})", d.upper - d.lower + 1))
                         .collect();
                     let size_expr = sizes.join(" * ");
+                    // First declare the pointer, then allocate
                     writeln!(
                         output,
-                        "{}{} = malloc(sizeof({}) * {});",
-                        indent, c_name, c_type, size_expr
+                        "{}{}* {} = malloc(sizeof({}) * {});",
+                        indent, c_type, c_name, c_type, size_expr
                     )
                     .unwrap();
                 }
@@ -1098,6 +1467,182 @@ impl CBackend {
             TypedStatementKind::Expression(expr) => {
                 let expr_code = self.emit_expr(expr)?;
                 writeln!(output, "{}{};", indent, expr_code).unwrap();
+            }
+
+            // Preprocessor directives - emit as comments for now
+            // In a full implementation, these would be processed during a preprocessing phase
+            TypedStatementKind::IncludeDirective { path } => {
+                writeln!(output, "{}/* $INCLUDE: '{}' */", indent, path).unwrap();
+            }
+
+            TypedStatementKind::ConditionalBlock {
+                condition,
+                then_branch,
+                elseif_branches,
+                else_branch,
+            } => {
+                // Emit conditional compilation as C preprocessor directives
+                // This is a simplified approach - real QB64 uses its own preprocessor
+                writeln!(output, "{}/* $IF {} */", indent, condition).unwrap();
+                for stmt in then_branch {
+                    self.emit_stmt(stmt, output)?;
+                }
+                for (elseif_cond, elseif_body) in elseif_branches {
+                    writeln!(output, "{}/* $ELSEIF {} */", indent, elseif_cond).unwrap();
+                    for stmt in elseif_body {
+                        self.emit_stmt(stmt, output)?;
+                    }
+                }
+                if let Some(else_body) = else_branch {
+                    writeln!(output, "{}/* $ELSE */", indent).unwrap();
+                    for stmt in else_body {
+                        self.emit_stmt(stmt, output)?;
+                    }
+                }
+                writeln!(output, "{}/* $END IF */", indent).unwrap();
+            }
+
+            TypedStatementKind::MetaCommand { command, args } => {
+                let args_str = args.as_deref().unwrap_or("");
+                writeln!(output, "{}/* ${} {} */", indent, command, args_str).unwrap();
+            }
+
+            TypedStatementKind::Swap { left, right } => {
+                let left_code = self.emit_expr(left)?;
+                let right_code = self.emit_expr(right)?;
+                let c_type = self.c_type(&left.basic_type);
+
+                // Generate a temp variable swap
+                let temp_var = self.next_label("swap_temp");
+                writeln!(output, "{}{} {} = {};", indent, c_type, temp_var, left_code).unwrap();
+                writeln!(output, "{}{} = {};", indent, left_code, right_code).unwrap();
+                writeln!(output, "{}{} = {};", indent, right_code, temp_var).unwrap();
+            }
+
+            TypedStatementKind::Continue { continue_type } => {
+                // Find the matching loop's continue label
+                // For now, we just use C's continue statement which works for the innermost loop
+                // A more sophisticated approach would track loop labels like EXIT does
+                let _ = continue_type; // Will use for specific loop type targeting later
+                writeln!(output, "{}continue;", indent).unwrap();
+            }
+
+            TypedStatementKind::TypeDefinition { name, members } => {
+                // Generate a C struct for the TYPE
+                let c_name = self.c_identifier(name);
+                writeln!(output, "{}typedef struct {} {{", indent, c_name).unwrap();
+
+                for member in members {
+                    let c_member_type = self.c_type(&member.basic_type);
+                    let c_member_name = self.c_identifier(&member.name);
+
+                    // Handle fixed-length strings specially
+                    if let BasicType::FixedString(len) = &member.basic_type {
+                        // Fixed-length string becomes a char array
+                        writeln!(output, "{}    char {}[{}];", indent, c_member_name, len + 1)
+                            .unwrap();
+                    } else {
+                        writeln!(output, "{}    {} {};", indent, c_member_type, c_member_name)
+                            .unwrap();
+                    }
+                }
+
+                writeln!(output, "{}}} {};", indent, c_name).unwrap();
+                writeln!(output).unwrap();
+            }
+
+            TypedStatementKind::Data { .. } => {
+                // DATA statements are handled in collect_data_values during global emission
+                // Nothing to emit inline - the data is in the global _qb_data array
+            }
+
+            TypedStatementKind::Read { variables } => {
+                // Each variable reads the next value from the DATA pool
+                for (var_name, var_type) in variables {
+                    let c_var = self.c_identifier(var_name);
+
+                    // Generate READ with type conversion based on target variable type
+                    match var_type {
+                        BasicType::String | BasicType::FixedString(_) => {
+                            // For strings, copy the string value
+                            writeln!(
+                                output,
+                                "{}if (_qb_data_ptr < _qb_data_count && _qb_data[_qb_data_ptr].type == 's') {{",
+                                indent
+                            )
+                            .unwrap();
+                            writeln!(
+                                output,
+                                "{}    {} = qb_str_from_c(_qb_data[_qb_data_ptr].v.s);",
+                                indent, c_var
+                            )
+                            .unwrap();
+                            writeln!(
+                                output,
+                                "{}}} else if (_qb_data_ptr < _qb_data_count) {{",
+                                indent
+                            )
+                            .unwrap();
+                            writeln!(
+                                output,
+                                "{}    {} = qb_str_float(_qb_data[_qb_data_ptr].v.n);",
+                                indent, c_var
+                            )
+                            .unwrap();
+                            writeln!(output, "{}}}", indent).unwrap();
+                            writeln!(output, "{}_qb_data_ptr++;", indent).unwrap();
+                        }
+                        _ => {
+                            // For numeric types, read the numeric value with conversion
+                            let c_type = self.c_type(var_type);
+                            writeln!(
+                                output,
+                                "{}if (_qb_data_ptr < _qb_data_count && _qb_data[_qb_data_ptr].type == 'd') {{",
+                                indent
+                            )
+                            .unwrap();
+                            writeln!(
+                                output,
+                                "{}    {} = ({})_qb_data[_qb_data_ptr].v.n;",
+                                indent, c_var, c_type
+                            )
+                            .unwrap();
+                            writeln!(output, "{}}}", indent).unwrap();
+                            writeln!(output, "{}_qb_data_ptr++;", indent).unwrap();
+                        }
+                    }
+                }
+            }
+
+            TypedStatementKind::Restore { label } => {
+                match label {
+                    None => {
+                        // RESTORE without label - reset to beginning
+                        writeln!(output, "{}_qb_data_ptr = 0;", indent).unwrap();
+                    }
+                    Some(lbl) => {
+                        // RESTORE with label - look up the label's DATA index
+                        let label_upper = lbl.to_uppercase();
+                        if let Some(&index) = self.data_label_indices.get(&label_upper) {
+                            writeln!(
+                                output,
+                                "{}_qb_data_ptr = {}; /* RESTORE {} */",
+                                indent, index, lbl
+                            )
+                            .unwrap();
+                        } else {
+                            // Label not found - emit warning comment and reset to 0
+                            // This could happen if the label exists but has no DATA after it
+                            writeln!(
+                                output,
+                                "{}/* Warning: RESTORE label '{}' not associated with DATA */",
+                                indent, lbl
+                            )
+                            .unwrap();
+                            writeln!(output, "{}_qb_data_ptr = 0;", indent).unwrap();
+                        }
+                    }
+                }
             }
         }
 
@@ -1260,6 +1805,121 @@ impl CBackend {
 
         (globals, forward_decls)
     }
+
+    /// Collects all DATA values from the program into a flat array.
+    ///
+    /// Also tracks label positions for RESTORE with label support.
+    /// Labels immediately before DATA statements map to that DATA's index.
+    fn collect_data_values(&self, program: &TypedProgram) -> DataPoolInfo {
+        let mut info = DataPoolInfo {
+            values: Vec::new(),
+            label_indices: std::collections::HashMap::new(),
+        };
+        // Pending labels: labels seen that haven't been assigned to a DATA index yet
+        let mut pending_labels: Vec<String> = Vec::new();
+
+        for stmt in &program.statements {
+            self.collect_data_from_stmt(stmt, &mut info, &mut pending_labels);
+        }
+
+        info
+    }
+
+    /// Recursively collects DATA values from a statement and its children.
+    ///
+    /// Tracks labels that precede DATA statements so RESTORE can jump to them.
+    fn collect_data_from_stmt(
+        &self,
+        stmt: &TypedStatement,
+        info: &mut DataPoolInfo,
+        pending_labels: &mut Vec<String>,
+    ) {
+        match &stmt.kind {
+            TypedStatementKind::Label { name } => {
+                // Record this label as pending - it will be associated with the
+                // next DATA statement's starting index
+                pending_labels.push(name.to_uppercase());
+            }
+
+            TypedStatementKind::Data {
+                values: data_values,
+            } => {
+                // Associate any pending labels with the current DATA index
+                let current_index = info.values.len();
+                for label in pending_labels.drain(..) {
+                    info.label_indices.insert(label, current_index);
+                }
+
+                // Collect the data values
+                for val in data_values {
+                    let (val_str, type_tag) = match val {
+                        TypedDataValue::Integer(n) => (format!("{}.0", n), "d"),
+                        TypedDataValue::Float(f) => (format!("{}", f), "d"),
+                        TypedDataValue::String(s) => {
+                            // Escape the string for C
+                            let escaped = self.escape_string(s);
+                            (format!("\"{}\"", escaped), "s")
+                        }
+                    };
+                    info.values.push((val_str, type_tag));
+                }
+            }
+
+            // Recurse into compound statements
+            TypedStatementKind::If {
+                then_branch,
+                elseif_branches,
+                else_branch,
+                ..
+            } => {
+                for s in then_branch {
+                    self.collect_data_from_stmt(s, info, pending_labels);
+                }
+                for (_, branch) in elseif_branches {
+                    for s in branch {
+                        self.collect_data_from_stmt(s, info, pending_labels);
+                    }
+                }
+                if let Some(else_stmts) = else_branch {
+                    for s in else_stmts {
+                        self.collect_data_from_stmt(s, info, pending_labels);
+                    }
+                }
+            }
+
+            TypedStatementKind::For { body, .. }
+            | TypedStatementKind::While { body, .. }
+            | TypedStatementKind::DoLoop { body, .. } => {
+                for s in body {
+                    self.collect_data_from_stmt(s, info, pending_labels);
+                }
+            }
+
+            TypedStatementKind::SelectCase {
+                cases, case_else, ..
+            } => {
+                for case in cases {
+                    for s in &case.body {
+                        self.collect_data_from_stmt(s, info, pending_labels);
+                    }
+                }
+                if let Some(else_stmts) = case_else {
+                    for s in else_stmts {
+                        self.collect_data_from_stmt(s, info, pending_labels);
+                    }
+                }
+            }
+
+            TypedStatementKind::SubDefinition { body, .. }
+            | TypedStatementKind::FunctionDefinition { body, .. } => {
+                for s in body {
+                    self.collect_data_from_stmt(s, info, pending_labels);
+                }
+            }
+
+            _ => {}
+        }
+    }
 }
 
 impl CodeGenerator for CBackend {
@@ -1289,6 +1949,36 @@ impl CodeGenerator for CBackend {
             for decl in forward_decls {
                 writeln!(output, "{}", decl).unwrap();
             }
+            writeln!(output).unwrap();
+        }
+
+        // Collect and emit DATA pool
+        let data_pool = backend.collect_data_values(program);
+        // Store label indices for RESTORE statement emission
+        backend.data_label_indices = data_pool.label_indices;
+
+        if !data_pool.values.is_empty() {
+            writeln!(output, "/* DATA Pool */").unwrap();
+            writeln!(output, "typedef struct {{ char type; union {{ double n; const char* s; }} v; }} _qb_data_item;").unwrap();
+            write!(output, "static _qb_data_item _qb_data[] = {{").unwrap();
+            for (i, (val, type_tag)) in data_pool.values.iter().enumerate() {
+                if i > 0 {
+                    write!(output, ",").unwrap();
+                }
+                if *type_tag == "d" {
+                    write!(output, " {{'d', {{.n = {}}}}}", val).unwrap();
+                } else {
+                    write!(output, " {{'s', {{.s = {}}}}}", val).unwrap();
+                }
+            }
+            writeln!(output, " }};").unwrap();
+            writeln!(output, "static int _qb_data_ptr = 0;").unwrap();
+            writeln!(
+                output,
+                "static const int _qb_data_count = {};",
+                data_pool.values.len()
+            )
+            .unwrap();
             writeln!(output).unwrap();
         }
 
@@ -1492,5 +2182,100 @@ mod tests {
 
         // Emoji: '😀' (U+1F600) is encoded as bytes [0xF0, 0x9F, 0x98, 0x80]
         assert_eq!(backend.escape_string("😀"), "\\xf0\\x9f\\x98\\x80");
+    }
+
+    #[test]
+    fn test_collect_data_with_labels() {
+        // Test that labels before DATA statements are correctly tracked
+        let backend = CBackend::new();
+
+        // Create a program with:
+        // myLabel:
+        // DATA 1, 2, 3
+        // DATA 4, 5
+        // anotherLabel:
+        // DATA 6
+        let program = TypedProgram::new(vec![
+            TypedStatement::new(
+                TypedStatementKind::Label {
+                    name: "myLabel".to_string(),
+                },
+                Span::new(0, 8),
+            ),
+            TypedStatement::new(
+                TypedStatementKind::Data {
+                    values: vec![
+                        TypedDataValue::Integer(1),
+                        TypedDataValue::Integer(2),
+                        TypedDataValue::Integer(3),
+                    ],
+                },
+                Span::new(9, 20),
+            ),
+            TypedStatement::new(
+                TypedStatementKind::Data {
+                    values: vec![TypedDataValue::Integer(4), TypedDataValue::Integer(5)],
+                },
+                Span::new(21, 30),
+            ),
+            TypedStatement::new(
+                TypedStatementKind::Label {
+                    name: "anotherLabel".to_string(),
+                },
+                Span::new(31, 44),
+            ),
+            TypedStatement::new(
+                TypedStatementKind::Data {
+                    values: vec![TypedDataValue::Integer(6)],
+                },
+                Span::new(45, 51),
+            ),
+        ]);
+
+        let data_pool = backend.collect_data_values(&program);
+
+        // Should have 6 data values total
+        assert_eq!(data_pool.values.len(), 6);
+
+        // myLabel should point to index 0 (first DATA)
+        assert_eq!(data_pool.label_indices.get("MYLABEL"), Some(&0));
+
+        // anotherLabel should point to index 5 (after the first 5 values)
+        assert_eq!(data_pool.label_indices.get("ANOTHERLABEL"), Some(&5));
+    }
+
+    #[test]
+    fn test_restore_with_label_codegen() {
+        // Test that RESTORE with label generates correct code
+        let program = TypedProgram::new(vec![
+            TypedStatement::new(
+                TypedStatementKind::Label {
+                    name: "testLabel".to_string(),
+                },
+                Span::new(0, 10),
+            ),
+            TypedStatement::new(
+                TypedStatementKind::Data {
+                    values: vec![TypedDataValue::Integer(1), TypedDataValue::Integer(2)],
+                },
+                Span::new(11, 20),
+            ),
+            TypedStatement::new(
+                TypedStatementKind::Restore {
+                    label: Some("testLabel".to_string()),
+                },
+                Span::new(21, 36),
+            ),
+        ]);
+
+        let backend = CBackend::new();
+        let result = backend.generate(&program).unwrap();
+
+        // Should contain RESTORE that sets pointer to 0 (the label's index)
+        assert!(
+            result
+                .code
+                .contains("_qb_data_ptr = 0; /* RESTORE testLabel */")
+        );
     }
 }

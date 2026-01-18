@@ -29,6 +29,9 @@ Thumbs.db
 *.so
 *.dylib
 
+# Generated C files from compiler
+examples/*.c
+
 # Test artifacts
 /tmp/
 

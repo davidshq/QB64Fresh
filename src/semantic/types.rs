@@ -254,35 +254,33 @@ pub fn type_from_suffix(name: &str) -> Option<BasicType> {
     }
 
     // Check for two-character QB64 suffixes first
-    if name.len() >= 2 {
-        let suffix2: std::string::String = name
-            .chars()
-            .rev()
-            .take(2)
-            .collect::<std::string::String>()
-            .chars()
-            .rev()
-            .collect();
-        match suffix2.as_str() {
-            "%%" => return Some(BasicType::Byte),
-            "&&" => return Some(BasicType::Integer64),
-            "##" => return Some(BasicType::Float),
-            "%&" => return Some(BasicType::Offset),
-            "~%" => return Some(BasicType::UnsignedInteger),
-            "~&" => return Some(BasicType::UnsignedLong),
-            "~`" => return Some(BasicType::UnsignedBit),
+    // Use byte slicing - suffixes are all ASCII so this is safe and O(1)
+    let bytes = name.as_bytes();
+    let len = bytes.len();
+
+    if len >= 2 {
+        // Get last two bytes directly (no allocation needed)
+        let last_two = &bytes[len - 2..];
+        match last_two {
+            b"%%" => return Some(BasicType::Byte),
+            b"&&" => return Some(BasicType::Integer64),
+            b"##" => return Some(BasicType::Float),
+            b"%&" => return Some(BasicType::Offset),
+            b"~%" => return Some(BasicType::UnsignedInteger),
+            b"~&" => return Some(BasicType::UnsignedLong),
+            b"~`" => return Some(BasicType::UnsignedBit),
             _ => {}
         }
     }
 
-    // Single-character suffixes
-    match name.chars().last()? {
-        '$' => Some(BasicType::String),
-        '%' => Some(BasicType::Integer),
-        '&' => Some(BasicType::Long),
-        '!' => Some(BasicType::Single),
-        '#' => Some(BasicType::Double),
-        '`' => Some(BasicType::Bit),
+    // Single-character suffixes - use last byte directly
+    match bytes[len - 1] {
+        b'$' => Some(BasicType::String),
+        b'%' => Some(BasicType::Integer),
+        b'&' => Some(BasicType::Long),
+        b'!' => Some(BasicType::Single),
+        b'#' => Some(BasicType::Double),
+        b'`' => Some(BasicType::Bit),
         _ => None,
     }
 }

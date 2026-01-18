@@ -35,8 +35,7 @@ Scan the entire codebase (not just recent changes) for:
 Evaluate whether the project is headed in the right direction:
 
 ### Documentation Currency
-Review and update if needed:
-- `PROJECT_PLAN.md` - Are phases, tasks, and status accurate?
+Review and update if needed
 - `CLAUDE.md` - Are key files, architecture, and lessons learned current?
 - `DEVELOPMENT.md` - Are setup/build instructions accurate?
 - `AgenticLogs/` - Is the latest session documented?

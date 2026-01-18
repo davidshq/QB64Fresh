@@ -330,6 +330,42 @@ impl SemanticAnalyzer {
         self.register_builtin_function("ATN", &[("n", BasicType::Double)], BasicType::Double);
         self.register_builtin_function("RND", &[("n", BasicType::Single)], BasicType::Single);
 
+        // QB64 extended math functions
+        self.register_builtin_function("_PI", &[], BasicType::Double);
+        self.register_builtin_function("_ASIN", &[("n", BasicType::Double)], BasicType::Double);
+        self.register_builtin_function("_ACOS", &[("n", BasicType::Double)], BasicType::Double);
+        self.register_builtin_function(
+            "_ATAN2",
+            &[("y", BasicType::Double), ("x", BasicType::Double)],
+            BasicType::Double,
+        );
+        self.register_builtin_function(
+            "_HYPOT",
+            &[("x", BasicType::Double), ("y", BasicType::Double)],
+            BasicType::Double,
+        );
+        self.register_builtin_function("_CEIL", &[("n", BasicType::Double)], BasicType::Long);
+        self.register_builtin_function("_ROUND", &[("n", BasicType::Double)], BasicType::Long);
+        self.register_builtin_function(
+            "_MIN",
+            &[("a", BasicType::Double), ("b", BasicType::Double)],
+            BasicType::Double,
+        );
+        self.register_builtin_function(
+            "_MAX",
+            &[("a", BasicType::Double), ("b", BasicType::Double)],
+            BasicType::Double,
+        );
+        self.register_builtin_function(
+            "_CLAMP",
+            &[
+                ("value", BasicType::Double),
+                ("min", BasicType::Double),
+                ("max", BasicType::Double),
+            ],
+            BasicType::Double,
+        );
+
         // Type conversion
         self.register_builtin_function("HEX$", &[("n", BasicType::Long)], BasicType::String);
         self.register_builtin_function("OCT$", &[("n", BasicType::Long)], BasicType::String);

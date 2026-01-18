@@ -56,22 +56,6 @@ We use a **tiered logging system** to balance readability with completeness:
 3. Add brief summary + link in AgenticLogs
 4. Continue detailed documentation in IndividualProblem doc
 
-### Tier 3: FullLogs/ (NOT Version Controlled)
-**Purpose:** Raw interaction history for reconstruction when needed
-
-**Content:** Complete session transcripts
-
-**Usage guidelines:**
-- Write to FullLogs continuously during sessions
-- DO NOT read from FullLogs routinely (too verbose)
-- Only consult when:
-  - Creating IndividualProblem docs that span sessions
-  - Need exact details that weren't captured in other tiers
-  - Debugging a problem requires exact reproduction steps
-- Try documentation, web search, and refined logs FIRST
-
-**Why separate:** Raw logs are too verbose for version control and regular use, but valuable as backup for detailed reconstruction.
-
 ### Logging Best Practices
 - Sanitize all logs: relative paths only, no sensitive system info
 - Link between tiers when referencing related content
@@ -105,10 +89,7 @@ We use a **tiered logging system** to balance readability with completeness:
    - [ ] Major decisions and milestones documented
    - [ ] Any complex problems have IndividualProblems entries
 
-2. **FullLogs updated?**
-   - [ ] Session transcript written to FullLogs/
-
-3. **If logs are NOT updated:**
+2. **If logs are NOT updated:**
    - STOP and update them BEFORE committing
    - This is a hard requirement, not optional
 
@@ -277,7 +258,6 @@ pub trait CodeGenerator {
 |------|---------|
 | `CLAUDE.md` | AI assistant configuration (this file) |
 | `DEVELOPMENT.md` | Developer onboarding guide |
-| `PROJECT_PLAN.md` | Project roadmap and phases |
 | `docs/QB64PE_ARCHITECTURE_ANALYSIS.md` | Original QB64 architecture analysis |
 | `docs/PARSER_PLAN.md` | Detailed parser implementation plan |
 | `docs/QB64_SYNTAX_REFERENCE.md` | QB64 language syntax quick reference |
@@ -408,5 +388,3 @@ When implementing, refer to:
 | `open_gl/` | **Skip** | Uses `_GL` commands - we're using SDL2/winit, not raw OpenGL |
 
 **Future milestone:** Start with `qb45com/` for core language compatibility. Programs using `_` prefixed commands (like `_SNDPLAYFILE`, `_GL*`, `_UNSIGNED`) are QB64 extensions that may not be in our initial scope.
-
-**THE MOST IMPORTANT PART OF THIS ENTIRE DOCUMENT IS THE Logging System SECTION, MAKE SURE YOU ALWAYS, ALWAYS, ALWAYS FOLLOW IT!**

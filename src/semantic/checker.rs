@@ -15,12 +15,15 @@
 //! errors for batch reporting rather than stopping at the first problem.
 
 use crate::ast::{
-    BinaryOp, CaseCompareOp, CaseMatch, DoCondition, Expr, ExprKind, PrintItem, Statement,
-    StatementKind, UnaryOp,
+    BinaryOp, CaseCompareOp, CaseMatch, DataValue, DoCondition, Expr, ExprKind, PrintItem, Span,
+    Statement, StatementKind, UnaryOp,
 };
 use crate::semantic::{
     error::SemanticError,
-    symbols::{ProcedureKind, ScopeKind, Symbol, SymbolKind, SymbolTable},
+    symbols::{
+        ArrayDimInfo, ProcedureKind, ScopeKind, Symbol, SymbolKind, SymbolTable,
+        UserTypeDefinition, UserTypeMember,
+    },
     typed_ir::*,
     types::{BasicType, from_type_spec, type_from_suffix},
 };
@@ -34,6 +37,27 @@ struct LoopContext {
     while_depth: usize,
     /// Depth of DO loops.
     do_depth: usize,
+}
+
+/// Bundles FOR loop components for type checking.
+///
+/// This struct groups the related parts of a FOR statement to reduce
+/// the number of parameters passed to `check_for`.
+struct ForLoopInfo<'a> {
+    /// Loop counter variable name.
+    variable: &'a str,
+    /// Start value expression.
+    start: &'a Expr,
+    /// End value expression.
+    end: &'a Expr,
+    /// Optional step value expression.
+    step: &'a Option<Expr>,
+    /// Loop body statements.
+    body: &'a [Statement],
+    /// Optional variable name after NEXT (for validation).
+    next_variable: &'a Option<String>,
+    /// Source span for error reporting.
+    span: Span,
 }
 
 /// The type checker validates and annotates the AST with types.
@@ -98,6 +122,10 @@ impl<'a> TypeChecker<'a> {
             ExprKind::FunctionCall { name, args } => {
                 self.check_function_call(name, args, expr.span)
             }
+
+            ExprKind::FieldAccess { object, field } => {
+                self.check_field_access(object, field, expr.span)
+            }
         }
     }
 
@@ -142,6 +170,61 @@ impl<'a> TypeChecker<'a> {
         let _ = self.symbols.define_symbol(symbol);
 
         TypedExpr::new(TypedExprKind::Variable(name.to_string()), basic_type, span)
+    }
+
+    /// Type checks a field access expression (e.g., `person.name`).
+    ///
+    /// This validates that:
+    /// - The object expression has a UserDefined type
+    /// - The field exists in that type (when TYPE members are tracked)
+    fn check_field_access(
+        &mut self,
+        object: &Expr,
+        field: &str,
+        span: crate::ast::Span,
+    ) -> TypedExpr {
+        let typed_object = self.check_expr(object);
+
+        // Determine the field type based on the object's type
+        let field_type = match &typed_object.basic_type {
+            BasicType::UserDefined(type_name) => {
+                // Look up the type definition to find the field's type
+                // For now, we'll use a placeholder lookup - Phase 3 will add proper type member tracking
+                if let Some(field_type) = self.lookup_type_field(type_name, field) {
+                    field_type
+                } else {
+                    self.errors.push(SemanticError::UndefinedVariable {
+                        name: format!("{}.{}", type_name, field),
+                        span,
+                    });
+                    BasicType::Unknown
+                }
+            }
+            _ => {
+                self.errors.push(SemanticError::TypeMismatch {
+                    expected: "user-defined type".to_string(),
+                    found: typed_object.basic_type.to_string(),
+                    span,
+                });
+                BasicType::Unknown
+            }
+        };
+
+        TypedExpr::new(
+            TypedExprKind::FieldAccess {
+                object: Box::new(typed_object),
+                field: field.to_string(),
+            },
+            field_type,
+            span,
+        )
+    }
+
+    /// Looks up a field's type in a user-defined TYPE.
+    ///
+    /// Returns None if the type or field doesn't exist.
+    fn lookup_type_field(&self, type_name: &str, field: &str) -> Option<BasicType> {
+        self.symbols.lookup_type_member(type_name, field)
     }
 
     /// Type checks a binary operation.
@@ -312,7 +395,7 @@ impl<'a> TypeChecker<'a> {
             return self.check_array_access(
                 name,
                 args,
-                dimensions.len(),
+                dimensions.clone(),
                 symbol.basic_type.clone(),
                 span,
             );
@@ -399,14 +482,14 @@ impl<'a> TypeChecker<'a> {
         &mut self,
         name: &str,
         indices: &[Expr],
-        expected_dims: usize,
+        dim_info: Vec<ArrayDimInfo>,
         element_type: BasicType,
         span: crate::ast::Span,
     ) -> TypedExpr {
-        if indices.len() != expected_dims {
+        if indices.len() != dim_info.len() {
             self.errors.push(SemanticError::ArrayDimensionMismatch {
                 name: name.to_string(),
-                expected: expected_dims,
+                expected: dim_info.len(),
                 found: indices.len(),
                 span,
             });
@@ -424,10 +507,20 @@ impl<'a> TypeChecker<'a> {
             typed_indices.push(typed_index);
         }
 
+        // Convert ArrayDimInfo to TypedArrayDimension for code generation
+        let typed_dimensions: Vec<TypedArrayDimension> = dim_info
+            .iter()
+            .map(|d| TypedArrayDimension {
+                lower: d.lower_bound,
+                upper: d.upper_bound,
+            })
+            .collect();
+
         TypedExpr::new(
             TypedExprKind::ArrayAccess {
                 name: name.to_string(),
                 indices: typed_indices,
+                dimensions: typed_dimensions,
             },
             element_type,
             span,
@@ -447,6 +540,12 @@ impl<'a> TypeChecker<'a> {
     pub fn check_statement(&mut self, stmt: &Statement) -> TypedStatement {
         match &stmt.kind {
             StatementKind::Let { name, value } => self.check_assignment(name, value, stmt.span),
+
+            StatementKind::ArrayAssignment {
+                name,
+                indices,
+                value,
+            } => self.check_array_assignment(name, indices, value, stmt.span),
 
             StatementKind::Print { values, newline } => {
                 self.check_print(values, *newline, stmt.span)
@@ -487,7 +586,16 @@ impl<'a> TypeChecker<'a> {
                 end,
                 step,
                 body,
-            } => self.check_for(variable, start, end, step, body, stmt.span),
+                next_variable,
+            } => self.check_for(ForLoopInfo {
+                variable,
+                start,
+                end,
+                step,
+                body,
+                next_variable,
+                span: stmt.span,
+            }),
 
             StatementKind::While { condition, body } => {
                 self.check_while(condition, body, stmt.span)
@@ -556,6 +664,204 @@ impl<'a> TypeChecker<'a> {
             StatementKind::Comment(text) => {
                 TypedStatement::new(TypedStatementKind::Comment(text.clone()), stmt.span)
             }
+
+            // Preprocessor directives - pass through as-is for later processing
+            StatementKind::IncludeDirective { path } => TypedStatement::new(
+                TypedStatementKind::IncludeDirective { path: path.clone() },
+                stmt.span,
+            ),
+
+            StatementKind::ConditionalBlock {
+                condition,
+                then_branch,
+                elseif_branches,
+                else_branch,
+            } => {
+                // Type check statements in all branches
+                let typed_then = then_branch
+                    .iter()
+                    .map(|s| self.check_statement(s))
+                    .collect();
+                let typed_elseif = elseif_branches
+                    .iter()
+                    .map(|(cond, body)| {
+                        let typed_body = body.iter().map(|s| self.check_statement(s)).collect();
+                        (cond.clone(), typed_body)
+                    })
+                    .collect();
+                let typed_else = else_branch
+                    .as_ref()
+                    .map(|body| body.iter().map(|s| self.check_statement(s)).collect());
+
+                TypedStatement::new(
+                    TypedStatementKind::ConditionalBlock {
+                        condition: condition.clone(),
+                        then_branch: typed_then,
+                        elseif_branches: typed_elseif,
+                        else_branch: typed_else,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::MetaCommand { command, args } => TypedStatement::new(
+                TypedStatementKind::MetaCommand {
+                    command: command.clone(),
+                    args: args.clone(),
+                },
+                stmt.span,
+            ),
+
+            StatementKind::Swap { left, right } => {
+                let typed_left = self.check_expr(left);
+                let typed_right = self.check_expr(right);
+
+                // Check that both expressions are lvalues (variables or array elements)
+                // For now, we'll verify at codegen; semantic check just ensures type compatibility
+                if typed_left.basic_type != typed_right.basic_type {
+                    // Allow numeric type conversions but warn
+                    if !typed_left
+                        .basic_type
+                        .is_convertible_to(&typed_right.basic_type)
+                        && !typed_right
+                            .basic_type
+                            .is_convertible_to(&typed_left.basic_type)
+                    {
+                        self.errors.push(SemanticError::TypeMismatch {
+                            expected: typed_left.basic_type.to_string(),
+                            found: typed_right.basic_type.to_string(),
+                            span: stmt.span,
+                        });
+                    }
+                }
+
+                TypedStatement::new(
+                    TypedStatementKind::Swap {
+                        left: typed_left,
+                        right: typed_right,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::Continue { continue_type } => {
+                // Check that we're inside a matching loop
+                // For now, we just pass through - full loop context checking would require
+                // tracking the loop stack through semantic analysis
+                TypedStatement::new(
+                    TypedStatementKind::Continue {
+                        continue_type: *continue_type,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::TypeDefinition { name, members } => {
+                // Convert AST type members to semantic type members
+                let typed_members: Vec<TypedMember> = members
+                    .iter()
+                    .map(|m| TypedMember {
+                        name: m.name.clone(),
+                        basic_type: from_type_spec(&m.type_spec),
+                    })
+                    .collect();
+
+                // Register the type definition in the symbol table
+                let user_type = UserTypeDefinition {
+                    name: name.clone(),
+                    members: typed_members
+                        .iter()
+                        .map(|m| UserTypeMember {
+                            name: m.name.clone(),
+                            basic_type: m.basic_type.clone(),
+                        })
+                        .collect(),
+                    span: stmt.span,
+                };
+
+                if let Err(_existing) = self.symbols.define_user_type(user_type) {
+                    self.errors.push(SemanticError::DuplicateType {
+                        name: name.clone(),
+                        original_span: stmt.span, // Could track the original definition span
+                        duplicate_span: stmt.span,
+                    });
+                }
+
+                TypedStatement::new(
+                    TypedStatementKind::TypeDefinition {
+                        name: name.clone(),
+                        members: typed_members,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::Data { values } => {
+                // Convert AST data values to typed data values
+                let typed_values: Vec<TypedDataValue> = values
+                    .iter()
+                    .map(|v| match v {
+                        DataValue::Integer(n) => TypedDataValue::Integer(*n),
+                        DataValue::Float(f) => TypedDataValue::Float(*f),
+                        DataValue::String(s) => TypedDataValue::String(s.clone()),
+                    })
+                    .collect();
+
+                TypedStatement::new(
+                    TypedStatementKind::Data {
+                        values: typed_values,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::Read { variables } => {
+                // Look up each variable and get its type
+                // Variables that don't exist are auto-declared based on suffix
+                let typed_vars: Vec<(String, BasicType)> = variables
+                    .iter()
+                    .map(|var_name| {
+                        let var_type = if let Some(symbol) = self.symbols.lookup_symbol(var_name) {
+                            symbol.basic_type.clone()
+                        } else {
+                            // Infer type from suffix or default
+                            let inferred = type_from_suffix(var_name)
+                                .unwrap_or_else(|| self.symbols.default_type_for(var_name));
+
+                            // Define the variable
+                            let symbol = Symbol {
+                                name: var_name.clone(),
+                                kind: SymbolKind::Variable,
+                                basic_type: inferred.clone(),
+                                span: stmt.span,
+                                is_mutable: true,
+                            };
+                            let _ = self.symbols.define_symbol(symbol);
+
+                            inferred
+                        };
+                        (var_name.clone(), var_type)
+                    })
+                    .collect();
+
+                TypedStatement::new(
+                    TypedStatementKind::Read {
+                        variables: typed_vars,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::Restore { label } => {
+                // RESTORE with optional label - no semantic validation needed here
+                // (label validation could be done during codegen or in a later pass)
+                TypedStatement::new(
+                    TypedStatementKind::Restore {
+                        label: label.clone(),
+                    },
+                    stmt.span,
+                )
+            }
         }
     }
 
@@ -613,6 +919,82 @@ impl<'a> TypeChecker<'a> {
                 name: name.to_string(),
                 value: typed_value,
                 target_type,
+            },
+            span,
+        )
+    }
+
+    /// Type checks an array element assignment.
+    fn check_array_assignment(
+        &mut self,
+        name: &str,
+        indices: &[Expr],
+        value: &Expr,
+        span: crate::ast::Span,
+    ) -> TypedStatement {
+        // Look up the array
+        let (element_type, dimensions) = if let Some(symbol) = self.symbols.lookup_symbol(name)
+            && let SymbolKind::ArrayVariable { dimensions } = &symbol.kind
+        {
+            // Verify dimension count
+            if indices.len() != dimensions.len() {
+                self.errors.push(SemanticError::ArrayDimensionMismatch {
+                    name: name.to_string(),
+                    expected: dimensions.len(),
+                    found: indices.len(),
+                    span,
+                });
+            }
+
+            let typed_dims: Vec<TypedArrayDimension> = dimensions
+                .iter()
+                .map(|d| TypedArrayDimension {
+                    lower: d.lower_bound,
+                    upper: d.upper_bound,
+                })
+                .collect();
+
+            (symbol.basic_type.clone(), typed_dims)
+        } else {
+            self.errors.push(SemanticError::NotAnArray {
+                name: name.to_string(),
+                span,
+            });
+            (BasicType::Unknown, Vec::new())
+        };
+
+        // Check and type the indices
+        let mut typed_indices = Vec::new();
+        for idx in indices {
+            let typed_idx = self.check_expr(idx);
+            if !typed_idx.basic_type.is_numeric() {
+                self.errors.push(SemanticError::NonNumericIndex {
+                    found: typed_idx.basic_type.to_string(),
+                    span: idx.span,
+                });
+            }
+            typed_indices.push(typed_idx);
+        }
+
+        // Check the value
+        let typed_value = self.check_expr(value);
+
+        // Type compatibility check
+        if !typed_value.basic_type.is_convertible_to(&element_type) {
+            self.errors.push(SemanticError::TypeMismatch {
+                expected: element_type.to_string(),
+                found: typed_value.basic_type.to_string(),
+                span: value.span,
+            });
+        }
+
+        TypedStatement::new(
+            TypedStatementKind::ArrayAssignment {
+                name: name.to_string(),
+                indices: typed_indices,
+                value: typed_value,
+                dimensions,
+                element_type,
             },
             span,
         )
@@ -836,15 +1218,29 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Type checks a FOR loop.
-    fn check_for(
-        &mut self,
-        variable: &str,
-        start: &Expr,
-        end: &Expr,
-        step: &Option<Expr>,
-        body: &[Statement],
-        span: crate::ast::Span,
-    ) -> TypedStatement {
+    fn check_for(&mut self, info: ForLoopInfo<'_>) -> TypedStatement {
+        let ForLoopInfo {
+            variable,
+            start,
+            end,
+            step,
+            body,
+            next_variable,
+            span,
+        } = info;
+
+        // Validate NEXT variable matches FOR variable (case-insensitive)
+        if let Some(next_var) = next_variable
+            && !next_var.eq_ignore_ascii_case(variable)
+        {
+            self.errors.push(SemanticError::ForNextMismatch {
+                expected: variable.to_string(),
+                found: next_var.to_string(),
+                for_span: span,
+                next_span: span, // Ideally we'd have separate spans
+            });
+        }
+
         let typed_start = self.check_expr(start);
         let typed_end = self.check_expr(end);
 
@@ -1299,8 +1695,10 @@ impl<'a> TypeChecker<'a> {
                 self.convert_const_value(inner_val, to_type)
             }
 
-            // Function calls and array access are not constant
-            TypedExprKind::FunctionCall { .. } | TypedExprKind::ArrayAccess { .. } => None,
+            // Function calls, array access, and field access are not constant
+            TypedExprKind::FunctionCall { .. }
+            | TypedExprKind::ArrayAccess { .. }
+            | TypedExprKind::FieldAccess { .. } => None,
         }
     }
 
@@ -2041,5 +2439,84 @@ mod tests {
 
         let typed = checker.check_expr(&expr);
         assert_eq!(typed.basic_type, BasicType::String);
+    }
+
+    #[test]
+    fn test_for_next_variable_mismatch() {
+        let mut symbols = SymbolTable::new();
+        let mut checker = TypeChecker::new(&mut symbols);
+
+        // FOR i = 1 TO 10 ... NEXT j (should error - j != i)
+        let stmt = Statement::new(
+            StatementKind::For {
+                variable: "i".to_string(),
+                start: make_int_expr(1),
+                end: make_int_expr(10),
+                step: None,
+                body: vec![],
+                next_variable: Some("j".to_string()), // Mismatched!
+            },
+            Span::new(0, 20),
+        );
+
+        let _typed = checker.check_statement(&stmt);
+        assert!(
+            !checker.errors.is_empty(),
+            "FOR/NEXT variable mismatch should error"
+        );
+        assert!(
+            matches!(checker.errors[0], SemanticError::ForNextMismatch { .. }),
+            "Expected ForNextMismatch error"
+        );
+    }
+
+    #[test]
+    fn test_for_next_variable_match() {
+        let mut symbols = SymbolTable::new();
+        let mut checker = TypeChecker::new(&mut symbols);
+
+        // FOR i = 1 TO 10 ... NEXT i (should be OK)
+        let stmt = Statement::new(
+            StatementKind::For {
+                variable: "i".to_string(),
+                start: make_int_expr(1),
+                end: make_int_expr(10),
+                step: None,
+                body: vec![],
+                next_variable: Some("i".to_string()), // Matches
+            },
+            Span::new(0, 20),
+        );
+
+        let _typed = checker.check_statement(&stmt);
+        assert!(
+            checker.errors.is_empty(),
+            "FOR/NEXT with matching variable should not error"
+        );
+    }
+
+    #[test]
+    fn test_for_next_variable_case_insensitive() {
+        let mut symbols = SymbolTable::new();
+        let mut checker = TypeChecker::new(&mut symbols);
+
+        // FOR i = 1 TO 10 ... NEXT I (should be OK - case insensitive)
+        let stmt = Statement::new(
+            StatementKind::For {
+                variable: "counter".to_string(),
+                start: make_int_expr(1),
+                end: make_int_expr(10),
+                step: None,
+                body: vec![],
+                next_variable: Some("COUNTER".to_string()), // Different case
+            },
+            Span::new(0, 20),
+        );
+
+        let _typed = checker.check_statement(&stmt);
+        assert!(
+            checker.errors.is_empty(),
+            "FOR/NEXT with case-different variable should not error"
+        );
     }
 }

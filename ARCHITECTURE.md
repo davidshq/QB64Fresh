@@ -303,6 +303,5 @@ cargo test --doc    # Doc tests only
 
 - [CLAUDE.md](CLAUDE.md) - AI assistant configuration
 - [DEVELOPMENT.md](DEVELOPMENT.md) - Developer onboarding
-- [PROJECT_PLAN.md](PROJECT_PLAN.md) - Roadmap and milestones
 - [docs/PARSER_PLAN.md](docs/PARSER_PLAN.md) - Parser implementation details
 - [docs/QB64_SYNTAX_REFERENCE.md](docs/QB64_SYNTAX_REFERENCE.md) - Language syntax reference

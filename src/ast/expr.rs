@@ -73,6 +73,17 @@ pub enum ExprKind {
     ///
     /// Also used for array indexing since syntax is identical: `array(index)`
     FunctionCall { name: String, args: Vec<Expr> },
+
+    /// Field access on a user-defined type: `object.field`
+    ///
+    /// Examples: `person.name`, `employee.salary`, `record.data.value`
+    /// Supports chained access for nested types.
+    FieldAccess {
+        /// The object expression (variable or nested field access).
+        object: Box<Expr>,
+        /// The field name being accessed.
+        field: String,
+    },
 }
 
 /// Binary operators.
