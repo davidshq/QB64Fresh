@@ -1719,6 +1719,12 @@ impl StmtEmitter {
     // ==================== REDIM Helper Methods ====================
 
     /// Emits REDIM statement.
+    ///
+    /// REDIM with _PRESERVE keeps existing array values and zeros new elements.
+    /// Without _PRESERVE, the entire array is zeroed.
+    ///
+    /// Uses a static size-tracking variable to remember the array's byte size
+    /// across multiple REDIMs, enabling proper _PRESERVE behavior.
     fn emit_redim(
         &self,
         indent: &str,
@@ -1730,7 +1736,7 @@ impl StmtEmitter {
     ) -> Result<(), CodeGenError> {
         let c_name = c_identifier(name);
         let c_elem_type = c_type(element_type);
-        let _ = preserve; // TODO: Implement preserve semantics
+        let size_var = format!("{}_sz__", c_name);
 
         // Calculate total size
         if dimensions.is_empty() {
@@ -1738,28 +1744,56 @@ impl StmtEmitter {
             return Ok(());
         }
 
-        // For now, emit a simple realloc-style redim
-        // In a full implementation, we'd need to track array metadata
+        // Calculate new size expression
         let size_expr = dimensions
             .iter()
             .map(|d| format!("({} - {} + 1)", d.upper, d.lower))
             .collect::<Vec<_>>()
             .join(" * ");
 
-        writeln!(
-            output,
-            "{}{} = realloc({}, sizeof({}) * ({}));",
-            indent, c_name, c_name, c_elem_type, size_expr
-        )
-        .unwrap();
-
-        if !preserve {
+        if preserve {
+            // REDIM _PRESERVE: Keep existing values, zero only new elements
+            // We track the old byte size with a static variable
+            writeln!(output, "{}{{", indent).unwrap();
+            writeln!(output, "{}    static size_t {} = 0;", indent, size_var).unwrap();
             writeln!(
                 output,
-                "{}memset({}, 0, sizeof({}) * ({}));",
-                indent, c_name, c_elem_type, size_expr
+                "{}    size_t new_sz__ = sizeof({}) * ({});",
+                indent, c_elem_type, size_expr
             )
             .unwrap();
+            writeln!(
+                output,
+                "{}    {} = realloc({}, new_sz__);",
+                indent, c_name, c_name
+            )
+            .unwrap();
+            // Zero only the new portion if array grew
+            writeln!(
+                output,
+                "{}    if (new_sz__ > {}) memset((char*){} + {}, 0, new_sz__ - {});",
+                indent, size_var, c_name, size_var, size_var
+            )
+            .unwrap();
+            writeln!(output, "{}    {} = new_sz__;", indent, size_var).unwrap();
+            writeln!(output, "{}}}", indent).unwrap();
+        } else {
+            // Regular REDIM: Reallocate and zero entire array
+            writeln!(output, "{}{{", indent).unwrap();
+            writeln!(
+                output,
+                "{}    size_t new_sz__ = sizeof({}) * ({});",
+                indent, c_elem_type, size_expr
+            )
+            .unwrap();
+            writeln!(
+                output,
+                "{}    {} = realloc({}, new_sz__);",
+                indent, c_name, c_name
+            )
+            .unwrap();
+            writeln!(output, "{}    memset({}, 0, new_sz__);", indent, c_name).unwrap();
+            writeln!(output, "{}}}", indent).unwrap();
         }
 
         Ok(())

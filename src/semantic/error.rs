@@ -121,6 +121,10 @@ pub enum SemanticError {
     #[error("EXIT {exit_type} outside of {exit_type}")]
     ExitOutsideLoop { exit_type: String, span: Span },
 
+    /// CONTINUE statement outside its corresponding loop.
+    #[error("CONTINUE {loop_type} outside of {loop_type} loop")]
+    ContinueOutsideLoop { loop_type: String, span: Span },
+
     /// RETURN statement outside of GOSUB or FUNCTION.
     #[error("RETURN outside of GOSUB or FUNCTION")]
     ReturnOutsideContext { span: Span },
@@ -191,6 +195,7 @@ impl SemanticError {
             SemanticError::NotCallable { span, .. } => *span,
             SemanticError::SubUsedAsFunction { span, .. } => *span,
             SemanticError::ExitOutsideLoop { span, .. } => *span,
+            SemanticError::ContinueOutsideLoop { span, .. } => *span,
             SemanticError::ReturnOutsideContext { span } => *span,
             SemanticError::ForNextMismatch { next_span, .. } => *next_span,
             SemanticError::NotAnArray { span, .. } => *span,

@@ -129,6 +129,8 @@ impl<'a> TypeChecker<'a> {
                     BasicType::Unknown
                 }
             }
+            // If object is Unknown, an error was already reported upstream - don't cascade
+            BasicType::Unknown => BasicType::Unknown,
             _ => {
                 self.errors.push(SemanticError::TypeMismatch {
                     expected: "user-defined type".to_string(),

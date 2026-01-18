@@ -131,6 +131,32 @@ impl<'a> TypeChecker<'a> {
             CaseMatch::Range { from, to } => {
                 let typed_from = self.check_expr(from);
                 let typed_to = self.check_expr(to);
+
+                // Validate range endpoints are compatible with test expression
+                if !self.types_comparable(&typed_from.basic_type, test_type) {
+                    self.errors.push(SemanticError::TypeMismatch {
+                        expected: test_type.to_string(),
+                        found: typed_from.basic_type.to_string(),
+                        span: from.span,
+                    });
+                }
+                if !self.types_comparable(&typed_to.basic_type, test_type) {
+                    self.errors.push(SemanticError::TypeMismatch {
+                        expected: test_type.to_string(),
+                        found: typed_to.basic_type.to_string(),
+                        span: to.span,
+                    });
+                }
+
+                // Also verify range endpoints are compatible with each other
+                if !self.types_comparable(&typed_from.basic_type, &typed_to.basic_type) {
+                    self.errors.push(SemanticError::TypeMismatch {
+                        expected: typed_from.basic_type.to_string(),
+                        found: typed_to.basic_type.to_string(),
+                        span: to.span,
+                    });
+                }
+
                 TypedCaseMatch::Range {
                     from: typed_from,
                     to: typed_to,

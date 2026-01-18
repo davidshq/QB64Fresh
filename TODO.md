@@ -45,7 +45,7 @@ A prioritized roadmap for QB64Fresh development. Items are ordered from most gra
 - [x] `_OS$` - operating system identifier
 - [x] `_CWD$` - current working directory
 - [x] `_STARTDIR$` - program start directory
-- [ ] `SWAP` statement (already implemented in parser, needs verification)
+- [x] `SWAP` statement (parser + semantic: requires exact type match)
 - [ ] `DEF SEG` statement (legacy, low priority)
 - [ ] `PEEK()` and `POKE` (memory access, may be limited/simulated)
 
@@ -62,39 +62,47 @@ A prioritized roadmap for QB64Fresh development. Items are ordered from most gra
 
 ---
 
-## Phase 2: Core Extensions (Medium-Term)
+## Phase 2: Core Extensions (Medium-Term) ✅ COMPLETED
 
 ### Conditional Compilation
-- [ ] `$IF` / `$ELSE` / `$ELSEIF` / `$END IF` directives
-- [ ] `$LET` directive for compile-time variables
+- [x] `$IF` / `$ELSE` / `$ELSEIF` / `$END IF` directives
+- [x] `$LET` directive for compile-time variables
 - [ ] `$INCLUDE` - actually read and parse included files
-- [ ] `$CHECKING` directive
+- [x] `$CHECKING` directive
 - [ ] Built-in constants: `WIN`, `LINUX`, `MAC`, `32BIT`, `64BIT`
 
 ### Memory Operations
-- [ ] `_MEM` type full support
-- [ ] `_MEMNEW` function
-- [ ] `_MEMFREE` statement
-- [ ] `_MEMGET` / `_MEMPUT`
-- [ ] `_MEMCOPY`
-- [ ] `_MEMFILL`
-- [ ] `_OFFSET` pointer arithmetic
+- [x] `_MEM` type full support
+- [x] `_MEMNEW` function
+- [x] `_MEMFREE` statement
+- [x] `_MEMGET` / `_MEMPUT`
+- [x] `_MEMCOPY`
+- [x] `_MEMFILL`
+- [x] `_OFFSET` pointer arithmetic
 
 ### String Enhancements
-- [ ] `_INSTRREV` function
-- [ ] `_TRIM$` function
-- [ ] `STRING$()` function
-- [ ] `MKI$`, `MKL$`, `MKS$`, `MKD$` (pack numbers to strings)
-- [ ] `CVI`, `CVL`, `CVS`, `CVD` (unpack strings to numbers)
+- [x] `_INSTRREV` function
+- [x] `_TRIM$` function
+- [x] `STRING$()` function
+- [x] `MKI$`, `MKL$`, `MKS$`, `MKD$` (pack numbers to strings)
+- [x] `CVI`, `CVL`, `CVS`, `CVD` (unpack strings to numbers)
 
 ### Date/Time Enhancements
-- [ ] `_DATE$` (QB64 format)
-- [ ] `_TIME$` (QB64 format)
+- [x] `_DATE$` (QB64 format)
+- [x] `_TIME$` (QB64 format)
 - [ ] `_AUTODISPLAY` / `_DISPLAY` timing
 
 ---
 
-## Phase 3: Graphics System (Medium-Term)
+## Phase 3: Graphics System (In Progress)
+
+### Graphics Architecture ✅
+- [x] Define `GraphicsBackend` trait for pluggable backends
+- [x] Implement SDL2Backend (stub, ready for integration)
+- [x] Implement MockBackend for testing (complete)
+- [x] Create C FFI layer design
+- [ ] Implement error handling and type system
+- [ ] Design C FFI wrapper functions
 
 ### Screen Setup
 - [ ] `SCREEN` statement (text and graphics modes)

@@ -214,22 +214,15 @@ impl<'a> TypeChecker<'a> {
                 let typed_right = self.check_expr(right);
 
                 // Check that both expressions are lvalues (variables or array elements)
-                // For now, we'll verify at codegen; semantic check just ensures type compatibility
+                // For now, we'll verify at codegen; semantic check ensures exact type match
+                // SWAP requires exact type match to prevent silent data loss
+                // (e.g., swapping INTEGER and LONG would truncate the LONG value)
                 if typed_left.basic_type != typed_right.basic_type {
-                    // Allow numeric type conversions but warn
-                    if !typed_left
-                        .basic_type
-                        .is_convertible_to(&typed_right.basic_type)
-                        && !typed_right
-                            .basic_type
-                            .is_convertible_to(&typed_left.basic_type)
-                    {
-                        self.errors.push(SemanticError::TypeMismatch {
-                            expected: typed_left.basic_type.to_string(),
-                            found: typed_right.basic_type.to_string(),
-                            span: stmt.span,
-                        });
-                    }
+                    self.errors.push(SemanticError::TypeMismatch {
+                        expected: typed_left.basic_type.to_string(),
+                        found: typed_right.basic_type.to_string(),
+                        span: stmt.span,
+                    });
                 }
 
                 TypedStatement::new(
@@ -242,9 +235,27 @@ impl<'a> TypeChecker<'a> {
             }
 
             StatementKind::Continue { continue_type } => {
-                // Check that we're inside a matching loop
-                // For now, we just pass through - full loop context checking would require
-                // tracking the loop stack through semantic analysis
+                use crate::ast::ContinueType;
+
+                // Validate that CONTINUE is inside the matching loop type
+                let valid = match continue_type {
+                    ContinueType::For => self.loop_context.for_depth > 0,
+                    ContinueType::While => self.loop_context.while_depth > 0,
+                    ContinueType::Do => self.loop_context.do_depth > 0,
+                };
+
+                if !valid {
+                    let loop_name = match continue_type {
+                        ContinueType::For => "FOR",
+                        ContinueType::While => "WHILE",
+                        ContinueType::Do => "DO",
+                    };
+                    self.errors.push(SemanticError::ContinueOutsideLoop {
+                        loop_type: loop_name.to_string(),
+                        span: stmt.span,
+                    });
+                }
+
                 TypedStatement::new(
                     TypedStatementKind::Continue {
                         continue_type: *continue_type,
@@ -551,18 +562,26 @@ impl<'a> TypeChecker<'a> {
                 let typed_file_num = self.check_expr(file_num);
                 let typed_position = position.as_ref().map(|e| self.check_expr(e));
 
-                // Look up variable type
-                let var_type = self
-                    .symbols
-                    .lookup_symbol(variable)
-                    .map(|s| s.basic_type.clone())
-                    .unwrap_or_else(|| {
-                        self.errors.push(SemanticError::UndefinedVariable {
-                            name: variable.clone(),
-                            span: stmt.span,
-                        });
-                        BasicType::Long
-                    });
+                // Look up variable type - auto-declare if not found (consistent with FileGet)
+                // In BASIC, variables don't need explicit declaration; PUT on an undefined
+                // variable writes the default value (0 for numeric, "" for string)
+                let var_type = if let Some(symbol) = self.symbols.lookup_symbol(variable) {
+                    symbol.basic_type.clone()
+                } else {
+                    // Infer and define (consistent with FileGet behavior)
+                    let inferred = type_from_suffix(variable)
+                        .unwrap_or_else(|| self.symbols.default_type_for(variable));
+
+                    let symbol = Symbol {
+                        name: variable.clone(),
+                        kind: SymbolKind::Variable,
+                        basic_type: inferred.clone(),
+                        span: stmt.span,
+                        is_mutable: true,
+                    };
+                    let _ = self.symbols.define_symbol(symbol);
+                    inferred
+                };
 
                 TypedStatement::new(
                     TypedStatementKind::FilePut {

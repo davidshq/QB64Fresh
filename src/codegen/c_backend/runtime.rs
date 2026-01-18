@@ -113,6 +113,12 @@ fn emit_string_functions(output: &mut String) {
         "qb_string* qb_string_concat(qb_string* a, qb_string* b) {{"
     )
     .unwrap();
+    writeln!(
+        output,
+        "    if (!a) return b ? qb_string_new(b->data) : qb_string_new(\"\");"
+    )
+    .unwrap();
+    writeln!(output, "    if (!b) return qb_string_new(a->data);").unwrap();
     writeln!(output, "    qb_string* result = malloc(sizeof(qb_string));").unwrap();
     writeln!(output, "    result->len = a->len + b->len;").unwrap();
     writeln!(output, "    result->capacity = result->len + 1;").unwrap();
@@ -141,7 +147,7 @@ fn emit_print_functions(output: &mut String) {
     writeln!(output).unwrap();
 
     writeln!(output, "void qb_print_string(qb_string* s) {{").unwrap();
-    writeln!(output, "    printf(\"%s\", s->data);").unwrap();
+    writeln!(output, "    if (s && s->data) printf(\"%s\", s->data);").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
@@ -206,6 +212,9 @@ fn emit_string_comparison(output: &mut String) {
         "int qb_string_compare(qb_string* a, qb_string* b) {{"
     )
     .unwrap();
+    writeln!(output, "    if (!a && !b) return 0;").unwrap();
+    writeln!(output, "    if (!a) return -1;").unwrap();
+    writeln!(output, "    if (!b) return 1;").unwrap();
     writeln!(output, "    return strcmp(a->data, b->data);").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
@@ -214,7 +223,7 @@ fn emit_string_comparison(output: &mut String) {
 /// Emits built-in BASIC functions (LEN, CHR$, ASC).
 fn emit_builtin_functions(output: &mut String) {
     writeln!(output, "int32_t qb_len(qb_string* s) {{").unwrap();
-    writeln!(output, "    return (int32_t)s->len;").unwrap();
+    writeln!(output, "    return s ? (int32_t)s->len : 0;").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
@@ -227,7 +236,7 @@ fn emit_builtin_functions(output: &mut String) {
     writeln!(output, "int32_t qb_asc(qb_string* s) {{").unwrap();
     writeln!(
         output,
-        "    return s->len > 0 ? (unsigned char)s->data[0] : 0;"
+        "    return (s && s->len > 0) ? (unsigned char)s->data[0] : 0;"
     )
     .unwrap();
     writeln!(output, "}}").unwrap();
@@ -270,7 +279,7 @@ fn emit_math_functions(output: &mut String) {
 fn emit_string_manipulation(output: &mut String) {
     // LEFT$(s$, n)
     writeln!(output, "qb_string* qb_left(qb_string* s, int32_t n) {{").unwrap();
-    writeln!(output, "    if (n <= 0) return qb_string_new(\"\");").unwrap();
+    writeln!(output, "    if (!s || n <= 0) return qb_string_new(\"\");").unwrap();
     writeln!(
         output,
         "    size_t len = (size_t)n < s->len ? (size_t)n : s->len;"
@@ -288,7 +297,7 @@ fn emit_string_manipulation(output: &mut String) {
 
     // RIGHT$(s$, n)
     writeln!(output, "qb_string* qb_right(qb_string* s, int32_t n) {{").unwrap();
-    writeln!(output, "    if (n <= 0) return qb_string_new(\"\");").unwrap();
+    writeln!(output, "    if (!s || n <= 0) return qb_string_new(\"\");").unwrap();
     writeln!(
         output,
         "    size_t len = (size_t)n < s->len ? (size_t)n : s->len;"
@@ -313,7 +322,7 @@ fn emit_string_manipulation(output: &mut String) {
     .unwrap();
     writeln!(
         output,
-        "    if (start < 1 || n <= 0 || (size_t)start > s->len) return qb_string_new(\"\");"
+        "    if (!s || start < 1 || n <= 0 || (size_t)start > s->len) return qb_string_new(\"\");"
     )
     .unwrap();
     writeln!(output, "    size_t idx = (size_t)(start - 1);").unwrap();
@@ -340,7 +349,7 @@ fn emit_string_manipulation(output: &mut String) {
     .unwrap();
     writeln!(
         output,
-        "    if (start < 1 || (size_t)start > s->len || find->len == 0) return 0;"
+        "    if (!s || !find || start < 1 || (size_t)start > s->len || find->len == 0) return 0;"
     )
     .unwrap();
     writeln!(
@@ -362,12 +371,13 @@ fn emit_string_manipulation(output: &mut String) {
 
     // VAL(s$) - convert string to number
     writeln!(output, "double qb_val(qb_string* s) {{").unwrap();
-    writeln!(output, "    return atof(s->data);").unwrap();
+    writeln!(output, "    return (s && s->data) ? atof(s->data) : 0.0;").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
     // UCASE$(s$)
     writeln!(output, "qb_string* qb_ucase(qb_string* s) {{").unwrap();
+    writeln!(output, "    if (!s) return qb_string_new(\"\");").unwrap();
     writeln!(output, "    qb_string* result = malloc(sizeof(qb_string));").unwrap();
     writeln!(output, "    result->len = s->len;").unwrap();
     writeln!(output, "    result->capacity = s->len + 1;").unwrap();
@@ -384,6 +394,7 @@ fn emit_string_manipulation(output: &mut String) {
 
     // LCASE$(s$)
     writeln!(output, "qb_string* qb_lcase(qb_string* s) {{").unwrap();
+    writeln!(output, "    if (!s) return qb_string_new(\"\");").unwrap();
     writeln!(output, "    qb_string* result = malloc(sizeof(qb_string));").unwrap();
     writeln!(output, "    result->len = s->len;").unwrap();
     writeln!(output, "    result->capacity = s->len + 1;").unwrap();
@@ -400,6 +411,7 @@ fn emit_string_manipulation(output: &mut String) {
 
     // LTRIM$(s$)
     writeln!(output, "qb_string* qb_ltrim(qb_string* s) {{").unwrap();
+    writeln!(output, "    if (!s) return qb_string_new(\"\");").unwrap();
     writeln!(output, "    size_t start = 0;").unwrap();
     writeln!(
         output,
@@ -412,6 +424,7 @@ fn emit_string_manipulation(output: &mut String) {
 
     // RTRIM$(s$)
     writeln!(output, "qb_string* qb_rtrim(qb_string* s) {{").unwrap();
+    writeln!(output, "    if (!s) return qb_string_new(\"\");").unwrap();
     writeln!(output, "    size_t end = s->len;").unwrap();
     writeln!(
         output,
@@ -443,7 +456,7 @@ fn emit_string_manipulation(output: &mut String) {
     .unwrap();
     writeln!(
         output,
-        "    if (n <= 0 || c->len == 0) return qb_string_new(\"\");"
+        "    if (n <= 0 || !c || c->len == 0) return qb_string_new(\"\");"
     )
     .unwrap();
     writeln!(output, "    qb_string* result = malloc(sizeof(qb_string));").unwrap();
