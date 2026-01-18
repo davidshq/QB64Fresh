@@ -219,6 +219,37 @@ impl StmtEmitter {
                 writeln!(output, "{}exit(0);", indent).unwrap();
             }
 
+            TypedStatementKind::Sleep { seconds } => {
+                if let Some(secs) = seconds {
+                    let secs_code = emit_expr(secs)?;
+                    writeln!(output, "{}qb_sleep((int){});", indent, secs_code).unwrap();
+                } else {
+                    // No argument - wait for keypress
+                    writeln!(output, "{}qb_sleep_keypress();", indent).unwrap();
+                }
+            }
+
+            TypedStatementKind::Delay { seconds } => {
+                let secs_code = emit_expr(seconds)?;
+                writeln!(output, "{}qb_delay({});", indent, secs_code).unwrap();
+            }
+
+            TypedStatementKind::Limit { fps } => {
+                let fps_code = emit_expr(fps)?;
+                writeln!(output, "{}qb_limit((int){});", indent, fps_code).unwrap();
+            }
+
+            TypedStatementKind::Erase { arrays } => {
+                for array_name in arrays {
+                    let c_name = c_identifier(array_name).to_lowercase();
+                    writeln!(output, "{}qb_array_erase(&arr_{});", indent, c_name).unwrap();
+                }
+            }
+
+            TypedStatementKind::KeyClear => {
+                writeln!(output, "{}qb_keyclear();", indent).unwrap();
+            }
+
             TypedStatementKind::Call { name, args } => {
                 let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
                 let args_str = args_code?.join(", ");

@@ -320,6 +320,16 @@ pub(super) fn c_function_name(name: &str) -> String {
         // Both TRIM$ and _TRIM$ map to the same implementation.
         "TRIM$" => "qb_trim".to_string(),
 
+        // Print formatting functions
+        "TAB" => "qb_tab".to_string(),
+        "SPC" => "qb_spc".to_string(),
+        "POS" => "qb_pos".to_string(),
+        "CSRLIN" => "qb_csrlin".to_string(),
+
+        // QB64 keyboard extensions
+        "_KEYHIT" => "qb_keyhit".to_string(),
+        "_KEYDOWN" => "qb_keydown".to_string(),
+
         // Phase 2: String enhancements
         "_INSTRREV" => "qb_instrrev".to_string(),
         // _TRIM$ is the QB64-specific name; same as TRIM$ above

@@ -139,6 +139,22 @@ pub enum TokenKind {
     #[token("SYSTEM", ignore(ascii_case))]
     System,
 
+    /// SLEEP keyword - pause execution
+    #[token("SLEEP", ignore(ascii_case))]
+    Sleep,
+
+    /// _DELAY keyword - pause execution (float seconds, QB64)
+    #[token("_DELAY", ignore(ascii_case))]
+    Delay,
+
+    /// _LIMIT keyword - limit frame rate (QB64)
+    #[token("_LIMIT", ignore(ascii_case))]
+    Limit,
+
+    /// _KEYCLEAR keyword - clear keyboard buffer (QB64)
+    #[token("_KEYCLEAR", ignore(ascii_case))]
+    KeyClear,
+
     /// CALL keyword - call a subroutine
     #[token("CALL", ignore(ascii_case))]
     Call,
@@ -167,6 +183,10 @@ pub enum TokenKind {
     /// REDIM keyword - resize dynamic array
     #[token("REDIM", ignore(ascii_case))]
     Redim,
+
+    /// ERASE keyword - clear/deallocate arrays
+    #[token("ERASE", ignore(ascii_case))]
+    Erase,
 
     /// AS keyword - type specification
     #[token("AS", ignore(ascii_case))]

@@ -82,12 +82,14 @@ A prioritized roadmap for QB64Fresh development. Items are ordered from most gra
 
 ### String Enhancements
 - [x] `_INSTRREV` function
-- [x] `_TRIM$` function
+- [x] `TRIM$` / `_TRIM$` functions (both map to same implementation)
 - [x] `STRING$()` function
 - [x] `MKI$`, `MKL$`, `MKS$`, `MKD$` (pack numbers to strings)
 - [x] `CVI`, `CVL`, `CVS`, `CVD` (unpack strings to numbers)
 
 ### Date/Time Enhancements
+- [x] `DATE$` (classic BASIC format: MM-DD-YYYY)
+- [x] `TIME$` (classic BASIC format: HH:MM:SS)
 - [x] `_DATE$` (QB64 format)
 - [x] `_TIME$` (QB64 format)
 - [ ] `_AUTODISPLAY` / `_DISPLAY` timing
@@ -291,14 +293,15 @@ runtime/src/
 - [ ] Example programs
 
 ### Testing (See TESTING_INFRASTRUCTURE_PLAN.md for details)
+- [x] Integration tests for compiled programs (128 tests)
+- [x] Golden/snapshot tests for codegen (10 tests)
+- [x] Property-based testing with proptest (19 tests)
+- [x] Fuzz testing infrastructure (3 targets: lexer, parser, full pipeline)
+- [x] Achieve 60%+ line coverage (currently 59.92%)
 - [ ] Expand test suite for all built-ins
-- [ ] Integration tests for compiled programs
 - [ ] Compatibility tests against QB64 programs
-- [ ] Fuzzing for parser robustness
-- [ ] Add snapshot testing with `insta` crate
 - [ ] Port QB4.5 test cases from QB64pe
-- [ ] Achieve 60%+ file coverage (currently ~39%)
-- [ ] Add codegen unit tests (stmt.rs has 2533 lines, 0 tests)
+- [ ] Achieve 80%+ line coverage
 
 ---
 
@@ -311,11 +314,11 @@ against the current QB64Fresh implementation. Organized by priority and category
 
 #### Timing & Flow Control
 - [ ] `SLEEP` statement - pause execution
-- [ ] `TIMER` variable - seconds since midnight
-- [ ] `RANDOMIZE` statement - seed random number generator
+- [x] `TIMER` function - seconds since midnight (with millisecond precision)
+- [x] `RANDOMIZE` statement - seed random number generator
 - [ ] `RUN` statement - run program
 - [ ] `CHAIN` statement - run another program, optionally passing variables
-- [ ] `SYSTEM` statement - exit program to operating system
+- [x] `SYSTEM` statement - exit program to operating system
 - [ ] `TROFF` / `TRON` statements - debug trace off/on
 
 #### Print Formatting

@@ -382,6 +382,13 @@ impl SemanticAnalyzer {
         self.register_builtin_function("DATE$", &[], BasicType::String);
         self.register_builtin_function("TIME$", &[], BasicType::String);
 
+        // Print formatting functions
+        // Use Long for parameters since integer literals default to Long
+        self.register_builtin_function("TAB", &[("n", BasicType::Long)], BasicType::String);
+        self.register_builtin_function("SPC", &[("n", BasicType::Long)], BasicType::String);
+        self.register_builtin_function("POS", &[("n", BasicType::Long)], BasicType::Integer);
+        self.register_builtin_function("CSRLIN", &[], BasicType::Integer);
+
         // File I/O functions
         self.register_builtin_function("EOF", &[("fnum", BasicType::Integer)], BasicType::Integer);
         self.register_builtin_function("LOF", &[("fnum", BasicType::Integer)], BasicType::Long);
@@ -391,6 +398,11 @@ impl SemanticAnalyzer {
         // Keyboard input functions
         self.register_builtin_function("INKEY$", &[], BasicType::String);
         self.register_builtin_function("INPUT$", &[("n", BasicType::Integer)], BasicType::String);
+
+        // QB64 keyboard extensions
+        self.register_builtin_function("_KEYHIT", &[], BasicType::Long);
+        self.register_builtin_function("_KEYDOWN", &[("code", BasicType::Long)], BasicType::Long);
+        // _KEYCLEAR is a statement, not a function - handled separately
 
         // Error handling functions
         self.register_builtin_function("ERR", &[], BasicType::Integer);

@@ -85,6 +85,8 @@ fn emit_runtime_declarations(output: &mut String) {
     emit_file_io_functions(output);
     emit_error_handling(output);
     emit_keyboard_functions(output);
+    emit_timing_functions(output);
+    emit_array_functions(output);
 }
 
 /// Emits the qb_string type definition.
@@ -167,6 +169,53 @@ fn emit_print_functions(output: &mut String) {
 
     writeln!(output, "void qb_print_tab(void) {{").unwrap();
     writeln!(output, "    printf(\"\\t\");").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // Print formatting functions
+    // Track cursor column for TAB and POS
+    writeln!(output, "static int qb_cursor_col = 1;").unwrap();
+    writeln!(output, "static int qb_cursor_row = 1;").unwrap();
+    writeln!(output).unwrap();
+
+    // TAB(n) - returns string of spaces to move to column n
+    writeln!(output, "qb_string* qb_tab(int64_t n) {{").unwrap();
+    writeln!(output, "    if (n < 1) n = 1;").unwrap();
+    writeln!(output, "    int spaces_needed = (int)(n - qb_cursor_col);").unwrap();
+    writeln!(output, "    if (spaces_needed < 0) spaces_needed = 0;").unwrap();
+    writeln!(output, "    char* buf = (char*)malloc(spaces_needed + 1);").unwrap();
+    writeln!(output, "    memset(buf, ' ', spaces_needed);").unwrap();
+    writeln!(output, "    buf[spaces_needed] = '\\0';").unwrap();
+    writeln!(output, "    qb_cursor_col = (int)n;").unwrap();
+    writeln!(output, "    qb_string* result = qb_string_new(buf);").unwrap();
+    writeln!(output, "    free(buf);").unwrap();
+    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // SPC(n) - returns string of n spaces
+    writeln!(output, "qb_string* qb_spc(int64_t n) {{").unwrap();
+    writeln!(output, "    if (n < 0) n = 0;").unwrap();
+    writeln!(output, "    char* buf = (char*)malloc((size_t)n + 1);").unwrap();
+    writeln!(output, "    memset(buf, ' ', (size_t)n);").unwrap();
+    writeln!(output, "    buf[n] = '\\0';").unwrap();
+    writeln!(output, "    qb_cursor_col += (int)n;").unwrap();
+    writeln!(output, "    qb_string* result = qb_string_new(buf);").unwrap();
+    writeln!(output, "    free(buf);").unwrap();
+    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // POS(n) - returns current cursor column (n is ignored for compatibility)
+    writeln!(output, "int qb_pos(int64_t n) {{").unwrap();
+    writeln!(output, "    (void)n; // unused, for compatibility").unwrap();
+    writeln!(output, "    return qb_cursor_col;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // CSRLIN - returns current cursor row
+    writeln!(output, "int qb_csrlin(void) {{").unwrap();
+    writeln!(output, "    return qb_cursor_row;").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 }
@@ -1089,6 +1138,83 @@ fn emit_keyboard_functions(output: &mut String) {
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
+    // QB64 Keyboard Extensions
+    writeln!(output, "/* QB64 Keyboard Extensions */").unwrap();
+    writeln!(output).unwrap();
+
+    // Keyboard buffer for _KEYHIT
+    writeln!(output, "static int64_t _qb_keybuf[256];").unwrap();
+    writeln!(output, "static int _qb_keybuf_head = 0;").unwrap();
+    writeln!(output, "static int _qb_keybuf_tail = 0;").unwrap();
+    writeln!(output).unwrap();
+
+    // _KEYHIT - returns key code without waiting (0 if no key)
+    writeln!(output, "#ifdef _WIN32").unwrap();
+    writeln!(output, "int64_t qb_keyhit(void) {{").unwrap();
+    writeln!(output, "    if (!_kbhit()) return 0;").unwrap();
+    writeln!(output, "    int ch = _getch();").unwrap();
+    writeln!(output, "    if (ch == 0 || ch == 224) {{").unwrap();
+    writeln!(output, "        int ext = _getch();").unwrap();
+    writeln!(
+        output,
+        "        return -(ext + 256); // Extended keys as negative"
+    )
+    .unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    return ch;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output, "#else").unwrap();
+    writeln!(output, "int64_t qb_keyhit(void) {{").unwrap();
+    writeln!(output, "    struct termios oldt, newt;").unwrap();
+    writeln!(output, "    tcgetattr(STDIN_FILENO, &oldt);").unwrap();
+    writeln!(output, "    newt = oldt;").unwrap();
+    writeln!(output, "    newt.c_lflag &= ~(ICANON | ECHO);").unwrap();
+    writeln!(output, "    newt.c_cc[VMIN] = 0;").unwrap();
+    writeln!(output, "    newt.c_cc[VTIME] = 0;").unwrap();
+    writeln!(output, "    tcsetattr(STDIN_FILENO, TCSANOW, &newt);").unwrap();
+    writeln!(output, "    int ch = getchar();").unwrap();
+    writeln!(output, "    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);").unwrap();
+    writeln!(output, "    if (ch == EOF) return 0;").unwrap();
+    writeln!(output, "    if (ch == 27) {{ // Escape sequence").unwrap();
+    writeln!(output, "        tcsetattr(STDIN_FILENO, TCSANOW, &newt);").unwrap();
+    writeln!(output, "        int next = getchar();").unwrap();
+    writeln!(output, "        tcsetattr(STDIN_FILENO, TCSANOW, &oldt);").unwrap();
+    writeln!(output, "        if (next != EOF) return -(next + 256);").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    return ch;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output, "#endif").unwrap();
+    writeln!(output).unwrap();
+
+    // _KEYDOWN - check if specific key is pressed (simplified - checks buffer)
+    writeln!(output, "int64_t qb_keydown(int64_t code) {{").unwrap();
+    writeln!(
+        output,
+        "    // Simplified implementation - always returns 0"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    // Full implementation requires platform-specific key state checking"
+    )
+    .unwrap();
+    writeln!(output, "    (void)code;").unwrap();
+    writeln!(output, "    return 0;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _KEYCLEAR - clear keyboard buffer
+    writeln!(output, "#ifdef _WIN32").unwrap();
+    writeln!(output, "void qb_keyclear(void) {{").unwrap();
+    writeln!(output, "    while (_kbhit()) _getch();").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output, "#else").unwrap();
+    writeln!(output, "void qb_keyclear(void) {{").unwrap();
+    writeln!(output, "    tcflush(STDIN_FILENO, TCIFLUSH);").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output, "#endif").unwrap();
+    writeln!(output).unwrap();
+
     // Environment functions
     writeln!(output, "/* Environment Functions */").unwrap();
     writeln!(output).unwrap();
@@ -1599,6 +1725,142 @@ fn emit_memory_functions(output: &mut String) {
     writeln!(output, "    m.image = 0;").unwrap();
     writeln!(output, "    m.sound = 0;").unwrap();
     writeln!(output, "    return m;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+}
+
+/// Emits timing functions (SLEEP, _DELAY, _LIMIT).
+fn emit_timing_functions(output: &mut String) {
+    writeln!(output, "/* Timing Functions */").unwrap();
+    writeln!(output).unwrap();
+
+    // Track last frame time for _LIMIT
+    writeln!(output, "static double qb_last_frame_time = 0.0;").unwrap();
+    writeln!(output).unwrap();
+
+    // Helper to get current time in seconds (high precision)
+    writeln!(output, "#ifdef _WIN32").unwrap();
+    writeln!(output, "static double qb_get_time_seconds(void) {{").unwrap();
+    writeln!(output, "    LARGE_INTEGER freq, count;").unwrap();
+    writeln!(output, "    QueryPerformanceFrequency(&freq);").unwrap();
+    writeln!(output, "    QueryPerformanceCounter(&count);").unwrap();
+    writeln!(
+        output,
+        "    return (double)count.QuadPart / (double)freq.QuadPart;"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output, "#else").unwrap();
+    writeln!(output, "static double qb_get_time_seconds(void) {{").unwrap();
+    writeln!(output, "    struct timeval tv;").unwrap();
+    writeln!(output, "    gettimeofday(&tv, NULL);").unwrap();
+    writeln!(
+        output,
+        "    return (double)tv.tv_sec + (double)tv.tv_usec / 1000000.0;"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output, "#endif").unwrap();
+    writeln!(output).unwrap();
+
+    // SLEEP with integer seconds
+    writeln!(output, "#ifdef _WIN32").unwrap();
+    writeln!(output, "void qb_sleep(int seconds) {{").unwrap();
+    writeln!(output, "    Sleep(seconds * 1000);").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output, "#else").unwrap();
+    writeln!(output, "void qb_sleep(int seconds) {{").unwrap();
+    writeln!(output, "    sleep(seconds);").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output, "#endif").unwrap();
+    writeln!(output).unwrap();
+
+    // SLEEP with no argument - wait for keypress
+    writeln!(output, "#ifdef _WIN32").unwrap();
+    writeln!(output, "void qb_sleep_keypress(void) {{").unwrap();
+    writeln!(output, "    _getch();").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output, "#else").unwrap();
+    writeln!(output, "void qb_sleep_keypress(void) {{").unwrap();
+    writeln!(output, "    struct termios oldt, newt;").unwrap();
+    writeln!(output, "    tcgetattr(STDIN_FILENO, &oldt);").unwrap();
+    writeln!(output, "    newt = oldt;").unwrap();
+    writeln!(output, "    newt.c_lflag &= ~(ICANON | ECHO);").unwrap();
+    writeln!(output, "    tcsetattr(STDIN_FILENO, TCSANOW, &newt);").unwrap();
+    writeln!(output, "    getchar();").unwrap();
+    writeln!(output, "    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output, "#endif").unwrap();
+    writeln!(output).unwrap();
+
+    // _DELAY with float seconds (QB64)
+    writeln!(output, "#ifdef _WIN32").unwrap();
+    writeln!(output, "void qb_delay(double seconds) {{").unwrap();
+    writeln!(output, "    Sleep((DWORD)(seconds * 1000.0));").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output, "#else").unwrap();
+    writeln!(output, "void qb_delay(double seconds) {{").unwrap();
+    writeln!(output, "    usleep((useconds_t)(seconds * 1000000.0));").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output, "#endif").unwrap();
+    writeln!(output).unwrap();
+
+    // _LIMIT - frame rate limiter (QB64)
+    writeln!(output, "void qb_limit(int fps) {{").unwrap();
+    writeln!(output, "    if (fps <= 0) return;").unwrap();
+    writeln!(output, "    double target_frame_time = 1.0 / (double)fps;").unwrap();
+    writeln!(output, "    double current_time = qb_get_time_seconds();").unwrap();
+    writeln!(output, "    if (qb_last_frame_time > 0.0) {{").unwrap();
+    writeln!(
+        output,
+        "        double elapsed = current_time - qb_last_frame_time;"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "        double wait_time = target_frame_time - elapsed;"
+    )
+    .unwrap();
+    writeln!(output, "        if (wait_time > 0.0) {{").unwrap();
+    writeln!(output, "#ifdef _WIN32").unwrap();
+    writeln!(output, "            Sleep((DWORD)(wait_time * 1000.0));").unwrap();
+    writeln!(output, "#else").unwrap();
+    writeln!(
+        output,
+        "            usleep((useconds_t)(wait_time * 1000000.0));"
+    )
+    .unwrap();
+    writeln!(output, "#endif").unwrap();
+    writeln!(output, "        }}").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    qb_last_frame_time = qb_get_time_seconds();").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+}
+
+/// Emits array helper functions.
+fn emit_array_functions(output: &mut String) {
+    writeln!(output, "/* Array Functions */").unwrap();
+    writeln!(output).unwrap();
+
+    // ERASE - reset array to initial state
+    // This is a placeholder that works with our array struct pattern
+    writeln!(output, "void qb_array_erase(void* arr) {{").unwrap();
+    writeln!(
+        output,
+        "    // Arrays are allocated on stack, so we just zero them"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    // For dynamic arrays, this would free and reallocate"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    // Currently a no-op as our arrays are fixed-size"
+    )
+    .unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 }

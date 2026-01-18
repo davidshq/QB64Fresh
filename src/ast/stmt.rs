@@ -154,6 +154,33 @@ pub enum StatementKind {
     /// `SYSTEM` - Exit program immediately (returns to OS)
     System,
 
+    /// `SLEEP [seconds]` - Pause execution
+    Sleep {
+        /// Optional duration in seconds (integer). If None, waits for keypress.
+        seconds: Option<Expr>,
+    },
+
+    /// `_DELAY seconds` - Pause execution (QB64, float precision)
+    Delay {
+        /// Duration in seconds (float).
+        seconds: Expr,
+    },
+
+    /// `_LIMIT fps` - Limit frame rate (QB64)
+    Limit {
+        /// Target frames per second.
+        fps: Expr,
+    },
+
+    /// `ERASE arrayname [, arrayname...]` - Clear/deallocate arrays
+    Erase {
+        /// List of array names to erase.
+        arrays: Vec<String>,
+    },
+
+    /// `_KEYCLEAR` - Clear keyboard buffer (QB64)
+    KeyClear,
+
     /// `SWAP var1, var2` - Exchange values of two variables
     Swap {
         /// First variable to swap.

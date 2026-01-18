@@ -7,8 +7,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use qb64fresh::codegen::c_backend::CBackend;
-use qb64fresh::codegen::{CodeGenerator, RuntimeMode};
+use qb64fresh::codegen::{CBackend, CodeGenerator, RuntimeMode};
 use qb64fresh::parser::Parser;
 use qb64fresh::semantic::SemanticAnalyzer;
 
@@ -24,7 +23,7 @@ fuzz_target!(|data: &[u8]| {
             let mut analyzer = SemanticAnalyzer::new();
             if let Ok(typed_program) = analyzer.analyze(&ast) {
                 // Code generation
-                let backend = CBackend::new(RuntimeMode::Inline);
+                let backend = CBackend::with_runtime_mode(RuntimeMode::Inline);
                 let _ = backend.generate(&typed_program);
             }
         }

@@ -108,6 +108,40 @@ impl<'a> TypeChecker<'a> {
 
             StatementKind::System => TypedStatement::new(TypedStatementKind::System, stmt.span),
 
+            StatementKind::Sleep { seconds } => {
+                let typed_seconds = seconds.as_ref().map(|s| self.check_expr(s));
+                TypedStatement::new(
+                    TypedStatementKind::Sleep {
+                        seconds: typed_seconds,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::Delay { seconds } => {
+                let typed_seconds = self.check_expr(seconds);
+                TypedStatement::new(
+                    TypedStatementKind::Delay {
+                        seconds: typed_seconds,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::Limit { fps } => {
+                let typed_fps = self.check_expr(fps);
+                TypedStatement::new(TypedStatementKind::Limit { fps: typed_fps }, stmt.span)
+            }
+
+            StatementKind::Erase { arrays } => TypedStatement::new(
+                TypedStatementKind::Erase {
+                    arrays: arrays.clone(),
+                },
+                stmt.span,
+            ),
+
+            StatementKind::KeyClear => TypedStatement::new(TypedStatementKind::KeyClear, stmt.span),
+
             StatementKind::Call { name, args } => self.check_call(name, args, stmt.span),
 
             StatementKind::Dim {

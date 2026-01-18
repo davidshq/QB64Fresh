@@ -248,6 +248,33 @@ pub enum TypedStatementKind {
     /// SYSTEM statement (exit immediately).
     System,
 
+    /// SLEEP statement (pause execution).
+    Sleep {
+        /// Optional duration in seconds. If None, waits for keypress.
+        seconds: Option<TypedExpr>,
+    },
+
+    /// _DELAY statement (pause execution, QB64).
+    Delay {
+        /// Duration in seconds (float).
+        seconds: TypedExpr,
+    },
+
+    /// _LIMIT statement (limit frame rate, QB64).
+    Limit {
+        /// Target frames per second.
+        fps: TypedExpr,
+    },
+
+    /// ERASE statement (clear/deallocate arrays).
+    Erase {
+        /// List of array names to erase.
+        arrays: Vec<String>,
+    },
+
+    /// _KEYCLEAR statement (clear keyboard buffer, QB64).
+    KeyClear,
+
     /// SUB procedure call.
     Call { name: String, args: Vec<TypedExpr> },
 

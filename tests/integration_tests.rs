@@ -1574,3 +1574,227 @@ mod file_compilation {
         compile_example_file("array_test.bas");
     }
 }
+
+/// Tests for timing statements (SLEEP, _DELAY, _LIMIT)
+mod timing_statements {
+    use super::*;
+
+    #[test]
+    fn sleep_with_seconds() {
+        let code = compile_to_c("SLEEP 1").unwrap();
+        assert!(code.contains("qb_sleep"));
+    }
+
+    #[test]
+    fn sleep_no_argument() {
+        let code = compile_to_c("SLEEP").unwrap();
+        assert!(code.contains("qb_sleep_keypress"));
+    }
+
+    #[test]
+    fn delay_statement() {
+        let code = compile_to_c("_DELAY 0.5").unwrap();
+        assert!(code.contains("qb_delay"));
+    }
+
+    #[test]
+    fn limit_statement() {
+        let code = compile_to_c("_LIMIT 60").unwrap();
+        assert!(code.contains("qb_limit"));
+    }
+}
+
+/// Tests for array statements (ERASE)
+mod array_statements {
+    use super::*;
+
+    #[test]
+    fn erase_single_array() {
+        let code = compile_to_c(
+            r#"
+DIM arr(10) AS INTEGER
+ERASE arr
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_array_erase"));
+    }
+
+    #[test]
+    fn erase_multiple_arrays() {
+        let code = compile_to_c(
+            r#"
+DIM a(5) AS INTEGER
+DIM b(10) AS STRING
+ERASE a, b
+"#,
+        )
+        .unwrap();
+        // Should call erase for both arrays
+        assert!(code.contains("qb_array_erase(&arr_a)"));
+        assert!(code.contains("qb_array_erase(&arr_b)"));
+    }
+}
+
+/// Tests for math functions
+mod math_functions {
+    use super::*;
+
+    #[test]
+    fn pi_function() {
+        let code = compile_to_c(
+            r#"
+DIM x AS DOUBLE
+x = _PI
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_pi()"));
+    }
+
+    #[test]
+    fn ceil_function() {
+        let code = compile_to_c(
+            r#"
+DIM x AS LONG
+x = _CEIL(3.7)
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("ceil("));
+    }
+
+    #[test]
+    fn round_function() {
+        let code = compile_to_c(
+            r#"
+DIM x AS LONG
+x = _ROUND(3.5)
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("round("));
+    }
+
+    #[test]
+    fn min_function() {
+        let code = compile_to_c(
+            r#"
+DIM x AS DOUBLE
+x = _MIN(5.0, 10.0)
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("fmin("));
+    }
+
+    #[test]
+    fn max_function() {
+        let code = compile_to_c(
+            r#"
+DIM x AS DOUBLE
+x = _MAX(5.0, 10.0)
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("fmax("));
+    }
+}
+
+/// Tests for print formatting functions (TAB, SPC, POS, CSRLIN)
+mod print_formatting {
+    use super::*;
+
+    #[test]
+    fn tab_function() {
+        let code = compile_to_c(r#"PRINT TAB(10); "Hello""#).unwrap();
+        assert!(code.contains("qb_tab("));
+    }
+
+    #[test]
+    fn spc_function() {
+        let code = compile_to_c(r#"PRINT SPC(5); "World""#).unwrap();
+        assert!(code.contains("qb_spc("));
+    }
+
+    #[test]
+    fn pos_function() {
+        let code = compile_to_c(
+            r#"
+DIM col AS INTEGER
+col = POS(0)
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_pos("));
+    }
+
+    #[test]
+    fn csrlin_function() {
+        let code = compile_to_c(
+            r#"
+DIM row AS INTEGER
+row = CSRLIN
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_csrlin("));
+    }
+
+    #[test]
+    fn tab_and_spc_together() {
+        let code = compile_to_c(r#"PRINT TAB(5); "A"; SPC(3); "B""#).unwrap();
+        assert!(code.contains("qb_tab("));
+        assert!(code.contains("qb_spc("));
+    }
+}
+
+/// Tests for keyboard input functions (_KEYHIT, _KEYDOWN, _KEYCLEAR)
+mod keyboard_input {
+    use super::*;
+
+    #[test]
+    fn keyhit_function() {
+        let code = compile_to_c(
+            r#"
+DIM k AS LONG
+k = _KEYHIT
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_keyhit()"));
+    }
+
+    #[test]
+    fn keydown_function() {
+        let code = compile_to_c(
+            r#"
+DIM pressed AS LONG
+pressed = _KEYDOWN(32)
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_keydown("));
+    }
+
+    #[test]
+    fn keyclear_statement() {
+        let code = compile_to_c("_KEYCLEAR").unwrap();
+        assert!(code.contains("qb_keyclear()"));
+    }
+
+    #[test]
+    fn keyboard_in_loop() {
+        let code = compile_to_c(
+            r#"
+DIM k AS LONG
+DO
+    k = _KEYHIT
+    IF k <> 0 THEN PRINT k
+LOOP UNTIL k = 27
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_keyhit()"));
+    }
+}

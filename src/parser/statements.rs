@@ -66,6 +66,11 @@ impl<'a> Parser<'a> {
             TokenKind::End => self.parse_end(),
             TokenKind::Stop => self.parse_stop(),
             TokenKind::System => self.parse_system(),
+            TokenKind::Sleep => self.parse_sleep(),
+            TokenKind::Delay => self.parse_delay(),
+            TokenKind::Limit => self.parse_limit(),
+            TokenKind::Erase => self.parse_erase(),
+            TokenKind::KeyClear => self.parse_keyclear(),
             TokenKind::On => self.parse_on_statement(),
 
             // Error handling
@@ -475,6 +480,98 @@ impl<'a> Parser<'a> {
         let start = self.advance().expect("SYSTEM keyword").span.start; // consume SYSTEM
         let span = self.span_from(start);
         Ok(Statement::new(StatementKind::System, span))
+    }
+
+    /// Parses a SLEEP statement.
+    /// Syntax: SLEEP [seconds]
+    pub(super) fn parse_sleep(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("SLEEP keyword").span.start;
+
+        // Optional seconds argument
+        let seconds = if self.is_at_end_of_statement() {
+            None
+        } else {
+            Some(self.parse_expression()?)
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::Sleep { seconds }, span))
+    }
+
+    /// Parses a _DELAY statement (QB64).
+    /// Syntax: _DELAY seconds
+    pub(super) fn parse_delay(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_DELAY keyword").span.start;
+
+        let seconds = self.parse_expression()?;
+
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::Delay { seconds }, span))
+    }
+
+    /// Parses a _LIMIT statement (QB64).
+    /// Syntax: _LIMIT fps
+    pub(super) fn parse_limit(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_LIMIT keyword").span.start;
+
+        let fps = self.parse_expression()?;
+
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::Limit { fps }, span))
+    }
+
+    /// Parses an ERASE statement.
+    /// Syntax: ERASE arrayname [, arrayname...]
+    pub(super) fn parse_erase(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("ERASE keyword").span.start;
+
+        let mut arrays = Vec::new();
+
+        // Parse first array name
+        if let Some(token) = self.peek() {
+            if token.kind == TokenKind::Identifier {
+                arrays.push(self.advance().unwrap().text.to_uppercase());
+            } else {
+                let span: Span = token.span.clone().into();
+                let found = format!("{:?}", token.kind);
+                self.errors
+                    .push(ParseError::unexpected("array name", found, span));
+                return Err(());
+            }
+        } else {
+            self.errors.push(ParseError::eof("array name"));
+            return Err(());
+        }
+
+        // Parse additional array names
+        while self.check(&TokenKind::Comma) {
+            self.advance(); // consume comma
+            if let Some(token) = self.peek() {
+                if token.kind == TokenKind::Identifier {
+                    arrays.push(self.advance().unwrap().text.to_uppercase());
+                } else {
+                    let span: Span = token.span.clone().into();
+                    let found = format!("{:?}", token.kind);
+                    self.errors
+                        .push(ParseError::unexpected("array name", found, span));
+                    return Err(());
+                }
+            } else {
+                self.errors.push(ParseError::eof("array name"));
+                return Err(());
+            }
+        }
+
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::Erase { arrays }, span))
+    }
+
+    /// Parses a _KEYCLEAR statement (QB64).
+    /// Syntax: _KEYCLEAR
+    pub(super) fn parse_keyclear(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_KEYCLEAR keyword").span.start;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::KeyClear, span))
     }
 
     /// Parses a SWAP statement.
