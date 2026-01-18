@@ -80,6 +80,10 @@ pub enum BasicType {
         dimensions: usize,
     },
 
+    // QB64 Memory type
+    /// _MEM - Memory block descriptor
+    Mem,
+
     // Special types
     /// SUBs don't return values
     Void,
@@ -230,6 +234,7 @@ impl fmt::Display for BasicType {
             BasicType::UnsignedInteger64 => write!(f, "_UNSIGNED _INTEGER64"),
             BasicType::UserDefined(name) => write!(f, "{}", name),
             BasicType::Array { element_type, .. } => write!(f, "{}()", element_type),
+            BasicType::Mem => write!(f, "_MEM"),
             BasicType::Void => write!(f, "VOID"),
             BasicType::Unknown => write!(f, "UNKNOWN"),
         }

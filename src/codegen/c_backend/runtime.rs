@@ -1112,4 +1112,373 @@ fn emit_keyboard_functions(output: &mut String) {
     )
     .unwrap();
     writeln!(output).unwrap();
+
+    // ==================== Phase 2: String Enhancements ====================
+
+    // _INSTRREV(source$, search$) - find last occurrence, 1-based, 0 if not found
+    writeln!(
+        output,
+        "int32_t qb_instrrev(qb_string* source, qb_string* search) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (!source || !search || search->len == 0) return 0;"
+    )
+    .unwrap();
+    writeln!(output, "    if (search->len > source->len) return 0;").unwrap();
+    writeln!(
+        output,
+        "    for (int32_t i = source->len - search->len; i >= 0; i--) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "        if (memcmp(source->data + i, search->data, search->len) == 0) {{"
+    )
+    .unwrap();
+    writeln!(output, "            return i + 1; // 1-based").unwrap();
+    writeln!(output, "        }}").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    return 0;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _TRIM$(s$) - trim whitespace from both ends
+    writeln!(output, "qb_string* qb_trim(qb_string* s) {{").unwrap();
+    writeln!(
+        output,
+        "    if (!s || s->len == 0) return qb_string_new(\"\");"
+    )
+    .unwrap();
+    writeln!(output, "    int32_t start = 0, end = s->len - 1;").unwrap();
+    writeln!(
+        output,
+        "    while (start <= end && (s->data[start] == ' ' || s->data[start] == '\\t')) start++;"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    while (end >= start && (s->data[end] == ' ' || s->data[end] == '\\t')) end--;"
+    )
+    .unwrap();
+    writeln!(output, "    if (start > end) return qb_string_new(\"\");").unwrap();
+    writeln!(output, "    int32_t newlen = end - start + 1;").unwrap();
+    writeln!(
+        output,
+        "    qb_string* result = (qb_string*)malloc(sizeof(qb_string) + newlen + 1);"
+    )
+    .unwrap();
+    writeln!(output, "    result->len = newlen;").unwrap();
+    writeln!(output, "    result->refcount = 1;").unwrap();
+    writeln!(output, "    memcpy(result->data, s->data + start, newlen);").unwrap();
+    writeln!(output, "    result->data[newlen] = '\\0';").unwrap();
+    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // MKI$(n) - pack 16-bit integer to 2-byte string
+    writeln!(output, "qb_string* qb_mki(int16_t n) {{").unwrap();
+    writeln!(
+        output,
+        "    qb_string* result = (qb_string*)malloc(sizeof(qb_string) + 3);"
+    )
+    .unwrap();
+    writeln!(output, "    result->len = 2;").unwrap();
+    writeln!(output, "    result->refcount = 1;").unwrap();
+    writeln!(output, "    memcpy(result->data, &n, 2);").unwrap();
+    writeln!(output, "    result->data[2] = '\\0';").unwrap();
+    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // MKL$(n) - pack 32-bit long to 4-byte string
+    writeln!(output, "qb_string* qb_mkl(int32_t n) {{").unwrap();
+    writeln!(
+        output,
+        "    qb_string* result = (qb_string*)malloc(sizeof(qb_string) + 5);"
+    )
+    .unwrap();
+    writeln!(output, "    result->len = 4;").unwrap();
+    writeln!(output, "    result->refcount = 1;").unwrap();
+    writeln!(output, "    memcpy(result->data, &n, 4);").unwrap();
+    writeln!(output, "    result->data[4] = '\\0';").unwrap();
+    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // MKS$(n) - pack single to 4-byte string
+    writeln!(output, "qb_string* qb_mks(float n) {{").unwrap();
+    writeln!(
+        output,
+        "    qb_string* result = (qb_string*)malloc(sizeof(qb_string) + 5);"
+    )
+    .unwrap();
+    writeln!(output, "    result->len = 4;").unwrap();
+    writeln!(output, "    result->refcount = 1;").unwrap();
+    writeln!(output, "    memcpy(result->data, &n, 4);").unwrap();
+    writeln!(output, "    result->data[4] = '\\0';").unwrap();
+    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // MKD$(n) - pack double to 8-byte string
+    writeln!(output, "qb_string* qb_mkd(double n) {{").unwrap();
+    writeln!(
+        output,
+        "    qb_string* result = (qb_string*)malloc(sizeof(qb_string) + 9);"
+    )
+    .unwrap();
+    writeln!(output, "    result->len = 8;").unwrap();
+    writeln!(output, "    result->refcount = 1;").unwrap();
+    writeln!(output, "    memcpy(result->data, &n, 8);").unwrap();
+    writeln!(output, "    result->data[8] = '\\0';").unwrap();
+    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // CVI(s$) - unpack 2-byte string to 16-bit integer
+    writeln!(output, "int16_t qb_cvi(qb_string* s) {{").unwrap();
+    writeln!(output, "    if (!s || s->len < 2) return 0;").unwrap();
+    writeln!(output, "    int16_t result;").unwrap();
+    writeln!(output, "    memcpy(&result, s->data, 2);").unwrap();
+    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // CVL(s$) - unpack 4-byte string to 32-bit long
+    writeln!(output, "int32_t qb_cvl(qb_string* s) {{").unwrap();
+    writeln!(output, "    if (!s || s->len < 4) return 0;").unwrap();
+    writeln!(output, "    int32_t result;").unwrap();
+    writeln!(output, "    memcpy(&result, s->data, 4);").unwrap();
+    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // CVS(s$) - unpack 4-byte string to single
+    writeln!(output, "float qb_cvs(qb_string* s) {{").unwrap();
+    writeln!(output, "    if (!s || s->len < 4) return 0.0f;").unwrap();
+    writeln!(output, "    float result;").unwrap();
+    writeln!(output, "    memcpy(&result, s->data, 4);").unwrap();
+    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // CVD(s$) - unpack 8-byte string to double
+    writeln!(output, "double qb_cvd(qb_string* s) {{").unwrap();
+    writeln!(output, "    if (!s || s->len < 8) return 0.0;").unwrap();
+    writeln!(output, "    double result;").unwrap();
+    writeln!(output, "    memcpy(&result, s->data, 8);").unwrap();
+    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // ==================== Phase 2: QB64 Date/Time ====================
+
+    // _DATE$ - returns date in YYYY-MM-DD format (QB64 format)
+    writeln!(output, "qb_string* qb_date64(void) {{").unwrap();
+    writeln!(output, "    time_t t = time(NULL);").unwrap();
+    writeln!(output, "    struct tm* tm = localtime(&t);").unwrap();
+    writeln!(output, "    char buf[16];").unwrap();
+    writeln!(output, "    strftime(buf, sizeof(buf), \"%Y-%m-%d\", tm);").unwrap();
+    writeln!(output, "    return qb_string_new(buf);").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _TIME$ - returns time in HH:MM:SS format (same as TIME$ but for consistency)
+    writeln!(output, "qb_string* qb_time64(void) {{").unwrap();
+    writeln!(output, "    time_t t = time(NULL);").unwrap();
+    writeln!(output, "    struct tm* tm = localtime(&t);").unwrap();
+    writeln!(output, "    char buf[16];").unwrap();
+    writeln!(output, "    strftime(buf, sizeof(buf), \"%H:%M:%S\", tm);").unwrap();
+    writeln!(output, "    return qb_string_new(buf);").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // ==================== Phase 2: Memory Operations ====================
+    emit_memory_functions(output);
+}
+
+/// Emits memory operation functions for _MEM, _MEMNEW, _MEMFREE, etc.
+fn emit_memory_functions(output: &mut String) {
+    writeln!(output, "/* QB64 Memory Operations */").unwrap();
+    writeln!(output).unwrap();
+
+    // _MEM type definition - QB64 memory block descriptor
+    writeln!(output, "typedef struct qb_mem {{").unwrap();
+    writeln!(output, "    void* offset;      /* Pointer to data */").unwrap();
+    writeln!(output, "    intptr_t size;     /* Size in bytes */").unwrap();
+    writeln!(output, "    intptr_t type;     /* Type info (0=generic) */").unwrap();
+    writeln!(
+        output,
+        "    intptr_t elementsize; /* Element size for arrays */"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    int32_t image;     /* Image handle if applicable */"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    int32_t sound;     /* Sound handle if applicable */"
+    )
+    .unwrap();
+    writeln!(output, "}} qb_mem;").unwrap();
+    writeln!(output).unwrap();
+
+    // _MEMNEW(size) - Allocate a new memory block
+    writeln!(output, "qb_mem qb_memnew(intptr_t size) {{").unwrap();
+    writeln!(output, "    qb_mem m;").unwrap();
+    writeln!(
+        output,
+        "    m.offset = (size > 0) ? calloc(1, (size_t)size) : NULL;"
+    )
+    .unwrap();
+    writeln!(output, "    m.size = (m.offset) ? size : 0;").unwrap();
+    writeln!(output, "    m.type = 0;").unwrap();
+    writeln!(output, "    m.elementsize = 1;").unwrap();
+    writeln!(output, "    m.image = 0;").unwrap();
+    writeln!(output, "    m.sound = 0;").unwrap();
+    writeln!(output, "    return m;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _MEMFREE(mem) - Free a memory block
+    writeln!(output, "void qb_memfree(qb_mem* m) {{").unwrap();
+    writeln!(output, "    if (m && m->offset) {{").unwrap();
+    writeln!(output, "        free(m->offset);").unwrap();
+    writeln!(output, "        m->offset = NULL;").unwrap();
+    writeln!(output, "        m->size = 0;").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _MEMGET - Read value from memory (generic version returns int64)
+    // In real QB64, this is type-aware; here we provide basic int64 access
+    writeln!(
+        output,
+        "int64_t qb_memget(qb_mem m, intptr_t byteoffset) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (!m.offset || byteoffset < 0 || byteoffset >= m.size) return 0;"
+    )
+    .unwrap();
+    writeln!(output, "    int64_t result = 0;").unwrap();
+    writeln!(
+        output,
+        "    size_t copysize = (size_t)(m.size - byteoffset);"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (copysize > sizeof(int64_t)) copysize = sizeof(int64_t);"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    memcpy(&result, (char*)m.offset + byteoffset, copysize);"
+    )
+    .unwrap();
+    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _MEMPUT - Write value to memory
+    writeln!(
+        output,
+        "void qb_memput(qb_mem m, intptr_t byteoffset, int64_t value) {{"
+    )
+    .unwrap();
+    writeln!(output, "    if (!m.offset || byteoffset < 0) return;").unwrap();
+    writeln!(output, "    size_t copysize = sizeof(int64_t);").unwrap();
+    writeln!(
+        output,
+        "    if (byteoffset + (intptr_t)copysize > m.size) {{"
+    )
+    .unwrap();
+    writeln!(output, "        copysize = (size_t)(m.size - byteoffset);").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    if (copysize > 0) {{").unwrap();
+    writeln!(
+        output,
+        "        memcpy((char*)m.offset + byteoffset, &value, copysize);"
+    )
+    .unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _MEMCOPY - Copy bytes between memory blocks
+    writeln!(output, "void qb_memcopy(qb_mem src, intptr_t src_offset, intptr_t bytes, qb_mem dest, intptr_t dest_offset) {{").unwrap();
+    writeln!(output, "    if (!src.offset || !dest.offset) return;").unwrap();
+    writeln!(
+        output,
+        "    if (src_offset < 0 || dest_offset < 0 || bytes <= 0) return;"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (src_offset + bytes > src.size) bytes = src.size - src_offset;"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (dest_offset + bytes > dest.size) bytes = dest.size - dest_offset;"
+    )
+    .unwrap();
+    writeln!(output, "    if (bytes > 0) {{").unwrap();
+    writeln!(output, "        memmove((char*)dest.offset + dest_offset, (char*)src.offset + src_offset, (size_t)bytes);").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _MEMFILL - Fill memory with a byte value
+    writeln!(
+        output,
+        "void qb_memfill(qb_mem m, intptr_t byteoffset, intptr_t bytes, int32_t value) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (!m.offset || byteoffset < 0 || bytes <= 0) return;"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (byteoffset + bytes > m.size) bytes = m.size - byteoffset;"
+    )
+    .unwrap();
+    writeln!(output, "    if (bytes > 0) {{").unwrap();
+    writeln!(
+        output,
+        "        memset((char*)m.offset + byteoffset, (int)(value & 0xFF), (size_t)bytes);"
+    )
+    .unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _OFFSET - Get memory address of variable
+    // This is typically used with pointers; here we return an address
+    writeln!(output, "intptr_t qb_offset(void* ptr) {{").unwrap();
+    writeln!(output, "    return (intptr_t)ptr;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _MEM - Create a memory block referencing a variable
+    // Takes pointer and size, returns qb_mem descriptor
+    writeln!(output, "qb_mem qb_mem_of(void* ptr, intptr_t size) {{").unwrap();
+    writeln!(output, "    qb_mem m;").unwrap();
+    writeln!(output, "    m.offset = ptr;").unwrap();
+    writeln!(output, "    m.size = size;").unwrap();
+    writeln!(output, "    m.type = 0;").unwrap();
+    writeln!(output, "    m.elementsize = 1;").unwrap();
+    writeln!(output, "    m.image = 0;").unwrap();
+    writeln!(output, "    m.sound = 0;").unwrap();
+    writeln!(output, "    return m;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
 }

@@ -56,6 +56,7 @@ pub(super) fn c_type(basic_type: &BasicType) -> String {
         BasicType::Array { element_type, .. } => {
             format!("{}*", c_type(element_type))
         }
+        BasicType::Mem => "qb_mem".to_string(),
         BasicType::Void => "void".to_string(),
         BasicType::Unknown => "int32_t".to_string(), // Default to LONG
     }
@@ -78,6 +79,7 @@ pub(super) fn default_init(basic_type: &BasicType) -> String {
         BasicType::String => "qb_string_new(\"\")".to_string(),
         BasicType::FixedString(_) => "\"\"".to_string(),
         BasicType::Single | BasicType::Double | BasicType::Float => "0.0".to_string(),
+        BasicType::Mem => "{0}".to_string(), // Zero-initialized struct
         _ => "0".to_string(),
     }
 }

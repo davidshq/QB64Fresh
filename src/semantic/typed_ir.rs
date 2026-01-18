@@ -316,6 +316,20 @@ pub enum TypedStatementKind {
         args: Option<String>,
     },
 
+    /// $LET compile-time variable assignment.
+    MetaLet {
+        /// Variable name.
+        name: String,
+        /// Value (integer).
+        value: i64,
+    },
+
+    /// $CHECKING:ON/OFF directive.
+    MetaChecking {
+        /// Whether bounds checking is enabled.
+        enabled: bool,
+    },
+
     /// SWAP statement - exchange values of two variables.
     Swap {
         /// First variable/expression to swap.

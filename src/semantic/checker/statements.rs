@@ -196,6 +196,19 @@ impl<'a> TypeChecker<'a> {
                 stmt.span,
             ),
 
+            StatementKind::MetaLet { name, value } => TypedStatement::new(
+                TypedStatementKind::MetaLet {
+                    name: name.clone(),
+                    value: *value,
+                },
+                stmt.span,
+            ),
+
+            StatementKind::MetaChecking { enabled } => TypedStatement::new(
+                TypedStatementKind::MetaChecking { enabled: *enabled },
+                stmt.span,
+            ),
+
             StatementKind::Swap { left, right } => {
                 let typed_left = self.check_expr(left);
                 let typed_right = self.check_expr(right);

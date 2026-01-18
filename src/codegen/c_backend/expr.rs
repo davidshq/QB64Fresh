@@ -306,6 +306,32 @@ pub(super) fn c_function_name(name: &str) -> String {
         "_OS$" => "qb_os".to_string(),
         "_STARTDIR$" => "qb_startdir".to_string(),
 
+        // Phase 2: String enhancements
+        "_INSTRREV" => "qb_instrrev".to_string(),
+        "_TRIM$" => "qb_trim".to_string(),
+        "MKI$" => "qb_mki".to_string(),
+        "MKL$" => "qb_mkl".to_string(),
+        "MKS$" => "qb_mks".to_string(),
+        "MKD$" => "qb_mkd".to_string(),
+        "CVI" => "qb_cvi".to_string(),
+        "CVL" => "qb_cvl".to_string(),
+        "CVS" => "qb_cvs".to_string(),
+        "CVD" => "qb_cvd".to_string(),
+
+        // Phase 2: QB64 Date/Time
+        "_DATE$" => "qb_date64".to_string(),
+        "_TIME$" => "qb_time64".to_string(),
+
+        // Phase 2: Memory operations
+        "_MEMNEW" => "qb_memnew".to_string(),
+        "_MEMFREE" => "qb_memfree".to_string(),
+        "_MEMGET" => "qb_memget".to_string(),
+        "_MEMPUT" => "qb_memput".to_string(),
+        "_MEMCOPY" => "qb_memcopy".to_string(),
+        "_MEMFILL" => "qb_memfill".to_string(),
+        "_OFFSET" => "qb_offset".to_string(),
+        "_MEM" => "qb_mem".to_string(),
+
         // Default: prefix with qb_ for user functions
         _ => format!("qb_{}", c_identifier(name).to_lowercase()),
     }

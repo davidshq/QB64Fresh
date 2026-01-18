@@ -410,6 +410,73 @@ impl SemanticAnalyzer {
             &[("n", BasicType::Integer), ("char", BasicType::Integer)],
             BasicType::String,
         );
+
+        // Phase 2: String Enhancements
+        self.register_builtin_function(
+            "_INSTRREV",
+            &[("source", BasicType::String), ("search", BasicType::String)],
+            BasicType::Long,
+        );
+        self.register_builtin_function("_TRIM$", &[("s", BasicType::String)], BasicType::String);
+
+        // Binary string packing/unpacking functions
+        self.register_builtin_function("MKI$", &[("n", BasicType::Integer)], BasicType::String);
+        self.register_builtin_function("MKL$", &[("n", BasicType::Long)], BasicType::String);
+        self.register_builtin_function("MKS$", &[("n", BasicType::Single)], BasicType::String);
+        self.register_builtin_function("MKD$", &[("n", BasicType::Double)], BasicType::String);
+        self.register_builtin_function("CVI", &[("s", BasicType::String)], BasicType::Integer);
+        self.register_builtin_function("CVL", &[("s", BasicType::String)], BasicType::Long);
+        self.register_builtin_function("CVS", &[("s", BasicType::String)], BasicType::Single);
+        self.register_builtin_function("CVD", &[("s", BasicType::String)], BasicType::Double);
+
+        // Phase 2: QB64 Date/Time enhancements
+        self.register_builtin_function("_DATE$", &[], BasicType::String);
+        self.register_builtin_function("_TIME$", &[], BasicType::String);
+
+        // Phase 2: Memory operations
+        self.register_builtin_function("_MEMNEW", &[("size", BasicType::Offset)], BasicType::Mem);
+        self.register_builtin_function("_MEMFREE", &[("mem", BasicType::Mem)], BasicType::Void);
+        self.register_builtin_function(
+            "_MEMGET",
+            &[("mem", BasicType::Mem), ("offset", BasicType::Offset)],
+            BasicType::Unknown, // Return type depends on context
+        );
+        self.register_builtin_function(
+            "_MEMPUT",
+            &[
+                ("mem", BasicType::Mem),
+                ("offset", BasicType::Offset),
+                ("value", BasicType::Unknown),
+            ],
+            BasicType::Void,
+        );
+        self.register_builtin_function(
+            "_MEMCOPY",
+            &[
+                ("source", BasicType::Mem),
+                ("src_offset", BasicType::Offset),
+                ("size", BasicType::Offset),
+                ("dest", BasicType::Mem),
+                ("dest_offset", BasicType::Offset),
+            ],
+            BasicType::Void,
+        );
+        self.register_builtin_function(
+            "_MEMFILL",
+            &[
+                ("mem", BasicType::Mem),
+                ("offset", BasicType::Offset),
+                ("size", BasicType::Offset),
+                ("value", BasicType::Unknown),
+            ],
+            BasicType::Void,
+        );
+        self.register_builtin_function(
+            "_OFFSET",
+            &[("variable", BasicType::Unknown)],
+            BasicType::Offset,
+        );
+        self.register_builtin_function("_MEM", &[("variable", BasicType::Unknown)], BasicType::Mem);
     }
 
     /// Registers a single built-in function.

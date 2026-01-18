@@ -481,6 +481,21 @@ pub enum StatementKind {
         /// Type specification.
         type_spec: Option<TypeSpec>,
     },
+
+    // ==================== Additional Conditional Compilation ====================
+    /// `$LET variable = value` - compile-time variable assignment
+    MetaLet {
+        /// Variable name.
+        name: String,
+        /// Value (integer, typically -1 for true, 0 for false).
+        value: i64,
+    },
+
+    /// `$CHECKING:ON` or `$CHECKING:OFF` - bounds checking control
+    MetaChecking {
+        /// Whether checking is enabled.
+        enabled: bool,
+    },
 }
 
 /// File mode for OPEN statement.

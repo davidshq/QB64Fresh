@@ -558,7 +558,31 @@ pub enum TokenKind {
     #[regex(r"\$INCLUDE\s*:\s*'[^']*'", ignore(ascii_case))]
     IncludeDirective,
 
-    /// Other $ directives ($IF, $ELSE, $END IF, etc.)
+    /// $IF - conditional compilation start
+    #[token("$IF", ignore(ascii_case))]
+    MetaIf,
+
+    /// $ELSE - conditional compilation else
+    #[token("$ELSE", ignore(ascii_case))]
+    MetaElse,
+
+    /// $ELSEIF - conditional compilation elseif
+    #[token("$ELSEIF", ignore(ascii_case))]
+    MetaElseIf,
+
+    /// $END IF - conditional compilation end
+    #[regex(r"\$END\s+IF", ignore(ascii_case))]
+    MetaEndIf,
+
+    /// $LET - compile-time variable assignment
+    #[token("$LET", ignore(ascii_case))]
+    MetaLet,
+
+    /// $CHECKING - enable/disable bounds checking
+    #[token("$CHECKING", ignore(ascii_case))]
+    MetaChecking,
+
+    /// Other $ directives (catch-all for unrecognized metacommands)
     #[regex(r"\$[A-Za-z][A-Za-z0-9]*")]
     MetaCommand,
 

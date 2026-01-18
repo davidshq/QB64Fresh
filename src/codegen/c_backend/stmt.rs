@@ -316,6 +316,17 @@ impl StmtEmitter {
                 writeln!(output, "{}/* ${} {} */", indent, command, args_str).unwrap();
             }
 
+            TypedStatementKind::MetaLet { name, value } => {
+                // Compile-time variable assignment - generates a comment
+                writeln!(output, "{}/* $LET {} = {} */", indent, name, value).unwrap();
+            }
+
+            TypedStatementKind::MetaChecking { enabled } => {
+                // Compile-time bounds checking directive - generates a comment
+                let state = if *enabled { "ON" } else { "OFF" };
+                writeln!(output, "{}/* $CHECKING:{} */", indent, state).unwrap();
+            }
+
             TypedStatementKind::Swap { left, right } => {
                 let left_code = emit_expr(left)?;
                 let right_code = emit_expr(right)?;
@@ -1776,6 +1787,7 @@ fn type_size(ty: &BasicType) -> &'static str {
         }
         BasicType::UserDefined(_) => "sizeof(void*)",
         BasicType::Array { .. } => "sizeof(void*)",
+        BasicType::Mem => "sizeof(qb_mem)",
         BasicType::Void | BasicType::Unknown => "4",
     }
 }

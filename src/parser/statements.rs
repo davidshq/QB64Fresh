@@ -84,6 +84,9 @@ impl<'a> Parser<'a> {
 
             // Preprocessor directives (delegated to directives.rs)
             TokenKind::IncludeDirective => self.parse_include_directive(),
+            TokenKind::MetaIf => self.parse_meta_if(),
+            TokenKind::MetaLet => self.parse_meta_let(),
+            TokenKind::MetaChecking => self.parse_meta_checking(),
             TokenKind::MetaCommand => self.parse_meta_command(),
 
             // Other

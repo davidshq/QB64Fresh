@@ -640,4 +640,52 @@ PRINT x
             StatementKind::FileWrite { .. }
         ));
     }
+
+    // Phase 2: Conditional Compilation tests
+
+    #[test]
+    fn test_parse_meta_let() {
+        let program = parse("$LET DEBUG = 1").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        if let StatementKind::MetaLet { name, value } = &program.statements[0].kind {
+            assert_eq!(name, "DEBUG");
+            assert_eq!(*value, 1);
+        } else {
+            panic!("Expected MetaLet statement");
+        }
+    }
+
+    #[test]
+    fn test_parse_meta_let_negative() {
+        let program = parse("$LET VERSION = -5").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        if let StatementKind::MetaLet { name, value } = &program.statements[0].kind {
+            assert_eq!(name, "VERSION");
+            assert_eq!(*value, -5);
+        } else {
+            panic!("Expected MetaLet statement");
+        }
+    }
+
+    #[test]
+    fn test_parse_meta_checking_on() {
+        let program = parse("$CHECKING:ON").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        if let StatementKind::MetaChecking { enabled } = &program.statements[0].kind {
+            assert!(*enabled);
+        } else {
+            panic!("Expected MetaChecking statement");
+        }
+    }
+
+    #[test]
+    fn test_parse_meta_checking_off() {
+        let program = parse("$CHECKING:OFF").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        if let StatementKind::MetaChecking { enabled } = &program.statements[0].kind {
+            assert!(!*enabled);
+        } else {
+            panic!("Expected MetaChecking statement");
+        }
+    }
 }

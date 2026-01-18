@@ -109,18 +109,13 @@ impl<'a> Parser<'a> {
                 return Err(());
             }
 
-            // Check for $ELSEIF, $ELSE, $END IF
-            if let Some(token) = self.peek()
-                && token.kind == TokenKind::MetaCommand
-            {
-                let cmd = token.text[1..].to_uppercase();
-                if cmd == "END" {
-                    // $END IF
+            // Check for $ELSEIF, $ELSE, $END IF (both new specific tokens and legacy MetaCommand)
+            if let Some(token) = self.peek() {
+                // Handle new specific tokens
+                if token.kind == TokenKind::MetaEndIf {
                     self.advance();
-                    // Skip IF if present
-                    self.match_token(&TokenKind::If);
                     break;
-                } else if cmd == "ELSEIF" {
+                } else if token.kind == TokenKind::MetaElseIf {
                     self.advance();
                     let elseif_condition = self.parse_meta_command_args().unwrap_or_default();
                     self.match_token(&TokenKind::Then);
@@ -137,7 +132,7 @@ impl<'a> Parser<'a> {
                     }
                     elseif_branches.push((elseif_condition, elseif_body));
                     continue;
-                } else if cmd == "ELSE" {
+                } else if token.kind == TokenKind::MetaElse {
                     self.advance();
                     self.skip_newlines();
 
@@ -153,14 +148,60 @@ impl<'a> Parser<'a> {
                     else_branch = Some(else_body);
 
                     // After $ELSE body, expect $END IF
-                    if let Some(token) = self.peek()
-                        && token.kind == TokenKind::MetaCommand
-                        && token.text[1..].to_uppercase() == "END"
-                    {
+                    if self.check(&TokenKind::MetaEndIf) {
                         self.advance();
-                        self.match_token(&TokenKind::If);
                     }
                     break;
+                }
+                // Handle legacy MetaCommand tokens for backwards compatibility
+                else if token.kind == TokenKind::MetaCommand {
+                    let cmd = token.text[1..].to_uppercase();
+                    if cmd == "END" {
+                        self.advance();
+                        self.match_token(&TokenKind::If);
+                        break;
+                    } else if cmd == "ELSEIF" {
+                        self.advance();
+                        let elseif_condition = self.parse_meta_command_args().unwrap_or_default();
+                        self.match_token(&TokenKind::Then);
+                        self.skip_newlines();
+
+                        let mut elseif_body = Vec::new();
+                        loop {
+                            self.skip_newlines();
+                            if self.is_at_end() || self.check_meta_command_end() {
+                                break;
+                            }
+                            elseif_body.push(self.parse_statement()?);
+                            self.skip_newlines();
+                        }
+                        elseif_branches.push((elseif_condition, elseif_body));
+                        continue;
+                    } else if cmd == "ELSE" {
+                        self.advance();
+                        self.skip_newlines();
+
+                        let mut else_body = Vec::new();
+                        loop {
+                            self.skip_newlines();
+                            if self.is_at_end() || self.check_meta_command_end() {
+                                break;
+                            }
+                            else_body.push(self.parse_statement()?);
+                            self.skip_newlines();
+                        }
+                        else_branch = Some(else_body);
+
+                        // After $ELSE body, expect $END IF
+                        if let Some(token) = self.peek()
+                            && token.kind == TokenKind::MetaCommand
+                            && token.text[1..].to_uppercase() == "END"
+                        {
+                            self.advance();
+                            self.match_token(&TokenKind::If);
+                        }
+                        break;
+                    }
                 }
             }
 
@@ -181,13 +222,21 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    /// Checks if current token is $END, $ELSEIF, or $ELSE.
+    /// Checks if current token is $END IF, $ELSEIF, or $ELSE.
     fn check_meta_command_end(&self) -> bool {
-        if let Some(token) = self.peek()
-            && token.kind == TokenKind::MetaCommand
-        {
-            let cmd = token.text[1..].to_uppercase();
-            return cmd == "END" || cmd == "ELSEIF" || cmd == "ELSE";
+        if let Some(token) = self.peek() {
+            // Check new specific tokens
+            if matches!(
+                token.kind,
+                TokenKind::MetaEndIf | TokenKind::MetaElseIf | TokenKind::MetaElse
+            ) {
+                return true;
+            }
+            // Check legacy MetaCommand tokens
+            if token.kind == TokenKind::MetaCommand {
+                let cmd = token.text[1..].to_uppercase();
+                return cmd == "END" || cmd == "ELSEIF" || cmd == "ELSE";
+            }
         }
         false
     }
@@ -206,5 +255,91 @@ impl<'a> Parser<'a> {
         }
 
         if args.is_empty() { None } else { Some(args) }
+    }
+
+    // ==================== New Phase 2 Metacommand Parsers ====================
+
+    /// Parses a `$IF` conditional compilation directive.
+    ///
+    /// Delegates to the existing conditional block parsing logic.
+    pub(super) fn parse_meta_if(&mut self) -> Result<Statement, ()> {
+        let token = self.advance().expect("$IF token");
+        let span: Span = token.span.clone().into();
+        self.parse_conditional_block(span)
+    }
+
+    /// Parses a `$LET` compile-time variable assignment.
+    ///
+    /// Syntax: `$LET variable = value`
+    pub(super) fn parse_meta_let(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("$LET token").span.start;
+
+        // Parse variable name
+        let name_token = self.expect(&TokenKind::Identifier, "variable name")?;
+        let name = name_token.text.to_uppercase();
+
+        // Expect equals sign
+        self.expect(&TokenKind::Equals, "=")?;
+
+        // Parse value (integer or boolean-like)
+        let value = if self.check(&TokenKind::IntegerLiteral) {
+            let val_token = self.advance().expect("integer literal");
+            val_token.text.parse::<i64>().unwrap_or(0)
+        } else if self.check(&TokenKind::Minus) {
+            self.advance(); // consume minus
+            let val_token = self.expect(&TokenKind::IntegerLiteral, "integer")?;
+            -val_token.text.parse::<i64>().unwrap_or(0)
+        } else {
+            // Default to -1 for TRUE-like assignment
+            -1
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::MetaLet { name, value }, span))
+    }
+
+    /// Parses a `$CHECKING` directive.
+    ///
+    /// Syntax: `$CHECKING:ON` or `$CHECKING:OFF`
+    pub(super) fn parse_meta_checking(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("$CHECKING token").span.start;
+
+        // Expect colon
+        self.expect(&TokenKind::Colon, ":")?;
+
+        // Parse ON or OFF
+        let enabled = if let Some(token) = self.peek() {
+            match token.text.to_uppercase().as_str() {
+                "ON" => {
+                    self.advance();
+                    true
+                }
+                "OFF" => {
+                    self.advance();
+                    false
+                }
+                _ => {
+                    let span = self.span_from(start);
+                    self.errors.push(ParseError::syntax(
+                        "expected ON or OFF after $CHECKING:",
+                        span,
+                    ));
+                    return Err(());
+                }
+            }
+        } else {
+            let span = self.span_from(start);
+            self.errors.push(ParseError::syntax(
+                "expected ON or OFF after $CHECKING:",
+                span,
+            ));
+            return Err(());
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::MetaChecking { enabled },
+            span,
+        ))
     }
 }
