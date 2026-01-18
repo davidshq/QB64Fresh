@@ -3,9 +3,9 @@
 
 PRINT "Hello, World!"
 
-DIM name AS STRING
-INPUT "What is your name? ", name
-PRINT "Hello, "; name; "!"
+DIM userName AS STRING
+INPUT "What is your name? ", userName
+PRINT "Hello, "; userName; "!"
 
 ' A simple loop
 FOR i = 1 TO 5
@@ -18,7 +18,7 @@ result = (10 + 5) * 2 / 3.14
 PRINT "Result = "; result
 
 ' Hex and binary literals (QB64 extension)
-DIM hex_val AS INTEGER
+DIM hex_val AS LONG
 hex_val = &HFF
 PRINT "Hex FF = "; hex_val
 

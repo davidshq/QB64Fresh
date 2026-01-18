@@ -1,0 +1,12 @@
+' Test DATA and READ
+DIM a AS LONG
+DIM b AS LONG
+DIM c AS LONG
+
+READ a
+READ b
+READ c
+PRINT a; b; c
+
+DATA 10, 20, 30
+END

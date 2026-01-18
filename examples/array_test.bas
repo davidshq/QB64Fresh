@@ -1,5 +1,5 @@
 ' Test multi-dimensional array indexing
-DIM matrix(2, 3) AS INTEGER
+DIM matrix(2, 3) AS LONG
 
 ' Fill the 3x4 matrix (0-2, 0-3)
 matrix(0, 0) = 1
@@ -21,7 +21,7 @@ PRINT matrix(1, 0); matrix(1, 1); matrix(1, 2); matrix(1, 3)
 PRINT matrix(2, 0); matrix(2, 1); matrix(2, 2); matrix(2, 3)
 
 ' Test 1D array too
-DIM arr(5) AS INTEGER
+DIM arr(5) AS LONG
 arr(0) = 100
 arr(5) = 555
 PRINT "1D array: "; arr(0); arr(5)
