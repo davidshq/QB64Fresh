@@ -312,8 +312,17 @@ pub(super) fn c_function_name(name: &str) -> String {
         "_OS$" => "qb_os".to_string(),
         "_STARTDIR$" => "qb_startdir".to_string(),
 
+        // Classic BASIC date/time functions
+        "TIMER" => "qb_timer".to_string(),
+        "DATE$" => "qb_date".to_string(),
+        "TIME$" => "qb_time".to_string(),
+        // TRIM$ is a common BASIC extension (not in original QBasic).
+        // Both TRIM$ and _TRIM$ map to the same implementation.
+        "TRIM$" => "qb_trim".to_string(),
+
         // Phase 2: String enhancements
         "_INSTRREV" => "qb_instrrev".to_string(),
+        // _TRIM$ is the QB64-specific name; same as TRIM$ above
         "_TRIM$" => "qb_trim".to_string(),
         "MKI$" => "qb_mki".to_string(),
         "MKL$" => "qb_mkl".to_string(),

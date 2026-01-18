@@ -106,6 +106,8 @@ impl<'a> TypeChecker<'a> {
 
             StatementKind::Stop => TypedStatement::new(TypedStatementKind::Stop, stmt.span),
 
+            StatementKind::System => TypedStatement::new(TypedStatementKind::System, stmt.span),
+
             StatementKind::Call { name, args } => self.check_call(name, args, stmt.span),
 
             StatementKind::Dim {

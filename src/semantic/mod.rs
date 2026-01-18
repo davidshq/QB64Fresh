@@ -304,6 +304,7 @@ impl SemanticAnalyzer {
         self.register_builtin_function("LCASE$", &[("s", BasicType::String)], BasicType::String);
         self.register_builtin_function("LTRIM$", &[("s", BasicType::String)], BasicType::String);
         self.register_builtin_function("RTRIM$", &[("s", BasicType::String)], BasicType::String);
+        self.register_builtin_function("TRIM$", &[("s", BasicType::String)], BasicType::String);
         self.register_builtin_function("STR$", &[("n", BasicType::Double)], BasicType::String);
         self.register_builtin_function("VAL", &[("s", BasicType::String)], BasicType::Double);
         self.register_builtin_function(

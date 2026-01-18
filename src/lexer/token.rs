@@ -135,6 +135,10 @@ pub enum TokenKind {
     #[token("STOP", ignore(ascii_case))]
     Stop,
 
+    /// SYSTEM keyword - exit program immediately
+    #[token("SYSTEM", ignore(ascii_case))]
+    System,
+
     /// CALL keyword - call a subroutine
     #[token("CALL", ignore(ascii_case))]
     Call,

@@ -245,6 +245,9 @@ pub enum TypedStatementKind {
     /// STOP statement.
     Stop,
 
+    /// SYSTEM statement (exit immediately).
+    System,
+
     /// SUB procedure call.
     Call { name: String, args: Vec<TypedExpr> },
 

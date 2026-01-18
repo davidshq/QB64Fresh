@@ -65,6 +65,7 @@ impl<'a> Parser<'a> {
             TokenKind::Continue => self.parse_continue(),
             TokenKind::End => self.parse_end(),
             TokenKind::Stop => self.parse_stop(),
+            TokenKind::System => self.parse_system(),
             TokenKind::On => self.parse_on_statement(),
 
             // Error handling
@@ -224,6 +225,17 @@ impl<'a> Parser<'a> {
     /// Parses an identifier statement (assignment or procedure call).
     pub(super) fn parse_identifier_statement(&mut self) -> Result<Statement, ()> {
         let start = self.peek().expect("identifier token").span.start;
+
+        // Check for label: identifier followed by colon (e.g., "myLabel:")
+        if let Some(next) = self.peek_ahead(1)
+            && next.kind == TokenKind::Colon
+        {
+            let name_token = self.advance().expect("identifier");
+            let name = name_token.text.to_string();
+            self.advance(); // consume the colon
+            let span = self.span_from(start);
+            return Ok(Statement::new(StatementKind::Label { name }, span));
+        }
 
         // Look ahead to determine if this is assignment or call
         if let Some(next) = self.peek_ahead(1)
@@ -456,6 +468,13 @@ impl<'a> Parser<'a> {
         let start = self.advance().expect("STOP keyword").span.start; // consume STOP
         let span = self.span_from(start);
         Ok(Statement::new(StatementKind::Stop, span))
+    }
+
+    /// Parses a SYSTEM statement (exit program immediately).
+    pub(super) fn parse_system(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("SYSTEM keyword").span.start; // consume SYSTEM
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::System, span))
     }
 
     /// Parses a SWAP statement.

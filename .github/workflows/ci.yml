@@ -153,3 +153,34 @@ jobs:
         run: cargo doc --no-deps --document-private-items
         env:
           RUSTDOCFLAGS: -D warnings
+
+  # Verify fuzz targets compile (requires nightly)
+  fuzz-check:
+    name: Fuzz Targets Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            fuzz/target
+          key: ${{ runner.os }}-cargo-fuzz-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-fuzz-
+
+      - name: Check fuzz targets compile
+        working-directory: fuzz
+        run: |
+          cargo +nightly fuzz build fuzz_lexer
+          cargo +nightly fuzz build fuzz_parser
+          cargo +nightly fuzz build fuzz_full_pipeline

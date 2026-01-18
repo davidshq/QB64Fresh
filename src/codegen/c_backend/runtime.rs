@@ -27,6 +27,15 @@ pub(super) fn emit_header(output: &mut String, runtime_mode: RuntimeMode) {
     writeln!(output, "#include <string.h>").unwrap();
     writeln!(output, "#include <math.h>").unwrap();
     writeln!(output, "#include <ctype.h>").unwrap();
+    writeln!(output, "#include <time.h>").unwrap();
+    writeln!(output).unwrap();
+
+    // Platform-specific includes for TIMER function
+    writeln!(output, "#ifdef _WIN32").unwrap();
+    writeln!(output, "#include <windows.h>").unwrap();
+    writeln!(output, "#else").unwrap();
+    writeln!(output, "#include <sys/time.h>").unwrap();
+    writeln!(output, "#endif").unwrap();
     writeln!(output).unwrap();
 
     match runtime_mode {
@@ -1333,6 +1342,54 @@ fn emit_keyboard_functions(output: &mut String) {
     writeln!(output, "    double result;").unwrap();
     writeln!(output, "    memcpy(&result, s->data, 8);").unwrap();
     writeln!(output, "    return result;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // ==================== Classic BASIC Date/Time Functions ====================
+
+    // TIMER - returns seconds elapsed since midnight as a SINGLE
+    // Platform-specific includes are in emit_header()
+    writeln!(output, "#ifdef _WIN32").unwrap();
+    writeln!(output, "float qb_timer(void) {{").unwrap();
+    writeln!(output, "    SYSTEMTIME st;").unwrap();
+    writeln!(output, "    GetLocalTime(&st);").unwrap();
+    writeln!(
+        output,
+        "    return st.wHour * 3600.0f + st.wMinute * 60.0f + st.wSecond + st.wMilliseconds / 1000.0f;"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output, "#else").unwrap();
+    writeln!(output, "float qb_timer(void) {{").unwrap();
+    writeln!(output, "    struct timeval tv;").unwrap();
+    writeln!(output, "    gettimeofday(&tv, NULL);").unwrap();
+    writeln!(output, "    struct tm* tm = localtime(&tv.tv_sec);").unwrap();
+    writeln!(
+        output,
+        "    return tm->tm_hour * 3600.0f + tm->tm_min * 60.0f + tm->tm_sec + tv.tv_usec / 1000000.0f;"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output, "#endif").unwrap();
+    writeln!(output).unwrap();
+
+    // DATE$ - returns date in MM-DD-YYYY format (classic QBasic format)
+    writeln!(output, "qb_string* qb_date(void) {{").unwrap();
+    writeln!(output, "    time_t t = time(NULL);").unwrap();
+    writeln!(output, "    struct tm* tm = localtime(&t);").unwrap();
+    writeln!(output, "    char buf[16];").unwrap();
+    writeln!(output, "    strftime(buf, sizeof(buf), \"%m-%d-%Y\", tm);").unwrap();
+    writeln!(output, "    return qb_string_new(buf);").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // TIME$ - returns time in HH:MM:SS format
+    writeln!(output, "qb_string* qb_time(void) {{").unwrap();
+    writeln!(output, "    time_t t = time(NULL);").unwrap();
+    writeln!(output, "    struct tm* tm = localtime(&t);").unwrap();
+    writeln!(output, "    char buf[16];").unwrap();
+    writeln!(output, "    strftime(buf, sizeof(buf), \"%H:%M:%S\", tm);").unwrap();
+    writeln!(output, "    return qb_string_new(buf);").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 

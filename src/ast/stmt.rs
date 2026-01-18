@@ -151,6 +151,9 @@ pub enum StatementKind {
     /// `STOP` - Stop execution (for debugging)
     Stop,
 
+    /// `SYSTEM` - Exit program immediately (returns to OS)
+    System,
+
     /// `SWAP var1, var2` - Exchange values of two variables
     Swap {
         /// First variable to swap.

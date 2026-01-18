@@ -13,7 +13,7 @@
 
 **UPDATE:** As of 2026-01-18, the testing infrastructure has been substantially implemented:
 - **163 unit tests** in source modules
-- **110 integration tests** (7 ignored for unimplemented features)
+- **128 integration tests** (0 ignored)
 - **10 golden tests** for C code generation snapshots
 - **16 compatibility test fixtures** (auto-discovered)
 - **19 property-based tests** using proptest (thousands of iterations)
@@ -21,7 +21,8 @@
 - **37 runtime tests**
 
 Total: **350+ tests** across the workspace.
-**Line coverage:** 56.53% (measured via cargo-llvm-cov)
+**Line coverage:** 59.92% (measured via cargo-llvm-cov)
+**Fuzz testing:** 3 fuzz targets ready (requires nightly + cargo-fuzz)
 
 ---
 
@@ -30,7 +31,7 @@ Total: **350+ tests** across the workspace.
 ### What We Have (Updated)
 - Unit tests integrated into source files using `#[cfg(test)]` modules
 - **163 passing unit tests** across compiler modules
-- **103 integration tests** covering full compilation pipeline
+- **128 integration tests** covering full compilation pipeline
 - **10 golden tests** for codegen snapshot verification
 - **16 compatibility test fixtures** in QB64pe-style format
 - **30 criterion benchmarks** for performance tracking
@@ -73,7 +74,7 @@ src/
 ### Tier 2: Integration Tests ✅ IMPLEMENTED
 **Location:** `tests/integration_tests.rs`
 **Purpose:** Test complete compiler pipeline end-to-end
-**Status:** 103 tests passing, 7 ignored (unimplemented features)
+**Status:** 128 tests passing, 0 ignored
 
 Tests cover:
 - Basic programs (hello world, comments, END)
@@ -85,6 +86,8 @@ Tests cover:
 - DATA/READ statements
 - Type conversions (CINT, CLNG, CSNG, CDBL)
 - Built-in functions (math, type conversion)
+- String functions (LEN, LEFT$, RIGHT$, MID$, UCASE$, LCASE$, CHR$, ASC, INSTR, SPACE$, STRING$)
+- RND/RANDOMIZE (random number generation)
 - Error detection (type mismatch, undefined procedures)
 - File compilation (example .bas files)
 
@@ -166,10 +169,29 @@ Property tests verify the compiler never panics on arbitrary input:
 
 Run: `cargo test --test proptest_tests`
 
-### Tier 7: Fuzz Testing (Future)
+### Tier 7: Fuzz Testing ✅ INFRASTRUCTURE READY
 **Location:** `fuzz/`
 **Purpose:** Continuous fuzzing to find edge cases
-**Status:** Not yet implemented
+**Status:** Infrastructure in place, requires nightly Rust and cargo-fuzz
+
+Fuzz targets:
+- `fuzz_lexer` - Fuzz arbitrary input to the lexer
+- `fuzz_parser` - Fuzz arbitrary token sequences to the parser
+- `fuzz_full_pipeline` - Fuzz the complete compilation pipeline
+
+**Setup:**
+```bash
+# Install cargo-fuzz (requires nightly Rust)
+rustup install nightly
+cargo +nightly install cargo-fuzz
+
+# Run a fuzz target
+cd fuzz
+cargo +nightly fuzz run fuzz_lexer
+
+# Run with limited time
+cargo +nightly fuzz run fuzz_lexer -- -max_total_time=60
+```
 
 ---
 
@@ -178,7 +200,7 @@ Run: `cargo test --test proptest_tests`
 ### Phase 1: Foundation ✅ COMPLETE
 
 #### 1.1 Integration Test Framework ✅
-Implemented in `tests/integration_tests.rs` with 103 tests covering:
+Implemented in `tests/integration_tests.rs` with 128 tests covering:
 - Full compilation pipeline (lex → parse → analyze → codegen)
 - Helper functions: `compile_to_c()`, `assert_compiles()`, `assert_compile_error()`
 - Organized into modules by feature area
@@ -369,7 +391,7 @@ fn compile_compat_qb45_arrays()
 ### Phase 1 Goals ✅ COMPLETE
 - [x] Integration test framework operational
 - [x] Snapshot testing for codegen enabled
-- [x] At least 10 codegen unit tests (103 integration tests)
+- [x] At least 10 codegen unit tests (110 integration tests)
 
 ### Phase 2 Goals ✅ MOSTLY COMPLETE
 - [x] All statement types have at least 1 test
@@ -394,7 +416,7 @@ fn compile_compat_qb45_arrays()
 ### Immediate (This Sprint) ✅ COMPLETE
 - [x] Create `tests/` directory structure
 - [x] Write snapshot/golden tests for codegen (10 tests)
-- [x] Write integration compile tests (103 tests)
+- [x] Write integration compile tests (110 tests)
 - [x] Add compatibility test framework
 - [x] Add benchmark infrastructure (30 benchmarks)
 
@@ -405,7 +427,8 @@ fn compile_compat_qb45_arrays()
 
 ### Medium Term (Next Month) 🔄 IN PROGRESS
 - [x] Add property-based testing with `proptest` (19 tests)
-- [ ] Implement missing built-in functions (string functions, RND, etc.)
+- [x] Implement string functions (LEN, LEFT$, RIGHT$, MID$, UCASE$, LCASE$, CHR$, ASC, INSTR, SPACE$, STRING$)
+- [x] Implement RND/RANDOMIZE with xorshift64 RNG
 - [ ] Port 50+ compatibility tests
 
 ### Long Term (Next Quarter)
@@ -422,7 +445,7 @@ fn compile_compat_qb45_arrays()
 cargo test --workspace
 
 # Run specific test suites
-cargo test --test integration_tests    # 110 integration tests
+cargo test --test integration_tests    # 128 integration tests
 cargo test --test golden_tests         # 10 golden tests
 cargo test --test compatibility        # 16 fixture tests
 cargo test --test proptest_tests       # 19 property-based tests
@@ -460,3 +483,5 @@ cargo llvm-cov --workspace --lcov      # LCOV format for CI
 *Document created as part of QB64Fresh codebase review - 2026-01-18*
 *Updated: 2026-01-18 - Marked completed items after testing infrastructure implementation*
 *Updated: 2026-01-18 - Added coverage reporting (56.53%), property-based testing (19 tests), CI coverage job*
+*Updated: 2026-01-18 - String functions and RND/RANDOMIZE implemented, 5 tests enabled (110 passing, 2 ignored)*
+*Updated: 2026-01-18 - Session 019: SYSTEM, labeled DATA, File I/O tests, console INPUT tests, built-in functions (TIMER, DATE$, TIME$, TRIM$), fuzz infrastructure (128 tests, 0 ignored, 59.92% coverage)*

@@ -215,6 +215,10 @@ impl StmtEmitter {
                 writeln!(output, "{}exit(1);", indent).unwrap();
             }
 
+            TypedStatementKind::System => {
+                writeln!(output, "{}exit(0);", indent).unwrap();
+            }
+
             TypedStatementKind::Call { name, args } => {
                 let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
                 let args_str = args_code?.join(", ");

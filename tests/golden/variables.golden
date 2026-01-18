@@ -6,6 +6,13 @@
 #include <string.h>
 #include <math.h>
 #include <ctype.h>
+#include <time.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <sys/time.h>
+#endif
 
 /* QB64Fresh Runtime Library */
 
@@ -644,6 +651,37 @@ double qb_cvd(qb_string* s) {
     double result;
     memcpy(&result, s->data, 8);
     return result;
+}
+
+#ifdef _WIN32
+float qb_timer(void) {
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    return st.wHour * 3600.0f + st.wMinute * 60.0f + st.wSecond + st.wMilliseconds / 1000.0f;
+}
+#else
+float qb_timer(void) {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    struct tm* tm = localtime(&tv.tv_sec);
+    return tm->tm_hour * 3600.0f + tm->tm_min * 60.0f + tm->tm_sec + tv.tv_usec / 1000000.0f;
+}
+#endif
+
+qb_string* qb_date(void) {
+    time_t t = time(NULL);
+    struct tm* tm = localtime(&t);
+    char buf[16];
+    strftime(buf, sizeof(buf), "%m-%d-%Y", tm);
+    return qb_string_new(buf);
+}
+
+qb_string* qb_time(void) {
+    time_t t = time(NULL);
+    struct tm* tm = localtime(&t);
+    char buf[16];
+    strftime(buf, sizeof(buf), "%H:%M:%S", tm);
+    return qb_string_new(buf);
 }
 
 qb_string* qb_date64(void) {

@@ -84,7 +84,6 @@ mod basic_programs {
     }
 
     #[test]
-    #[ignore = "SYSTEM statement not yet implemented"]
     fn program_with_system() {
         let source = "SYSTEM";
         assert_compiles(source);
@@ -933,7 +932,6 @@ mod data_statements {
     }
 
     #[test]
-    #[ignore = "Label syntax for DATA statements not yet implemented"]
     fn labeled_data() {
         let source = r#"
             DIM x AS LONG
@@ -1072,6 +1070,199 @@ mod builtin_functions {
             RANDOMIZE TIMER
             PRINT RND
             PRINT INT(RND * 100) + 1
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn timer_function() {
+        let source = r#"
+            PRINT TIMER
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn date_time_functions() {
+        let source = r#"
+            PRINT DATE$
+            PRINT TIME$
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn val_str_functions() {
+        let source = r#"
+            DIM s AS STRING
+            DIM n AS DOUBLE
+            s = STR$(123.45)
+            n = VAL("42.5")
+            PRINT s, n
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn trim_functions() {
+        let source = r#"
+            DIM s AS STRING
+            s = "  hello world  "
+            PRINT LTRIM$(s)
+            PRINT RTRIM$(s)
+            PRINT TRIM$(s)
+        "#;
+        assert_compiles(source);
+    }
+}
+
+// =============================================================================
+// File I/O Tests
+// =============================================================================
+
+mod file_io {
+    use super::*;
+
+    #[test]
+    fn open_for_output() {
+        let source = r#"
+            OPEN "test.txt" FOR OUTPUT AS #1
+            CLOSE #1
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn open_for_input() {
+        let source = r#"
+            OPEN "test.txt" FOR INPUT AS #1
+            CLOSE #1
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn open_for_append() {
+        let source = r#"
+            OPEN "test.txt" FOR APPEND AS #1
+            CLOSE #1
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn print_to_file() {
+        let source = r#"
+            OPEN "test.txt" FOR OUTPUT AS #1
+            PRINT #1, "Hello, World!"
+            PRINT #1, 42
+            CLOSE #1
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn input_from_file() {
+        let source = r#"
+            DIM username AS STRING
+            DIM age AS LONG
+            OPEN "test.txt" FOR INPUT AS #1
+            INPUT #1, username, age
+            CLOSE #1
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn line_input_from_file() {
+        let source = r#"
+            DIM textline AS STRING
+            OPEN "test.txt" FOR INPUT AS #1
+            LINE INPUT #1, textline
+            CLOSE #1
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn close_all_files() {
+        let source = r#"
+            OPEN "test1.txt" FOR OUTPUT AS #1
+            OPEN "test2.txt" FOR OUTPUT AS #2
+            CLOSE
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn write_to_file() {
+        let source = r#"
+            OPEN "test.txt" FOR OUTPUT AS #1
+            WRITE #1, "name", 42, 3.14
+            CLOSE #1
+        "#;
+        assert_compiles(source);
+    }
+}
+
+// =============================================================================
+// Console INPUT Tests
+// =============================================================================
+
+mod console_input {
+    use super::*;
+
+    #[test]
+    fn input_single_variable() {
+        let source = r#"
+            DIM username AS STRING
+            INPUT username
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn input_with_prompt() {
+        let source = r#"
+            DIM age AS LONG
+            INPUT "Enter your age: ", age
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn input_multiple_variables() {
+        let source = r#"
+            DIM x AS LONG
+            DIM y AS LONG
+            INPUT x, y
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn input_without_question_mark() {
+        let source = r#"
+            DIM val AS SINGLE
+            INPUT "Value"; val
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn line_input_statement() {
+        let source = r#"
+            DIM fullline AS STRING
+            LINE INPUT fullline
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn line_input_with_prompt() {
+        let source = r#"
+            DIM response AS STRING
+            LINE INPUT "Enter text: "; response
         "#;
         assert_compiles(source);
     }
