@@ -5,7 +5,7 @@
 //! statements are handled directly here, while complex statements delegate
 //! to specialized modules.
 
-use crate::ast::{ArrayDimension, DataValue, PrintItem, Statement, StatementKind};
+use crate::ast::{ArrayDimension, DataValue, PrintItem, Statement, StatementKind, ViewCoords};
 use crate::semantic::{
     error::SemanticError,
     symbols::{ConstValue, ScopeKind, Symbol, SymbolKind, UserTypeDefinition, UserTypeMember},
@@ -959,6 +959,259 @@ impl<'a> TypeChecker<'a> {
             StatementKind::GfxDisplay => {
                 TypedStatement::new(TypedStatementKind::GfxDisplay, stmt.span)
             }
+
+            // ==================== Additional Graphics Statements ====================
+            StatementKind::Width { columns, rows } => {
+                let typed_columns = self.check_expr(columns);
+                let typed_rows = rows.as_ref().map(|e| self.check_expr(e));
+                TypedStatement::new(
+                    TypedStatementKind::Width {
+                        columns: typed_columns,
+                        rows: typed_rows,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::View {
+                screen,
+                coords,
+                fill_color,
+                border_color,
+            } => {
+                let typed_coords = coords.as_ref().map(|c| self.check_view_coords(c));
+                let typed_fill = fill_color.as_ref().map(|e| self.check_expr(e));
+                let typed_border = border_color.as_ref().map(|e| self.check_expr(e));
+                TypedStatement::new(
+                    TypedStatementKind::View {
+                        screen: *screen,
+                        coords: typed_coords,
+                        fill_color: typed_fill,
+                        border_color: typed_border,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::WindowCoords { screen, coords } => {
+                let typed_coords = coords.as_ref().map(|c| self.check_view_coords(c));
+                TypedStatement::new(
+                    TypedStatementKind::WindowCoords {
+                        screen: *screen,
+                        coords: typed_coords,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::DrawCmd { commands } => {
+                let typed_commands = self.check_expr(commands);
+                TypedStatement::new(
+                    TypedStatementKind::DrawCmd {
+                        commands: typed_commands,
+                    },
+                    stmt.span,
+                )
+            }
+
+            // ==================== QB64 Graphics Extensions ====================
+            StatementKind::FreeImage { handle } => {
+                let typed_handle = self.check_expr(handle);
+                TypedStatement::new(
+                    TypedStatementKind::FreeImage {
+                        handle: typed_handle,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::PutImage {
+                dest_coords,
+                source,
+                dest,
+                source_coords,
+            } => {
+                let typed_dest_coords = dest_coords
+                    .as_ref()
+                    .map(|c| Box::new(self.check_view_coords(c)));
+                let typed_source = source.as_ref().map(|e| self.check_expr(e));
+                let typed_dest = dest.as_ref().map(|e| self.check_expr(e));
+                let typed_source_coords = source_coords
+                    .as_ref()
+                    .map(|c| Box::new(self.check_view_coords(c)));
+                TypedStatement::new(
+                    TypedStatementKind::PutImage {
+                        dest_coords: typed_dest_coords,
+                        source: typed_source,
+                        dest: typed_dest,
+                        source_coords: typed_source_coords,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::SourceImg { handle } => {
+                let typed_handle = self.check_expr(handle);
+                TypedStatement::new(
+                    TypedStatementKind::SourceImg {
+                        handle: typed_handle,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::DestImg { handle } => {
+                let typed_handle = self.check_expr(handle);
+                TypedStatement::new(
+                    TypedStatementKind::DestImg {
+                        handle: typed_handle,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::PrintStringStmt { x, y, text } => {
+                let typed_x = self.check_expr(x);
+                let typed_y = self.check_expr(y);
+                let typed_text = self.check_expr(text);
+                TypedStatement::new(
+                    TypedStatementKind::PrintStringStmt {
+                        x: typed_x,
+                        y: typed_y,
+                        text: typed_text,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::AutoDisplay { enabled } => TypedStatement::new(
+                TypedStatementKind::AutoDisplay { enabled: *enabled },
+                stmt.span,
+            ),
+
+            // ==================== Audio Statements ====================
+            StatementKind::Beep => TypedStatement::new(TypedStatementKind::Beep, stmt.span),
+
+            StatementKind::SoundStmt {
+                frequency,
+                duration,
+            } => {
+                let typed_freq = self.check_expr(frequency);
+                let typed_dur = self.check_expr(duration);
+                TypedStatement::new(
+                    TypedStatementKind::SoundStmt {
+                        frequency: typed_freq,
+                        duration: typed_dur,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::PlayStmt { commands } => {
+                let typed_commands = self.check_expr(commands);
+                TypedStatement::new(
+                    TypedStatementKind::PlayStmt {
+                        commands: typed_commands,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::SndClose { handle } => {
+                let typed_handle = self.check_expr(handle);
+                TypedStatement::new(
+                    TypedStatementKind::SndClose {
+                        handle: typed_handle,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::SndPlay { handle } => {
+                let typed_handle = self.check_expr(handle);
+                TypedStatement::new(
+                    TypedStatementKind::SndPlay {
+                        handle: typed_handle,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::SndStop { handle } => {
+                let typed_handle = self.check_expr(handle);
+                TypedStatement::new(
+                    TypedStatementKind::SndStop {
+                        handle: typed_handle,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::SndPause { handle } => {
+                let typed_handle = self.check_expr(handle);
+                TypedStatement::new(
+                    TypedStatementKind::SndPause {
+                        handle: typed_handle,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::SndLoop { handle } => {
+                let typed_handle = self.check_expr(handle);
+                TypedStatement::new(
+                    TypedStatementKind::SndLoop {
+                        handle: typed_handle,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::SndVol { handle, volume } => {
+                let typed_handle = self.check_expr(handle);
+                let typed_volume = self.check_expr(volume);
+                TypedStatement::new(
+                    TypedStatementKind::SndVol {
+                        handle: typed_handle,
+                        volume: typed_volume,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::SndBal { handle, balance } => {
+                let typed_handle = self.check_expr(handle);
+                let typed_balance = self.check_expr(balance);
+                TypedStatement::new(
+                    TypedStatementKind::SndBal {
+                        handle: typed_handle,
+                        balance: typed_balance,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::SndRaw { left, right } => {
+                let typed_left = self.check_expr(left);
+                let typed_right = right.as_ref().map(|e| self.check_expr(e));
+                TypedStatement::new(
+                    TypedStatementKind::SndRaw {
+                        left: typed_left,
+                        right: typed_right,
+                    },
+                    stmt.span,
+                )
+            }
+        }
+    }
+
+    /// Type checks ViewCoords for VIEW/WINDOW statements.
+    fn check_view_coords(&mut self, coords: &ViewCoords) -> TypedViewCoords {
+        TypedViewCoords {
+            x1: self.check_expr(&coords.x1),
+            y1: self.check_expr(&coords.y1),
+            x2: self.check_expr(&coords.x2),
+            y2: self.check_expr(&coords.y2),
         }
     }
 

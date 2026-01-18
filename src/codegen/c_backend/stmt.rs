@@ -677,6 +677,246 @@ impl StmtEmitter {
             TypedStatementKind::GfxDisplay => {
                 writeln!(output, "{}qb_gfx_display();", indent).unwrap();
             }
+
+            // ==================== Additional Graphics Statements ====================
+            TypedStatementKind::Width { columns, rows } => {
+                let cols_code = emit_expr(columns)?;
+                if let Some(r) = rows {
+                    let rows_code = emit_expr(r)?;
+                    writeln!(
+                        output,
+                        "{}qb_gfx_set_width((uint32_t){}, (uint32_t){});",
+                        indent, cols_code, rows_code
+                    )
+                    .unwrap();
+                } else {
+                    writeln!(
+                        output,
+                        "{}qb_gfx_set_width((uint32_t){}, 0);",
+                        indent, cols_code
+                    )
+                    .unwrap();
+                }
+            }
+
+            TypedStatementKind::View {
+                screen,
+                coords,
+                fill_color,
+                border_color,
+            } => {
+                let screen_int = if *screen { 1 } else { 0 };
+                if let Some(c) = coords {
+                    let x1 = emit_expr(&c.x1)?;
+                    let y1 = emit_expr(&c.y1)?;
+                    let x2 = emit_expr(&c.x2)?;
+                    let y2 = emit_expr(&c.y2)?;
+                    let fill = fill_color
+                        .as_ref()
+                        .map(emit_expr)
+                        .transpose()?
+                        .unwrap_or_else(|| "-1".to_string());
+                    let border = border_color
+                        .as_ref()
+                        .map(emit_expr)
+                        .transpose()?
+                        .unwrap_or_else(|| "-1".to_string());
+                    writeln!(output, "{}qb_gfx_view({}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){});",
+                             indent, screen_int, x1, y1, x2, y2, fill, border).unwrap();
+                } else {
+                    // Reset viewport
+                    writeln!(output, "{}qb_gfx_view_reset();", indent).unwrap();
+                }
+            }
+
+            TypedStatementKind::WindowCoords { screen, coords } => {
+                let screen_int = if *screen { 1 } else { 0 };
+                if let Some(c) = coords {
+                    let x1 = emit_expr(&c.x1)?;
+                    let y1 = emit_expr(&c.y1)?;
+                    let x2 = emit_expr(&c.x2)?;
+                    let y2 = emit_expr(&c.y2)?;
+                    writeln!(
+                        output,
+                        "{}qb_gfx_window({}, (double){}, (double){}, (double){}, (double){});",
+                        indent, screen_int, x1, y1, x2, y2
+                    )
+                    .unwrap();
+                } else {
+                    // Reset window coordinates
+                    writeln!(output, "{}qb_gfx_window_reset();", indent).unwrap();
+                }
+            }
+
+            TypedStatementKind::DrawCmd { commands } => {
+                let cmd_code = emit_expr(commands)?;
+                writeln!(output, "{}qb_gfx_draw({});", indent, cmd_code).unwrap();
+            }
+
+            // ==================== QB64 Graphics Extensions ====================
+            TypedStatementKind::FreeImage { handle } => {
+                let h_code = emit_expr(handle)?;
+                writeln!(output, "{}qb_gfx_freeimage((int32_t){});", indent, h_code).unwrap();
+            }
+
+            TypedStatementKind::PutImage {
+                dest_coords,
+                source,
+                dest,
+                source_coords,
+            } => {
+                // Generate _PUTIMAGE call with all optional parameters
+                let src_handle = source
+                    .as_ref()
+                    .map(emit_expr)
+                    .transpose()?
+                    .unwrap_or_else(|| "-1".to_string());
+                let dst_handle = dest
+                    .as_ref()
+                    .map(emit_expr)
+                    .transpose()?
+                    .unwrap_or_else(|| "-1".to_string());
+
+                if let (Some(dc), Some(sc)) = (dest_coords, source_coords) {
+                    let dx1 = emit_expr(&dc.x1)?;
+                    let dy1 = emit_expr(&dc.y1)?;
+                    let dx2 = emit_expr(&dc.x2)?;
+                    let dy2 = emit_expr(&dc.y2)?;
+                    let sx1 = emit_expr(&sc.x1)?;
+                    let sy1 = emit_expr(&sc.y1)?;
+                    let sx2 = emit_expr(&sc.x2)?;
+                    let sy2 = emit_expr(&sc.y2)?;
+                    writeln!(output, "{}qb_gfx_putimage_full((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){});",
+                             indent, dx1, dy1, dx2, dy2, src_handle, dst_handle, sx1, sy1, sx2, sy2).unwrap();
+                } else if let Some(dc) = dest_coords {
+                    let dx1 = emit_expr(&dc.x1)?;
+                    let dy1 = emit_expr(&dc.y1)?;
+                    let dx2 = emit_expr(&dc.x2)?;
+                    let dy2 = emit_expr(&dc.y2)?;
+                    writeln!(output, "{}qb_gfx_putimage((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){});",
+                             indent, dx1, dy1, dx2, dy2, src_handle, dst_handle).unwrap();
+                } else {
+                    writeln!(
+                        output,
+                        "{}qb_gfx_putimage_simple((int32_t){}, (int32_t){});",
+                        indent, src_handle, dst_handle
+                    )
+                    .unwrap();
+                }
+            }
+
+            TypedStatementKind::SourceImg { handle } => {
+                let h_code = emit_expr(handle)?;
+                writeln!(output, "{}qb_gfx_source((int32_t){});", indent, h_code).unwrap();
+            }
+
+            TypedStatementKind::DestImg { handle } => {
+                let h_code = emit_expr(handle)?;
+                writeln!(output, "{}qb_gfx_dest((int32_t){});", indent, h_code).unwrap();
+            }
+
+            TypedStatementKind::PrintStringStmt { x, y, text } => {
+                let x_code = emit_expr(x)?;
+                let y_code = emit_expr(y)?;
+                let text_code = emit_expr(text)?;
+                writeln!(
+                    output,
+                    "{}qb_gfx_printstring((int32_t){}, (int32_t){}, {});",
+                    indent, x_code, y_code, text_code
+                )
+                .unwrap();
+            }
+
+            TypedStatementKind::AutoDisplay { enabled } => {
+                let enable_int = if *enabled { 1 } else { 0 };
+                writeln!(output, "{}qb_gfx_autodisplay({});", indent, enable_int).unwrap();
+            }
+
+            // ==================== Audio Statements ====================
+            TypedStatementKind::Beep => {
+                writeln!(output, "{}qb_beep();", indent).unwrap();
+            }
+
+            TypedStatementKind::SoundStmt {
+                frequency,
+                duration,
+            } => {
+                let freq_code = emit_expr(frequency)?;
+                let dur_code = emit_expr(duration)?;
+                writeln!(
+                    output,
+                    "{}qb_sound((double){}, (double){});",
+                    indent, freq_code, dur_code
+                )
+                .unwrap();
+            }
+
+            TypedStatementKind::PlayStmt { commands } => {
+                let cmd_code = emit_expr(commands)?;
+                writeln!(output, "{}qb_play({});", indent, cmd_code).unwrap();
+            }
+
+            TypedStatementKind::SndClose { handle } => {
+                let h_code = emit_expr(handle)?;
+                writeln!(output, "{}qb_sndclose((int32_t){});", indent, h_code).unwrap();
+            }
+
+            TypedStatementKind::SndPlay { handle } => {
+                let h_code = emit_expr(handle)?;
+                writeln!(output, "{}qb_sndplay((int32_t){});", indent, h_code).unwrap();
+            }
+
+            TypedStatementKind::SndStop { handle } => {
+                let h_code = emit_expr(handle)?;
+                writeln!(output, "{}qb_sndstop((int32_t){});", indent, h_code).unwrap();
+            }
+
+            TypedStatementKind::SndPause { handle } => {
+                let h_code = emit_expr(handle)?;
+                writeln!(output, "{}qb_sndpause((int32_t){});", indent, h_code).unwrap();
+            }
+
+            TypedStatementKind::SndLoop { handle } => {
+                let h_code = emit_expr(handle)?;
+                writeln!(output, "{}qb_sndloop((int32_t){});", indent, h_code).unwrap();
+            }
+
+            TypedStatementKind::SndVol { handle, volume } => {
+                let h_code = emit_expr(handle)?;
+                let vol_code = emit_expr(volume)?;
+                writeln!(
+                    output,
+                    "{}qb_sndvol((int32_t){}, (double){});",
+                    indent, h_code, vol_code
+                )
+                .unwrap();
+            }
+
+            TypedStatementKind::SndBal { handle, balance } => {
+                let h_code = emit_expr(handle)?;
+                let bal_code = emit_expr(balance)?;
+                writeln!(
+                    output,
+                    "{}qb_sndbal((int32_t){}, (double){});",
+                    indent, h_code, bal_code
+                )
+                .unwrap();
+            }
+
+            TypedStatementKind::SndRaw { left, right } => {
+                let left_code = emit_expr(left)?;
+                if let Some(r) = right {
+                    let right_code = emit_expr(r)?;
+                    writeln!(
+                        output,
+                        "{}qb_sndraw_stereo((double){}, (double){});",
+                        indent, left_code, right_code
+                    )
+                    .unwrap();
+                } else {
+                    writeln!(output, "{}qb_sndraw((double){});", indent, left_code).unwrap();
+                }
+            }
         }
 
         Ok(())

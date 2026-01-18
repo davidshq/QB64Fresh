@@ -217,6 +217,166 @@ pub trait GraphicsBackend {
     fn end_batch(&mut self) -> Result<(), GraphicsError> {
         Ok(())
     }
+
+    // ============================================================================
+    // Extended Graphics Operations (WIDTH, VIEW, WINDOW, DRAW)
+    // ============================================================================
+
+    /// Set the text mode width (columns and optionally rows).
+    fn set_width(&mut self, _columns: u32, _rows: u32) -> Result<(), GraphicsError> {
+        Ok(()) // Default: no-op for text-mode resize
+    }
+
+    /// Set the viewport for graphics operations.
+    ///
+    /// # Arguments
+    /// - `screen`: If true, use absolute screen coordinates
+    /// - `x1`, `y1`: Top-left corner of viewport
+    /// - `x2`, `y2`: Bottom-right corner of viewport
+    /// - `fill_color`: Optional fill color for the viewport
+    /// - `border_color`: Optional border color
+    fn set_view(
+        &mut self,
+        _screen: bool,
+        _x1: i32,
+        _y1: i32,
+        _x2: i32,
+        _y2: i32,
+        _fill_color: Option<u32>,
+        _border_color: Option<u32>,
+    ) -> Result<(), GraphicsError> {
+        Ok(()) // Default: viewport not supported
+    }
+
+    /// Reset the viewport to full screen.
+    fn reset_view(&mut self) -> Result<(), GraphicsError> {
+        Ok(())
+    }
+
+    /// Set the world coordinate system.
+    ///
+    /// # Arguments
+    /// - `screen`: If true, Y coordinates increase downward
+    /// - `x1`, `y1`: World coordinate for top-left
+    /// - `x2`, `y2`: World coordinate for bottom-right
+    fn set_window(
+        &mut self,
+        _screen: bool,
+        _x1: f64,
+        _y1: f64,
+        _x2: f64,
+        _y2: f64,
+    ) -> Result<(), GraphicsError> {
+        Ok(()) // Default: world coordinates not supported
+    }
+
+    /// Reset window coordinates to pixel coordinates.
+    fn reset_window(&mut self) -> Result<(), GraphicsError> {
+        Ok(())
+    }
+
+    /// Execute DRAW turtle graphics commands.
+    ///
+    /// # Arguments
+    /// - `commands`: DRAW command string (e.g., "U10 R20 D10 L20")
+    fn draw(&mut self, _commands: &str) -> Result<(), GraphicsError> {
+        Ok(()) // Default: DRAW not supported
+    }
+
+    // ============================================================================
+    // QB64 Image Buffer Operations
+    // ============================================================================
+
+    /// Create a new image buffer.
+    ///
+    /// # Returns
+    /// Image handle (negative numbers for errors, 0 for display, positive for images)
+    fn new_image(&mut self, _width: i32, _height: i32, _mode: i32) -> i32 {
+        -1 // Default: not supported
+    }
+
+    /// Load an image from a file.
+    ///
+    /// # Returns
+    /// Image handle
+    fn load_image(&mut self, _filename: &str, _mode: i32) -> i32 {
+        -1 // Default: not supported
+    }
+
+    /// Free an image buffer.
+    fn free_image(&mut self, _handle: i32) -> Result<(), GraphicsError> {
+        Ok(())
+    }
+
+    /// Copy pixels from one image to another.
+    fn put_image(
+        &mut self,
+        _dest_x1: i32,
+        _dest_y1: i32,
+        _dest_x2: i32,
+        _dest_y2: i32,
+        _src_handle: i32,
+        _dest_handle: i32,
+    ) -> Result<(), GraphicsError> {
+        Ok(())
+    }
+
+    /// Full put_image with source coordinates.
+    fn put_image_full(
+        &mut self,
+        _dest_x1: i32,
+        _dest_y1: i32,
+        _dest_x2: i32,
+        _dest_y2: i32,
+        _src_handle: i32,
+        _dest_handle: i32,
+        _src_x1: i32,
+        _src_y1: i32,
+        _src_x2: i32,
+        _src_y2: i32,
+    ) -> Result<(), GraphicsError> {
+        Ok(())
+    }
+
+    /// Set the source image for reading operations.
+    fn set_source(&mut self, _handle: i32) -> Result<(), GraphicsError> {
+        Ok(())
+    }
+
+    /// Set the destination image for drawing operations.
+    fn set_dest(&mut self, _handle: i32) -> Result<(), GraphicsError> {
+        Ok(())
+    }
+
+    /// Copy an image buffer.
+    fn copy_image(&mut self, _handle: i32, _mode: i32) -> i32 {
+        -1 // Default: not supported
+    }
+
+    /// Capture screen to an image.
+    fn screen_image(&mut self, _x1: i32, _y1: i32, _x2: i32, _y2: i32) -> i32 {
+        -1 // Default: not supported
+    }
+
+    /// Print text at pixel coordinates.
+    fn print_string(&mut self, _x: i32, _y: i32, _text: &str) -> Result<(), GraphicsError> {
+        Ok(())
+    }
+
+    /// Set auto-display mode.
+    fn set_autodisplay(&mut self, _enabled: bool) -> Result<(), GraphicsError> {
+        Ok(())
+    }
+
+    /// Get the width of an image (or screen if handle is 0).
+    fn get_image_width(&self, _handle: i32) -> i32 {
+        0
+    }
+
+    /// Get the height of an image (or screen if handle is 0).
+    fn get_image_height(&self, _handle: i32) -> i32 {
+        0
+    }
 }
 
 /// Global graphics backend instance.

@@ -360,6 +360,116 @@ pub enum TokenKind {
     #[token("_DISPLAY", ignore(ascii_case))]
     Display,
 
+    /// WIDTH statement - set screen width/columns
+    #[token("WIDTH", ignore(ascii_case))]
+    Width,
+
+    /// VIEW statement - define viewport
+    #[token("VIEW", ignore(ascii_case))]
+    View,
+
+    /// WINDOW statement - define coordinate system
+    #[token("WINDOW", ignore(ascii_case))]
+    Window,
+
+    /// DRAW statement - turtle graphics
+    #[token("DRAW", ignore(ascii_case))]
+    Draw,
+
+    // ==================== QB64 Graphics Extensions ====================
+    /// _NEWIMAGE function - create new image buffer
+    #[token("_NEWIMAGE", ignore(ascii_case))]
+    NewImage,
+
+    /// _LOADIMAGE function - load image from file
+    #[token("_LOADIMAGE", ignore(ascii_case))]
+    LoadImage,
+
+    /// _FREEIMAGE statement - release image buffer
+    #[token("_FREEIMAGE", ignore(ascii_case))]
+    FreeImage,
+
+    /// _PUTIMAGE statement - copy image region
+    #[token("_PUTIMAGE", ignore(ascii_case))]
+    PutImage,
+
+    /// _SOURCE statement - set source image for reading
+    #[token("_SOURCE", ignore(ascii_case))]
+    Source,
+
+    /// _DEST statement - set destination image for drawing
+    #[token("_DEST", ignore(ascii_case))]
+    Dest,
+
+    /// _COPYIMAGE function - duplicate image buffer
+    #[token("_COPYIMAGE", ignore(ascii_case))]
+    CopyImage,
+
+    /// _SCREENIMAGE function - capture screen to image
+    #[token("_SCREENIMAGE", ignore(ascii_case))]
+    ScreenImage,
+
+    /// _PRINTSTRING statement - draw text at pixel position
+    #[token("_PRINTSTRING", ignore(ascii_case))]
+    PrintString,
+
+    /// _AUTODISPLAY statement - control automatic display updates
+    #[token("_AUTODISPLAY", ignore(ascii_case))]
+    AutoDisplay,
+
+    // ==================== Audio Keywords ====================
+    /// BEEP statement - simple beep sound
+    #[token("BEEP", ignore(ascii_case))]
+    Beep,
+
+    /// SOUND statement - play tone
+    #[token("SOUND", ignore(ascii_case))]
+    Sound,
+
+    /// PLAY statement - play music string
+    #[token("PLAY", ignore(ascii_case))]
+    Play,
+
+    /// _SNDOPEN function - open sound file
+    #[token("_SNDOPEN", ignore(ascii_case))]
+    SndOpen,
+
+    /// _SNDCLOSE statement - close sound handle
+    #[token("_SNDCLOSE", ignore(ascii_case))]
+    SndClose,
+
+    /// _SNDPLAY statement - play sound
+    #[token("_SNDPLAY", ignore(ascii_case))]
+    SndPlay,
+
+    /// _SNDSTOP statement - stop sound
+    #[token("_SNDSTOP", ignore(ascii_case))]
+    SndStop,
+
+    /// _SNDPAUSE statement - pause sound
+    #[token("_SNDPAUSE", ignore(ascii_case))]
+    SndPause,
+
+    /// _SNDLOOP statement - play sound in loop
+    #[token("_SNDLOOP", ignore(ascii_case))]
+    SndLoop,
+
+    /// _SNDVOL statement - set sound volume
+    #[token("_SNDVOL", ignore(ascii_case))]
+    SndVol,
+
+    /// _SNDBAL statement - set stereo balance
+    #[token("_SNDBAL", ignore(ascii_case))]
+    SndBal,
+
+    /// _SNDOPENRAW function - open raw audio stream
+    #[token("_SNDOPENRAW", ignore(ascii_case))]
+    SndOpenRaw,
+
+    /// _SNDRAW statement - write raw audio samples
+    #[token("_SNDRAW", ignore(ascii_case))]
+    SndRaw,
+
     // Note: B and BF for LINE boxes are handled as identifiers in the parser
     // since they conflict with single-letter variable names.
     /// ON keyword - used in ON ERROR, ON...GOTO/GOSUB

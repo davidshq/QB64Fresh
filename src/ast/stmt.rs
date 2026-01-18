@@ -585,6 +585,159 @@ pub enum StatementKind {
 
     /// `_DISPLAY` - Update screen (for double-buffered graphics)
     GfxDisplay,
+
+    /// `WIDTH columns[, rows]` - Set screen text width
+    Width {
+        /// Number of columns
+        columns: Expr,
+        /// Number of rows (optional)
+        rows: Option<Expr>,
+    },
+
+    /// `VIEW [[SCREEN] (x1, y1)-(x2, y2)[, color[, border]]]` - Define viewport
+    View {
+        /// Whether SCREEN was specified (absolute coordinates)
+        screen: bool,
+        /// Viewport coordinates (None = reset to full screen)
+        coords: Option<ViewCoords>,
+        /// Fill color (optional)
+        fill_color: Option<Expr>,
+        /// Border color (optional)
+        border_color: Option<Expr>,
+    },
+
+    /// `WINDOW [[SCREEN] (x1, y1)-(x2, y2)]` - Define world coordinate system
+    WindowCoords {
+        /// Whether SCREEN was specified (inverted Y axis)
+        screen: bool,
+        /// Window coordinates (None = reset to pixel coordinates)
+        coords: Option<ViewCoords>,
+    },
+
+    /// `DRAW string$` - Turtle graphics drawing commands
+    DrawCmd {
+        /// Command string containing drawing instructions
+        commands: Expr,
+    },
+
+    // ==================== QB64 Graphics Extensions ====================
+    /// `_FREEIMAGE handle&` - Release image buffer
+    FreeImage {
+        /// Image handle to free
+        handle: Expr,
+    },
+
+    /// `_PUTIMAGE [(dx1,dy1)-(dx2,dy2)][, src&][, dest&][, (sx1,sy1)-(sx2,sy2)]`
+    PutImage {
+        /// Destination coordinates (optional) - boxed to reduce enum size
+        dest_coords: Option<Box<ViewCoords>>,
+        /// Source image handle (optional, defaults to _SOURCE)
+        source: Option<Expr>,
+        /// Destination image handle (optional, defaults to _DEST)
+        dest: Option<Expr>,
+        /// Source coordinates (optional) - boxed to reduce enum size
+        source_coords: Option<Box<ViewCoords>>,
+    },
+
+    /// `_SOURCE handle&` - Set source image for reading operations
+    SourceImg {
+        /// Image handle to use as source
+        handle: Expr,
+    },
+
+    /// `_DEST handle&` - Set destination image for drawing operations
+    DestImg {
+        /// Image handle to use as destination
+        handle: Expr,
+    },
+
+    /// `_PRINTSTRING (x, y), text$` - Draw text at pixel position
+    PrintStringStmt {
+        /// X coordinate
+        x: Expr,
+        /// Y coordinate
+        y: Expr,
+        /// Text to print
+        text: Expr,
+    },
+
+    /// `_AUTODISPLAY {ON|OFF}` - Control automatic display updates
+    AutoDisplay {
+        /// Whether auto-display is enabled
+        enabled: bool,
+    },
+
+    // ==================== Audio Statements ====================
+    /// `BEEP` - Play default beep sound
+    Beep,
+
+    /// `SOUND frequency, duration` - Play tone
+    SoundStmt {
+        /// Frequency in Hz
+        frequency: Expr,
+        /// Duration in clock ticks (18.2 ticks/second)
+        duration: Expr,
+    },
+
+    /// `PLAY string$` - Play music using MML (Music Macro Language)
+    PlayStmt {
+        /// Music string containing MML commands
+        commands: Expr,
+    },
+
+    /// `_SNDCLOSE handle&` - Close sound handle
+    SndClose {
+        /// Sound handle to close
+        handle: Expr,
+    },
+
+    /// `_SNDPLAY handle&` - Play sound
+    SndPlay {
+        /// Sound handle to play
+        handle: Expr,
+    },
+
+    /// `_SNDSTOP handle&` - Stop playing sound
+    SndStop {
+        /// Sound handle to stop
+        handle: Expr,
+    },
+
+    /// `_SNDPAUSE handle&` - Pause sound playback
+    SndPause {
+        /// Sound handle to pause
+        handle: Expr,
+    },
+
+    /// `_SNDLOOP handle&` - Play sound in continuous loop
+    SndLoop {
+        /// Sound handle to loop
+        handle: Expr,
+    },
+
+    /// `_SNDVOL handle&, volume!` - Set sound volume
+    SndVol {
+        /// Sound handle
+        handle: Expr,
+        /// Volume (0.0 to 1.0)
+        volume: Expr,
+    },
+
+    /// `_SNDBAL handle&, balance!` - Set stereo balance
+    SndBal {
+        /// Sound handle
+        handle: Expr,
+        /// Balance (-1.0 left to 1.0 right)
+        balance: Expr,
+    },
+
+    /// `_SNDRAW sample!` or `_SNDRAW left!, right!` - Write raw audio samples
+    SndRaw {
+        /// Left channel sample (or mono)
+        left: Expr,
+        /// Right channel sample (optional for stereo)
+        right: Option<Expr>,
+    },
 }
 
 /// File mode for OPEN statement.
@@ -806,6 +959,21 @@ pub enum DataValue {
     Float(f64),
     /// String literal.
     String(String),
+}
+
+/// Coordinates for VIEW and WINDOW statements.
+///
+/// Represents a rectangular region defined by two corner points.
+#[derive(Debug, Clone)]
+pub struct ViewCoords {
+    /// X coordinate of first corner.
+    pub x1: Expr,
+    /// Y coordinate of first corner.
+    pub y1: Expr,
+    /// X coordinate of second corner.
+    pub x2: Expr,
+    /// Y coordinate of second corner.
+    pub y2: Expr,
 }
 
 #[cfg(test)]

@@ -470,6 +470,342 @@ pub extern "C" fn qb_rgba32(r: u32, g: u32, b: u32, a: u32) -> u32 {
     qb_rgba(r, g, b, a)
 }
 
+// ============================================================================
+// Extended Graphics FFI (WIDTH, VIEW, WINDOW, DRAW)
+// ============================================================================
+
+/// Set text mode width.
+#[no_mangle]
+pub extern "C" fn qb_gfx_set_width(columns: u32, rows: u32) -> c_int {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            match backend.set_width(columns, rows) {
+                Ok(()) => 0,
+                Err(_) => 1,
+            }
+        } else {
+            1
+        }
+    }
+}
+
+/// Set viewport for graphics.
+#[no_mangle]
+pub extern "C" fn qb_gfx_view(
+    screen: c_int,
+    x1: i32,
+    y1: i32,
+    x2: i32,
+    y2: i32,
+    fill_color: i32,
+    border_color: i32,
+) -> c_int {
+    let fill = if fill_color < 0 {
+        None
+    } else {
+        Some(fill_color as u32)
+    };
+    let border = if border_color < 0 {
+        None
+    } else {
+        Some(border_color as u32)
+    };
+
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            match backend.set_view(screen != 0, x1, y1, x2, y2, fill, border) {
+                Ok(()) => 0,
+                Err(_) => 1,
+            }
+        } else {
+            1
+        }
+    }
+}
+
+/// Reset viewport to full screen.
+#[no_mangle]
+pub extern "C" fn qb_gfx_view_reset() -> c_int {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            match backend.reset_view() {
+                Ok(()) => 0,
+                Err(_) => 1,
+            }
+        } else {
+            1
+        }
+    }
+}
+
+/// Set world coordinate system.
+#[no_mangle]
+pub extern "C" fn qb_gfx_window(screen: c_int, x1: f64, y1: f64, x2: f64, y2: f64) -> c_int {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            match backend.set_window(screen != 0, x1, y1, x2, y2) {
+                Ok(()) => 0,
+                Err(_) => 1,
+            }
+        } else {
+            1
+        }
+    }
+}
+
+/// Reset window to pixel coordinates.
+#[no_mangle]
+pub extern "C" fn qb_gfx_window_reset() -> c_int {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            match backend.reset_window() {
+                Ok(()) => 0,
+                Err(_) => 1,
+            }
+        } else {
+            1
+        }
+    }
+}
+
+/// Execute DRAW turtle graphics commands.
+#[no_mangle]
+pub unsafe extern "C" fn qb_gfx_draw(commands: *const c_char) -> c_int {
+    if commands.is_null() {
+        return 1;
+    }
+
+    let cmd_str = match CStr::from_ptr(commands).to_str() {
+        Ok(s) => s,
+        Err(_) => return 1,
+    };
+
+    if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+        match backend.draw(cmd_str) {
+            Ok(()) => 0,
+            Err(_) => 1,
+        }
+    } else {
+        1
+    }
+}
+
+// ============================================================================
+// QB64 Image Buffer FFI
+// ============================================================================
+
+/// Create a new image buffer.
+#[no_mangle]
+pub extern "C" fn qb_gfx_newimage(width: i32, height: i32, mode: i32) -> i32 {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            backend.new_image(width, height, mode)
+        } else {
+            -1
+        }
+    }
+}
+
+/// Load an image from file.
+#[no_mangle]
+pub unsafe extern "C" fn qb_gfx_loadimage(filename: *const c_char, mode: i32) -> i32 {
+    if filename.is_null() {
+        return -1;
+    }
+
+    let fname = match CStr::from_ptr(filename).to_str() {
+        Ok(s) => s,
+        Err(_) => return -1,
+    };
+
+    if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+        backend.load_image(fname, mode)
+    } else {
+        -1
+    }
+}
+
+/// Free an image buffer.
+#[no_mangle]
+pub extern "C" fn qb_gfx_freeimage(handle: i32) -> c_int {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            match backend.free_image(handle) {
+                Ok(()) => 0,
+                Err(_) => 1,
+            }
+        } else {
+            1
+        }
+    }
+}
+
+/// Simple put_image without source coordinates.
+#[no_mangle]
+pub extern "C" fn qb_gfx_putimage_simple(src_handle: i32, dest_handle: i32) -> c_int {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            match backend.put_image(0, 0, -1, -1, src_handle, dest_handle) {
+                Ok(()) => 0,
+                Err(_) => 1,
+            }
+        } else {
+            1
+        }
+    }
+}
+
+/// Put_image with destination coordinates.
+#[no_mangle]
+pub extern "C" fn qb_gfx_putimage(
+    dx1: i32,
+    dy1: i32,
+    dx2: i32,
+    dy2: i32,
+    src_handle: i32,
+    dest_handle: i32,
+) -> c_int {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            match backend.put_image(dx1, dy1, dx2, dy2, src_handle, dest_handle) {
+                Ok(()) => 0,
+                Err(_) => 1,
+            }
+        } else {
+            1
+        }
+    }
+}
+
+/// Full put_image with source and destination coordinates.
+#[no_mangle]
+#[allow(clippy::too_many_arguments)]
+pub extern "C" fn qb_gfx_putimage_full(
+    dx1: i32,
+    dy1: i32,
+    dx2: i32,
+    dy2: i32,
+    src_handle: i32,
+    dest_handle: i32,
+    sx1: i32,
+    sy1: i32,
+    sx2: i32,
+    sy2: i32,
+) -> c_int {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            match backend.put_image_full(
+                dx1,
+                dy1,
+                dx2,
+                dy2,
+                src_handle,
+                dest_handle,
+                sx1,
+                sy1,
+                sx2,
+                sy2,
+            ) {
+                Ok(()) => 0,
+                Err(_) => 1,
+            }
+        } else {
+            1
+        }
+    }
+}
+
+/// Set source image.
+#[no_mangle]
+pub extern "C" fn qb_gfx_source(handle: i32) -> c_int {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            match backend.set_source(handle) {
+                Ok(()) => 0,
+                Err(_) => 1,
+            }
+        } else {
+            1
+        }
+    }
+}
+
+/// Set destination image.
+#[no_mangle]
+pub extern "C" fn qb_gfx_dest(handle: i32) -> c_int {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            match backend.set_dest(handle) {
+                Ok(()) => 0,
+                Err(_) => 1,
+            }
+        } else {
+            1
+        }
+    }
+}
+
+/// Print string at pixel coordinates.
+#[no_mangle]
+pub unsafe extern "C" fn qb_gfx_printstring(x: i32, y: i32, text: *const c_char) -> c_int {
+    if text.is_null() {
+        return 1;
+    }
+
+    let txt = match CStr::from_ptr(text).to_str() {
+        Ok(s) => s,
+        Err(_) => return 1,
+    };
+
+    if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+        match backend.print_string(x, y, txt) {
+            Ok(()) => 0,
+            Err(_) => 1,
+        }
+    } else {
+        1
+    }
+}
+
+/// Set auto-display mode.
+#[no_mangle]
+pub extern "C" fn qb_gfx_autodisplay(enabled: c_int) -> c_int {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            match backend.set_autodisplay(enabled != 0) {
+                Ok(()) => 0,
+                Err(_) => 1,
+            }
+        } else {
+            1
+        }
+    }
+}
+
+/// Get image width.
+#[no_mangle]
+pub extern "C" fn qb_gfx_image_width(handle: i32) -> i32 {
+    unsafe {
+        if let Some(ref backend) = crate::graphics::GRAPHICS_BACKEND {
+            backend.get_image_width(handle)
+        } else {
+            0
+        }
+    }
+}
+
+/// Get image height.
+#[no_mangle]
+pub extern "C" fn qb_gfx_image_height(handle: i32) -> i32 {
+    unsafe {
+        if let Some(ref backend) = crate::graphics::GRAPHICS_BACKEND {
+            backend.get_image_height(handle)
+        } else {
+            0
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

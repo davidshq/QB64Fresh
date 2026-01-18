@@ -106,35 +106,36 @@ A prioritized roadmap for QB64Fresh development. Items are ordered from most gra
 
 ### Screen Setup
 - [x] `SCREEN` statement (text and graphics modes)
-- [ ] `WIDTH` statement
+- [x] `WIDTH` statement (parser, semantic, codegen, FFI)
 - [x] `CLS` statement (clear screen)
 - [x] `COLOR` statement
 - [x] `LOCATE` statement (cursor positioning)
-- [ ] `VIEW` statement (viewport)
-- [ ] `WINDOW` statement (coordinate mapping)
+- [x] `VIEW` statement (viewport) - parser, semantic, codegen, FFI
+- [x] `WINDOW` statement (coordinate mapping) - parser, semantic, codegen, FFI
 
 ### Basic Drawing
 - [x] `PSET` / `PRESET` (plot point)
 - [x] `LINE` statement (lines and boxes)
 - [x] `CIRCLE` statement
 - [x] `PAINT` statement (flood fill)
-- [ ] `DRAW` statement (turtle graphics)
+- [x] `DRAW` statement (turtle graphics) - parser, semantic, codegen, FFI
 - [x] `POINT()` function (read pixel) - in runtime FFI
 
 ### QB64 Graphics Extensions
-- [ ] `_NEWIMAGE` function
-- [ ] `_LOADIMAGE` function
-- [ ] `_FREEIMAGE` statement
-- [ ] `_PUTIMAGE` statement
-- [ ] `_SOURCE` / `_DEST` statements
-- [ ] `_COPYIMAGE` function
-- [ ] `_SCREENIMAGE` function
-- [ ] `_WIDTH` / `_HEIGHT` functions
-- [ ] `_PRINTSTRING` statement
+- [x] `_NEWIMAGE` function - backend trait method
+- [x] `_LOADIMAGE` function - backend trait method
+- [x] `_FREEIMAGE` statement - full implementation
+- [x] `_PUTIMAGE` statement - full implementation with multiple variants
+- [x] `_SOURCE` / `_DEST` statements - full implementation
+- [x] `_COPYIMAGE` function - backend trait method
+- [x] `_SCREENIMAGE` function - backend trait method
+- [x] `_WIDTH` / `_HEIGHT` functions - backend trait methods
+- [x] `_PRINTSTRING` statement - full implementation
 - [ ] `_PRINTWIDTH` function
 - [x] `_RGB` / `_RGBA` functions (in runtime FFI)
 - [x] `_RGB32` / `_RGBA32` functions (in runtime FFI)
-- [ ] Alpha blending support
+- [ ] Alpha blending support (requires image buffer implementation)
+- [x] `_AUTODISPLAY` statement - full implementation
 
 ### Graphics Backend Integration
 - [x] Integrate SDL2 for window management
@@ -144,9 +145,9 @@ A prioritized roadmap for QB64Fresh development. Items are ordered from most gra
 
 ---
 
-## Phase 4: Sound System (Medium-Term)
+## Phase 4: Sound System (In Progress)
 
-### Audio Architecture (mirrors Graphics architecture)
+### Audio Architecture (mirrors Graphics architecture) ✅
 
 The audio system uses a trait-based backend abstraction, allowing different audio
 libraries to be swapped at compile time via Cargo feature flags. This follows the
@@ -155,11 +156,11 @@ same pattern as the graphics system.
 ```
 runtime/src/
 ├── audio/
-│   ├── mod.rs          # AudioBackend trait + global instance
-│   ├── error.rs        # AudioError, AudioErrorKind
-│   ├── mock.rs         # MockAudioBackend for testing
-│   └── miniaudio.rs    # MiniaudioBackend (default implementation)
-├── audio_ffi.rs        # C FFI layer (qb_snd_*, qb_beep, etc.)
+│   ├── mod.rs          # AudioBackend trait + global instance ✅
+│   ├── error.rs        # AudioError, AudioErrorKind ✅
+│   ├── mock.rs         # MockAudioBackend for testing ✅
+│   └── miniaudio.rs    # MiniaudioBackend (TODO - actual audio output)
+├── audio_ffi.rs        # C FFI layer (qb_snd_*, qb_beep, etc.) ✅
 ```
 
 **Backend Selection (Cargo.toml features):**
@@ -174,38 +175,38 @@ runtime/src/
 - Public domain / MIT-0 license
 - Battle-tested (used by QB64-PE)
 
-### Audio Backend Infrastructure
-- [ ] Define `AudioBackend` trait for pluggable backends
-- [ ] Implement `AudioError` and `AudioErrorKind` types
-- [ ] Implement `MockAudioBackend` for headless testing
-- [ ] Implement `MiniaudioBackend` (initial implementation)
-- [ ] Create C FFI layer (`audio_ffi.rs`)
+### Audio Backend Infrastructure ✅
+- [x] Define `AudioBackend` trait for pluggable backends
+- [x] Implement `AudioError` and `AudioErrorKind` types
+- [x] Implement `MockAudioBackend` for headless testing
+- [ ] Implement `MiniaudioBackend` (actual audio playback)
+- [x] Create C FFI layer (`audio_ffi.rs`)
 - [ ] Add feature flags to `runtime/Cargo.toml`
 
-### Classic BASIC Sound
-- [ ] `BEEP` statement
-- [ ] `SOUND` statement (frequency, duration)
-- [ ] `PLAY` statement (music macro language parser)
+### Classic BASIC Sound (Parser, Semantic, Codegen, FFI complete)
+- [x] `BEEP` statement - full compiler + FFI
+- [x] `SOUND` statement (frequency, duration) - full compiler + FFI
+- [x] `PLAY` statement - full compiler + FFI (MML parser in backend)
 
-### QB64 Sound Extensions
-- [ ] `_SNDOPEN` function (returns handle)
-- [ ] `_SNDCLOSE` statement
-- [ ] `_SNDPLAY` / `_SNDSTOP` statements
-- [ ] `_SNDPAUSE` / `_SNDRESUME` statements
-- [ ] `_SNDLOOP` statement
-- [ ] `_SNDVOL` statement (0.0 - 1.0)
-- [ ] `_SNDBAL` statement (stereo balance / 3D positioning)
-- [ ] `_SNDLEN` function (duration in seconds)
-- [ ] `_SNDGETPOS` / `_SNDSETPOS` (playback position)
-- [ ] `_SNDPLAYING` / `_SNDPAUSED` functions
-- [ ] `_SNDRATE` function (get sample rate, typically 48000)
+### QB64 Sound Extensions (Parser, Semantic, Codegen, FFI complete)
+- [x] `_SNDOPEN` function (returns handle) - FFI
+- [x] `_SNDCLOSE` statement - full implementation
+- [x] `_SNDPLAY` / `_SNDSTOP` statements - full implementation
+- [x] `_SNDPAUSE` / `_SNDRESUME` statements - FFI (resume via sndresume)
+- [x] `_SNDLOOP` statement - full implementation
+- [x] `_SNDVOL` statement (0.0 - 1.0) - full implementation
+- [x] `_SNDBAL` statement (stereo balance) - full implementation
+- [x] `_SNDLEN` function (duration in seconds) - FFI
+- [x] `_SNDGETPOS` / `_SNDSETPOS` (playback position) - FFI
+- [x] `_SNDPLAYING` / `_SNDPAUSED` functions - FFI
+- [x] `_SNDRATE` function (get sample rate) - FFI
 
-### Raw Audio Synthesis
-- [ ] `_SNDOPENRAW` function (create raw audio stream)
-- [ ] `_SNDRAW` statement (push sample frames)
-- [ ] `_SNDRAWLEN` function (queued samples remaining)
+### Raw Audio Synthesis (FFI complete, backend needs implementation)
+- [x] `_SNDOPENRAW` function (create raw audio stream) - FFI
+- [x] `_SNDRAW` statement (push sample frames) - full implementation
+- [x] `_SNDRAWLEN` function (queued samples remaining) - FFI
 
-### Audio Format Support
+### Audio Format Support (Requires MiniaudioBackend)
 - [ ] WAV (PCM)
 - [ ] MP3
 - [ ] OGG Vorbis

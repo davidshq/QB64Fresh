@@ -627,6 +627,172 @@ pub enum TypedStatementKind {
 
     /// _DISPLAY statement - updates the screen.
     GfxDisplay,
+
+    /// WIDTH statement - sets screen width.
+    Width {
+        /// Number of columns.
+        columns: TypedExpr,
+        /// Optional number of rows.
+        rows: Option<TypedExpr>,
+    },
+
+    /// VIEW statement - defines viewport.
+    View {
+        /// Whether SCREEN was specified.
+        screen: bool,
+        /// Viewport coordinates.
+        coords: Option<TypedViewCoords>,
+        /// Fill color.
+        fill_color: Option<TypedExpr>,
+        /// Border color.
+        border_color: Option<TypedExpr>,
+    },
+
+    /// WINDOW statement - defines coordinate system.
+    WindowCoords {
+        /// Whether SCREEN was specified.
+        screen: bool,
+        /// Window coordinates.
+        coords: Option<TypedViewCoords>,
+    },
+
+    /// DRAW statement - turtle graphics.
+    DrawCmd {
+        /// Drawing commands string.
+        commands: TypedExpr,
+    },
+
+    // ==================== QB64 Graphics Extensions ====================
+    /// _FREEIMAGE statement.
+    FreeImage {
+        /// Image handle.
+        handle: TypedExpr,
+    },
+
+    /// _PUTIMAGE statement.
+    PutImage {
+        /// Destination coordinates.
+        dest_coords: Option<Box<TypedViewCoords>>,
+        /// Source image handle.
+        source: Option<TypedExpr>,
+        /// Destination image handle.
+        dest: Option<TypedExpr>,
+        /// Source coordinates.
+        source_coords: Option<Box<TypedViewCoords>>,
+    },
+
+    /// _SOURCE statement.
+    SourceImg {
+        /// Image handle.
+        handle: TypedExpr,
+    },
+
+    /// _DEST statement.
+    DestImg {
+        /// Image handle.
+        handle: TypedExpr,
+    },
+
+    /// _PRINTSTRING statement.
+    PrintStringStmt {
+        /// X coordinate.
+        x: TypedExpr,
+        /// Y coordinate.
+        y: TypedExpr,
+        /// Text to print.
+        text: TypedExpr,
+    },
+
+    /// _AUTODISPLAY statement.
+    AutoDisplay {
+        /// Whether enabled.
+        enabled: bool,
+    },
+
+    // ==================== Audio Statements ====================
+    /// BEEP statement.
+    Beep,
+
+    /// SOUND statement.
+    SoundStmt {
+        /// Frequency in Hz.
+        frequency: TypedExpr,
+        /// Duration.
+        duration: TypedExpr,
+    },
+
+    /// PLAY statement.
+    PlayStmt {
+        /// Music commands string.
+        commands: TypedExpr,
+    },
+
+    /// _SNDCLOSE statement.
+    SndClose {
+        /// Sound handle.
+        handle: TypedExpr,
+    },
+
+    /// _SNDPLAY statement.
+    SndPlay {
+        /// Sound handle.
+        handle: TypedExpr,
+    },
+
+    /// _SNDSTOP statement.
+    SndStop {
+        /// Sound handle.
+        handle: TypedExpr,
+    },
+
+    /// _SNDPAUSE statement.
+    SndPause {
+        /// Sound handle.
+        handle: TypedExpr,
+    },
+
+    /// _SNDLOOP statement.
+    SndLoop {
+        /// Sound handle.
+        handle: TypedExpr,
+    },
+
+    /// _SNDVOL statement.
+    SndVol {
+        /// Sound handle.
+        handle: TypedExpr,
+        /// Volume (0.0-1.0).
+        volume: TypedExpr,
+    },
+
+    /// _SNDBAL statement.
+    SndBal {
+        /// Sound handle.
+        handle: TypedExpr,
+        /// Balance (-1.0 to 1.0).
+        balance: TypedExpr,
+    },
+
+    /// _SNDRAW statement.
+    SndRaw {
+        /// Left/mono sample.
+        left: TypedExpr,
+        /// Right sample (optional).
+        right: Option<TypedExpr>,
+    },
+}
+
+/// Typed coordinates for VIEW and WINDOW statements.
+#[derive(Debug, Clone)]
+pub struct TypedViewCoords {
+    /// X1 coordinate.
+    pub x1: TypedExpr,
+    /// Y1 coordinate.
+    pub y1: TypedExpr,
+    /// X2 coordinate.
+    pub x2: TypedExpr,
+    /// Y2 coordinate.
+    pub y2: TypedExpr,
 }
 
 /// A typed variable in a COMMON statement.

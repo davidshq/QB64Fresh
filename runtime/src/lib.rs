@@ -12,6 +12,8 @@
 //! - `math` - Mathematical functions
 //! - `graphics` - Graphics backend abstraction and implementations
 //! - `graphics_ffi` - C FFI layer for graphics operations
+//! - `audio` - Audio backend abstraction and implementations
+//! - `audio_ffi` - C FFI layer for audio operations
 //!
 //! All public functions use `extern "C"` for C ABI compatibility.
 //!
@@ -21,6 +23,8 @@
 //! count, and memory is freed when the count reaches zero. The generated C code
 //! must call `qb_string_release` when done with a string.
 
+pub mod audio;
+pub mod audio_ffi;
 pub mod graphics;
 pub mod graphics_ffi;
 pub mod io;
@@ -28,6 +32,8 @@ pub mod math;
 pub mod string;
 
 // Re-export everything at the crate root for C access
+pub use audio::*;
+pub use audio_ffi::*;
 pub use graphics::*;
 pub use graphics_ffi::*;
 pub use io::*;

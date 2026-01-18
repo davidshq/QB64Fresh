@@ -9,6 +9,7 @@
 use crate::ast::{
     ArrayDimension, CommonVariable, ContinueType, DataValue, ExitType, ExprKind, FileAccess,
     FileLock, FileMode, PrintItem, PrintSeparator, ResumeTarget, Span, Statement, StatementKind,
+    ViewCoords,
 };
 use crate::lexer::TokenKind;
 
@@ -99,6 +100,31 @@ impl<'a> Parser<'a> {
             TokenKind::Circle => self.parse_circle(),
             TokenKind::Paint => self.parse_paint(),
             TokenKind::Display => self.parse_display(),
+            TokenKind::Width => self.parse_width(),
+            TokenKind::View => self.parse_view(),
+            TokenKind::Window => self.parse_window(),
+            TokenKind::Draw => self.parse_draw(),
+
+            // QB64 Graphics Extensions
+            TokenKind::FreeImage => self.parse_freeimage(),
+            TokenKind::PutImage => self.parse_putimage(),
+            TokenKind::Source => self.parse_source(),
+            TokenKind::Dest => self.parse_dest(),
+            TokenKind::PrintString => self.parse_printstring(),
+            TokenKind::AutoDisplay => self.parse_autodisplay(),
+
+            // Audio statements
+            TokenKind::Beep => self.parse_beep(),
+            TokenKind::Sound => self.parse_sound(),
+            TokenKind::Play => self.parse_play(),
+            TokenKind::SndClose => self.parse_sndclose(),
+            TokenKind::SndPlay => self.parse_sndplay(),
+            TokenKind::SndStop => self.parse_sndstop(),
+            TokenKind::SndPause => self.parse_sndpause(),
+            TokenKind::SndLoop => self.parse_sndloop(),
+            TokenKind::SndVol => self.parse_sndvol(),
+            TokenKind::SndBal => self.parse_sndbal(),
+            TokenKind::SndRaw => self.parse_sndraw(),
 
             // Other
             TokenKind::Comment => self.parse_comment(),
@@ -1700,5 +1726,446 @@ impl<'a> Parser<'a> {
         let start = self.advance().expect("_DISPLAY keyword").span.start;
         let span = self.span_from(start);
         Ok(Statement::new(StatementKind::GfxDisplay, span))
+    }
+
+    // ==================== Additional Graphics Statements ====================
+
+    /// Parses WIDTH statement.
+    ///
+    /// Syntax: `WIDTH columns[, rows]`
+    pub(super) fn parse_width(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("WIDTH keyword").span.start;
+        let columns = self.parse_expression()?;
+
+        let rows = if self.match_token(&TokenKind::Comma) {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::Width { columns, rows }, span))
+    }
+
+    /// Parses VIEW statement.
+    ///
+    /// Syntax: `VIEW [[SCREEN] (x1, y1)-(x2, y2)[, color[, border]]]`
+    pub(super) fn parse_view(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("VIEW keyword").span.start;
+
+        // Check for VIEW with no arguments (reset viewport)
+        if self.is_at_end_of_statement() {
+            let span = self.span_from(start);
+            return Ok(Statement::new(
+                StatementKind::View {
+                    screen: false,
+                    coords: None,
+                    fill_color: None,
+                    border_color: None,
+                },
+                span,
+            ));
+        }
+
+        // Check for SCREEN keyword
+        let screen = if self.check(&TokenKind::Screen) {
+            self.advance();
+            true
+        } else {
+            false
+        };
+
+        // Parse coordinates
+        let coords = if self.check(&TokenKind::LeftParen) {
+            Some(self.parse_view_coords()?)
+        } else {
+            None
+        };
+
+        // Optional fill color
+        let fill_color = if self.match_token(&TokenKind::Comma) {
+            if self.check(&TokenKind::Comma) {
+                None
+            } else {
+                Some(self.parse_expression()?)
+            }
+        } else {
+            None
+        };
+
+        // Optional border color
+        let border_color = if self.match_token(&TokenKind::Comma) {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::View {
+                screen,
+                coords,
+                fill_color,
+                border_color,
+            },
+            span,
+        ))
+    }
+
+    /// Parses WINDOW statement.
+    ///
+    /// Syntax: `WINDOW [[SCREEN] (x1, y1)-(x2, y2)]`
+    pub(super) fn parse_window(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("WINDOW keyword").span.start;
+
+        // Check for WINDOW with no arguments (reset to pixel coordinates)
+        if self.is_at_end_of_statement() {
+            let span = self.span_from(start);
+            return Ok(Statement::new(
+                StatementKind::WindowCoords {
+                    screen: false,
+                    coords: None,
+                },
+                span,
+            ));
+        }
+
+        // Check for SCREEN keyword
+        let screen = if self.check(&TokenKind::Screen) {
+            self.advance();
+            true
+        } else {
+            false
+        };
+
+        // Parse coordinates
+        let coords = if self.check(&TokenKind::LeftParen) {
+            Some(self.parse_view_coords()?)
+        } else {
+            None
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::WindowCoords { screen, coords },
+            span,
+        ))
+    }
+
+    /// Parses coordinate pair for VIEW/WINDOW: `(x1, y1)-(x2, y2)`
+    fn parse_view_coords(&mut self) -> Result<ViewCoords, ()> {
+        // Parse (x1, y1)
+        self.expect(&TokenKind::LeftParen, "(")?;
+        let x1 = self.parse_expression()?;
+        self.expect(&TokenKind::Comma, ",")?;
+        let y1 = self.parse_expression()?;
+        self.expect(&TokenKind::RightParen, ")")?;
+
+        // Expect -
+        self.expect(&TokenKind::Minus, "-")?;
+
+        // Parse (x2, y2)
+        self.expect(&TokenKind::LeftParen, "(")?;
+        let x2 = self.parse_expression()?;
+        self.expect(&TokenKind::Comma, ",")?;
+        let y2 = self.parse_expression()?;
+        self.expect(&TokenKind::RightParen, ")")?;
+
+        Ok(ViewCoords { x1, y1, x2, y2 })
+    }
+
+    /// Parses DRAW statement.
+    ///
+    /// Syntax: `DRAW commands$`
+    pub(super) fn parse_draw(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("DRAW keyword").span.start;
+        let commands = self.parse_expression()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::DrawCmd { commands }, span))
+    }
+
+    // ==================== QB64 Graphics Extensions ====================
+
+    /// Parses _FREEIMAGE statement.
+    ///
+    /// Syntax: `_FREEIMAGE handle&`
+    pub(super) fn parse_freeimage(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_FREEIMAGE keyword").span.start;
+        let handle = self.parse_expression()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::FreeImage { handle }, span))
+    }
+
+    /// Parses _PUTIMAGE statement.
+    ///
+    /// Syntax: `_PUTIMAGE [(dx1,dy1)-(dx2,dy2)][, src&][, dest&][, (sx1,sy1)-(sx2,sy2)]`
+    pub(super) fn parse_putimage(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_PUTIMAGE keyword").span.start;
+
+        // Optional destination coordinates (boxed to reduce enum size)
+        let dest_coords = if self.check(&TokenKind::LeftParen) {
+            Some(Box::new(self.parse_view_coords()?))
+        } else {
+            None
+        };
+
+        // Optional source image handle
+        let source = if self.match_token(&TokenKind::Comma) {
+            if self.check(&TokenKind::Comma) || self.check(&TokenKind::LeftParen) {
+                None
+            } else {
+                Some(self.parse_expression()?)
+            }
+        } else {
+            None
+        };
+
+        // Optional destination image handle
+        let dest = if self.match_token(&TokenKind::Comma) {
+            if self.check(&TokenKind::Comma) || self.check(&TokenKind::LeftParen) {
+                None
+            } else {
+                Some(self.parse_expression()?)
+            }
+        } else {
+            None
+        };
+
+        // Optional source coordinates (boxed to reduce enum size)
+        let source_coords = if self.match_token(&TokenKind::Comma) {
+            if self.check(&TokenKind::LeftParen) {
+                Some(Box::new(self.parse_view_coords()?))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::PutImage {
+                dest_coords,
+                source,
+                dest,
+                source_coords,
+            },
+            span,
+        ))
+    }
+
+    /// Parses _SOURCE statement.
+    ///
+    /// Syntax: `_SOURCE handle&`
+    pub(super) fn parse_source(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_SOURCE keyword").span.start;
+        let handle = self.parse_expression()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::SourceImg { handle }, span))
+    }
+
+    /// Parses _DEST statement.
+    ///
+    /// Syntax: `_DEST handle&`
+    pub(super) fn parse_dest(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_DEST keyword").span.start;
+        let handle = self.parse_expression()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::DestImg { handle }, span))
+    }
+
+    /// Parses _PRINTSTRING statement.
+    ///
+    /// Syntax: `_PRINTSTRING (x, y), text$`
+    pub(super) fn parse_printstring(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_PRINTSTRING keyword").span.start;
+
+        // Parse (x, y)
+        self.expect(&TokenKind::LeftParen, "(")?;
+        let x = self.parse_expression()?;
+        self.expect(&TokenKind::Comma, ",")?;
+        let y = self.parse_expression()?;
+        self.expect(&TokenKind::RightParen, ")")?;
+
+        self.expect(&TokenKind::Comma, ",")?;
+        let text = self.parse_expression()?;
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::PrintStringStmt { x, y, text },
+            span,
+        ))
+    }
+
+    /// Parses _AUTODISPLAY statement.
+    ///
+    /// Syntax: `_AUTODISPLAY {ON|OFF}` or just `_AUTODISPLAY` (defaults to ON)
+    pub(super) fn parse_autodisplay(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_AUTODISPLAY keyword").span.start;
+
+        // Check for ON/OFF
+        let enabled = if let Some(token) = self.peek() {
+            if token.text.eq_ignore_ascii_case("ON") {
+                self.advance();
+                true
+            } else if token.text.eq_ignore_ascii_case("OFF") {
+                self.advance();
+                false
+            } else {
+                true // Default to ON
+            }
+        } else {
+            true
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::AutoDisplay { enabled }, span))
+    }
+
+    // ==================== Audio Statements ====================
+
+    /// Parses BEEP statement.
+    ///
+    /// Syntax: `BEEP`
+    pub(super) fn parse_beep(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("BEEP keyword").span.start;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::Beep, span))
+    }
+
+    /// Parses SOUND statement.
+    ///
+    /// Syntax: `SOUND frequency, duration`
+    pub(super) fn parse_sound(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("SOUND keyword").span.start;
+        let frequency = self.parse_expression()?;
+        self.expect(&TokenKind::Comma, ",")?;
+        let duration = self.parse_expression()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::SoundStmt {
+                frequency,
+                duration,
+            },
+            span,
+        ))
+    }
+
+    /// Parses PLAY statement.
+    ///
+    /// Syntax: `PLAY commands$`
+    pub(super) fn parse_play(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("PLAY keyword").span.start;
+        let commands = self.parse_expression()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::PlayStmt { commands }, span))
+    }
+
+    /// Parses _SNDCLOSE statement.
+    ///
+    /// Syntax: `_SNDCLOSE handle&`
+    pub(super) fn parse_sndclose(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_SNDCLOSE keyword").span.start;
+        let handle = self.parse_expression()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::SndClose { handle }, span))
+    }
+
+    /// Parses _SNDPLAY statement.
+    ///
+    /// Syntax: `_SNDPLAY handle&`
+    pub(super) fn parse_sndplay(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_SNDPLAY keyword").span.start;
+        let handle = self.parse_expression()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::SndPlay { handle }, span))
+    }
+
+    /// Parses _SNDSTOP statement.
+    ///
+    /// Syntax: `_SNDSTOP handle&`
+    pub(super) fn parse_sndstop(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_SNDSTOP keyword").span.start;
+        let handle = self.parse_expression()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::SndStop { handle }, span))
+    }
+
+    /// Parses _SNDPAUSE statement.
+    ///
+    /// Syntax: `_SNDPAUSE handle&`
+    pub(super) fn parse_sndpause(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_SNDPAUSE keyword").span.start;
+        let handle = self.parse_expression()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::SndPause { handle }, span))
+    }
+
+    /// Parses _SNDLOOP statement.
+    ///
+    /// Syntax: `_SNDLOOP handle&`
+    pub(super) fn parse_sndloop(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_SNDLOOP keyword").span.start;
+        let handle = self.parse_expression()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::SndLoop { handle }, span))
+    }
+
+    /// Parses _SNDVOL statement.
+    ///
+    /// Syntax: `_SNDVOL handle&, volume!`
+    pub(super) fn parse_sndvol(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_SNDVOL keyword").span.start;
+        let handle = self.parse_expression()?;
+        self.expect(&TokenKind::Comma, ",")?;
+        let volume = self.parse_expression()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::SndVol { handle, volume },
+            span,
+        ))
+    }
+
+    /// Parses _SNDBAL statement.
+    ///
+    /// Syntax: `_SNDBAL handle&, balance!`
+    pub(super) fn parse_sndbal(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_SNDBAL keyword").span.start;
+        let handle = self.parse_expression()?;
+        self.expect(&TokenKind::Comma, ",")?;
+        let balance = self.parse_expression()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::SndBal { handle, balance },
+            span,
+        ))
+    }
+
+    /// Parses _SNDRAW statement.
+    ///
+    /// Syntax: `_SNDRAW sample!` or `_SNDRAW left!, right!`
+    pub(super) fn parse_sndraw(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_SNDRAW keyword").span.start;
+        let left = self.parse_expression()?;
+
+        let right = if self.match_token(&TokenKind::Comma) {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::SndRaw { left, right }, span))
+    }
+
+    /// Helper to check if we're at the end of a statement.
+    fn is_at_end_of_statement(&self) -> bool {
+        match self.peek() {
+            None => true,
+            Some(token) => matches!(
+                token.kind,
+                TokenKind::Newline | TokenKind::Colon | TokenKind::Comment | TokenKind::RemComment
+            ),
+        }
     }
 }
