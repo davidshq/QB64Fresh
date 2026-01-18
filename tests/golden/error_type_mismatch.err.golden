@@ -1,0 +1,1 @@
+Semantic error: [TypeMismatch { expected: "INTEGER", found: "STRING", span: Span { start: 21, end: 28 } }]

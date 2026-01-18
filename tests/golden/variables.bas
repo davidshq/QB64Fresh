@@ -1,0 +1,12 @@
+DIM x AS LONG
+DIM y AS DOUBLE
+DIM s AS STRING
+
+x = 42
+y = 3.14
+s = "Hello"
+
+PRINT x
+PRINT y
+PRINT s
+END
