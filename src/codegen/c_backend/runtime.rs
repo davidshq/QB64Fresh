@@ -73,6 +73,9 @@ fn emit_runtime_declarations(output: &mut String) {
     emit_math_functions(output);
     emit_string_manipulation(output);
     emit_utility_functions(output);
+    emit_file_io_functions(output);
+    emit_error_handling(output);
+    emit_keyboard_functions(output);
 }
 
 /// Emits the qb_string type definition.
@@ -468,5 +471,645 @@ fn emit_utility_functions(output: &mut String) {
     writeln!(output, "    snprintf(buf, sizeof(buf), \"%g\", n);").unwrap();
     writeln!(output, "    return qb_string_new(buf);").unwrap();
     writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+}
+
+/// Emits file I/O functions for OPEN, CLOSE, PRINT #, INPUT #, etc.
+fn emit_file_io_functions(output: &mut String) {
+    writeln!(output, "/* File I/O Functions */").unwrap();
+    writeln!(output).unwrap();
+
+    // File handle table (max 511 files as per QB64)
+    writeln!(output, "#define QB_MAX_FILES 512").unwrap();
+    writeln!(output, "static FILE* _qb_files[QB_MAX_FILES];").unwrap();
+    writeln!(output, "static int32_t _qb_file_reclen[QB_MAX_FILES];").unwrap();
+    writeln!(output).unwrap();
+
+    // qb_file_open - Open a file
+    writeln!(
+        output,
+        "void qb_file_open(int32_t fnum, const char* filename, const char* mode) {{"
+    )
+    .unwrap();
+    writeln!(output, "    if (fnum < 1 || fnum >= QB_MAX_FILES) return;").unwrap();
+    writeln!(output, "    if (_qb_files[fnum]) fclose(_qb_files[fnum]);").unwrap();
+    writeln!(output, "    _qb_files[fnum] = fopen(filename, mode);").unwrap();
+    writeln!(
+        output,
+        "    _qb_file_reclen[fnum] = 128; /* default record length */"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // qb_file_set_reclen - Set record length for random access
+    writeln!(
+        output,
+        "void qb_file_set_reclen(int32_t fnum, int32_t len) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (fnum >= 1 && fnum < QB_MAX_FILES) _qb_file_reclen[fnum] = len;"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // qb_file_close - Close a file
+    writeln!(output, "void qb_file_close(int32_t fnum) {{").unwrap();
+    writeln!(
+        output,
+        "    if (fnum >= 1 && fnum < QB_MAX_FILES && _qb_files[fnum]) {{"
+    )
+    .unwrap();
+    writeln!(output, "        fclose(_qb_files[fnum]);").unwrap();
+    writeln!(output, "        _qb_files[fnum] = NULL;").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // qb_file_close_all - Close all files
+    writeln!(output, "void qb_file_close_all(void) {{").unwrap();
+    writeln!(output, "    for (int i = 1; i < QB_MAX_FILES; i++) {{").unwrap();
+    writeln!(
+        output,
+        "        if (_qb_files[i]) {{ fclose(_qb_files[i]); _qb_files[i] = NULL; }}"
+    )
+    .unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // qb_file_print_* - Print to file
+    writeln!(
+        output,
+        "void qb_file_print_int(int32_t fnum, int64_t val) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (fnum >= 1 && fnum < QB_MAX_FILES && _qb_files[fnum])"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "        fprintf(_qb_files[fnum], \"%lld\", (long long)val);"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(
+        output,
+        "void qb_file_print_float(int32_t fnum, double val) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (fnum >= 1 && fnum < QB_MAX_FILES && _qb_files[fnum])"
+    )
+    .unwrap();
+    writeln!(output, "        fprintf(_qb_files[fnum], \"%g\", val);").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(
+        output,
+        "void qb_file_print_string(int32_t fnum, qb_string* s) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (fnum >= 1 && fnum < QB_MAX_FILES && _qb_files[fnum] && s)"
+    )
+    .unwrap();
+    writeln!(output, "        fprintf(_qb_files[fnum], \"%s\", s->data);").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "void qb_file_print_newline(int32_t fnum) {{").unwrap();
+    writeln!(
+        output,
+        "    if (fnum >= 1 && fnum < QB_MAX_FILES && _qb_files[fnum])"
+    )
+    .unwrap();
+    writeln!(output, "        fprintf(_qb_files[fnum], \"\\n\");").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "void qb_file_print_tab(int32_t fnum) {{").unwrap();
+    writeln!(
+        output,
+        "    if (fnum >= 1 && fnum < QB_MAX_FILES && _qb_files[fnum])"
+    )
+    .unwrap();
+    writeln!(output, "        fprintf(_qb_files[fnum], \"\\t\");").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // qb_file_write_* - WRITE # functions (quoted strings, comma-separated)
+    writeln!(
+        output,
+        "void qb_file_write_string(int32_t fnum, qb_string* s) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (fnum >= 1 && fnum < QB_MAX_FILES && _qb_files[fnum] && s)"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "        fprintf(_qb_files[fnum], \"\\\"%s\\\"\", s->data);"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(
+        output,
+        "void qb_file_write_number(int32_t fnum, double val) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (fnum >= 1 && fnum < QB_MAX_FILES && _qb_files[fnum])"
+    )
+    .unwrap();
+    writeln!(output, "        fprintf(_qb_files[fnum], \"%g\", val);").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "void qb_file_write_char(int32_t fnum, char c) {{").unwrap();
+    writeln!(
+        output,
+        "    if (fnum >= 1 && fnum < QB_MAX_FILES && _qb_files[fnum])"
+    )
+    .unwrap();
+    writeln!(output, "        fputc(c, _qb_files[fnum]);").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // qb_file_input_* - INPUT # functions
+    writeln!(
+        output,
+        "void qb_file_input_string(int32_t fnum, qb_string** s) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (fnum < 1 || fnum >= QB_MAX_FILES || !_qb_files[fnum]) return;"
+    )
+    .unwrap();
+    writeln!(output, "    char buf[4096];").unwrap();
+    writeln!(output, "    int ch, i = 0;").unwrap();
+    writeln!(output, "    while ((ch = fgetc(_qb_files[fnum])) != EOF && ch != ',' && ch != '\\n' && i < 4095) {{").unwrap();
+    writeln!(output, "        if (ch == '\"') {{ /* skip quotes */").unwrap();
+    writeln!(
+        output,
+        "            while ((ch = fgetc(_qb_files[fnum])) != EOF && ch != '\"' && i < 4095)"
+    )
+    .unwrap();
+    writeln!(output, "                buf[i++] = (char)ch;").unwrap();
+    writeln!(output, "        }} else buf[i++] = (char)ch;").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    buf[i] = '\\0';").unwrap();
+    writeln!(output, "    *s = qb_string_new(buf);").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(
+        output,
+        "void qb_file_input_int(int32_t fnum, int32_t* val) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (fnum < 1 || fnum >= QB_MAX_FILES || !_qb_files[fnum]) return;"
+    )
+    .unwrap();
+    writeln!(output, "    fscanf(_qb_files[fnum], \"%d\", val);").unwrap();
+    writeln!(
+        output,
+        "    int ch; while ((ch = fgetc(_qb_files[fnum])) == ',' || ch == ' ');"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (ch != EOF && ch != '\\n') ungetc(ch, _qb_files[fnum]);"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(
+        output,
+        "void qb_file_input_float(int32_t fnum, double* val) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (fnum < 1 || fnum >= QB_MAX_FILES || !_qb_files[fnum]) return;"
+    )
+    .unwrap();
+    writeln!(output, "    fscanf(_qb_files[fnum], \"%lf\", val);").unwrap();
+    writeln!(
+        output,
+        "    int ch; while ((ch = fgetc(_qb_files[fnum])) == ',' || ch == ' ');"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (ch != EOF && ch != '\\n') ungetc(ch, _qb_files[fnum]);"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // qb_file_line_input - LINE INPUT #
+    writeln!(
+        output,
+        "void qb_file_line_input(int32_t fnum, qb_string** s) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (fnum < 1 || fnum >= QB_MAX_FILES || !_qb_files[fnum]) return;"
+    )
+    .unwrap();
+    writeln!(output, "    char buf[4096];").unwrap();
+    writeln!(
+        output,
+        "    if (fgets(buf, sizeof(buf), _qb_files[fnum])) {{"
+    )
+    .unwrap();
+    writeln!(output, "        size_t len = strlen(buf);").unwrap();
+    writeln!(
+        output,
+        "        if (len > 0 && buf[len-1] == '\\n') buf[--len] = '\\0';"
+    )
+    .unwrap();
+    writeln!(output, "        *s = qb_string_new(buf);").unwrap();
+    writeln!(output, "    }} else *s = qb_string_new(\"\");").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // Binary file operations
+    writeln!(output, "void qb_file_seek(int32_t fnum, int64_t pos) {{").unwrap();
+    writeln!(
+        output,
+        "    if (fnum >= 1 && fnum < QB_MAX_FILES && _qb_files[fnum])"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "        fseek(_qb_files[fnum], (long)(pos - 1), SEEK_SET);"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(
+        output,
+        "void qb_file_seek_record(int32_t fnum, int64_t rec) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (fnum >= 1 && fnum < QB_MAX_FILES && _qb_files[fnum])"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "        fseek(_qb_files[fnum], (long)((rec - 1) * _qb_file_reclen[fnum]), SEEK_SET);"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(
+        output,
+        "void qb_file_get(int32_t fnum, void* data, size_t size) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (fnum >= 1 && fnum < QB_MAX_FILES && _qb_files[fnum])"
+    )
+    .unwrap();
+    writeln!(output, "        fread(data, 1, size, _qb_files[fnum]);").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(
+        output,
+        "void qb_file_put(int32_t fnum, const void* data, size_t size) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (fnum >= 1 && fnum < QB_MAX_FILES && _qb_files[fnum])"
+    )
+    .unwrap();
+    writeln!(output, "        fwrite(data, 1, size, _qb_files[fnum]);").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // File functions
+    writeln!(output, "int32_t qb_eof(int32_t fnum) {{").unwrap();
+    writeln!(
+        output,
+        "    if (fnum >= 1 && fnum < QB_MAX_FILES && _qb_files[fnum])"
+    )
+    .unwrap();
+    writeln!(output, "        return feof(_qb_files[fnum]) ? -1 : 0;").unwrap();
+    writeln!(output, "    return -1;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "int64_t qb_lof(int32_t fnum) {{").unwrap();
+    writeln!(
+        output,
+        "    if (fnum < 1 || fnum >= QB_MAX_FILES || !_qb_files[fnum]) return 0;"
+    )
+    .unwrap();
+    writeln!(output, "    long pos = ftell(_qb_files[fnum]);").unwrap();
+    writeln!(output, "    fseek(_qb_files[fnum], 0, SEEK_END);").unwrap();
+    writeln!(output, "    long len = ftell(_qb_files[fnum]);").unwrap();
+    writeln!(output, "    fseek(_qb_files[fnum], pos, SEEK_SET);").unwrap();
+    writeln!(output, "    return (int64_t)len;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "int64_t qb_loc(int32_t fnum) {{").unwrap();
+    writeln!(
+        output,
+        "    if (fnum >= 1 && fnum < QB_MAX_FILES && _qb_files[fnum])"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "        return (int64_t)ftell(_qb_files[fnum]) + 1;"
+    )
+    .unwrap();
+    writeln!(output, "    return 0;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "int32_t qb_freefile(void) {{").unwrap();
+    writeln!(output, "    for (int i = 1; i < QB_MAX_FILES; i++)").unwrap();
+    writeln!(output, "        if (!_qb_files[i]) return i;").unwrap();
+    writeln!(output, "    return 0;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+}
+
+/// Emits error handling support for ON ERROR, RESUME, ERR, ERL.
+fn emit_error_handling(output: &mut String) {
+    writeln!(output, "/* Error Handling */").unwrap();
+    writeln!(output).unwrap();
+
+    // Error state variables
+    writeln!(
+        output,
+        "static int32_t _qb_err = 0;           /* Current error code */"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "static int32_t _qb_erl = 0;           /* Error line number */"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "static void* _qb_error_handler = NULL; /* Error handler label */"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "static int _qb_error_resume_next = 0;  /* ON ERROR RESUME NEXT flag */"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "static void* _qb_error_line = NULL;    /* Line that caused error */"
+    )
+    .unwrap();
+    writeln!(output).unwrap();
+
+    // qb_error - Simulate an error
+    writeln!(output, "void qb_error(int32_t code) {{").unwrap();
+    writeln!(output, "    _qb_err = code;").unwrap();
+    writeln!(output, "    if (_qb_error_handler) {{").unwrap();
+    writeln!(
+        output,
+        "        /* Jump to error handler - handled by generated code */"
+    )
+    .unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // ERR function
+    writeln!(output, "int32_t qb_err_code(void) {{ return _qb_err; }}").unwrap();
+    writeln!(output).unwrap();
+
+    // ERL function
+    writeln!(output, "int32_t qb_err_line(void) {{ return _qb_erl; }}").unwrap();
+    writeln!(output).unwrap();
+}
+
+/// Emits keyboard input functions for INKEY$, INPUT$, etc.
+fn emit_keyboard_functions(output: &mut String) {
+    writeln!(output, "/* Keyboard Input Functions */").unwrap();
+    writeln!(output).unwrap();
+
+    // Platform-specific non-blocking key check
+    writeln!(output, "#ifdef _WIN32").unwrap();
+    writeln!(output, "#include <conio.h>").unwrap();
+    writeln!(output, "qb_string* qb_inkey(void) {{").unwrap();
+    writeln!(output, "    if (_kbhit()) {{").unwrap();
+    writeln!(output, "        int ch = _getch();").unwrap();
+    writeln!(output, "        if (ch == 0 || ch == 224) {{").unwrap();
+    writeln!(
+        output,
+        "            char buf[3] = {{0, (char)_getch(), 0}};"
+    )
+    .unwrap();
+    writeln!(output, "            return qb_string_new(buf);").unwrap();
+    writeln!(output, "        }}").unwrap();
+    writeln!(output, "        char buf[2] = {{(char)ch, 0}};").unwrap();
+    writeln!(output, "        return qb_string_new(buf);").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    return qb_string_new(\"\");").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output, "#else").unwrap();
+    writeln!(output, "#include <termios.h>").unwrap();
+    writeln!(output, "#include <unistd.h>").unwrap();
+    writeln!(output, "#include <sys/select.h>").unwrap();
+    writeln!(output, "qb_string* qb_inkey(void) {{").unwrap();
+    writeln!(output, "    struct termios oldt, newt;").unwrap();
+    writeln!(output, "    tcgetattr(STDIN_FILENO, &oldt);").unwrap();
+    writeln!(output, "    newt = oldt;").unwrap();
+    writeln!(output, "    newt.c_lflag &= ~(ICANON | ECHO);").unwrap();
+    writeln!(output, "    tcsetattr(STDIN_FILENO, TCSANOW, &newt);").unwrap();
+    writeln!(output, "    fd_set fds; struct timeval tv = {{0, 0}};").unwrap();
+    writeln!(output, "    FD_ZERO(&fds); FD_SET(STDIN_FILENO, &fds);").unwrap();
+    writeln!(output, "    qb_string* result = qb_string_new(\"\");").unwrap();
+    writeln!(
+        output,
+        "    if (select(STDIN_FILENO + 1, &fds, NULL, NULL, &tv) > 0) {{"
+    )
+    .unwrap();
+    writeln!(output, "        char buf[4] = {{0}};").unwrap();
+    writeln!(
+        output,
+        "        int n = read(STDIN_FILENO, buf, sizeof(buf)-1);"
+    )
+    .unwrap();
+    writeln!(output, "        if (n > 0) result = qb_string_new(buf);").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);").unwrap();
+    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output, "#endif").unwrap();
+    writeln!(output).unwrap();
+
+    // INPUT$(n) - read n characters
+    writeln!(output, "qb_string* qb_input_chars(int32_t n) {{").unwrap();
+    writeln!(output, "    if (n <= 0) return qb_string_new(\"\");").unwrap();
+    writeln!(output, "    char* buf = malloc((size_t)n + 1);").unwrap();
+    writeln!(
+        output,
+        "    for (int32_t i = 0; i < n; i++) buf[i] = (char)getchar();"
+    )
+    .unwrap();
+    writeln!(output, "    buf[n] = '\\0';").unwrap();
+    writeln!(output, "    qb_string* result = qb_string_new(buf);").unwrap();
+    writeln!(output, "    free(buf);").unwrap();
+    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // INPUT$(n, #fnum) - read n characters from file
+    writeln!(
+        output,
+        "qb_string* qb_input_chars_file(int32_t n, int32_t fnum) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (n <= 0 || fnum < 1 || fnum >= QB_MAX_FILES || !_qb_files[fnum])"
+    )
+    .unwrap();
+    writeln!(output, "        return qb_string_new(\"\");").unwrap();
+    writeln!(output, "    char* buf = malloc((size_t)n + 1);").unwrap();
+    writeln!(
+        output,
+        "    size_t read = fread(buf, 1, (size_t)n, _qb_files[fnum]);"
+    )
+    .unwrap();
+    writeln!(output, "    buf[read] = '\\0';").unwrap();
+    writeln!(output, "    qb_string* result = qb_string_new(buf);").unwrap();
+    writeln!(output, "    free(buf);").unwrap();
+    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // Environment functions
+    writeln!(output, "/* Environment Functions */").unwrap();
+    writeln!(output).unwrap();
+
+    // ENVIRON$(var$) - get environment variable
+    writeln!(output, "qb_string* qb_environ(qb_string* var) {{").unwrap();
+    writeln!(
+        output,
+        "    if (!var || !var->data) return qb_string_new(\"\");"
+    )
+    .unwrap();
+    writeln!(output, "    const char* val = getenv(var->data);").unwrap();
+    writeln!(
+        output,
+        "    return val ? qb_string_new(val) : qb_string_new(\"\");"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // COMMAND$ - get command line arguments
+    writeln!(output, "static int _qb_argc = 0;").unwrap();
+    writeln!(output, "static char** _qb_argv = NULL;").unwrap();
+    writeln!(
+        output,
+        "void qb_init_args(int argc, char** argv) {{ _qb_argc = argc; _qb_argv = argv; }}"
+    )
+    .unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "qb_string* qb_command(void) {{").unwrap();
+    writeln!(
+        output,
+        "    if (_qb_argc <= 1 || !_qb_argv) return qb_string_new(\"\");"
+    )
+    .unwrap();
+    writeln!(output, "    size_t len = 0;").unwrap();
+    writeln!(
+        output,
+        "    for (int i = 1; i < _qb_argc; i++) len += strlen(_qb_argv[i]) + 1;"
+    )
+    .unwrap();
+    writeln!(output, "    char* buf = malloc(len + 1);").unwrap();
+    writeln!(output, "    buf[0] = '\\0';").unwrap();
+    writeln!(output, "    for (int i = 1; i < _qb_argc; i++) {{").unwrap();
+    writeln!(output, "        if (i > 1) strcat(buf, \" \");").unwrap();
+    writeln!(output, "        strcat(buf, _qb_argv[i]);").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    qb_string* result = qb_string_new(buf);").unwrap();
+    writeln!(output, "    free(buf);").unwrap();
+    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _CWD$ - current working directory
+    writeln!(output, "#ifdef _WIN32").unwrap();
+    writeln!(output, "#include <direct.h>").unwrap();
+    writeln!(output, "#define getcwd _getcwd").unwrap();
+    writeln!(output, "#endif").unwrap();
+    writeln!(output, "qb_string* qb_cwd(void) {{").unwrap();
+    writeln!(output, "    char buf[4096];").unwrap();
+    writeln!(
+        output,
+        "    if (getcwd(buf, sizeof(buf))) return qb_string_new(buf);"
+    )
+    .unwrap();
+    writeln!(output, "    return qb_string_new(\"\");").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _OS$ - operating system
+    writeln!(output, "qb_string* qb_os(void) {{").unwrap();
+    writeln!(output, "#ifdef _WIN32").unwrap();
+    writeln!(output, "    return qb_string_new(\"WINDOWS\");").unwrap();
+    writeln!(output, "#elif defined(__APPLE__)").unwrap();
+    writeln!(output, "    return qb_string_new(\"MACOSX\");").unwrap();
+    writeln!(output, "#else").unwrap();
+    writeln!(output, "    return qb_string_new(\"LINUX\");").unwrap();
+    writeln!(output, "#endif").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _STARTDIR$ - program start directory
+    writeln!(output, "static char _qb_startdir[4096] = {{}};").unwrap();
+    writeln!(
+        output,
+        "void qb_init_startdir(void) {{ getcwd(_qb_startdir, sizeof(_qb_startdir)); }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "qb_string* qb_startdir(void) {{ return qb_string_new(_qb_startdir); }}"
+    )
+    .unwrap();
     writeln!(output).unwrap();
 }

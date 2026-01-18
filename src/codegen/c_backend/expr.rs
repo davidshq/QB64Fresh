@@ -285,6 +285,27 @@ pub(super) fn c_function_name(name: &str) -> String {
         "SPACE$" => "qb_space".to_string(),
         "STRING$" => "qb_string_fill".to_string(),
 
+        // File I/O functions
+        "EOF" => "qb_eof".to_string(),
+        "LOF" => "qb_lof".to_string(),
+        "LOC" => "qb_loc".to_string(),
+        "FREEFILE" => "qb_freefile".to_string(),
+
+        // Keyboard input functions
+        "INKEY$" => "qb_inkey".to_string(),
+        "INPUT$" => "qb_input_chars".to_string(),
+
+        // Error handling functions
+        "ERR" => "qb_err_code".to_string(),
+        "ERL" => "qb_err_line".to_string(),
+
+        // Environment functions
+        "ENVIRON$" => "qb_environ".to_string(),
+        "COMMAND$" => "qb_command".to_string(),
+        "_CWD$" => "qb_cwd".to_string(),
+        "_OS$" => "qb_os".to_string(),
+        "_STARTDIR$" => "qb_startdir".to_string(),
+
         // Default: prefix with qb_ for user functions
         _ => format!("qb_{}", c_identifier(name).to_lowercase()),
     }

@@ -287,6 +287,70 @@ pub enum TokenKind {
     #[token("LINE", ignore(ascii_case))]
     Line,
 
+    /// SEEK statement - set file position
+    #[token("SEEK", ignore(ascii_case))]
+    Seek,
+
+    /// ACCESS keyword - file access mode
+    #[token("ACCESS", ignore(ascii_case))]
+    Access,
+
+    /// BINARY keyword - binary file mode
+    #[token("BINARY", ignore(ascii_case))]
+    Binary,
+
+    /// RANDOM keyword - random access file mode
+    #[token("RANDOM", ignore(ascii_case))]
+    Random,
+
+    /// OUTPUT keyword - output file mode
+    #[token("OUTPUT", ignore(ascii_case))]
+    Output,
+
+    /// APPEND keyword - append file mode
+    #[token("APPEND", ignore(ascii_case))]
+    Append,
+
+    /// LEN keyword - record length for random access files
+    #[token("LEN", ignore(ascii_case))]
+    Len,
+
+    /// LOCK keyword - file locking
+    #[token("LOCK", ignore(ascii_case))]
+    Lock,
+
+    /// UNLOCK keyword - file unlocking
+    #[token("UNLOCK", ignore(ascii_case))]
+    Unlock,
+
+    /// ON keyword - used in ON ERROR, ON...GOTO/GOSUB
+    #[token("ON", ignore(ascii_case))]
+    On,
+
+    /// ERROR keyword - used in ON ERROR, ERROR statement
+    #[token("ERROR", ignore(ascii_case))]
+    ErrorKw,
+
+    /// RESUME keyword - resume from error
+    #[token("RESUME", ignore(ascii_case))]
+    Resume,
+
+    /// DEF keyword - used in DEF FN
+    #[token("DEF", ignore(ascii_case))]
+    Def,
+
+    /// FN keyword - user-defined function prefix
+    #[token("FN", ignore(ascii_case))]
+    Fn,
+
+    /// COMMON keyword - shared variables between modules
+    #[token("COMMON", ignore(ascii_case))]
+    Common,
+
+    /// _PRESERVE keyword (QB64) - preserve array contents during REDIM
+    #[token("_PRESERVE", ignore(ascii_case))]
+    Preserve,
+
     // ==================== Logical Operators (Keywords) ====================
     /// AND operator
     #[token("AND", ignore(ascii_case))]

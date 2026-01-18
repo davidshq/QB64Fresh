@@ -11,7 +11,10 @@
 //! - **Explicit conversions**: Implicit conversions become explicit `Convert` nodes
 //! - **Ready for codegen**: No further analysis needed
 
-use crate::ast::{BinaryOp, ContinueType, ExitType, PrintSeparator, Span, UnaryOp};
+use crate::ast::{
+    BinaryOp, ContinueType, ExitType, FileAccess, FileLock, FileMode, PrintSeparator, ResumeTarget,
+    Span, UnaryOp,
+};
 use crate::semantic::types::BasicType;
 
 /// A type-annotated expression.
@@ -359,6 +362,179 @@ pub enum TypedStatementKind {
         /// Optional label to restore to.
         label: Option<String>,
     },
+
+    // ==================== File I/O Statements ====================
+    /// OPEN statement for file operations.
+    OpenFile {
+        /// The filename expression.
+        filename: TypedExpr,
+        /// The file mode.
+        mode: FileMode,
+        /// Optional access mode.
+        access: Option<FileAccess>,
+        /// Optional lock mode.
+        lock: Option<FileLock>,
+        /// The file number.
+        file_num: TypedExpr,
+        /// Optional record length.
+        record_len: Option<TypedExpr>,
+    },
+
+    /// CLOSE statement.
+    CloseFile {
+        /// File numbers to close (empty = close all).
+        file_nums: Vec<TypedExpr>,
+    },
+
+    /// PRINT # statement (file output).
+    FilePrint {
+        /// The file number.
+        file_num: TypedExpr,
+        /// Values to print.
+        items: Vec<TypedPrintItem>,
+        /// Whether to print newline.
+        newline: bool,
+    },
+
+    /// WRITE # statement (file output with delimiters).
+    FileWrite {
+        /// The file number.
+        file_num: TypedExpr,
+        /// Values to write.
+        values: Vec<TypedExpr>,
+    },
+
+    /// INPUT # statement (file input).
+    FileInput {
+        /// The file number.
+        file_num: TypedExpr,
+        /// Variables paired with their types.
+        variables: Vec<(String, BasicType)>,
+    },
+
+    /// LINE INPUT # statement (file line input).
+    FileLineInput {
+        /// The file number.
+        file_num: TypedExpr,
+        /// Variable to read into.
+        variable: String,
+    },
+
+    /// GET statement (binary/random file read).
+    FileGet {
+        /// The file number.
+        file_num: TypedExpr,
+        /// Optional position.
+        position: Option<TypedExpr>,
+        /// Variable to read into.
+        variable: String,
+        /// Variable type.
+        var_type: BasicType,
+    },
+
+    /// PUT statement (binary/random file write).
+    FilePut {
+        /// The file number.
+        file_num: TypedExpr,
+        /// Optional position.
+        position: Option<TypedExpr>,
+        /// Variable to write.
+        variable: String,
+        /// Variable type.
+        var_type: BasicType,
+    },
+
+    /// SEEK statement (set file position).
+    FileSeek {
+        /// The file number.
+        file_num: TypedExpr,
+        /// The position.
+        position: TypedExpr,
+    },
+
+    // ==================== Error Handling Statements ====================
+    /// ON ERROR GOTO statement.
+    OnErrorGoto {
+        /// Target label (or "0" to disable).
+        target: String,
+    },
+
+    /// ON ERROR RESUME NEXT statement.
+    OnErrorResumeNext,
+
+    /// RESUME statement.
+    ResumeStmt {
+        /// Resume target.
+        target: Option<ResumeTarget>,
+    },
+
+    /// ERROR statement (simulate error).
+    ErrorStmt {
+        /// Error code.
+        code: TypedExpr,
+    },
+
+    // ==================== Computed Control Flow ====================
+    /// ON...GOTO statement.
+    OnGoto {
+        /// Selector expression.
+        selector: TypedExpr,
+        /// Target labels.
+        targets: Vec<String>,
+    },
+
+    /// ON...GOSUB statement.
+    OnGosub {
+        /// Selector expression.
+        selector: TypedExpr,
+        /// Target labels.
+        targets: Vec<String>,
+    },
+
+    // ==================== DEF FN ====================
+    /// DEF FN statement.
+    DefFn {
+        /// Function name (without FN prefix).
+        name: String,
+        /// Parameters.
+        params: Vec<TypedParameter>,
+        /// Return type.
+        return_type: BasicType,
+        /// Function body expression.
+        body: TypedExpr,
+    },
+
+    // ==================== Variable/Scope Statements ====================
+    /// COMMON statement.
+    CommonStmt {
+        /// Whether SHARED was specified.
+        shared: bool,
+        /// Variables with their types.
+        variables: Vec<TypedCommonVariable>,
+    },
+
+    /// REDIM statement.
+    Redim {
+        /// Whether to preserve contents.
+        preserve: bool,
+        /// Array name.
+        name: String,
+        /// Element type.
+        element_type: BasicType,
+        /// Dimensions.
+        dimensions: Vec<TypedArrayDimension>,
+    },
+}
+
+/// A typed variable in a COMMON statement.
+#[derive(Debug, Clone)]
+pub struct TypedCommonVariable {
+    /// Variable name.
+    pub name: String,
+    /// Variable type.
+    pub basic_type: BasicType,
+    /// Array dimensions (empty if scalar).
+    pub dimensions: Vec<TypedArrayDimension>,
 }
 
 /// A typed member of a TYPE definition.

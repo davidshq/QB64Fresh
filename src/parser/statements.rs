@@ -7,8 +7,8 @@
 //! handled in their respective modules.
 
 use crate::ast::{
-    ArrayDimension, ContinueType, DataValue, ExitType, ExprKind, PrintItem, PrintSeparator, Span,
-    Statement, StatementKind,
+    ArrayDimension, CommonVariable, ContinueType, DataValue, ExitType, ExprKind, FileAccess,
+    FileLock, FileMode, PrintItem, PrintSeparator, ResumeTarget, Span, Statement, StatementKind,
 };
 use crate::lexer::TokenKind;
 
@@ -31,14 +31,25 @@ impl<'a> Parser<'a> {
 
         match &token.kind {
             // I/O statements
-            TokenKind::Print => self.parse_print(),
-            TokenKind::Input => self.parse_input(),
+            TokenKind::Print => self.parse_print_or_file_print(),
+            TokenKind::Input => self.parse_input_or_file_input(),
+            TokenKind::Line => self.parse_line_statement(),
+
+            // File I/O statements
+            TokenKind::Open => self.parse_open(),
+            TokenKind::Close => self.parse_close(),
+            TokenKind::Write => self.parse_write(),
+            TokenKind::Get => self.parse_get(),
+            TokenKind::Put => self.parse_put(),
+            TokenKind::Seek => self.parse_seek(),
 
             // Variable statements
             TokenKind::Let => self.parse_let_explicit(),
             TokenKind::Dim => self.parse_dim(),
+            TokenKind::Redim => self.parse_redim(),
             TokenKind::Const => self.parse_const(),
             TokenKind::Swap => self.parse_swap(),
+            TokenKind::Common => self.parse_common(),
 
             // Control flow (delegated to control_flow.rs)
             TokenKind::If => self.parse_if(),
@@ -53,6 +64,11 @@ impl<'a> Parser<'a> {
             TokenKind::Continue => self.parse_continue(),
             TokenKind::End => self.parse_end(),
             TokenKind::Stop => self.parse_stop(),
+            TokenKind::On => self.parse_on_statement(),
+
+            // Error handling
+            TokenKind::Resume => self.parse_resume(),
+            TokenKind::ErrorKw => self.parse_error_stmt(),
 
             // DATA statements
             TokenKind::Data => self.parse_data(),
@@ -64,6 +80,7 @@ impl<'a> Parser<'a> {
             TokenKind::Function => self.parse_function(),
             TokenKind::Type => self.parse_type_definition(),
             TokenKind::Call => self.parse_call(),
+            TokenKind::Def => self.parse_def_fn(),
 
             // Preprocessor directives (delegated to directives.rs)
             TokenKind::IncludeDirective => self.parse_include_directive(),
@@ -71,6 +88,7 @@ impl<'a> Parser<'a> {
 
             // Other
             TokenKind::Comment => self.parse_comment(),
+            TokenKind::RemComment => self.parse_rem_comment(),
             TokenKind::Identifier => self.parse_identifier_statement(),
 
             _ => {
@@ -83,61 +101,6 @@ impl<'a> Parser<'a> {
                 Err(())
             }
         }
-    }
-
-    // ==================== PRINT Statement ====================
-
-    /// Parses a PRINT statement.
-    pub(super) fn parse_print(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("PRINT keyword").span.start; // consume PRINT
-        let mut values: Vec<PrintItem> = Vec::new();
-        let mut newline = true;
-
-        // Parse print items until end of statement
-        while !self.is_at_end()
-            && !self.check(&TokenKind::Newline)
-            && !self.check(&TokenKind::Colon)
-        {
-            // Check for trailing separator
-            if self.check(&TokenKind::Semicolon) || self.check(&TokenKind::Comma) {
-                let sep = if self.match_token(&TokenKind::Semicolon) {
-                    PrintSeparator::Semicolon
-                } else {
-                    self.advance();
-                    PrintSeparator::Comma
-                };
-
-                if let Some(last) = values.last_mut() {
-                    last.separator = Some(sep);
-                }
-
-                // Check if this is a trailing separator
-                if self.is_at_end()
-                    || self.check(&TokenKind::Newline)
-                    || self.check(&TokenKind::Colon)
-                {
-                    newline = sep != PrintSeparator::Semicolon;
-                    break;
-                }
-            }
-
-            let expr = self.parse_expression()?;
-            values.push(PrintItem {
-                expr,
-                separator: None,
-            });
-        }
-
-        // Check for trailing semicolon
-        if values.last().map(|v| v.separator) == Some(Some(PrintSeparator::Semicolon)) {
-            newline = false;
-        }
-
-        let span = self.span_from(start);
-        Ok(Statement::new(
-            StatementKind::Print { values, newline },
-            span,
-        ))
     }
 
     // ==================== Assignment Statements ====================
@@ -349,63 +312,6 @@ impl<'a> Parser<'a> {
         let span = self.span_from(start);
 
         Ok(Statement::new(StatementKind::Const { name, value }, span))
-    }
-
-    // ==================== INPUT Statement ====================
-
-    /// Parses an INPUT statement.
-    ///
-    /// Syntax: `INPUT [;] ["prompt"{;|,}] variable[, variable...]`
-    ///
-    /// - Semicolon after prompt: shows "?" after the prompt
-    /// - Comma after prompt: no "?" shown
-    pub(super) fn parse_input(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("INPUT keyword").span.start; // consume INPUT
-
-        let mut prompt = None;
-        let mut show_question_mark = true;
-
-        // Check for prompt string
-        if self.check(&TokenKind::StringLiteral) {
-            let token = self.advance().expect("prompt string");
-            let prompt_span: Span = token.span.clone().into();
-            prompt = Some(token.text[1..token.text.len() - 1].to_string());
-
-            // Separator after prompt is REQUIRED per QB spec
-            if self.match_token(&TokenKind::Semicolon) {
-                show_question_mark = true;
-            } else if self.match_token(&TokenKind::Comma) {
-                show_question_mark = false;
-            } else {
-                // Missing separator is a syntax error
-                self.errors.push(ParseError::syntax(
-                    "expected `;` or `,` after INPUT prompt string",
-                    prompt_span,
-                ));
-                return Err(());
-            }
-        }
-
-        // Parse variable list
-        let mut variables = Vec::new();
-        loop {
-            let var_token = self.expect(&TokenKind::Identifier, "variable name")?;
-            variables.push(var_token.text.to_string());
-
-            if !self.match_token(&TokenKind::Comma) {
-                break;
-            }
-        }
-
-        let span = self.span_from(start);
-        Ok(Statement::new(
-            StatementKind::Input {
-                prompt,
-                show_question_mark,
-                variables,
-            },
-            span,
-        ))
     }
 
     // ==================== Simple Flow Control ====================
@@ -682,5 +588,819 @@ impl<'a> Parser<'a> {
         let text = token.text.to_string();
         let span: Span = token.span.clone().into();
         Ok(Statement::new(StatementKind::Comment(text), span))
+    }
+
+    /// Parses a REM comment.
+    pub(super) fn parse_rem_comment(&mut self) -> Result<Statement, ()> {
+        let token = self.advance().expect("REM comment token");
+        let text = token.text.to_string();
+        let span: Span = token.span.clone().into();
+        Ok(Statement::new(StatementKind::Comment(text), span))
+    }
+
+    // ==================== PRINT with File Support ====================
+
+    /// Parses PRINT or PRINT #filenum (file output).
+    pub(super) fn parse_print_or_file_print(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("PRINT keyword").span.start;
+
+        // Check for file number: PRINT #filenum, ...
+        if self.check(&TokenKind::Hash) {
+            self.advance(); // consume #
+            let file_num = self.parse_expression()?;
+            self.expect(&TokenKind::Comma, "`,` after file number")?;
+            return self.parse_file_print(start, file_num);
+        }
+
+        // Regular PRINT statement
+        self.parse_print_items(start)
+    }
+
+    /// Parses the items in a PRINT statement (shared between PRINT and PRINT #).
+    fn parse_print_items(&mut self, start: usize) -> Result<Statement, ()> {
+        let mut values: Vec<PrintItem> = Vec::new();
+        let mut newline = true;
+
+        while !self.is_at_end()
+            && !self.check(&TokenKind::Newline)
+            && !self.check(&TokenKind::Colon)
+        {
+            if self.check(&TokenKind::Semicolon) || self.check(&TokenKind::Comma) {
+                let sep = if self.match_token(&TokenKind::Semicolon) {
+                    PrintSeparator::Semicolon
+                } else {
+                    self.advance();
+                    PrintSeparator::Comma
+                };
+
+                if let Some(last) = values.last_mut() {
+                    last.separator = Some(sep);
+                }
+
+                if self.is_at_end()
+                    || self.check(&TokenKind::Newline)
+                    || self.check(&TokenKind::Colon)
+                {
+                    newline = sep != PrintSeparator::Semicolon;
+                    break;
+                }
+            }
+
+            let expr = self.parse_expression()?;
+            values.push(PrintItem {
+                expr,
+                separator: None,
+            });
+        }
+
+        if values.last().map(|v| v.separator) == Some(Some(PrintSeparator::Semicolon)) {
+            newline = false;
+        }
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::Print { values, newline },
+            span,
+        ))
+    }
+
+    /// Parses PRINT #filenum, items.
+    fn parse_file_print(
+        &mut self,
+        start: usize,
+        file_num: crate::ast::Expr,
+    ) -> Result<Statement, ()> {
+        let mut values: Vec<PrintItem> = Vec::new();
+        let mut newline = true;
+
+        while !self.is_at_end()
+            && !self.check(&TokenKind::Newline)
+            && !self.check(&TokenKind::Colon)
+        {
+            if self.check(&TokenKind::Semicolon) || self.check(&TokenKind::Comma) {
+                let sep = if self.match_token(&TokenKind::Semicolon) {
+                    PrintSeparator::Semicolon
+                } else {
+                    self.advance();
+                    PrintSeparator::Comma
+                };
+
+                if let Some(last) = values.last_mut() {
+                    last.separator = Some(sep);
+                }
+
+                if self.is_at_end()
+                    || self.check(&TokenKind::Newline)
+                    || self.check(&TokenKind::Colon)
+                {
+                    newline = sep != PrintSeparator::Semicolon;
+                    break;
+                }
+            }
+
+            let expr = self.parse_expression()?;
+            values.push(PrintItem {
+                expr,
+                separator: None,
+            });
+        }
+
+        if values.last().map(|v| v.separator) == Some(Some(PrintSeparator::Semicolon)) {
+            newline = false;
+        }
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::FilePrint {
+                file_num,
+                values,
+                newline,
+            },
+            span,
+        ))
+    }
+
+    // ==================== INPUT with File Support ====================
+
+    /// Parses INPUT or INPUT #filenum (file input) or LINE INPUT.
+    pub(super) fn parse_input_or_file_input(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("INPUT keyword").span.start;
+
+        // Check for file number: INPUT #filenum, ...
+        if self.check(&TokenKind::Hash) {
+            self.advance(); // consume #
+            let file_num = self.parse_expression()?;
+            self.expect(&TokenKind::Comma, "`,` after file number")?;
+            return self.parse_file_input(start, file_num);
+        }
+
+        // Regular INPUT statement
+        self.parse_console_input(start)
+    }
+
+    /// Parses a console INPUT statement (original logic).
+    fn parse_console_input(&mut self, start: usize) -> Result<Statement, ()> {
+        let mut prompt = None;
+        let mut show_question_mark = true;
+
+        if self.check(&TokenKind::StringLiteral) {
+            let token = self.advance().expect("prompt string");
+            let prompt_span: Span = token.span.clone().into();
+            prompt = Some(token.text[1..token.text.len() - 1].to_string());
+
+            if self.match_token(&TokenKind::Semicolon) {
+                show_question_mark = true;
+            } else if self.match_token(&TokenKind::Comma) {
+                show_question_mark = false;
+            } else {
+                self.errors.push(ParseError::syntax(
+                    "expected `;` or `,` after INPUT prompt string",
+                    prompt_span,
+                ));
+                return Err(());
+            }
+        }
+
+        let mut variables = Vec::new();
+        loop {
+            let var_token = self.expect(&TokenKind::Identifier, "variable name")?;
+            variables.push(var_token.text.to_string());
+
+            if !self.match_token(&TokenKind::Comma) {
+                break;
+            }
+        }
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::Input {
+                prompt,
+                show_question_mark,
+                variables,
+            },
+            span,
+        ))
+    }
+
+    /// Parses INPUT #filenum, variables.
+    fn parse_file_input(
+        &mut self,
+        start: usize,
+        file_num: crate::ast::Expr,
+    ) -> Result<Statement, ()> {
+        let mut variables = Vec::new();
+        loop {
+            let var_token = self.expect(&TokenKind::Identifier, "variable name")?;
+            variables.push(var_token.text.to_string());
+
+            if !self.match_token(&TokenKind::Comma) {
+                break;
+            }
+        }
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::FileInput {
+                file_num,
+                variables,
+            },
+            span,
+        ))
+    }
+
+    // ==================== LINE Statement ====================
+
+    /// Parses LINE INPUT or LINE INPUT #filenum.
+    pub(super) fn parse_line_statement(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("LINE keyword").span.start;
+
+        // LINE INPUT expected
+        if !self.match_token(&TokenKind::Input) {
+            let span = self.span_from(start);
+            self.errors
+                .push(ParseError::syntax("expected INPUT after LINE", span));
+            return Err(());
+        }
+
+        // Check for file number: LINE INPUT #filenum, ...
+        if self.check(&TokenKind::Hash) {
+            self.advance(); // consume #
+            let file_num = self.parse_expression()?;
+            self.expect(&TokenKind::Comma, "`,` after file number")?;
+
+            let var_token = self.expect(&TokenKind::Identifier, "string variable")?;
+            let variable = var_token.text.to_string();
+
+            let span = self.span_from(start);
+            return Ok(Statement::new(
+                StatementKind::FileLineInput { file_num, variable },
+                span,
+            ));
+        }
+
+        // Console LINE INPUT
+        let mut prompt = None;
+
+        if self.check(&TokenKind::StringLiteral) {
+            let token = self.advance().expect("prompt string");
+            prompt = Some(token.text[1..token.text.len() - 1].to_string());
+            self.expect(&TokenKind::Semicolon, "`;` after LINE INPUT prompt")?;
+        }
+
+        let var_token = self.expect(&TokenKind::Identifier, "string variable")?;
+        let variable = var_token.text.to_string();
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::LineInput { prompt, variable },
+            span,
+        ))
+    }
+
+    // ==================== File I/O Statements ====================
+
+    /// Parses an OPEN statement.
+    ///
+    /// Syntax: `OPEN filename FOR mode [ACCESS access] [lock] AS [#]filenum [LEN=reclen]`
+    pub(super) fn parse_open(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("OPEN keyword").span.start;
+
+        // Parse filename expression
+        let filename = self.parse_expression()?;
+
+        // Expect FOR keyword
+        self.expect(&TokenKind::For, "FOR")?;
+
+        // Parse file mode
+        let mode = self.parse_file_mode()?;
+
+        // Optional ACCESS clause
+        let access = if self.match_token(&TokenKind::Access) {
+            Some(self.parse_file_access()?)
+        } else {
+            None
+        };
+
+        // Optional lock mode (SHARED, LOCK READ, LOCK WRITE, LOCK READ WRITE)
+        let lock = self.parse_file_lock()?;
+
+        // Expect AS keyword
+        self.expect(&TokenKind::As, "AS")?;
+
+        // Optional # before file number
+        self.match_token(&TokenKind::Hash);
+
+        // Parse file number
+        let file_num = self.parse_expression()?;
+
+        // Optional LEN = reclen
+        let record_len = if self.match_token(&TokenKind::Len) {
+            self.expect(&TokenKind::Equals, "=")?;
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::OpenFile {
+                filename,
+                mode,
+                access,
+                lock,
+                file_num,
+                record_len,
+            },
+            span,
+        ))
+    }
+
+    /// Parses the file mode (INPUT, OUTPUT, APPEND, BINARY, RANDOM).
+    fn parse_file_mode(&mut self) -> Result<FileMode, ()> {
+        if self.match_token(&TokenKind::Input) {
+            Ok(FileMode::Input)
+        } else if self.match_token(&TokenKind::Output) {
+            Ok(FileMode::Output)
+        } else if self.match_token(&TokenKind::Append) {
+            Ok(FileMode::Append)
+        } else if self.match_token(&TokenKind::Binary) {
+            Ok(FileMode::Binary)
+        } else if self.match_token(&TokenKind::Random) {
+            Ok(FileMode::Random)
+        } else {
+            let span = self.current_span();
+            self.errors.push(ParseError::syntax(
+                "expected file mode (INPUT, OUTPUT, APPEND, BINARY, or RANDOM)",
+                span,
+            ));
+            Err(())
+        }
+    }
+
+    /// Parses the ACCESS mode (READ, WRITE, READ WRITE).
+    fn parse_file_access(&mut self) -> Result<FileAccess, ()> {
+        if self.match_token(&TokenKind::Read) {
+            if self.match_token(&TokenKind::Write) {
+                Ok(FileAccess::ReadWrite)
+            } else {
+                Ok(FileAccess::Read)
+            }
+        } else if self.match_token(&TokenKind::Write) {
+            Ok(FileAccess::Write)
+        } else {
+            let span = self.current_span();
+            self.errors.push(ParseError::syntax(
+                "expected access mode (READ, WRITE, or READ WRITE)",
+                span,
+            ));
+            Err(())
+        }
+    }
+
+    /// Parses optional file lock mode.
+    fn parse_file_lock(&mut self) -> Result<Option<FileLock>, ()> {
+        if self.match_token(&TokenKind::Shared) {
+            Ok(Some(FileLock::Shared))
+        } else if self.match_token(&TokenKind::Lock) {
+            if self.match_token(&TokenKind::Read) {
+                if self.match_token(&TokenKind::Write) {
+                    Ok(Some(FileLock::LockReadWrite))
+                } else {
+                    Ok(Some(FileLock::LockRead))
+                }
+            } else if self.match_token(&TokenKind::Write) {
+                Ok(Some(FileLock::LockWrite))
+            } else {
+                let span = self.current_span();
+                self.errors.push(ParseError::syntax(
+                    "expected READ or WRITE after LOCK",
+                    span,
+                ));
+                Err(())
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Parses a CLOSE statement.
+    ///
+    /// Syntax: `CLOSE [[#]filenum [, [#]filenum]...]`
+    pub(super) fn parse_close(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("CLOSE keyword").span.start;
+
+        let mut file_nums = Vec::new();
+
+        // Check if there are any file numbers
+        if !self.is_at_end() && !self.check(&TokenKind::Newline) && !self.check(&TokenKind::Colon) {
+            loop {
+                // Optional # before file number
+                self.match_token(&TokenKind::Hash);
+                let file_num = self.parse_expression()?;
+                file_nums.push(file_num);
+
+                if !self.match_token(&TokenKind::Comma) {
+                    break;
+                }
+            }
+        }
+
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::CloseFile { file_nums }, span))
+    }
+
+    /// Parses a WRITE # statement.
+    ///
+    /// Syntax: `WRITE #filenum, [expression [, expression]...]`
+    pub(super) fn parse_write(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("WRITE keyword").span.start;
+
+        // WRITE requires # for file operations
+        self.expect(&TokenKind::Hash, "`#` after WRITE")?;
+
+        let file_num = self.parse_expression()?;
+        self.expect(&TokenKind::Comma, "`,` after file number")?;
+
+        let mut values = Vec::new();
+        if !self.is_at_end() && !self.check(&TokenKind::Newline) && !self.check(&TokenKind::Colon) {
+            loop {
+                let expr = self.parse_expression()?;
+                values.push(expr);
+
+                if !self.match_token(&TokenKind::Comma) {
+                    break;
+                }
+            }
+        }
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::FileWrite { file_num, values },
+            span,
+        ))
+    }
+
+    /// Parses a GET statement.
+    ///
+    /// Syntax: `GET [#]filenum, [position], variable`
+    pub(super) fn parse_get(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("GET keyword").span.start;
+
+        // Optional # before file number
+        self.match_token(&TokenKind::Hash);
+
+        let file_num = self.parse_expression()?;
+        self.expect(&TokenKind::Comma, "`,` after file number")?;
+
+        // Optional position (may be empty: GET #1, , var)
+        let position = if self.check(&TokenKind::Comma) {
+            None
+        } else {
+            Some(self.parse_expression()?)
+        };
+
+        self.expect(&TokenKind::Comma, "`,` before variable")?;
+
+        let var_token = self.expect(&TokenKind::Identifier, "variable name")?;
+        let variable = var_token.text.to_string();
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::FileGet {
+                file_num,
+                position,
+                variable,
+            },
+            span,
+        ))
+    }
+
+    /// Parses a PUT statement.
+    ///
+    /// Syntax: `PUT [#]filenum, [position], variable`
+    pub(super) fn parse_put(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("PUT keyword").span.start;
+
+        // Optional # before file number
+        self.match_token(&TokenKind::Hash);
+
+        let file_num = self.parse_expression()?;
+        self.expect(&TokenKind::Comma, "`,` after file number")?;
+
+        // Optional position (may be empty: PUT #1, , var)
+        let position = if self.check(&TokenKind::Comma) {
+            None
+        } else {
+            Some(self.parse_expression()?)
+        };
+
+        self.expect(&TokenKind::Comma, "`,` before variable")?;
+
+        let var_token = self.expect(&TokenKind::Identifier, "variable name")?;
+        let variable = var_token.text.to_string();
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::FilePut {
+                file_num,
+                position,
+                variable,
+            },
+            span,
+        ))
+    }
+
+    /// Parses a SEEK statement.
+    ///
+    /// Syntax: `SEEK [#]filenum, position`
+    pub(super) fn parse_seek(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("SEEK keyword").span.start;
+
+        // Optional # before file number
+        self.match_token(&TokenKind::Hash);
+
+        let file_num = self.parse_expression()?;
+        self.expect(&TokenKind::Comma, "`,` after file number")?;
+
+        let position = self.parse_expression()?;
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::FileSeek { file_num, position },
+            span,
+        ))
+    }
+
+    // ==================== Error Handling Statements ====================
+
+    /// Parses an ON statement (ON ERROR or ON...GOTO/GOSUB).
+    ///
+    /// Syntax: `ON ERROR GOTO label` or `ON ERROR RESUME NEXT`
+    ///         `ON expr GOTO label1, label2, ...`
+    ///         `ON expr GOSUB label1, label2, ...`
+    pub(super) fn parse_on_statement(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("ON keyword").span.start;
+
+        // Check for ON ERROR
+        if self.match_token(&TokenKind::ErrorKw) {
+            return self.parse_on_error(start);
+        }
+
+        // ON expr GOTO/GOSUB
+        let selector = self.parse_expression()?;
+
+        if self.match_token(&TokenKind::Goto) {
+            let targets = self.parse_label_list()?;
+            let span = self.span_from(start);
+            Ok(Statement::new(
+                StatementKind::OnGoto { selector, targets },
+                span,
+            ))
+        } else if self.match_token(&TokenKind::Gosub) {
+            let targets = self.parse_label_list()?;
+            let span = self.span_from(start);
+            Ok(Statement::new(
+                StatementKind::OnGosub { selector, targets },
+                span,
+            ))
+        } else {
+            let span = self.current_span();
+            self.errors.push(ParseError::syntax(
+                "expected GOTO or GOSUB after ON expression",
+                span,
+            ));
+            Err(())
+        }
+    }
+
+    /// Parses ON ERROR GOTO/RESUME.
+    fn parse_on_error(&mut self, start: usize) -> Result<Statement, ()> {
+        if self.match_token(&TokenKind::Goto) {
+            // ON ERROR GOTO label or ON ERROR GOTO 0
+            let target = if self.check(&TokenKind::IntegerLiteral) {
+                let token = self.advance().expect("integer literal");
+                token.text.to_string()
+            } else {
+                let token = self.expect(&TokenKind::Identifier, "label or 0")?;
+                token.text.to_string()
+            };
+
+            let span = self.span_from(start);
+            Ok(Statement::new(StatementKind::OnErrorGoto { target }, span))
+        } else if self.match_token(&TokenKind::Resume) {
+            // ON ERROR RESUME NEXT
+            self.expect(&TokenKind::Next, "NEXT after RESUME")?;
+            let span = self.span_from(start);
+            Ok(Statement::new(StatementKind::OnErrorResumeNext, span))
+        } else {
+            let span = self.current_span();
+            self.errors.push(ParseError::syntax(
+                "expected GOTO or RESUME after ON ERROR",
+                span,
+            ));
+            Err(())
+        }
+    }
+
+    /// Parses a comma-separated list of labels.
+    fn parse_label_list(&mut self) -> Result<Vec<String>, ()> {
+        let mut labels = Vec::new();
+
+        loop {
+            let token = self.expect(&TokenKind::Identifier, "label")?;
+            labels.push(token.text.to_string());
+
+            if !self.match_token(&TokenKind::Comma) {
+                break;
+            }
+        }
+
+        Ok(labels)
+    }
+
+    /// Parses a RESUME statement.
+    ///
+    /// Syntax: `RESUME` or `RESUME NEXT` or `RESUME label`
+    pub(super) fn parse_resume(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("RESUME keyword").span.start;
+
+        let target = if self.match_token(&TokenKind::Next) {
+            Some(ResumeTarget::Next)
+        } else if self.check(&TokenKind::Identifier) {
+            let token = self.advance().expect("label");
+            Some(ResumeTarget::Label(token.text.to_string()))
+        } else if self.check(&TokenKind::IntegerLiteral) {
+            let token = self.advance().expect("line number");
+            Some(ResumeTarget::Label(token.text.to_string()))
+        } else {
+            None // Plain RESUME - retry the statement that caused the error
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::ResumeStmt { target }, span))
+    }
+
+    /// Parses an ERROR statement.
+    ///
+    /// Syntax: `ERROR code`
+    pub(super) fn parse_error_stmt(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("ERROR keyword").span.start;
+
+        let code = self.parse_expression()?;
+
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::ErrorStmt { code }, span))
+    }
+
+    // ==================== DEF FN ====================
+
+    /// Parses a DEF FN statement.
+    ///
+    /// Syntax: `DEF FNname[(params)] = expression`
+    pub(super) fn parse_def_fn(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("DEF keyword").span.start;
+
+        // Expect FN keyword or identifier starting with FN
+        let name = if self.match_token(&TokenKind::Fn) {
+            // DEF FN name
+            let name_token = self.expect(&TokenKind::Identifier, "function name")?;
+            name_token.text.to_string()
+        } else if self.check(&TokenKind::Identifier) {
+            let token = self.advance().expect("identifier");
+            let text = token.text.to_uppercase();
+            if let Some(stripped) = text.strip_prefix("FN") {
+                stripped.to_string()
+            } else {
+                let span: Span = token.span.clone().into();
+                self.errors.push(ParseError::syntax(
+                    "DEF function name must start with FN",
+                    span,
+                ));
+                return Err(());
+            }
+        } else {
+            let span = self.current_span();
+            self.errors.push(ParseError::syntax(
+                "expected FN or function name after DEF",
+                span,
+            ));
+            return Err(());
+        };
+
+        // Optional parameters
+        let params = if self.match_token(&TokenKind::LeftParen) {
+            let p = self.parse_parameter_list()?;
+            self.expect(&TokenKind::RightParen, ")")?;
+            p
+        } else {
+            Vec::new()
+        };
+
+        // Expect = and expression
+        self.expect(&TokenKind::Equals, "=")?;
+
+        let body = self.parse_expression()?;
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::DefFn { name, params, body },
+            span,
+        ))
+    }
+
+    // ==================== Variable/Scope Statements ====================
+
+    /// Parses a COMMON statement.
+    ///
+    /// Syntax: `COMMON [SHARED] variable [, variable]...`
+    pub(super) fn parse_common(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("COMMON keyword").span.start;
+
+        let shared = self.match_token(&TokenKind::Shared);
+
+        let mut variables = Vec::new();
+
+        loop {
+            let var = self.parse_common_variable()?;
+            variables.push(var);
+
+            if !self.match_token(&TokenKind::Comma) {
+                break;
+            }
+        }
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::CommonStmt { shared, variables },
+            span,
+        ))
+    }
+
+    /// Parses a single variable in a COMMON statement.
+    fn parse_common_variable(&mut self) -> Result<CommonVariable, ()> {
+        let name_token = self.expect(&TokenKind::Identifier, "variable name")?;
+        let name = name_token.text.to_string();
+
+        // Check for array dimensions
+        let dimensions = if self.match_token(&TokenKind::LeftParen) {
+            let dims = self.parse_array_dimensions()?;
+            self.expect(&TokenKind::RightParen, ")")?;
+            dims
+        } else {
+            Vec::new()
+        };
+
+        // Check for AS type
+        let type_spec = if self.match_token(&TokenKind::As) {
+            Some(self.parse_type_spec()?)
+        } else {
+            None
+        };
+
+        Ok(CommonVariable {
+            name,
+            dimensions,
+            type_spec,
+        })
+    }
+
+    /// Parses a REDIM statement.
+    ///
+    /// Syntax: `REDIM [_PRESERVE] array(dimensions) [AS type]`
+    pub(super) fn parse_redim(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("REDIM keyword").span.start;
+
+        let preserve = self.match_token(&TokenKind::Preserve);
+
+        let name_token = self.expect(&TokenKind::Identifier, "array name")?;
+        let name = name_token.text.to_string();
+
+        self.expect(&TokenKind::LeftParen, "(")?;
+        let dimensions = self.parse_array_dimensions()?;
+        self.expect(&TokenKind::RightParen, ")")?;
+
+        let type_spec = if self.match_token(&TokenKind::As) {
+            Some(self.parse_type_spec()?)
+        } else {
+            None
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::Redim {
+                preserve,
+                name,
+                dimensions,
+                type_spec,
+            },
+            span,
+        ))
+    }
+
+    /// Returns the current token's span (for error reporting).
+    fn current_span(&self) -> Span {
+        self.peek()
+            .map(|t| t.span.clone().into())
+            .unwrap_or(Span::new(0, 0))
     }
 }

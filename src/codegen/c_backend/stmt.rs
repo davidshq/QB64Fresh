@@ -11,11 +11,11 @@
 use std::collections::HashMap;
 use std::fmt::Write;
 
-use crate::ast::{ExitType, PrintSeparator};
+use crate::ast::{ExitType, FileAccess, FileLock, FileMode, PrintSeparator};
 use crate::codegen::error::CodeGenError;
 use crate::semantic::typed_ir::{
-    TypedArrayDimension, TypedCaseCompareOp, TypedCaseMatch, TypedDoCondition, TypedMember,
-    TypedParameter, TypedPrintItem, TypedStatement, TypedStatementKind,
+    TypedArrayDimension, TypedCaseCompareOp, TypedCaseMatch, TypedDoCondition, TypedExpr,
+    TypedMember, TypedParameter, TypedPrintItem, TypedStatement, TypedStatementKind,
 };
 use crate::semantic::types::BasicType;
 
@@ -346,6 +346,148 @@ impl StmtEmitter {
 
             TypedStatementKind::Restore { label } => {
                 self.emit_restore(&indent, label, output)?;
+            }
+
+            // ==================== File I/O Statements ====================
+            TypedStatementKind::OpenFile {
+                filename,
+                mode,
+                access,
+                lock,
+                file_num,
+                record_len,
+            } => {
+                self.emit_open_file(
+                    &indent,
+                    filename,
+                    *mode,
+                    *access,
+                    *lock,
+                    file_num,
+                    record_len.as_ref(),
+                    output,
+                )?;
+            }
+
+            TypedStatementKind::CloseFile { file_nums } => {
+                self.emit_close_file(&indent, file_nums, output)?;
+            }
+
+            TypedStatementKind::FilePrint {
+                file_num,
+                items,
+                newline,
+            } => {
+                self.emit_file_print(&indent, file_num, items, *newline, output)?;
+            }
+
+            TypedStatementKind::FileWrite { file_num, values } => {
+                self.emit_file_write(&indent, file_num, values, output)?;
+            }
+
+            TypedStatementKind::FileInput {
+                file_num,
+                variables,
+            } => {
+                self.emit_file_input(&indent, file_num, variables, output)?;
+            }
+
+            TypedStatementKind::FileLineInput { file_num, variable } => {
+                self.emit_file_line_input(&indent, file_num, variable, output)?;
+            }
+
+            TypedStatementKind::FileGet {
+                file_num,
+                position,
+                variable,
+                var_type,
+            } => {
+                self.emit_file_get(
+                    &indent,
+                    file_num,
+                    position.as_ref(),
+                    variable,
+                    var_type,
+                    output,
+                )?;
+            }
+
+            TypedStatementKind::FilePut {
+                file_num,
+                position,
+                variable,
+                var_type,
+            } => {
+                self.emit_file_put(
+                    &indent,
+                    file_num,
+                    position.as_ref(),
+                    variable,
+                    var_type,
+                    output,
+                )?;
+            }
+
+            TypedStatementKind::FileSeek { file_num, position } => {
+                self.emit_file_seek(&indent, file_num, position, output)?;
+            }
+
+            // ==================== Error Handling Statements ====================
+            TypedStatementKind::OnErrorGoto { target } => {
+                self.emit_on_error_goto(&indent, target, output)?;
+            }
+
+            TypedStatementKind::OnErrorResumeNext => {
+                self.emit_on_error_resume_next(&indent, output)?;
+            }
+
+            TypedStatementKind::ResumeStmt { target } => {
+                self.emit_resume(&indent, target, output)?;
+            }
+
+            TypedStatementKind::ErrorStmt { code } => {
+                self.emit_error_stmt(&indent, code, output)?;
+            }
+
+            // ==================== Computed Control Flow ====================
+            TypedStatementKind::OnGoto { selector, targets } => {
+                self.emit_on_goto(&indent, selector, targets, output)?;
+            }
+
+            TypedStatementKind::OnGosub { selector, targets } => {
+                self.emit_on_gosub(&indent, selector, targets, output)?;
+            }
+
+            // ==================== DEF FN ====================
+            TypedStatementKind::DefFn {
+                name,
+                params,
+                return_type,
+                body,
+            } => {
+                self.emit_def_fn(name, params, return_type, body, output)?;
+            }
+
+            // ==================== Variable/Scope Statements ====================
+            TypedStatementKind::CommonStmt { shared, variables } => {
+                // COMMON is handled at program level, emit a comment here
+                let _ = shared;
+                let _ = variables;
+                writeln!(
+                    output,
+                    "{}/* COMMON statement - handled at program level */",
+                    indent
+                )
+                .unwrap();
+            }
+
+            TypedStatementKind::Redim {
+                preserve,
+                name,
+                element_type,
+                dimensions,
+            } => {
+                self.emit_redim(&indent, *preserve, name, element_type, dimensions, output)?;
             }
         }
 
@@ -1049,6 +1191,592 @@ impl StmtEmitter {
                 Ok(format!("({} {} {})", test_var, c_op, val))
             }
         }
+    }
+
+    // ==================== File I/O Helper Methods ====================
+
+    /// Emits an OPEN statement.
+    #[allow(clippy::too_many_arguments)]
+    fn emit_open_file(
+        &self,
+        indent: &str,
+        filename: &TypedExpr,
+        mode: FileMode,
+        access: Option<FileAccess>,
+        lock: Option<FileLock>,
+        file_num: &TypedExpr,
+        record_len: Option<&TypedExpr>,
+        output: &mut String,
+    ) -> Result<(), CodeGenError> {
+        let filename_code = emit_expr(filename)?;
+        let file_num_code = emit_expr(file_num)?;
+
+        // Determine C fopen mode string
+        let c_mode = match mode {
+            FileMode::Input => "\"r\"",
+            FileMode::Output => "\"w\"",
+            FileMode::Append => "\"a\"",
+            FileMode::Binary => match access {
+                Some(FileAccess::Read) => "\"rb\"",
+                Some(FileAccess::Write) => "\"wb\"",
+                _ => "\"r+b\"",
+            },
+            FileMode::Random => "\"r+b\"",
+        };
+
+        // Emit comment about access/lock for documentation
+        let _ = access;
+        let _ = lock;
+
+        writeln!(
+            output,
+            "{}qb_file_open({}, {}->data, {});",
+            indent, file_num_code, filename_code, c_mode
+        )
+        .unwrap();
+
+        // Handle record length for random access
+        if let Some(rec_len) = record_len {
+            let rec_len_code = emit_expr(rec_len)?;
+            writeln!(
+                output,
+                "{}qb_file_set_reclen({}, {});",
+                indent, file_num_code, rec_len_code
+            )
+            .unwrap();
+        }
+
+        Ok(())
+    }
+
+    /// Emits a CLOSE statement.
+    fn emit_close_file(
+        &self,
+        indent: &str,
+        file_nums: &[TypedExpr],
+        output: &mut String,
+    ) -> Result<(), CodeGenError> {
+        if file_nums.is_empty() {
+            // Close all files
+            writeln!(output, "{}qb_file_close_all();", indent).unwrap();
+        } else {
+            for file_num in file_nums {
+                let file_num_code = emit_expr(file_num)?;
+                writeln!(output, "{}qb_file_close({});", indent, file_num_code).unwrap();
+            }
+        }
+        Ok(())
+    }
+
+    /// Emits a PRINT # statement.
+    fn emit_file_print(
+        &self,
+        indent: &str,
+        file_num: &TypedExpr,
+        items: &[TypedPrintItem],
+        newline: bool,
+        output: &mut String,
+    ) -> Result<(), CodeGenError> {
+        let file_num_code = emit_expr(file_num)?;
+
+        for item in items {
+            let expr_code = emit_expr(&item.expr)?;
+
+            if item.expr.basic_type.is_string() {
+                writeln!(
+                    output,
+                    "{}qb_file_print_string({}, {});",
+                    indent, file_num_code, expr_code
+                )
+                .unwrap();
+            } else if item.expr.basic_type.is_float() {
+                writeln!(
+                    output,
+                    "{}qb_file_print_float({}, {});",
+                    indent, file_num_code, expr_code
+                )
+                .unwrap();
+            } else {
+                writeln!(
+                    output,
+                    "{}qb_file_print_int({}, {});",
+                    indent, file_num_code, expr_code
+                )
+                .unwrap();
+            }
+
+            if let Some(sep) = &item.separator {
+                match sep {
+                    PrintSeparator::Comma => {
+                        writeln!(output, "{}qb_file_print_tab({});", indent, file_num_code)
+                            .unwrap();
+                    }
+                    PrintSeparator::Semicolon => {}
+                }
+            }
+        }
+
+        if newline {
+            writeln!(
+                output,
+                "{}qb_file_print_newline({});",
+                indent, file_num_code
+            )
+            .unwrap();
+        }
+
+        Ok(())
+    }
+
+    /// Emits a WRITE # statement.
+    fn emit_file_write(
+        &self,
+        indent: &str,
+        file_num: &TypedExpr,
+        values: &[TypedExpr],
+        output: &mut String,
+    ) -> Result<(), CodeGenError> {
+        let file_num_code = emit_expr(file_num)?;
+
+        for (i, value) in values.iter().enumerate() {
+            let expr_code = emit_expr(value)?;
+
+            if value.basic_type.is_string() {
+                // WRITE quotes strings
+                writeln!(
+                    output,
+                    "{}qb_file_write_string({}, {});",
+                    indent, file_num_code, expr_code
+                )
+                .unwrap();
+            } else {
+                writeln!(
+                    output,
+                    "{}qb_file_write_number({}, {});",
+                    indent, file_num_code, expr_code
+                )
+                .unwrap();
+            }
+
+            // Add comma separator except for last item
+            if i < values.len() - 1 {
+                writeln!(
+                    output,
+                    "{}qb_file_write_char({}, ',');",
+                    indent, file_num_code
+                )
+                .unwrap();
+            }
+        }
+
+        // WRITE always ends with newline
+        writeln!(
+            output,
+            "{}qb_file_print_newline({});",
+            indent, file_num_code
+        )
+        .unwrap();
+
+        Ok(())
+    }
+
+    /// Emits an INPUT # statement.
+    fn emit_file_input(
+        &self,
+        indent: &str,
+        file_num: &TypedExpr,
+        variables: &[(String, BasicType)],
+        output: &mut String,
+    ) -> Result<(), CodeGenError> {
+        let file_num_code = emit_expr(file_num)?;
+
+        for (var_name, var_type) in variables {
+            let c_var = c_identifier(var_name);
+
+            match var_type {
+                BasicType::String | BasicType::FixedString(_) => {
+                    writeln!(
+                        output,
+                        "{}qb_file_input_string({}, &{});",
+                        indent, file_num_code, c_var
+                    )
+                    .unwrap();
+                }
+                _ if var_type.is_float() => {
+                    writeln!(
+                        output,
+                        "{}qb_file_input_float({}, &{});",
+                        indent, file_num_code, c_var
+                    )
+                    .unwrap();
+                }
+                _ => {
+                    writeln!(
+                        output,
+                        "{}qb_file_input_int({}, &{});",
+                        indent, file_num_code, c_var
+                    )
+                    .unwrap();
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Emits a LINE INPUT # statement.
+    fn emit_file_line_input(
+        &self,
+        indent: &str,
+        file_num: &TypedExpr,
+        variable: &str,
+        output: &mut String,
+    ) -> Result<(), CodeGenError> {
+        let file_num_code = emit_expr(file_num)?;
+        let c_var = c_identifier(variable);
+
+        writeln!(
+            output,
+            "{}qb_file_line_input({}, &{});",
+            indent, file_num_code, c_var
+        )
+        .unwrap();
+
+        Ok(())
+    }
+
+    /// Emits a GET statement.
+    fn emit_file_get(
+        &self,
+        indent: &str,
+        file_num: &TypedExpr,
+        position: Option<&TypedExpr>,
+        variable: &str,
+        var_type: &BasicType,
+        output: &mut String,
+    ) -> Result<(), CodeGenError> {
+        let file_num_code = emit_expr(file_num)?;
+        let c_var = c_identifier(variable);
+
+        // Seek to position if specified
+        if let Some(pos) = position {
+            let pos_code = emit_expr(pos)?;
+            writeln!(
+                output,
+                "{}qb_file_seek_record({}, {});",
+                indent, file_num_code, pos_code
+            )
+            .unwrap();
+        }
+
+        // Read the data
+        let size = type_size(var_type);
+        writeln!(
+            output,
+            "{}qb_file_get({}, &{}, {});",
+            indent, file_num_code, c_var, size
+        )
+        .unwrap();
+
+        Ok(())
+    }
+
+    /// Emits a PUT statement.
+    fn emit_file_put(
+        &self,
+        indent: &str,
+        file_num: &TypedExpr,
+        position: Option<&TypedExpr>,
+        variable: &str,
+        var_type: &BasicType,
+        output: &mut String,
+    ) -> Result<(), CodeGenError> {
+        let file_num_code = emit_expr(file_num)?;
+        let c_var = c_identifier(variable);
+
+        // Seek to position if specified
+        if let Some(pos) = position {
+            let pos_code = emit_expr(pos)?;
+            writeln!(
+                output,
+                "{}qb_file_seek_record({}, {});",
+                indent, file_num_code, pos_code
+            )
+            .unwrap();
+        }
+
+        // Write the data
+        let size = type_size(var_type);
+        writeln!(
+            output,
+            "{}qb_file_put({}, &{}, {});",
+            indent, file_num_code, c_var, size
+        )
+        .unwrap();
+
+        Ok(())
+    }
+
+    /// Emits a SEEK statement.
+    fn emit_file_seek(
+        &self,
+        indent: &str,
+        file_num: &TypedExpr,
+        position: &TypedExpr,
+        output: &mut String,
+    ) -> Result<(), CodeGenError> {
+        let file_num_code = emit_expr(file_num)?;
+        let pos_code = emit_expr(position)?;
+
+        writeln!(
+            output,
+            "{}qb_file_seek({}, {});",
+            indent, file_num_code, pos_code
+        )
+        .unwrap();
+
+        Ok(())
+    }
+
+    // ==================== Error Handling Helper Methods ====================
+
+    /// Emits ON ERROR GOTO.
+    fn emit_on_error_goto(
+        &self,
+        indent: &str,
+        target: &str,
+        output: &mut String,
+    ) -> Result<(), CodeGenError> {
+        if target == "0" {
+            writeln!(output, "{}_qb_error_handler = NULL;", indent).unwrap();
+            writeln!(output, "{}_qb_error_resume_next = 0;", indent).unwrap();
+        } else {
+            let label = c_identifier(target);
+            writeln!(output, "{}_qb_error_handler = &&_label_{};", indent, label).unwrap();
+            writeln!(output, "{}_qb_error_resume_next = 0;", indent).unwrap();
+        }
+        Ok(())
+    }
+
+    /// Emits ON ERROR RESUME NEXT.
+    fn emit_on_error_resume_next(
+        &self,
+        indent: &str,
+        output: &mut String,
+    ) -> Result<(), CodeGenError> {
+        writeln!(output, "{}_qb_error_resume_next = 1;", indent).unwrap();
+        writeln!(output, "{}_qb_error_handler = NULL;", indent).unwrap();
+        Ok(())
+    }
+
+    /// Emits RESUME statement.
+    fn emit_resume(
+        &self,
+        indent: &str,
+        target: &Option<crate::ast::ResumeTarget>,
+        output: &mut String,
+    ) -> Result<(), CodeGenError> {
+        match target {
+            None => {
+                // RESUME - retry the statement (complex, use goto)
+                writeln!(
+                    output,
+                    "{}if (_qb_error_line) goto *_qb_error_line;",
+                    indent
+                )
+                .unwrap();
+            }
+            Some(crate::ast::ResumeTarget::Next) => {
+                // RESUME NEXT - continue at next statement
+                writeln!(output, "{}_qb_err = 0;", indent).unwrap();
+                writeln!(output, "{}/* RESUME NEXT - continue execution */", indent).unwrap();
+            }
+            Some(crate::ast::ResumeTarget::Label(label)) => {
+                let c_label = c_identifier(label);
+                writeln!(output, "{}_qb_err = 0;", indent).unwrap();
+                writeln!(output, "{}goto _label_{};", indent, c_label).unwrap();
+            }
+        }
+        Ok(())
+    }
+
+    /// Emits ERROR statement.
+    fn emit_error_stmt(
+        &self,
+        indent: &str,
+        code: &TypedExpr,
+        output: &mut String,
+    ) -> Result<(), CodeGenError> {
+        let code_expr = emit_expr(code)?;
+        writeln!(output, "{}qb_error({});", indent, code_expr).unwrap();
+        Ok(())
+    }
+
+    // ==================== Computed Control Flow Helper Methods ====================
+
+    /// Emits ON...GOTO.
+    fn emit_on_goto(
+        &self,
+        indent: &str,
+        selector: &TypedExpr,
+        targets: &[String],
+        output: &mut String,
+    ) -> Result<(), CodeGenError> {
+        let sel_code = emit_expr(selector)?;
+
+        writeln!(output, "{}switch ((int32_t)({}) - 1) {{", indent, sel_code).unwrap();
+        for (i, target) in targets.iter().enumerate() {
+            let c_label = c_identifier(target);
+            writeln!(
+                output,
+                "{}    case {}: goto _label_{}; break;",
+                indent, i, c_label
+            )
+            .unwrap();
+        }
+        writeln!(output, "{}    default: break;", indent).unwrap();
+        writeln!(output, "{}}}", indent).unwrap();
+
+        Ok(())
+    }
+
+    /// Emits ON...GOSUB.
+    fn emit_on_gosub(
+        &mut self,
+        indent: &str,
+        selector: &TypedExpr,
+        targets: &[String],
+        output: &mut String,
+    ) -> Result<(), CodeGenError> {
+        let sel_code = emit_expr(selector)?;
+        let return_label = self.next_label("on_gosub_ret");
+
+        writeln!(output, "{}switch ((int32_t)({}) - 1) {{", indent, sel_code).unwrap();
+        for (i, target) in targets.iter().enumerate() {
+            let c_label = c_identifier(target);
+            writeln!(
+                output,
+                "{}    case {}: _gosub_stack[_gosub_sp++] = &&{}; goto _label_{}; break;",
+                indent, i, return_label, c_label
+            )
+            .unwrap();
+        }
+        writeln!(output, "{}    default: break;", indent).unwrap();
+        writeln!(output, "{}}}", indent).unwrap();
+        writeln!(output, "{}{}:;", indent, return_label).unwrap();
+
+        Ok(())
+    }
+
+    // ==================== DEF FN Helper Methods ====================
+
+    /// Emits DEF FN as an inline function or macro.
+    fn emit_def_fn(
+        &self,
+        name: &str,
+        params: &[TypedParameter],
+        return_type: &BasicType,
+        body: &TypedExpr,
+        output: &mut String,
+    ) -> Result<(), CodeGenError> {
+        let fn_name = format!("_fn_{}", c_identifier(name));
+        let c_return_type = c_type(return_type);
+
+        // Emit as a static inline function
+        let param_list = if params.is_empty() {
+            "void".to_string()
+        } else {
+            params
+                .iter()
+                .map(|p| format!("{} {}", c_type(&p.basic_type), c_identifier(&p.name)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+
+        let body_code = emit_expr(body)?;
+
+        writeln!(
+            output,
+            "static inline {} {}({}) {{ return {}; }}",
+            c_return_type, fn_name, param_list, body_code
+        )
+        .unwrap();
+
+        Ok(())
+    }
+
+    // ==================== REDIM Helper Methods ====================
+
+    /// Emits REDIM statement.
+    fn emit_redim(
+        &self,
+        indent: &str,
+        preserve: bool,
+        name: &str,
+        element_type: &BasicType,
+        dimensions: &[TypedArrayDimension],
+        output: &mut String,
+    ) -> Result<(), CodeGenError> {
+        let c_name = c_identifier(name);
+        let c_elem_type = c_type(element_type);
+        let _ = preserve; // TODO: Implement preserve semantics
+
+        // Calculate total size
+        if dimensions.is_empty() {
+            writeln!(output, "{}/* REDIM {} - no dimensions */", indent, name).unwrap();
+            return Ok(());
+        }
+
+        // For now, emit a simple realloc-style redim
+        // In a full implementation, we'd need to track array metadata
+        let size_expr = dimensions
+            .iter()
+            .map(|d| format!("({} - {} + 1)", d.upper, d.lower))
+            .collect::<Vec<_>>()
+            .join(" * ");
+
+        writeln!(
+            output,
+            "{}{} = realloc({}, sizeof({}) * ({}));",
+            indent, c_name, c_name, c_elem_type, size_expr
+        )
+        .unwrap();
+
+        if !preserve {
+            writeln!(
+                output,
+                "{}memset({}, 0, sizeof({}) * ({}));",
+                indent, c_name, c_elem_type, size_expr
+            )
+            .unwrap();
+        }
+
+        Ok(())
+    }
+}
+
+/// Returns the size in bytes for a type (for GET/PUT).
+fn type_size(ty: &BasicType) -> &'static str {
+    match ty {
+        BasicType::Bit | BasicType::UnsignedBit => "1",
+        BasicType::Byte | BasicType::UnsignedByte => "1",
+        BasicType::Integer | BasicType::UnsignedInteger => "2",
+        BasicType::Long | BasicType::UnsignedLong => "4",
+        BasicType::Integer64 | BasicType::UnsignedInteger64 => "8",
+        BasicType::Single => "4",
+        BasicType::Double => "8",
+        BasicType::Float => "sizeof(long double)",
+        BasicType::Offset => "sizeof(uintptr_t)",
+        BasicType::String => "sizeof(qb_string*)",
+        BasicType::FixedString(len) => {
+            // This is a bit tricky - we return a static string
+            // In practice, we'd compute this dynamically
+            let _ = len;
+            "256" // Placeholder
+        }
+        BasicType::UserDefined(_) => "sizeof(void*)",
+        BasicType::Array { .. } => "sizeof(void*)",
+        BasicType::Void | BasicType::Unknown => "4",
     }
 }
 

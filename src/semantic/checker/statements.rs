@@ -5,10 +5,10 @@
 //! statements are handled directly here, while complex statements delegate
 //! to specialized modules.
 
-use crate::ast::{DataValue, Statement, StatementKind};
+use crate::ast::{ArrayDimension, DataValue, PrintItem, Statement, StatementKind};
 use crate::semantic::{
     error::SemanticError,
-    symbols::{Symbol, SymbolKind, UserTypeDefinition, UserTypeMember},
+    symbols::{ConstValue, ScopeKind, Symbol, SymbolKind, UserTypeDefinition, UserTypeMember},
     typed_ir::*,
     types::{BasicType, from_type_spec, type_from_suffix},
 };
@@ -346,6 +346,531 @@ impl<'a> TypeChecker<'a> {
                     stmt.span,
                 )
             }
+
+            // ==================== File I/O Statements ====================
+            StatementKind::OpenFile {
+                filename,
+                mode,
+                access,
+                lock,
+                file_num,
+                record_len,
+            } => {
+                let typed_filename = self.check_expr(filename);
+                let typed_file_num = self.check_expr(file_num);
+                let typed_record_len = record_len.as_ref().map(|e| self.check_expr(e));
+
+                // Filename should be a string
+                if typed_filename.basic_type != BasicType::String {
+                    self.errors.push(SemanticError::TypeMismatch {
+                        expected: "String".to_string(),
+                        found: typed_filename.basic_type.to_string(),
+                        span: typed_filename.span,
+                    });
+                }
+
+                TypedStatement::new(
+                    TypedStatementKind::OpenFile {
+                        filename: typed_filename,
+                        mode: *mode,
+                        access: *access,
+                        lock: *lock,
+                        file_num: typed_file_num,
+                        record_len: typed_record_len,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::CloseFile { file_nums } => {
+                let typed_file_nums: Vec<TypedExpr> =
+                    file_nums.iter().map(|e| self.check_expr(e)).collect();
+
+                TypedStatement::new(
+                    TypedStatementKind::CloseFile {
+                        file_nums: typed_file_nums,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::FilePrint {
+                file_num,
+                values,
+                newline,
+            } => {
+                let typed_file_num = self.check_expr(file_num);
+                let typed_items = self.check_print_items(values);
+
+                TypedStatement::new(
+                    TypedStatementKind::FilePrint {
+                        file_num: typed_file_num,
+                        items: typed_items,
+                        newline: *newline,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::FileWrite { file_num, values } => {
+                let typed_file_num = self.check_expr(file_num);
+                let typed_values: Vec<TypedExpr> =
+                    values.iter().map(|e| self.check_expr(e)).collect();
+
+                TypedStatement::new(
+                    TypedStatementKind::FileWrite {
+                        file_num: typed_file_num,
+                        values: typed_values,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::FileInput {
+                file_num,
+                variables,
+            } => {
+                let typed_file_num = self.check_expr(file_num);
+
+                // Look up each variable and get its type (similar to READ)
+                let typed_vars: Vec<(String, BasicType)> = variables
+                    .iter()
+                    .map(|var_name| {
+                        let var_type = if let Some(symbol) = self.symbols.lookup_symbol(var_name) {
+                            symbol.basic_type.clone()
+                        } else {
+                            // Infer type from suffix or default
+                            let inferred = type_from_suffix(var_name)
+                                .unwrap_or_else(|| self.symbols.default_type_for(var_name));
+
+                            // Define the variable
+                            let symbol = Symbol {
+                                name: var_name.clone(),
+                                kind: SymbolKind::Variable,
+                                basic_type: inferred.clone(),
+                                span: stmt.span,
+                                is_mutable: true,
+                            };
+                            let _ = self.symbols.define_symbol(symbol);
+
+                            inferred
+                        };
+                        (var_name.clone(), var_type)
+                    })
+                    .collect();
+
+                TypedStatement::new(
+                    TypedStatementKind::FileInput {
+                        file_num: typed_file_num,
+                        variables: typed_vars,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::FileLineInput { file_num, variable } => {
+                let typed_file_num = self.check_expr(file_num);
+
+                // Ensure variable is defined as string or define it
+                if self.symbols.lookup_symbol(variable).is_none() {
+                    let symbol = Symbol {
+                        name: variable.clone(),
+                        kind: SymbolKind::Variable,
+                        basic_type: BasicType::String,
+                        span: stmt.span,
+                        is_mutable: true,
+                    };
+                    let _ = self.symbols.define_symbol(symbol);
+                }
+
+                TypedStatement::new(
+                    TypedStatementKind::FileLineInput {
+                        file_num: typed_file_num,
+                        variable: variable.clone(),
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::FileGet {
+                file_num,
+                position,
+                variable,
+            } => {
+                let typed_file_num = self.check_expr(file_num);
+                let typed_position = position.as_ref().map(|e| self.check_expr(e));
+
+                // Look up variable type
+                let var_type = if let Some(symbol) = self.symbols.lookup_symbol(variable) {
+                    symbol.basic_type.clone()
+                } else {
+                    // Infer and define
+                    let inferred = type_from_suffix(variable)
+                        .unwrap_or_else(|| self.symbols.default_type_for(variable));
+
+                    let symbol = Symbol {
+                        name: variable.clone(),
+                        kind: SymbolKind::Variable,
+                        basic_type: inferred.clone(),
+                        span: stmt.span,
+                        is_mutable: true,
+                    };
+                    let _ = self.symbols.define_symbol(symbol);
+                    inferred
+                };
+
+                TypedStatement::new(
+                    TypedStatementKind::FileGet {
+                        file_num: typed_file_num,
+                        position: typed_position,
+                        variable: variable.clone(),
+                        var_type,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::FilePut {
+                file_num,
+                position,
+                variable,
+            } => {
+                let typed_file_num = self.check_expr(file_num);
+                let typed_position = position.as_ref().map(|e| self.check_expr(e));
+
+                // Look up variable type
+                let var_type = self
+                    .symbols
+                    .lookup_symbol(variable)
+                    .map(|s| s.basic_type.clone())
+                    .unwrap_or_else(|| {
+                        self.errors.push(SemanticError::UndefinedVariable {
+                            name: variable.clone(),
+                            span: stmt.span,
+                        });
+                        BasicType::Long
+                    });
+
+                TypedStatement::new(
+                    TypedStatementKind::FilePut {
+                        file_num: typed_file_num,
+                        position: typed_position,
+                        variable: variable.clone(),
+                        var_type,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::FileSeek { file_num, position } => {
+                let typed_file_num = self.check_expr(file_num);
+                let typed_position = self.check_expr(position);
+
+                TypedStatement::new(
+                    TypedStatementKind::FileSeek {
+                        file_num: typed_file_num,
+                        position: typed_position,
+                    },
+                    stmt.span,
+                )
+            }
+
+            // ==================== Error Handling Statements ====================
+            StatementKind::OnErrorGoto { target } => TypedStatement::new(
+                TypedStatementKind::OnErrorGoto {
+                    target: target.clone(),
+                },
+                stmt.span,
+            ),
+
+            StatementKind::OnErrorResumeNext => {
+                TypedStatement::new(TypedStatementKind::OnErrorResumeNext, stmt.span)
+            }
+
+            StatementKind::ResumeStmt { target } => TypedStatement::new(
+                TypedStatementKind::ResumeStmt {
+                    target: target.clone(),
+                },
+                stmt.span,
+            ),
+
+            StatementKind::ErrorStmt { code } => {
+                let typed_code = self.check_expr(code);
+
+                TypedStatement::new(
+                    TypedStatementKind::ErrorStmt { code: typed_code },
+                    stmt.span,
+                )
+            }
+
+            // ==================== Computed Control Flow ====================
+            StatementKind::OnGoto { selector, targets } => {
+                let typed_selector = self.check_expr(selector);
+
+                // Selector should be numeric
+                if !typed_selector.basic_type.is_numeric() {
+                    self.errors.push(SemanticError::TypeMismatch {
+                        expected: "numeric".to_string(),
+                        found: typed_selector.basic_type.to_string(),
+                        span: typed_selector.span,
+                    });
+                }
+
+                TypedStatement::new(
+                    TypedStatementKind::OnGoto {
+                        selector: typed_selector,
+                        targets: targets.clone(),
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::OnGosub { selector, targets } => {
+                let typed_selector = self.check_expr(selector);
+
+                if !typed_selector.basic_type.is_numeric() {
+                    self.errors.push(SemanticError::TypeMismatch {
+                        expected: "numeric".to_string(),
+                        found: typed_selector.basic_type.to_string(),
+                        span: typed_selector.span,
+                    });
+                }
+
+                TypedStatement::new(
+                    TypedStatementKind::OnGosub {
+                        selector: typed_selector,
+                        targets: targets.clone(),
+                    },
+                    stmt.span,
+                )
+            }
+
+            // ==================== DEF FN ====================
+            StatementKind::DefFn { name, params, body } => {
+                // Enter a new scope for the function
+                self.symbols.enter_scope(ScopeKind::Function);
+
+                // Define parameters in the scope
+                let typed_params: Vec<TypedParameter> = params
+                    .iter()
+                    .map(|p| {
+                        let param_type = p
+                            .type_spec
+                            .as_ref()
+                            .map(from_type_spec)
+                            .or_else(|| type_from_suffix(&p.name))
+                            .unwrap_or(BasicType::Single); // DEF FN defaults to Single
+                        let symbol = Symbol {
+                            name: p.name.clone(),
+                            kind: SymbolKind::Variable,
+                            basic_type: param_type.clone(),
+                            span: stmt.span,
+                            is_mutable: !p.by_val,
+                        };
+                        let _ = self.symbols.define_symbol(symbol);
+
+                        TypedParameter {
+                            name: p.name.clone(),
+                            basic_type: param_type,
+                            by_val: p.by_val,
+                        }
+                    })
+                    .collect();
+
+                // Check the body expression
+                let typed_body = self.check_expr(body);
+
+                // Return type is inferred from the function name suffix or body
+                let return_type =
+                    type_from_suffix(name).unwrap_or_else(|| typed_body.basic_type.clone());
+
+                self.symbols.exit_scope();
+
+                TypedStatement::new(
+                    TypedStatementKind::DefFn {
+                        name: name.clone(),
+                        params: typed_params,
+                        return_type,
+                        body: typed_body,
+                    },
+                    stmt.span,
+                )
+            }
+
+            // ==================== Variable/Scope Statements ====================
+            StatementKind::CommonStmt { shared, variables } => {
+                let typed_vars: Vec<TypedCommonVariable> = variables
+                    .iter()
+                    .map(|v| {
+                        let var_type = v
+                            .type_spec
+                            .as_ref()
+                            .map(from_type_spec)
+                            .or_else(|| type_from_suffix(&v.name))
+                            .unwrap_or_else(|| self.symbols.default_type_for(&v.name));
+
+                        // Evaluate dimensions
+                        let dims: Vec<TypedArrayDimension> = v
+                            .dimensions
+                            .iter()
+                            .map(|d| self.evaluate_array_dimension(d, stmt.span))
+                            .collect();
+
+                        // Register the symbol
+                        let symbol = Symbol {
+                            name: v.name.clone(),
+                            kind: SymbolKind::Variable,
+                            basic_type: if dims.is_empty() {
+                                var_type.clone()
+                            } else {
+                                BasicType::Array {
+                                    element_type: Box::new(var_type.clone()),
+                                    dimensions: dims.len(),
+                                }
+                            },
+                            span: stmt.span,
+                            is_mutable: true,
+                        };
+                        let _ = self.symbols.define_symbol(symbol);
+
+                        TypedCommonVariable {
+                            name: v.name.clone(),
+                            basic_type: var_type,
+                            dimensions: dims,
+                        }
+                    })
+                    .collect();
+
+                TypedStatement::new(
+                    TypedStatementKind::CommonStmt {
+                        shared: *shared,
+                        variables: typed_vars,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::Redim {
+                preserve,
+                name,
+                dimensions,
+                type_spec,
+            } => {
+                // Determine element type
+                let element_type = type_spec
+                    .as_ref()
+                    .map(from_type_spec)
+                    .or_else(|| type_from_suffix(name))
+                    .unwrap_or_else(|| self.symbols.default_type_for(name));
+
+                // Evaluate dimensions - REDIM allows runtime expressions
+                let typed_dims: Vec<TypedArrayDimension> = dimensions
+                    .iter()
+                    .map(|d| self.evaluate_array_dimension_runtime(d))
+                    .collect();
+
+                // Update symbol table (or define if not exists)
+                let symbol = Symbol {
+                    name: name.clone(),
+                    kind: SymbolKind::Variable,
+                    basic_type: BasicType::Array {
+                        element_type: Box::new(element_type.clone()),
+                        dimensions: typed_dims.len(),
+                    },
+                    span: stmt.span,
+                    is_mutable: true,
+                };
+                let _ = self.symbols.define_symbol(symbol);
+
+                TypedStatement::new(
+                    TypedStatementKind::Redim {
+                        preserve: *preserve,
+                        name: name.clone(),
+                        element_type,
+                        dimensions: typed_dims,
+                    },
+                    stmt.span,
+                )
+            }
         }
+    }
+
+    /// Type checks print items (shared between PRINT and PRINT #).
+    fn check_print_items(&mut self, values: &[PrintItem]) -> Vec<TypedPrintItem> {
+        values
+            .iter()
+            .map(|item| TypedPrintItem {
+                expr: self.check_expr(&item.expr),
+                separator: item.separator,
+            })
+            .collect()
+    }
+
+    /// Evaluates array dimensions that must be constant expressions.
+    fn evaluate_array_dimension(
+        &mut self,
+        dim: &ArrayDimension,
+        _span: crate::ast::Span,
+    ) -> TypedArrayDimension {
+        // Evaluate lower bound (if provided)
+        let lower = if let Some(lower_expr) = &dim.lower {
+            let typed_lower = self.check_expr(lower_expr);
+            match self.try_evaluate_const_expr(&typed_lower) {
+                Some(ConstValue::Integer(v)) => v,
+                Some(ConstValue::Float(v)) => v as i64,
+                _ => {
+                    self.errors.push(SemanticError::NonConstantExpression {
+                        span: lower_expr.span,
+                    });
+                    0
+                }
+            }
+        } else {
+            self.symbols.option_base()
+        };
+
+        // Evaluate upper bound (required)
+        let typed_upper = self.check_expr(&dim.upper);
+        let upper = match self.try_evaluate_const_expr(&typed_upper) {
+            Some(ConstValue::Integer(v)) => v,
+            Some(ConstValue::Float(v)) => v as i64,
+            _ => {
+                self.errors.push(SemanticError::NonConstantExpression {
+                    span: dim.upper.span,
+                });
+                10
+            }
+        };
+
+        TypedArrayDimension { lower, upper }
+    }
+
+    /// Evaluates array dimensions for REDIM where runtime expressions are allowed.
+    /// Since we can't know the values at compile time, we use placeholder values.
+    fn evaluate_array_dimension_runtime(&mut self, dim: &ArrayDimension) -> TypedArrayDimension {
+        // For REDIM, we just need to type-check the expressions
+        // The actual values will be computed at runtime
+        if let Some(lower_expr) = &dim.lower {
+            let typed_lower = self.check_expr(lower_expr);
+            if !typed_lower.basic_type.is_numeric() {
+                self.errors.push(SemanticError::TypeMismatch {
+                    expected: "numeric".to_string(),
+                    found: typed_lower.basic_type.to_string(),
+                    span: typed_lower.span,
+                });
+            }
+        }
+
+        let typed_upper = self.check_expr(&dim.upper);
+        if !typed_upper.basic_type.is_numeric() {
+            self.errors.push(SemanticError::TypeMismatch {
+                expected: "numeric".to_string(),
+                found: typed_upper.basic_type.to_string(),
+                span: typed_upper.span,
+            });
+        }
+
+        // Return placeholder values - actual bounds are runtime-computed
+        TypedArrayDimension { lower: 0, upper: 0 }
     }
 }

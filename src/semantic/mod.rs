@@ -378,6 +378,38 @@ impl SemanticAnalyzer {
         self.register_builtin_function("TIMER", &[], BasicType::Single);
         self.register_builtin_function("DATE$", &[], BasicType::String);
         self.register_builtin_function("TIME$", &[], BasicType::String);
+
+        // File I/O functions
+        self.register_builtin_function("EOF", &[("fnum", BasicType::Integer)], BasicType::Integer);
+        self.register_builtin_function("LOF", &[("fnum", BasicType::Integer)], BasicType::Long);
+        self.register_builtin_function("LOC", &[("fnum", BasicType::Integer)], BasicType::Long);
+        self.register_builtin_function("FREEFILE", &[], BasicType::Integer);
+
+        // Keyboard input functions
+        self.register_builtin_function("INKEY$", &[], BasicType::String);
+        self.register_builtin_function("INPUT$", &[("n", BasicType::Integer)], BasicType::String);
+
+        // Error handling functions
+        self.register_builtin_function("ERR", &[], BasicType::Integer);
+        self.register_builtin_function("ERL", &[], BasicType::Integer);
+
+        // Environment functions
+        self.register_builtin_function(
+            "ENVIRON$",
+            &[("var", BasicType::String)],
+            BasicType::String,
+        );
+        self.register_builtin_function("COMMAND$", &[], BasicType::String);
+        self.register_builtin_function("_CWD$", &[], BasicType::String);
+        self.register_builtin_function("_OS$", &[], BasicType::String);
+        self.register_builtin_function("_STARTDIR$", &[], BasicType::String);
+
+        // Additional utility functions
+        self.register_builtin_function(
+            "STRING$",
+            &[("n", BasicType::Integer), ("char", BasicType::Integer)],
+            BasicType::String,
+        );
     }
 
     /// Registers a single built-in function.

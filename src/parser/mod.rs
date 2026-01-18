@@ -321,4 +321,323 @@ PRINT x
             StatementKind::Input { prompt: None, .. }
         ));
     }
+
+    // ========================================================
+    // Phase 1 Feature Tests: File I/O
+    // ========================================================
+
+    #[test]
+    fn test_parse_open_for_input() {
+        let program = parse(r#"OPEN "test.txt" FOR INPUT AS #1"#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::OpenFile { .. }
+        ));
+    }
+
+    #[test]
+    fn test_parse_open_for_output() {
+        let program = parse(r#"OPEN "output.dat" FOR OUTPUT AS #2"#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::OpenFile { .. }
+        ));
+    }
+
+    #[test]
+    fn test_parse_open_for_append() {
+        let program = parse(r#"OPEN "log.txt" FOR APPEND AS #3"#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::OpenFile { .. }
+        ));
+    }
+
+    #[test]
+    fn test_parse_open_for_binary() {
+        let program = parse(r#"OPEN "data.bin" FOR BINARY AS #1"#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::OpenFile { .. }
+        ));
+    }
+
+    #[test]
+    fn test_parse_open_for_random() {
+        let program = parse(r#"OPEN "records.dat" FOR RANDOM AS #1 LEN = 100"#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::OpenFile { .. }
+        ));
+    }
+
+    #[test]
+    fn test_parse_close() {
+        let program = parse("CLOSE #1").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::CloseFile { .. }
+        ));
+    }
+
+    #[test]
+    fn test_parse_close_multiple() {
+        let program = parse("CLOSE #1, #2, #3").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        if let StatementKind::CloseFile { file_nums } = &program.statements[0].kind {
+            assert_eq!(file_nums.len(), 3);
+        } else {
+            panic!("Expected CloseFile statement");
+        }
+    }
+
+    #[test]
+    fn test_parse_print_to_file() {
+        let program = parse(r#"PRINT #1, "Hello""#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::FilePrint { .. }
+        ));
+    }
+
+    #[test]
+    fn test_parse_input_from_file() {
+        let program = parse("INPUT #1, x, y$").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::FileInput { .. }
+        ));
+    }
+
+    #[test]
+    fn test_parse_line_input_from_file() {
+        let program = parse("LINE INPUT #1, line$").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::FileLineInput { .. }
+        ));
+    }
+
+    #[test]
+    fn test_parse_get() {
+        let program = parse("GET #1, 10, record").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::FileGet { .. }
+        ));
+    }
+
+    #[test]
+    fn test_parse_put() {
+        let program = parse("PUT #1, 10, record").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::FilePut { .. }
+        ));
+    }
+
+    #[test]
+    fn test_parse_seek() {
+        let program = parse("SEEK #1, 100").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::FileSeek { .. }
+        ));
+    }
+
+    // ========================================================
+    // Phase 1 Feature Tests: Error Handling
+    // ========================================================
+
+    #[test]
+    fn test_parse_on_error_goto() {
+        let program = parse("ON ERROR GOTO errorHandler").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::OnErrorGoto { .. }
+        ));
+    }
+
+    #[test]
+    fn test_parse_on_error_goto_zero() {
+        let program = parse("ON ERROR GOTO 0").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        // "0" means disable error handling - stored as target "0"
+        if let StatementKind::OnErrorGoto { target } = &program.statements[0].kind {
+            assert_eq!(target, "0");
+        } else {
+            panic!("Expected OnErrorGoto statement");
+        }
+    }
+
+    #[test]
+    fn test_parse_on_error_resume_next() {
+        let program = parse("ON ERROR RESUME NEXT").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::OnErrorResumeNext { .. }
+        ));
+    }
+
+    #[test]
+    fn test_parse_resume() {
+        let program = parse("RESUME").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::ResumeStmt { .. }
+        ));
+    }
+
+    #[test]
+    fn test_parse_resume_next() {
+        let program = parse("RESUME NEXT").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::ResumeStmt { .. }
+        ));
+    }
+
+    #[test]
+    fn test_parse_resume_label() {
+        let program = parse("RESUME startOver").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::ResumeStmt { .. }
+        ));
+    }
+
+    #[test]
+    fn test_parse_error_statement() {
+        let program = parse("ERROR 53").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::ErrorStmt { .. }
+        ));
+    }
+
+    // ========================================================
+    // Phase 1 Feature Tests: Computed Control Flow
+    // ========================================================
+
+    #[test]
+    fn test_parse_on_goto() {
+        let program = parse("ON choice GOTO label1, label2, label3").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        if let StatementKind::OnGoto { targets, .. } = &program.statements[0].kind {
+            assert_eq!(targets.len(), 3);
+        } else {
+            panic!("Expected OnGoto statement");
+        }
+    }
+
+    #[test]
+    fn test_parse_on_gosub() {
+        let program = parse("ON menuItem GOSUB sub1, sub2").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        if let StatementKind::OnGosub { targets, .. } = &program.statements[0].kind {
+            assert_eq!(targets.len(), 2);
+        } else {
+            panic!("Expected OnGosub statement");
+        }
+    }
+
+    // ========================================================
+    // Phase 1 Feature Tests: DEF FN
+    // ========================================================
+
+    #[test]
+    fn test_parse_def_fn_single_line() {
+        let program = parse("DEF FNdouble(x) = x * 2").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::DefFn { .. }
+        ));
+    }
+
+    #[test]
+    fn test_parse_def_fn_with_type() {
+        let program = parse("DEF FNsquare%(n%) = n% * n%").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::DefFn { .. }
+        ));
+    }
+
+    // ========================================================
+    // Phase 1 Feature Tests: Variable/Scope Enhancements
+    // ========================================================
+
+    #[test]
+    fn test_parse_common() {
+        let program = parse("COMMON x, y$, z%").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        if let StatementKind::CommonStmt { variables, .. } = &program.statements[0].kind {
+            assert_eq!(variables.len(), 3);
+        } else {
+            panic!("Expected CommonStmt");
+        }
+    }
+
+    #[test]
+    fn test_parse_common_shared() {
+        let program = parse("COMMON SHARED counter%").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::CommonStmt { shared: true, .. }
+        ));
+    }
+
+    #[test]
+    fn test_parse_redim() {
+        let program = parse("REDIM array(100)").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::Redim {
+                preserve: false,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn test_parse_redim_preserve() {
+        let program = parse("REDIM _PRESERVE buffer$(newSize)").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::Redim { preserve: true, .. }
+        ));
+    }
+
+    #[test]
+    fn test_parse_write_to_file() {
+        let program = parse(r#"WRITE #1, "data", 42, 3.14"#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::FileWrite { .. }
+        ));
+    }
 }

@@ -590,4 +590,289 @@ mod tests {
             "FOR/NEXT with case-different variable should not error"
         );
     }
+
+    // ========================================================
+    // Phase 1 Feature Tests: File I/O Type Checking
+    // ========================================================
+
+    #[test]
+    fn test_file_close_accepts_numeric() {
+        let mut symbols = SymbolTable::new();
+        let mut checker = TypeChecker::new(&mut symbols);
+
+        // CLOSE #1 - file number should be accepted as numeric
+        let stmt = Statement::new(
+            StatementKind::CloseFile {
+                file_nums: vec![make_int_expr(1)],
+            },
+            Span::new(0, 10),
+        );
+
+        let _typed = checker.check_statement(&stmt);
+        assert!(
+            checker.errors.is_empty(),
+            "CLOSE with integer file number should not error: {:?}",
+            checker.errors
+        );
+    }
+
+    #[test]
+    fn test_open_file_basic() {
+        use crate::ast::FileMode;
+
+        let mut symbols = SymbolTable::new();
+        let mut checker = TypeChecker::new(&mut symbols);
+
+        // OPEN "test.txt" FOR INPUT AS #1
+        let stmt = Statement::new(
+            StatementKind::OpenFile {
+                filename: make_str_expr("test.txt"),
+                mode: FileMode::Input,
+                access: None,
+                lock: None,
+                file_num: make_int_expr(1),
+                record_len: None,
+            },
+            Span::new(0, 30),
+        );
+
+        let _typed = checker.check_statement(&stmt);
+        assert!(
+            checker.errors.is_empty(),
+            "OPEN with valid arguments should not error: {:?}",
+            checker.errors
+        );
+    }
+
+    // ========================================================
+    // Phase 1 Feature Tests: Error Handling Type Checking
+    // ========================================================
+
+    #[test]
+    fn test_on_error_goto() {
+        let mut symbols = SymbolTable::new();
+        let mut checker = TypeChecker::new(&mut symbols);
+
+        // ON ERROR GOTO errorHandler
+        let stmt = Statement::new(
+            StatementKind::OnErrorGoto {
+                target: "errorHandler".to_string(),
+            },
+            Span::new(0, 25),
+        );
+
+        let _typed = checker.check_statement(&stmt);
+        // ON ERROR GOTO doesn't validate label existence at type check time
+        assert!(
+            checker.errors.is_empty(),
+            "ON ERROR GOTO should not error: {:?}",
+            checker.errors
+        );
+    }
+
+    #[test]
+    fn test_error_statement_numeric() {
+        let mut symbols = SymbolTable::new();
+        let mut checker = TypeChecker::new(&mut symbols);
+
+        // ERROR 53 - should accept numeric error code
+        let stmt = Statement::new(
+            StatementKind::ErrorStmt {
+                code: make_int_expr(53),
+            },
+            Span::new(0, 10),
+        );
+
+        let _typed = checker.check_statement(&stmt);
+        assert!(
+            checker.errors.is_empty(),
+            "ERROR with integer code should not error: {:?}",
+            checker.errors
+        );
+    }
+
+    // ========================================================
+    // Phase 1 Feature Tests: Computed Control Flow
+    // ========================================================
+
+    #[test]
+    fn test_on_goto_numeric_selector() {
+        let mut symbols = SymbolTable::new();
+        let mut checker = TypeChecker::new(&mut symbols);
+
+        // ON choice GOTO label1, label2
+        let stmt = Statement::new(
+            StatementKind::OnGoto {
+                selector: make_int_expr(1),
+                targets: vec!["label1".to_string(), "label2".to_string()],
+            },
+            Span::new(0, 30),
+        );
+
+        let _typed = checker.check_statement(&stmt);
+        assert!(
+            checker.errors.is_empty(),
+            "ON GOTO with integer selector should not error: {:?}",
+            checker.errors
+        );
+    }
+
+    #[test]
+    fn test_on_gosub_numeric_selector() {
+        let mut symbols = SymbolTable::new();
+        let mut checker = TypeChecker::new(&mut symbols);
+
+        // ON menu GOSUB sub1, sub2
+        let stmt = Statement::new(
+            StatementKind::OnGosub {
+                selector: make_int_expr(2),
+                targets: vec!["sub1".to_string(), "sub2".to_string()],
+            },
+            Span::new(0, 25),
+        );
+
+        let _typed = checker.check_statement(&stmt);
+        assert!(
+            checker.errors.is_empty(),
+            "ON GOSUB with integer selector should not error: {:?}",
+            checker.errors
+        );
+    }
+
+    // ========================================================
+    // Phase 1 Feature Tests: DEF FN
+    // ========================================================
+
+    #[test]
+    fn test_def_fn_basic() {
+        use crate::ast::Parameter;
+
+        let mut symbols = SymbolTable::new();
+        let mut checker = TypeChecker::new(&mut symbols);
+
+        // DEF FNdouble(x) = x * 2
+        let stmt = Statement::new(
+            StatementKind::DefFn {
+                name: "FNdouble".to_string(),
+                params: vec![Parameter {
+                    name: "x".to_string(),
+                    type_spec: None,
+                    by_val: false,
+                }],
+                body: Expr::new(
+                    ExprKind::Binary {
+                        left: Box::new(make_ident_expr("x")),
+                        op: BinaryOp::Multiply,
+                        right: Box::new(make_int_expr(2)),
+                    },
+                    Span::new(0, 5),
+                ),
+            },
+            Span::new(0, 25),
+        );
+
+        let _typed = checker.check_statement(&stmt);
+        assert!(
+            checker.errors.is_empty(),
+            "DEF FN should not error: {:?}",
+            checker.errors
+        );
+    }
+
+    // ========================================================
+    // Phase 1 Feature Tests: COMMON / REDIM
+    // ========================================================
+
+    #[test]
+    fn test_common_statement() {
+        use crate::ast::CommonVariable;
+
+        let mut symbols = SymbolTable::new();
+        let mut checker = TypeChecker::new(&mut symbols);
+
+        // COMMON x, y$
+        let stmt = Statement::new(
+            StatementKind::CommonStmt {
+                shared: false,
+                variables: vec![
+                    CommonVariable {
+                        name: "x".to_string(),
+                        dimensions: vec![],
+                        type_spec: None,
+                    },
+                    CommonVariable {
+                        name: "y$".to_string(),
+                        dimensions: vec![],
+                        type_spec: None,
+                    },
+                ],
+            },
+            Span::new(0, 15),
+        );
+
+        let _typed = checker.check_statement(&stmt);
+        assert!(
+            checker.errors.is_empty(),
+            "COMMON should not error: {:?}",
+            checker.errors
+        );
+    }
+
+    #[test]
+    fn test_redim_statement() {
+        use crate::ast::ArrayDimension;
+
+        let mut symbols = SymbolTable::new();
+        let mut checker = TypeChecker::new(&mut symbols);
+
+        // REDIM array(100)
+        let stmt = Statement::new(
+            StatementKind::Redim {
+                preserve: false,
+                name: "array".to_string(),
+                dimensions: vec![ArrayDimension {
+                    lower: None,
+                    upper: make_int_expr(100),
+                }],
+                type_spec: None,
+            },
+            Span::new(0, 15),
+        );
+
+        let _typed = checker.check_statement(&stmt);
+        assert!(
+            checker.errors.is_empty(),
+            "REDIM should not error: {:?}",
+            checker.errors
+        );
+    }
+
+    #[test]
+    fn test_redim_preserve() {
+        use crate::ast::ArrayDimension;
+
+        let mut symbols = SymbolTable::new();
+        let mut checker = TypeChecker::new(&mut symbols);
+
+        // REDIM _PRESERVE buffer$(50)
+        let stmt = Statement::new(
+            StatementKind::Redim {
+                preserve: true,
+                name: "buffer$".to_string(),
+                dimensions: vec![ArrayDimension {
+                    lower: None,
+                    upper: make_int_expr(50),
+                }],
+                type_spec: None,
+            },
+            Span::new(0, 25),
+        );
+
+        let _typed = checker.check_statement(&stmt);
+        assert!(
+            checker.errors.is_empty(),
+            "REDIM _PRESERVE should not error: {:?}",
+            checker.errors
+        );
+    }
 }

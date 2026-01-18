@@ -289,6 +289,257 @@ pub enum StatementKind {
         /// Any arguments following the command.
         args: Option<String>,
     },
+
+    // ==================== File I/O Statements ====================
+    /// `OPEN filename FOR mode [ACCESS access] [lock] AS [#]filenum [LEN=reclen]`
+    ///
+    /// Opens a file for reading, writing, or both.
+    OpenFile {
+        /// The filename expression (usually a string).
+        filename: Expr,
+        /// The file mode (Input, Output, Append, Binary, Random).
+        mode: FileMode,
+        /// Optional access mode (Read, Write, ReadWrite).
+        access: Option<FileAccess>,
+        /// Optional lock mode (Shared, Read, Write, ReadWrite).
+        lock: Option<FileLock>,
+        /// The file number expression (1-511).
+        file_num: Expr,
+        /// Optional record length for random access files.
+        record_len: Option<Expr>,
+    },
+
+    /// `CLOSE [[#]filenum [, [#]filenum]...]`
+    ///
+    /// Closes one or more files. If no file numbers specified, closes all files.
+    CloseFile {
+        /// File numbers to close. Empty means close all.
+        file_nums: Vec<Expr>,
+    },
+
+    /// `PRINT #filenum, [expression [{;|,} expression]...]`
+    ///
+    /// Writes data to a sequential file.
+    FilePrint {
+        /// The file number.
+        file_num: Expr,
+        /// Values to write.
+        values: Vec<PrintItem>,
+        /// Whether to write a newline at the end.
+        newline: bool,
+    },
+
+    /// `WRITE #filenum, [expression [{,} expression]...]`
+    ///
+    /// Writes data to a sequential file with delimiters (comma-separated, strings quoted).
+    FileWrite {
+        /// The file number.
+        file_num: Expr,
+        /// Values to write.
+        values: Vec<Expr>,
+    },
+
+    /// `INPUT #filenum, variable [, variable]...`
+    ///
+    /// Reads data from a sequential file.
+    FileInput {
+        /// The file number.
+        file_num: Expr,
+        /// Variables to read into.
+        variables: Vec<String>,
+    },
+
+    /// `LINE INPUT #filenum, variable$`
+    ///
+    /// Reads an entire line from a sequential file.
+    FileLineInput {
+        /// The file number.
+        file_num: Expr,
+        /// Variable to read into (must be string).
+        variable: String,
+    },
+
+    /// `GET [#]filenum, [position], variable` or `GET #filenum, , variable`
+    ///
+    /// Reads data from a binary or random access file.
+    FileGet {
+        /// The file number.
+        file_num: Expr,
+        /// Optional position (record number for random, byte position for binary).
+        position: Option<Expr>,
+        /// Variable to read into.
+        variable: String,
+    },
+
+    /// `PUT [#]filenum, [position], variable` or `PUT #filenum, , variable`
+    ///
+    /// Writes data to a binary or random access file.
+    FilePut {
+        /// The file number.
+        file_num: Expr,
+        /// Optional position (record number for random, byte position for binary).
+        position: Option<Expr>,
+        /// Variable containing data to write.
+        variable: String,
+    },
+
+    /// `SEEK [#]filenum, position`
+    ///
+    /// Sets the position for the next read/write operation.
+    FileSeek {
+        /// The file number.
+        file_num: Expr,
+        /// The position to seek to.
+        position: Expr,
+    },
+
+    // ==================== Error Handling Statements ====================
+    /// `ON ERROR GOTO label` or `ON ERROR GOTO 0` (disable error handling)
+    ///
+    /// Enables error trapping and specifies the error handler location.
+    OnErrorGoto {
+        /// The label to jump to on error. If "0", disables error handling.
+        target: String,
+    },
+
+    /// `ON ERROR RESUME NEXT`
+    ///
+    /// Continues execution at the next statement after an error.
+    OnErrorResumeNext,
+
+    /// `RESUME [NEXT | label]`
+    ///
+    /// Resumes execution after error handling.
+    ResumeStmt {
+        /// Resume target: None = retry statement, Next = next statement, Some(label) = jump to label.
+        target: Option<ResumeTarget>,
+    },
+
+    /// `ERROR code`
+    ///
+    /// Simulates an error with the specified error code.
+    ErrorStmt {
+        /// The error code to simulate.
+        code: Expr,
+    },
+
+    // ==================== Computed Control Flow ====================
+    /// `ON expression GOTO label1, label2, ...`
+    ///
+    /// Branches to one of several labels based on the expression value.
+    OnGoto {
+        /// The selector expression (1-based index).
+        selector: Expr,
+        /// List of target labels.
+        targets: Vec<String>,
+    },
+
+    /// `ON expression GOSUB label1, label2, ...`
+    ///
+    /// Calls one of several subroutines based on the expression value.
+    OnGosub {
+        /// The selector expression (1-based index).
+        selector: Expr,
+        /// List of target labels.
+        targets: Vec<String>,
+    },
+
+    // ==================== DEF FN ====================
+    /// `DEF FNname[(parameters)] = expression` (single-line)
+    ///
+    /// Defines a user-defined function.
+    DefFn {
+        /// Function name (without FN prefix).
+        name: String,
+        /// Optional parameters.
+        params: Vec<Parameter>,
+        /// The function body expression.
+        body: Expr,
+    },
+
+    // ==================== Variable/Scope Statements ====================
+    /// `COMMON [SHARED] variable [, variable]...`
+    ///
+    /// Declares variables that are shared between modules.
+    CommonStmt {
+        /// Whether SHARED was specified.
+        shared: bool,
+        /// Variables to share.
+        variables: Vec<CommonVariable>,
+    },
+
+    /// `REDIM [_PRESERVE] array(dimensions) [AS type]`
+    ///
+    /// Resizes a dynamic array, optionally preserving contents.
+    Redim {
+        /// Whether to preserve existing contents.
+        preserve: bool,
+        /// Array name.
+        name: String,
+        /// New dimensions.
+        dimensions: Vec<ArrayDimension>,
+        /// Type specification.
+        type_spec: Option<TypeSpec>,
+    },
+}
+
+/// File mode for OPEN statement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileMode {
+    /// FOR INPUT - sequential read
+    Input,
+    /// FOR OUTPUT - sequential write (creates/truncates)
+    Output,
+    /// FOR APPEND - sequential write (creates/appends)
+    Append,
+    /// FOR BINARY - binary read/write
+    Binary,
+    /// FOR RANDOM - random access read/write
+    Random,
+}
+
+/// File access mode for OPEN statement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileAccess {
+    /// ACCESS READ
+    Read,
+    /// ACCESS WRITE
+    Write,
+    /// ACCESS READ WRITE
+    ReadWrite,
+}
+
+/// File lock mode for OPEN statement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileLock {
+    /// SHARED - other processes can read and write
+    Shared,
+    /// LOCK READ - other processes cannot read
+    LockRead,
+    /// LOCK WRITE - other processes cannot write
+    LockWrite,
+    /// LOCK READ WRITE - exclusive access
+    LockReadWrite,
+}
+
+/// Resume target for RESUME statement.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResumeTarget {
+    /// RESUME NEXT - continue at next statement
+    Next,
+    /// RESUME label - jump to specific label
+    Label(String),
+}
+
+/// Variable declaration in COMMON statement.
+#[derive(Debug, Clone)]
+pub struct CommonVariable {
+    /// Variable name.
+    pub name: String,
+    /// Array dimensions (empty if not an array).
+    pub dimensions: Vec<ArrayDimension>,
+    /// Type specification.
+    pub type_spec: Option<TypeSpec>,
 }
 
 /// An item in a PRINT statement.
