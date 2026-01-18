@@ -82,6 +82,24 @@ impl<'a> Parser<'a> {
             TokenKind::LeftParen => self.parse_grouped(),
             TokenKind::Minus => self.parse_unary(UnaryOp::Negate),
             TokenKind::Not => self.parse_unary(UnaryOp::Not),
+
+            // Phase 5: System Integration functions
+            TokenKind::FileExists => self.parse_builtin_function("_FILEEXISTS"),
+            TokenKind::DirExists => self.parse_builtin_function("_DIREXISTS"),
+            TokenKind::Dir => self.parse_builtin_function("_DIR$"),
+
+            // Phase 5: Mouse Input functions
+            TokenKind::MouseX => self.parse_builtin_function("_MOUSEX"),
+            TokenKind::MouseY => self.parse_builtin_function("_MOUSEY"),
+            TokenKind::MouseButton => self.parse_builtin_function("_MOUSEBUTTON"),
+            TokenKind::MouseInput => self.parse_builtin_function("_MOUSEINPUT"),
+            TokenKind::MouseMovementX => self.parse_builtin_function("_MOUSEMOVEMENTX"),
+            TokenKind::MouseMovementY => self.parse_builtin_function("_MOUSEMOVEMENTY"),
+            TokenKind::MouseWheel => self.parse_builtin_function("_MOUSEWHEEL"),
+
+            // Phase 5: Clipboard function
+            TokenKind::Clipboard => self.parse_builtin_function("_CLIPBOARD$"),
+
             _ => {
                 let span = token.span.clone().into();
                 self.errors.push(ParseError::InvalidExpression {
@@ -301,6 +319,33 @@ impl<'a> Parser<'a> {
             ExprKind::Unary {
                 op,
                 operand: Box::new(operand),
+            },
+            span,
+        ))
+    }
+
+    /// Parses a built-in function call with a known name.
+    ///
+    /// Used for Phase 5 functions that have their own tokens (e.g., _FILEEXISTS, _MOUSEX).
+    fn parse_builtin_function(&mut self, name: &str) -> Result<Expr, ()> {
+        let start = self.advance().expect("builtin function token").span.start;
+
+        // Check for parenthesized arguments
+        let args = if self.check(&TokenKind::LeftParen) {
+            self.advance(); // consume (
+            let args = self.parse_argument_list()?;
+            self.expect(&TokenKind::RightParen, ")")?;
+            args
+        } else {
+            // No arguments (e.g., _MOUSEX with no parens)
+            Vec::new()
+        };
+
+        let span = self.span_from(start);
+        Ok(Expr::new(
+            ExprKind::FunctionCall {
+                name: name.to_string(),
+                args,
             },
             span,
         ))

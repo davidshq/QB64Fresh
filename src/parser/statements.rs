@@ -126,6 +126,23 @@ impl<'a> Parser<'a> {
             TokenKind::SndBal => self.parse_sndbal(),
             TokenKind::SndRaw => self.parse_sndraw(),
 
+            // System integration statements
+            TokenKind::Kill => self.parse_kill(),
+            TokenKind::Name => self.parse_name(),
+            TokenKind::Mkdir => self.parse_mkdir(),
+            TokenKind::Rmdir => self.parse_rmdir(),
+            TokenKind::Chdir => self.parse_chdir(),
+            TokenKind::Shell => self.parse_shell(),
+            TokenKind::ShellHide => self.parse_shellhide(),
+
+            // Mouse statements
+            TokenKind::MouseHide => self.parse_mousehide(),
+            TokenKind::MouseShow => self.parse_mouseshow(),
+            TokenKind::MouseMove => self.parse_mousemove(),
+
+            // Clipboard statement (assignment form)
+            TokenKind::Clipboard => self.parse_clipboard_set(),
+
             // Other
             TokenKind::Comment => self.parse_comment(),
             TokenKind::RemComment => self.parse_rem_comment(),
@@ -2167,5 +2184,134 @@ impl<'a> Parser<'a> {
                 TokenKind::Newline | TokenKind::Colon | TokenKind::Comment | TokenKind::RemComment
             ),
         }
+    }
+
+    // ==================== System Integration Statements ====================
+
+    /// Parses KILL statement.
+    ///
+    /// Syntax: `KILL filename$`
+    pub(super) fn parse_kill(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("KILL keyword").span.start;
+        let filename = self.parse_expression()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::Kill { filename }, span))
+    }
+
+    /// Parses NAME statement.
+    ///
+    /// Syntax: `NAME oldname$ AS newname$`
+    pub(super) fn parse_name(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("NAME keyword").span.start;
+        let old_name = self.parse_expression()?;
+        self.expect(&TokenKind::As, "AS")?;
+        let new_name = self.parse_expression()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::Rename { old_name, new_name },
+            span,
+        ))
+    }
+
+    /// Parses MKDIR statement.
+    ///
+    /// Syntax: `MKDIR path$`
+    pub(super) fn parse_mkdir(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("MKDIR keyword").span.start;
+        let path = self.parse_expression()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::Mkdir { path }, span))
+    }
+
+    /// Parses RMDIR statement.
+    ///
+    /// Syntax: `RMDIR path$`
+    pub(super) fn parse_rmdir(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("RMDIR keyword").span.start;
+        let path = self.parse_expression()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::Rmdir { path }, span))
+    }
+
+    /// Parses CHDIR statement.
+    ///
+    /// Syntax: `CHDIR path$`
+    pub(super) fn parse_chdir(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("CHDIR keyword").span.start;
+        let path = self.parse_expression()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::Chdir { path }, span))
+    }
+
+    /// Parses SHELL statement.
+    ///
+    /// Syntax: `SHELL [command$]`
+    pub(super) fn parse_shell(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("SHELL keyword").span.start;
+
+        // Optional command
+        let command = if self.is_at_end_of_statement() {
+            None
+        } else {
+            Some(self.parse_expression()?)
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::ShellCmd { command }, span))
+    }
+
+    /// Parses _SHELLHIDE statement.
+    ///
+    /// Syntax: `_SHELLHIDE command$`
+    pub(super) fn parse_shellhide(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_SHELLHIDE keyword").span.start;
+        let command = self.parse_expression()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::ShellHide { command }, span))
+    }
+
+    // ==================== Mouse Statements ====================
+
+    /// Parses _MOUSEHIDE statement.
+    ///
+    /// Syntax: `_MOUSEHIDE`
+    pub(super) fn parse_mousehide(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_MOUSEHIDE keyword").span.start;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::MouseHide, span))
+    }
+
+    /// Parses _MOUSESHOW statement.
+    ///
+    /// Syntax: `_MOUSESHOW`
+    pub(super) fn parse_mouseshow(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_MOUSESHOW keyword").span.start;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::MouseShow, span))
+    }
+
+    /// Parses _MOUSEMOVE statement.
+    ///
+    /// Syntax: `_MOUSEMOVE x%, y%`
+    pub(super) fn parse_mousemove(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_MOUSEMOVE keyword").span.start;
+        let x = self.parse_expression()?;
+        self.expect(&TokenKind::Comma, ",")?;
+        let y = self.parse_expression()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::MouseMoveStmt { x, y }, span))
+    }
+
+    // ==================== Clipboard Statement ====================
+
+    /// Parses _CLIPBOARD$ = text$ statement.
+    ///
+    /// Syntax: `_CLIPBOARD$ = text$`
+    pub(super) fn parse_clipboard_set(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_CLIPBOARD$ keyword").span.start;
+        self.expect(&TokenKind::Equals, "=")?;
+        let text = self.parse_expression()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::ClipboardSet { text }, span))
     }
 }

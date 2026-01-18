@@ -806,6 +806,180 @@ pub extern "C" fn qb_gfx_image_height(handle: i32) -> i32 {
     }
 }
 
+// ============================================================================
+// Mouse Input Functions (Phase 5)
+// ============================================================================
+
+/// _MOUSEX - Get the current mouse X position.
+#[no_mangle]
+pub extern "C" fn qb_mouse_x() -> i32 {
+    unsafe {
+        if let Some(ref backend) = crate::graphics::GRAPHICS_BACKEND {
+            backend.get_mouse_x()
+        } else {
+            0
+        }
+    }
+}
+
+/// _MOUSEY - Get the current mouse Y position.
+#[no_mangle]
+pub extern "C" fn qb_mouse_y() -> i32 {
+    unsafe {
+        if let Some(ref backend) = crate::graphics::GRAPHICS_BACKEND {
+            backend.get_mouse_y()
+        } else {
+            0
+        }
+    }
+}
+
+/// _MOUSEBUTTON - Get the state of a mouse button.
+///
+/// Button 1 = left, 2 = right, 3 = middle.
+/// Returns -1 (true) if pressed, 0 (false) otherwise.
+#[no_mangle]
+pub extern "C" fn qb_mouse_button(button: i32) -> i32 {
+    unsafe {
+        if let Some(ref backend) = crate::graphics::GRAPHICS_BACKEND {
+            if backend.get_mouse_button(button as u32) {
+                -1 // True in BASIC
+            } else {
+                0 // False
+            }
+        } else {
+            0
+        }
+    }
+}
+
+/// _MOUSEINPUT - Check for and consume mouse input events.
+///
+/// Returns -1 (true) if there was input, 0 (false) otherwise.
+/// Must be called in a loop to get mouse updates.
+#[no_mangle]
+pub extern "C" fn qb_mouse_input() -> i32 {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            if backend.poll_mouse_input() {
+                -1 // True
+            } else {
+                0 // False
+            }
+        } else {
+            0
+        }
+    }
+}
+
+/// _MOUSEMOVEMENTX - Get mouse X movement since last call.
+#[no_mangle]
+pub extern "C" fn qb_mouse_movement_x() -> i32 {
+    unsafe {
+        if let Some(ref backend) = crate::graphics::GRAPHICS_BACKEND {
+            backend.get_mouse_movement_x()
+        } else {
+            0
+        }
+    }
+}
+
+/// _MOUSEMOVEMENTY - Get mouse Y movement since last call.
+#[no_mangle]
+pub extern "C" fn qb_mouse_movement_y() -> i32 {
+    unsafe {
+        if let Some(ref backend) = crate::graphics::GRAPHICS_BACKEND {
+            backend.get_mouse_movement_y()
+        } else {
+            0
+        }
+    }
+}
+
+/// _MOUSEWHEEL - Get mouse wheel delta.
+///
+/// Returns number of scroll notches (positive = up, negative = down).
+#[no_mangle]
+pub extern "C" fn qb_mouse_wheel() -> i32 {
+    unsafe {
+        if let Some(ref backend) = crate::graphics::GRAPHICS_BACKEND {
+            backend.get_mouse_wheel()
+        } else {
+            0
+        }
+    }
+}
+
+/// _MOUSEHIDE - Hide the mouse cursor.
+#[no_mangle]
+pub extern "C" fn qb_mouse_hide() {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            backend.hide_mouse();
+        }
+    }
+}
+
+/// _MOUSESHOW - Show the mouse cursor.
+#[no_mangle]
+pub extern "C" fn qb_mouse_show() {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            backend.show_mouse();
+        }
+    }
+}
+
+/// _MOUSEMOVE - Move the mouse cursor to a position.
+#[no_mangle]
+pub extern "C" fn qb_mouse_move(x: i32, y: i32) {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            backend.move_mouse(x, y);
+        }
+    }
+}
+
+// ============================================================================
+// Clipboard Functions (Phase 5)
+// ============================================================================
+
+/// _CLIPBOARD$ (get) - Get text from the system clipboard.
+///
+/// # Safety
+/// - The returned string must be released with `qb_string_release`
+#[no_mangle]
+pub extern "C" fn qb_clipboard_get() -> *mut crate::string::QbString {
+    unsafe {
+        if let Some(ref backend) = crate::graphics::GRAPHICS_BACKEND {
+            if let Some(text) = backend.get_clipboard() {
+                return crate::string::qb_string_from_bytes(text.as_ptr(), text.len());
+            }
+        }
+        crate::string::qb_string_empty()
+    }
+}
+
+/// _CLIPBOARD$ = text$ - Set text to the system clipboard.
+///
+/// # Safety
+/// - `text` must be a valid null-terminated C string
+#[no_mangle]
+pub unsafe extern "C" fn qb_clipboard_set(text: *const std::os::raw::c_char) {
+    if text.is_null() {
+        return;
+    }
+
+    let text_str = match std::ffi::CStr::from_ptr(text).to_str() {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+
+    if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+        backend.set_clipboard(text_str);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

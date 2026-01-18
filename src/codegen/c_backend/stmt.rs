@@ -917,6 +917,78 @@ impl StmtEmitter {
                     writeln!(output, "{}qb_sndraw((double){});", indent, left_code).unwrap();
                 }
             }
+
+            // ==================== System Integration Statements ====================
+            TypedStatementKind::Kill { filename } => {
+                let filename_code = emit_expr(filename)?;
+                writeln!(output, "{}qb_file_kill({}->data);", indent, filename_code).unwrap();
+            }
+
+            TypedStatementKind::Rename { old_name, new_name } => {
+                let old_code = emit_expr(old_name)?;
+                let new_code = emit_expr(new_name)?;
+                writeln!(
+                    output,
+                    "{}qb_file_rename({}->data, {}->data);",
+                    indent, old_code, new_code
+                )
+                .unwrap();
+            }
+
+            TypedStatementKind::Mkdir { path } => {
+                let path_code = emit_expr(path)?;
+                writeln!(output, "{}qb_mkdir({}->data);", indent, path_code).unwrap();
+            }
+
+            TypedStatementKind::Rmdir { path } => {
+                let path_code = emit_expr(path)?;
+                writeln!(output, "{}qb_rmdir({}->data);", indent, path_code).unwrap();
+            }
+
+            TypedStatementKind::Chdir { path } => {
+                let path_code = emit_expr(path)?;
+                writeln!(output, "{}qb_chdir({}->data);", indent, path_code).unwrap();
+            }
+
+            TypedStatementKind::ShellCmd { command } => {
+                if let Some(cmd) = command {
+                    let cmd_code = emit_expr(cmd)?;
+                    writeln!(output, "{}qb_shell({}->data);", indent, cmd_code).unwrap();
+                } else {
+                    writeln!(output, "{}qb_shell(NULL);", indent).unwrap();
+                }
+            }
+
+            TypedStatementKind::ShellHide { command } => {
+                let cmd_code = emit_expr(command)?;
+                writeln!(output, "{}qb_shell_hide({}->data);", indent, cmd_code).unwrap();
+            }
+
+            // ==================== Mouse Input Statements ====================
+            TypedStatementKind::MouseHide => {
+                writeln!(output, "{}qb_mouse_hide();", indent).unwrap();
+            }
+
+            TypedStatementKind::MouseShow => {
+                writeln!(output, "{}qb_mouse_show();", indent).unwrap();
+            }
+
+            TypedStatementKind::MouseMoveStmt { x, y } => {
+                let x_code = emit_expr(x)?;
+                let y_code = emit_expr(y)?;
+                writeln!(
+                    output,
+                    "{}qb_mouse_move((int32_t){}, (int32_t){});",
+                    indent, x_code, y_code
+                )
+                .unwrap();
+            }
+
+            // ==================== Clipboard Statement ====================
+            TypedStatementKind::ClipboardSet { text } => {
+                let text_code = emit_expr(text)?;
+                writeln!(output, "{}qb_clipboard_set({}->data);", indent, text_code).unwrap();
+            }
         }
 
         Ok(())

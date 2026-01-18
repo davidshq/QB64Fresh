@@ -470,6 +470,93 @@ pub enum TokenKind {
     #[token("_SNDRAW", ignore(ascii_case))]
     SndRaw,
 
+    // ==================== System Integration Keywords ====================
+    /// KILL statement - delete file
+    #[token("KILL", ignore(ascii_case))]
+    Kill,
+
+    /// NAME statement - rename file
+    #[token("NAME", ignore(ascii_case))]
+    Name,
+
+    /// MKDIR statement - create directory
+    #[token("MKDIR", ignore(ascii_case))]
+    Mkdir,
+
+    /// RMDIR statement - remove directory
+    #[token("RMDIR", ignore(ascii_case))]
+    Rmdir,
+
+    /// CHDIR statement - change directory
+    #[token("CHDIR", ignore(ascii_case))]
+    Chdir,
+
+    /// SHELL statement - execute external command
+    #[token("SHELL", ignore(ascii_case))]
+    Shell,
+
+    /// _SHELLHIDE statement - execute hidden command (QB64)
+    #[token("_SHELLHIDE", ignore(ascii_case))]
+    ShellHide,
+
+    /// _FILEEXISTS function - check if file exists (QB64)
+    #[token("_FILEEXISTS", ignore(ascii_case))]
+    FileExists,
+
+    /// _DIREXISTS function - check if directory exists (QB64)
+    #[token("_DIREXISTS", ignore(ascii_case))]
+    DirExists,
+
+    /// _DIR$ function - directory listing (QB64)
+    #[token("_DIR$", ignore(ascii_case))]
+    Dir,
+
+    // ==================== Mouse Input Keywords ====================
+    /// _MOUSEX function - get mouse X position (QB64)
+    #[token("_MOUSEX", ignore(ascii_case))]
+    MouseX,
+
+    /// _MOUSEY function - get mouse Y position (QB64)
+    #[token("_MOUSEY", ignore(ascii_case))]
+    MouseY,
+
+    /// _MOUSEBUTTON function - get mouse button state (QB64)
+    #[token("_MOUSEBUTTON", ignore(ascii_case))]
+    MouseButton,
+
+    /// _MOUSEINPUT function - check for mouse input (QB64)
+    #[token("_MOUSEINPUT", ignore(ascii_case))]
+    MouseInput,
+
+    /// _MOUSEMOVEMENTX function - get mouse X movement (QB64)
+    #[token("_MOUSEMOVEMENTX", ignore(ascii_case))]
+    MouseMovementX,
+
+    /// _MOUSEMOVEMENTY function - get mouse Y movement (QB64)
+    #[token("_MOUSEMOVEMENTY", ignore(ascii_case))]
+    MouseMovementY,
+
+    /// _MOUSEWHEEL function - get mouse wheel delta (QB64)
+    #[token("_MOUSEWHEEL", ignore(ascii_case))]
+    MouseWheel,
+
+    /// _MOUSEHIDE statement - hide mouse cursor (QB64)
+    #[token("_MOUSEHIDE", ignore(ascii_case))]
+    MouseHide,
+
+    /// _MOUSESHOW statement - show mouse cursor (QB64)
+    #[token("_MOUSESHOW", ignore(ascii_case))]
+    MouseShow,
+
+    /// _MOUSEMOVE statement - move mouse cursor (QB64)
+    #[token("_MOUSEMOVE", ignore(ascii_case))]
+    MouseMove,
+
+    // ==================== Clipboard Keywords ====================
+    /// _CLIPBOARD$ function/statement - clipboard access (QB64)
+    #[token("_CLIPBOARD$", ignore(ascii_case))]
+    Clipboard,
+
     // Note: B and BF for LINE boxes are handled as identifiers in the parser
     // since they conflict with single-letter variable names.
     /// ON keyword - used in ON ERROR, ON...GOTO/GOSUB

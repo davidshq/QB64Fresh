@@ -477,6 +477,35 @@ impl SemanticAnalyzer {
             BasicType::Offset,
         );
         self.register_builtin_function("_MEM", &[("variable", BasicType::Unknown)], BasicType::Mem);
+
+        // Phase 5: System Integration
+        self.register_builtin_function(
+            "_FILEEXISTS",
+            &[("path", BasicType::String)],
+            BasicType::Integer,
+        );
+        self.register_builtin_function(
+            "_DIREXISTS",
+            &[("path", BasicType::String)],
+            BasicType::Integer,
+        );
+        self.register_builtin_function("_DIR$", &[("spec", BasicType::String)], BasicType::String);
+
+        // Phase 5: Mouse Input
+        self.register_builtin_function("_MOUSEX", &[], BasicType::Integer);
+        self.register_builtin_function("_MOUSEY", &[], BasicType::Integer);
+        self.register_builtin_function(
+            "_MOUSEBUTTON",
+            &[("button", BasicType::Integer)],
+            BasicType::Integer,
+        );
+        self.register_builtin_function("_MOUSEINPUT", &[], BasicType::Integer);
+        self.register_builtin_function("_MOUSEMOVEMENTX", &[], BasicType::Integer);
+        self.register_builtin_function("_MOUSEMOVEMENTY", &[], BasicType::Integer);
+        self.register_builtin_function("_MOUSEWHEEL", &[], BasicType::Integer);
+
+        // Phase 5: Clipboard
+        self.register_builtin_function("_CLIPBOARD$", &[], BasicType::String);
     }
 
     /// Registers a single built-in function.

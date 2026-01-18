@@ -1202,6 +1202,94 @@ impl<'a> TypeChecker<'a> {
                     stmt.span,
                 )
             }
+
+            // ==================== System Integration Statements ====================
+            StatementKind::Kill { filename } => {
+                let typed_filename = self.check_expr(filename);
+                TypedStatement::new(
+                    TypedStatementKind::Kill {
+                        filename: typed_filename,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::Rename { old_name, new_name } => {
+                let typed_old = self.check_expr(old_name);
+                let typed_new = self.check_expr(new_name);
+                TypedStatement::new(
+                    TypedStatementKind::Rename {
+                        old_name: typed_old,
+                        new_name: typed_new,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::Mkdir { path } => {
+                let typed_path = self.check_expr(path);
+                TypedStatement::new(TypedStatementKind::Mkdir { path: typed_path }, stmt.span)
+            }
+
+            StatementKind::Rmdir { path } => {
+                let typed_path = self.check_expr(path);
+                TypedStatement::new(TypedStatementKind::Rmdir { path: typed_path }, stmt.span)
+            }
+
+            StatementKind::Chdir { path } => {
+                let typed_path = self.check_expr(path);
+                TypedStatement::new(TypedStatementKind::Chdir { path: typed_path }, stmt.span)
+            }
+
+            StatementKind::ShellCmd { command } => {
+                let typed_command = command.as_ref().map(|c| self.check_expr(c));
+                TypedStatement::new(
+                    TypedStatementKind::ShellCmd {
+                        command: typed_command,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::ShellHide { command } => {
+                let typed_command = self.check_expr(command);
+                TypedStatement::new(
+                    TypedStatementKind::ShellHide {
+                        command: typed_command,
+                    },
+                    stmt.span,
+                )
+            }
+
+            // ==================== Mouse Input Statements ====================
+            StatementKind::MouseHide => {
+                TypedStatement::new(TypedStatementKind::MouseHide, stmt.span)
+            }
+
+            StatementKind::MouseShow => {
+                TypedStatement::new(TypedStatementKind::MouseShow, stmt.span)
+            }
+
+            StatementKind::MouseMoveStmt { x, y } => {
+                let typed_x = self.check_expr(x);
+                let typed_y = self.check_expr(y);
+                TypedStatement::new(
+                    TypedStatementKind::MouseMoveStmt {
+                        x: typed_x,
+                        y: typed_y,
+                    },
+                    stmt.span,
+                )
+            }
+
+            // ==================== Clipboard Statement ====================
+            StatementKind::ClipboardSet { text } => {
+                let typed_text = self.check_expr(text);
+                TypedStatement::new(
+                    TypedStatementKind::ClipboardSet { text: typed_text },
+                    stmt.span,
+                )
+            }
         }
     }
 

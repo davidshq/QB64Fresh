@@ -377,6 +377,71 @@ pub trait GraphicsBackend {
     fn get_image_height(&self, _handle: i32) -> i32 {
         0
     }
+
+    // ============================================================================
+    // Mouse Input (Phase 5)
+    // ============================================================================
+
+    /// Get the current mouse X position.
+    fn get_mouse_x(&self) -> i32 {
+        0
+    }
+
+    /// Get the current mouse Y position.
+    fn get_mouse_y(&self) -> i32 {
+        0
+    }
+
+    /// Get the state of a mouse button.
+    ///
+    /// # Arguments
+    /// - `button`: 1 = left, 2 = right, 3 = middle
+    fn get_mouse_button(&self, _button: u32) -> bool {
+        false
+    }
+
+    /// Poll for mouse input events.
+    ///
+    /// Returns true if there was new mouse input.
+    fn poll_mouse_input(&mut self) -> bool {
+        false
+    }
+
+    /// Get mouse X movement since last call.
+    fn get_mouse_movement_x(&self) -> i32 {
+        0
+    }
+
+    /// Get mouse Y movement since last call.
+    fn get_mouse_movement_y(&self) -> i32 {
+        0
+    }
+
+    /// Get mouse wheel delta.
+    fn get_mouse_wheel(&self) -> i32 {
+        0
+    }
+
+    /// Hide the mouse cursor.
+    fn hide_mouse(&mut self) {}
+
+    /// Show the mouse cursor.
+    fn show_mouse(&mut self) {}
+
+    /// Move the mouse cursor to a position.
+    fn move_mouse(&mut self, _x: i32, _y: i32) {}
+
+    // ============================================================================
+    // Clipboard (Phase 5)
+    // ============================================================================
+
+    /// Get text from the system clipboard.
+    fn get_clipboard(&self) -> Option<String> {
+        None
+    }
+
+    /// Set text to the system clipboard.
+    fn set_clipboard(&mut self, _text: &str) {}
 }
 
 /// Global graphics backend instance.

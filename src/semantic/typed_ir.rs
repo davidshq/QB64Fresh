@@ -780,6 +780,73 @@ pub enum TypedStatementKind {
         /// Right sample (optional).
         right: Option<TypedExpr>,
     },
+
+    // ==================== System Integration Statements ====================
+    /// KILL statement - delete a file.
+    Kill {
+        /// The filename to delete.
+        filename: TypedExpr,
+    },
+
+    /// NAME statement - rename a file.
+    Rename {
+        /// The current filename.
+        old_name: TypedExpr,
+        /// The new filename.
+        new_name: TypedExpr,
+    },
+
+    /// MKDIR statement - create a directory.
+    Mkdir {
+        /// The directory path.
+        path: TypedExpr,
+    },
+
+    /// RMDIR statement - remove a directory.
+    Rmdir {
+        /// The directory path.
+        path: TypedExpr,
+    },
+
+    /// CHDIR statement - change current directory.
+    Chdir {
+        /// The directory path.
+        path: TypedExpr,
+    },
+
+    /// SHELL statement - execute external command.
+    ShellCmd {
+        /// The command to execute (optional).
+        command: Option<TypedExpr>,
+    },
+
+    /// _SHELLHIDE statement - execute hidden command.
+    ShellHide {
+        /// The command to execute.
+        command: TypedExpr,
+    },
+
+    // ==================== Mouse Input Statements ====================
+    /// _MOUSEHIDE statement.
+    MouseHide,
+
+    /// _MOUSESHOW statement.
+    MouseShow,
+
+    /// _MOUSEMOVE statement.
+    MouseMoveStmt {
+        /// X coordinate.
+        x: TypedExpr,
+        /// Y coordinate.
+        y: TypedExpr,
+    },
+
+    // ==================== Clipboard Statement ====================
+    /// _CLIPBOARD$ = text$ statement.
+    ClipboardSet {
+        /// The text to set.
+        text: TypedExpr,
+    },
 }
 
 /// Typed coordinates for VIEW and WINDOW statements.

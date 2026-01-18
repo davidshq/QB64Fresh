@@ -214,7 +214,7 @@ runtime/src/
 
 ---
 
-## Phase 5: Advanced Features (Long-Term)
+## Phase 5: Advanced Features (Long-Term) - In Progress
 
 ### C Library Integration
 - [ ] `DECLARE LIBRARY` statement
@@ -230,23 +230,28 @@ runtime/src/
 - [ ] `_CONNECTED` function
 - [ ] Network stream I/O
 
-### Input Devices
-- [ ] Mouse support (`_MOUSEX`, `_MOUSEY`, `_MOUSEBUTTON`, etc.)
+### Input Devices ✅ (Parser/Semantic/Codegen complete - backend integration pending)
+- [x] Mouse support (`_MOUSEX`, `_MOUSEY`, `_MOUSEBUTTON`, etc.) - full pipeline
+- [x] `_MOUSEINPUT` - check for mouse events
+- [x] `_MOUSEMOVEMENTX` / `_MOUSEMOVEMENTY` - relative movement
+- [x] `_MOUSEWHEEL` - scroll wheel
+- [x] `_MOUSEHIDE` / `_MOUSESHOW` - cursor visibility
+- [x] `_MOUSEMOVE` - position cursor
 - [ ] Joystick/gamepad support
 - [ ] Touch input support
 
-### Clipboard
-- [ ] `_CLIPBOARD$` function (get)
-- [ ] `_CLIPBOARD$` statement (set)
+### Clipboard ✅ (Parser/Semantic/Codegen complete - backend integration pending)
+- [x] `_CLIPBOARD$` function (get)
+- [x] `_CLIPBOARD$` statement (set)
 
-### System Integration
-- [ ] `SHELL` statement
-- [ ] `_SHELLHIDE`
-- [ ] `KILL` statement (delete file)
-- [ ] `NAME` statement (rename file)
-- [ ] `MKDIR` / `RMDIR` / `CHDIR`
-- [ ] `_DIREXISTS` / `_FILEEXISTS`
-- [ ] `_DIR$` function (directory listing)
+### System Integration ✅
+- [x] `SHELL` statement
+- [x] `_SHELLHIDE`
+- [x] `KILL` statement (delete file)
+- [x] `NAME` statement (rename file)
+- [x] `MKDIR` / `RMDIR` / `CHDIR`
+- [x] `_DIREXISTS` / `_FILEEXISTS`
+- [x] `_DIR$` function (directory listing)
 
 ### Multi-threading (QB64 Extension)
 - [ ] `_THREAD` support

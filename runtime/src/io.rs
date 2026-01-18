@@ -292,6 +292,335 @@ pub extern "C" fn qb_inkey() -> *mut QbString {
     crate::string::qb_string_empty()
 }
 
+// ============================================================================
+// System Integration Functions (Phase 5)
+// ============================================================================
+
+/// KILL - Delete a file.
+///
+/// # Safety
+/// - `filename` must be a valid null-terminated C string
+#[no_mangle]
+pub unsafe extern "C" fn qb_file_kill(filename: *const c_char) -> i32 {
+    if filename.is_null() {
+        return 1; // Error
+    }
+
+    let path_str = match std::ffi::CStr::from_ptr(filename).to_str() {
+        Ok(s) => s,
+        Err(_) => return 1,
+    };
+
+    match std::fs::remove_file(path_str) {
+        Ok(()) => 0, // Success
+        Err(_) => 1, // Error
+    }
+}
+
+/// NAME AS - Rename a file.
+///
+/// # Safety
+/// - Both `old_name` and `new_name` must be valid null-terminated C strings
+#[no_mangle]
+pub unsafe extern "C" fn qb_file_rename(old_name: *const c_char, new_name: *const c_char) -> i32 {
+    if old_name.is_null() || new_name.is_null() {
+        return 1;
+    }
+
+    let old_str = match std::ffi::CStr::from_ptr(old_name).to_str() {
+        Ok(s) => s,
+        Err(_) => return 1,
+    };
+
+    let new_str = match std::ffi::CStr::from_ptr(new_name).to_str() {
+        Ok(s) => s,
+        Err(_) => return 1,
+    };
+
+    match std::fs::rename(old_str, new_str) {
+        Ok(()) => 0,
+        Err(_) => 1,
+    }
+}
+
+/// MKDIR - Create a directory.
+///
+/// # Safety
+/// - `path` must be a valid null-terminated C string
+#[no_mangle]
+pub unsafe extern "C" fn qb_mkdir(path: *const c_char) -> i32 {
+    if path.is_null() {
+        return 1;
+    }
+
+    let path_str = match std::ffi::CStr::from_ptr(path).to_str() {
+        Ok(s) => s,
+        Err(_) => return 1,
+    };
+
+    match std::fs::create_dir(path_str) {
+        Ok(()) => 0,
+        Err(_) => 1,
+    }
+}
+
+/// RMDIR - Remove a directory.
+///
+/// # Safety
+/// - `path` must be a valid null-terminated C string
+#[no_mangle]
+pub unsafe extern "C" fn qb_rmdir(path: *const c_char) -> i32 {
+    if path.is_null() {
+        return 1;
+    }
+
+    let path_str = match std::ffi::CStr::from_ptr(path).to_str() {
+        Ok(s) => s,
+        Err(_) => return 1,
+    };
+
+    match std::fs::remove_dir(path_str) {
+        Ok(()) => 0,
+        Err(_) => 1,
+    }
+}
+
+/// CHDIR - Change current directory.
+///
+/// # Safety
+/// - `path` must be a valid null-terminated C string
+#[no_mangle]
+pub unsafe extern "C" fn qb_chdir(path: *const c_char) -> i32 {
+    if path.is_null() {
+        return 1;
+    }
+
+    let path_str = match std::ffi::CStr::from_ptr(path).to_str() {
+        Ok(s) => s,
+        Err(_) => return 1,
+    };
+
+    match std::env::set_current_dir(path_str) {
+        Ok(()) => 0,
+        Err(_) => 1,
+    }
+}
+
+/// SHELL - Execute an external command.
+///
+/// If `command` is NULL, opens an interactive shell.
+///
+/// # Safety
+/// - `command` must be a valid null-terminated C string or NULL
+#[no_mangle]
+pub unsafe extern "C" fn qb_shell(command: *const c_char) -> i32 {
+    if command.is_null() {
+        // Open interactive shell
+        #[cfg(target_os = "windows")]
+        {
+            match std::process::Command::new("cmd").status() {
+                Ok(status) => status.code().unwrap_or(1),
+                Err(_) => 1,
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            match std::process::Command::new("sh").status() {
+                Ok(status) => status.code().unwrap_or(1),
+                Err(_) => 1,
+            }
+        }
+    } else {
+        let cmd_str = match std::ffi::CStr::from_ptr(command).to_str() {
+            Ok(s) => s,
+            Err(_) => return 1,
+        };
+
+        #[cfg(target_os = "windows")]
+        {
+            match std::process::Command::new("cmd")
+                .args(["/C", cmd_str])
+                .status()
+            {
+                Ok(status) => status.code().unwrap_or(1),
+                Err(_) => 1,
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            match std::process::Command::new("sh")
+                .args(["-c", cmd_str])
+                .status()
+            {
+                Ok(status) => status.code().unwrap_or(1),
+                Err(_) => 1,
+            }
+        }
+    }
+}
+
+/// _SHELLHIDE - Execute a command without showing console window.
+///
+/// # Safety
+/// - `command` must be a valid null-terminated C string
+#[no_mangle]
+pub unsafe extern "C" fn qb_shell_hide(command: *const c_char) -> i32 {
+    if command.is_null() {
+        return 1;
+    }
+
+    let cmd_str = match std::ffi::CStr::from_ptr(command).to_str() {
+        Ok(s) => s,
+        Err(_) => return 1,
+    };
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+        match std::process::Command::new("cmd")
+            .args(["/C", cmd_str])
+            .creation_flags(CREATE_NO_WINDOW)
+            .status()
+        {
+            Ok(status) => status.code().unwrap_or(1),
+            Err(_) => 1,
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        // On Unix, there's no concept of hidden console
+        // Just run the command normally
+        match std::process::Command::new("sh")
+            .args(["-c", cmd_str])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+        {
+            Ok(status) => status.code().unwrap_or(1),
+            Err(_) => 1,
+        }
+    }
+}
+
+/// _FILEEXISTS - Check if a file exists.
+///
+/// Returns -1 (true) if file exists, 0 (false) otherwise.
+///
+/// # Safety
+/// - `path` must be a valid null-terminated C string
+#[no_mangle]
+pub unsafe extern "C" fn qb_file_exists(path: *const c_char) -> i32 {
+    if path.is_null() {
+        return 0;
+    }
+
+    let path_str = match std::ffi::CStr::from_ptr(path).to_str() {
+        Ok(s) => s,
+        Err(_) => return 0,
+    };
+
+    let p = std::path::Path::new(path_str);
+    if p.exists() && p.is_file() {
+        -1 // True in BASIC
+    } else {
+        0 // False
+    }
+}
+
+/// _DIREXISTS - Check if a directory exists.
+///
+/// Returns -1 (true) if directory exists, 0 (false) otherwise.
+///
+/// # Safety
+/// - `path` must be a valid null-terminated C string
+#[no_mangle]
+pub unsafe extern "C" fn qb_dir_exists(path: *const c_char) -> i32 {
+    if path.is_null() {
+        return 0;
+    }
+
+    let path_str = match std::ffi::CStr::from_ptr(path).to_str() {
+        Ok(s) => s,
+        Err(_) => return 0,
+    };
+
+    let p = std::path::Path::new(path_str);
+    if p.exists() && p.is_dir() {
+        -1 // True in BASIC
+    } else {
+        0 // False
+    }
+}
+
+/// _DIR$ - Get next file in directory listing.
+///
+/// First call with a filespec (e.g., "*.txt"), subsequent calls with empty string.
+///
+/// # Safety
+/// - `spec` must be a valid null-terminated C string
+/// - The returned string must be released with `qb_string_release`
+#[no_mangle]
+pub unsafe extern "C" fn qb_dir(spec: *const c_char) -> *mut QbString {
+    // This is a simplified implementation using a static iterator
+    // A full implementation would need to handle the iterator state properly
+    use std::sync::Mutex;
+
+    static DIR_STATE: Mutex<Option<std::vec::IntoIter<String>>> = Mutex::new(None);
+
+    let mut state = DIR_STATE.lock().unwrap();
+
+    if spec.is_null() {
+        return qb_string_from_bytes(std::ptr::null(), 0);
+    }
+
+    let spec_str = match std::ffi::CStr::from_ptr(spec).to_str() {
+        Ok(s) => s,
+        Err(_) => return qb_string_from_bytes(std::ptr::null(), 0),
+    };
+
+    // If spec is not empty, start a new listing
+    if !spec_str.is_empty() {
+        let pattern = std::path::Path::new(spec_str);
+        let dir = pattern.parent().unwrap_or(std::path::Path::new("."));
+
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            let names: Vec<String> = entries
+                .filter_map(|e| e.ok())
+                .filter_map(|e| {
+                    let name = e.file_name().to_string_lossy().to_string();
+                    // Simple glob matching (just * for now)
+                    if let Some(file_name) = pattern.file_name() {
+                        let pat = file_name.to_string_lossy();
+                        if pat == "*" || pat == "*.*" || name.contains(&pat.replace('*', "")) {
+                            Some(name)
+                        } else {
+                            None
+                        }
+                    } else {
+                        Some(name)
+                    }
+                })
+                .collect();
+
+            *state = Some(names.into_iter());
+        } else {
+            *state = None;
+            return qb_string_from_bytes(std::ptr::null(), 0);
+        }
+    }
+
+    // Return next entry from iterator
+    if let Some(ref mut iter) = *state {
+        if let Some(name) = iter.next() {
+            return qb_string_from_bytes(name.as_ptr(), name.len());
+        }
+    }
+
+    qb_string_from_bytes(std::ptr::null(), 0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

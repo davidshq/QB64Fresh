@@ -738,6 +738,75 @@ pub enum StatementKind {
         /// Right channel sample (optional for stereo)
         right: Option<Expr>,
     },
+
+    // ==================== System Integration Statements ====================
+    /// `KILL filename$` - Delete a file
+    Kill {
+        /// The filename to delete
+        filename: Expr,
+    },
+
+    /// `NAME oldname$ AS newname$` - Rename a file
+    Rename {
+        /// The current filename
+        old_name: Expr,
+        /// The new filename
+        new_name: Expr,
+    },
+
+    /// `MKDIR path$` - Create a directory
+    Mkdir {
+        /// The directory path to create
+        path: Expr,
+    },
+
+    /// `RMDIR path$` - Remove a directory
+    Rmdir {
+        /// The directory path to remove
+        path: Expr,
+    },
+
+    /// `CHDIR path$` - Change current directory
+    Chdir {
+        /// The directory to change to
+        path: Expr,
+    },
+
+    /// `SHELL [command$]` - Execute an external command
+    ///
+    /// If no command is specified, opens an interactive shell.
+    ShellCmd {
+        /// The command to execute (optional)
+        command: Option<Expr>,
+    },
+
+    /// `_SHELLHIDE command$` - Execute a command without showing console (QB64)
+    ShellHide {
+        /// The command to execute
+        command: Expr,
+    },
+
+    // ==================== Mouse Input Statements ====================
+    /// `_MOUSEHIDE` - Hide the mouse cursor
+    MouseHide,
+
+    /// `_MOUSESHOW` - Show the mouse cursor
+    MouseShow,
+
+    /// `_MOUSEMOVE x%, y%` - Move mouse cursor to position
+    MouseMoveStmt {
+        /// X coordinate
+        x: Expr,
+        /// Y coordinate
+        y: Expr,
+    },
+
+    // ==================== Clipboard Statement ====================
+    /// `_CLIPBOARD$ = text$` - Set clipboard contents
+    ClipboardSet {
+        /// The text to set in the clipboard
+        text: Expr,
+    },
 }
 
 /// File mode for OPEN statement.

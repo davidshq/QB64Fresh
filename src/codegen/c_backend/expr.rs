@@ -332,6 +332,23 @@ pub(super) fn c_function_name(name: &str) -> String {
         "_OFFSET" => "qb_offset".to_string(),
         "_MEM" => "qb_mem".to_string(),
 
+        // Phase 5: System Integration
+        "_FILEEXISTS" => "qb_file_exists".to_string(),
+        "_DIREXISTS" => "qb_dir_exists".to_string(),
+        "_DIR$" => "qb_dir".to_string(),
+
+        // Phase 5: Mouse Input
+        "_MOUSEX" => "qb_mouse_x".to_string(),
+        "_MOUSEY" => "qb_mouse_y".to_string(),
+        "_MOUSEBUTTON" => "qb_mouse_button".to_string(),
+        "_MOUSEINPUT" => "qb_mouse_input".to_string(),
+        "_MOUSEMOVEMENTX" => "qb_mouse_movement_x".to_string(),
+        "_MOUSEMOVEMENTY" => "qb_mouse_movement_y".to_string(),
+        "_MOUSEWHEEL" => "qb_mouse_wheel".to_string(),
+
+        // Phase 5: Clipboard
+        "_CLIPBOARD$" => "qb_clipboard_get".to_string(),
+
         // Default: prefix with qb_ for user functions
         _ => format!("qb_{}", c_identifier(name).to_lowercase()),
     }
