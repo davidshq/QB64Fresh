@@ -223,12 +223,12 @@ runtime/src/
 - [ ] Type marshalling for C interop
 - [ ] Callback support
 
-### Networking (QB64 Extensions)
-- [ ] `_OPENHOST` function
-- [ ] `_OPENCONNECTION` function
-- [ ] `_OPENCLIENT` function
-- [ ] `_CONNECTED` function
-- [ ] Network stream I/O
+### Networking (QB64 Extensions) ✅ (Parser/Semantic/Codegen/Runtime complete)
+- [x] `_OPENHOST` function - TCP server on port
+- [x] `_OPENCONNECTION` function - accept incoming connection (non-blocking)
+- [x] `_OPENCLIENT` function - connect to TCP server
+- [x] `_CONNECTED` function - check connection status
+- [ ] Network stream I/O (PUT/GET with network handles)
 
 ### Input Devices ✅ (Parser/Semantic/Codegen complete - backend integration pending)
 - [x] Mouse support (`_MOUSEX`, `_MOUSEY`, `_MOUSEBUTTON`, etc.) - full pipeline

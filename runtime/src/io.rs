@@ -621,6 +621,224 @@ pub unsafe extern "C" fn qb_dir(spec: *const c_char) -> *mut QbString {
     qb_string_from_bytes(std::ptr::null(), 0)
 }
 
+// ============================================================================
+// Networking Functions (Phase 5)
+// ============================================================================
+
+use std::collections::HashMap;
+use std::net::{TcpListener, TcpStream};
+use std::sync::Mutex;
+
+/// Network handle types
+enum NetHandle {
+    /// TCP server listener
+    Host(TcpListener),
+    /// TCP connection (client or accepted)
+    Connection(TcpStream),
+}
+
+/// Global network handle storage
+/// Handles are negative numbers to distinguish from file handles
+static NET_HANDLES: Mutex<Option<HashMap<i64, NetHandle>>> = Mutex::new(None);
+static NET_NEXT_HANDLE: Mutex<i64> = Mutex::new(-1);
+
+/// Initialize the network handle storage if needed
+fn init_net_handles() {
+    let mut handles = NET_HANDLES.lock().unwrap();
+    if handles.is_none() {
+        *handles = Some(HashMap::new());
+    }
+}
+
+/// Get the next available network handle (negative numbers)
+fn next_net_handle() -> i64 {
+    let mut handle = NET_NEXT_HANDLE.lock().unwrap();
+    let h = *handle;
+    *handle -= 1;
+    h
+}
+
+/// _OPENHOST - Open a TCP server on a port.
+///
+/// Returns a negative handle on success, 0 on failure.
+///
+/// # Arguments
+/// - `port`: The port number to listen on
+#[no_mangle]
+pub extern "C" fn qb_net_openhost(port: i64) -> i64 {
+    init_net_handles();
+
+    let addr = format!("0.0.0.0:{}", port);
+    match TcpListener::bind(&addr) {
+        Ok(listener) => {
+            // Set non-blocking so _OPENCONNECTION doesn't block
+            if listener.set_nonblocking(true).is_err() {
+                return 0;
+            }
+
+            let handle = next_net_handle();
+            let mut handles = NET_HANDLES.lock().unwrap();
+            if let Some(ref mut map) = *handles {
+                map.insert(handle, NetHandle::Host(listener));
+            }
+            handle
+        }
+        Err(_) => 0,
+    }
+}
+
+/// _OPENCONNECTION - Accept an incoming connection on a host.
+///
+/// Returns a negative handle on success, 0 if no connection waiting.
+/// This is non-blocking - returns immediately if no client is connecting.
+///
+/// # Arguments
+/// - `host_handle`: The handle returned by _OPENHOST
+#[no_mangle]
+pub extern "C" fn qb_net_openconnection(host_handle: i64) -> i64 {
+    init_net_handles();
+
+    let mut handles = NET_HANDLES.lock().unwrap();
+    if let Some(ref mut map) = *handles {
+        if let Some(NetHandle::Host(listener)) = map.get(&host_handle) {
+            // Non-blocking accept
+            match listener.accept() {
+                Ok((stream, _addr)) => {
+                    // Set the stream to non-blocking for I/O
+                    if stream.set_nonblocking(true).is_err() {
+                        return 0;
+                    }
+
+                    let handle = next_net_handle();
+                    map.insert(handle, NetHandle::Connection(stream));
+                    return handle;
+                }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    // No connection waiting - not an error
+                    return 0;
+                }
+                Err(_) => return 0,
+            }
+        }
+    }
+    0
+}
+
+/// _OPENCLIENT - Connect to a TCP server.
+///
+/// Connection string format: "TCP/IP:port:address"
+/// Example: "TCP/IP:8080:localhost" or "TCP/IP:80:192.168.1.1"
+///
+/// Returns a negative handle on success, 0 on failure.
+///
+/// # Safety
+/// - `connection_string` must be a valid null-terminated C string
+#[no_mangle]
+pub unsafe extern "C" fn qb_net_openclient(connection_string: *const c_char) -> i64 {
+    init_net_handles();
+
+    if connection_string.is_null() {
+        return 0;
+    }
+
+    let conn_str = match std::ffi::CStr::from_ptr(connection_string).to_str() {
+        Ok(s) => s,
+        Err(_) => return 0,
+    };
+
+    // Parse connection string: "TCP/IP:port:address"
+    let parts: Vec<&str> = conn_str.split(':').collect();
+    if parts.len() != 3 {
+        return 0;
+    }
+
+    let protocol = parts[0].to_uppercase();
+    if protocol != "TCP/IP" {
+        return 0; // Only TCP/IP supported
+    }
+
+    let port: u16 = match parts[1].parse() {
+        Ok(p) => p,
+        Err(_) => return 0,
+    };
+
+    let address = parts[2];
+    let addr = format!("{}:{}", address, port);
+
+    match TcpStream::connect(&addr) {
+        Ok(stream) => {
+            // Set non-blocking for I/O operations
+            if stream.set_nonblocking(true).is_err() {
+                return 0;
+            }
+
+            let handle = next_net_handle();
+            let mut handles = NET_HANDLES.lock().unwrap();
+            if let Some(ref mut map) = *handles {
+                map.insert(handle, NetHandle::Connection(stream));
+            }
+            handle
+        }
+        Err(_) => 0,
+    }
+}
+
+/// _CONNECTED - Check if a network connection is still active.
+///
+/// Returns -1 (true) if connected, 0 (false) if disconnected or invalid handle.
+///
+/// # Arguments
+/// - `handle`: The network handle to check
+#[no_mangle]
+pub extern "C" fn qb_net_connected(handle: i64) -> i32 {
+    init_net_handles();
+
+    let handles = NET_HANDLES.lock().unwrap();
+    if let Some(ref map) = *handles {
+        if let Some(NetHandle::Connection(stream)) = map.get(&handle) {
+            // Try to peek at the stream to check if it's still connected
+            // A zero-byte peek will fail if the connection is closed
+            use std::io::Read;
+            let mut buf = [0u8; 1];
+
+            // Clone the stream to avoid borrowing issues
+            match stream.try_clone() {
+                Ok(mut clone) => {
+                    // Set blocking temporarily for the peek
+                    let _ = clone.set_nonblocking(false);
+                    match clone.peek(&mut buf) {
+                        Ok(0) => return 0,  // Connection closed
+                        Ok(_) => return -1, // Data available, still connected
+                        Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                            return -1; // No data but still connected
+                        }
+                        Err(_) => return 0, // Error, assume disconnected
+                    }
+                }
+                Err(_) => return 0,
+            }
+        } else if map.contains_key(&handle) {
+            // It's a host handle, which is always "connected" while open
+            return -1;
+        }
+    }
+    0 // Invalid handle
+}
+
+/// Close a network handle (internal helper).
+///
+/// Called when CLOSE is used on a network handle.
+#[no_mangle]
+pub extern "C" fn qb_net_close(handle: i64) {
+    init_net_handles();
+
+    let mut handles = NET_HANDLES.lock().unwrap();
+    if let Some(ref mut map) = *handles {
+        map.remove(&handle);
+        // TcpListener and TcpStream are automatically closed when dropped
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

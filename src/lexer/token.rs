@@ -557,6 +557,23 @@ pub enum TokenKind {
     #[token("_CLIPBOARD$", ignore(ascii_case))]
     Clipboard,
 
+    // ==================== Networking Keywords ====================
+    /// _OPENHOST function - open TCP server on port (QB64)
+    #[token("_OPENHOST", ignore(ascii_case))]
+    OpenHost,
+
+    /// _OPENCONNECTION function - accept client connection (QB64)
+    #[token("_OPENCONNECTION", ignore(ascii_case))]
+    OpenConnection,
+
+    /// _OPENCLIENT function - connect to TCP server (QB64)
+    #[token("_OPENCLIENT", ignore(ascii_case))]
+    OpenClient,
+
+    /// _CONNECTED function - check connection status (QB64)
+    #[token("_CONNECTED", ignore(ascii_case))]
+    Connected,
+
     // Note: B and BF for LINE boxes are handled as identifiers in the parser
     // since they conflict with single-letter variable names.
     /// ON keyword - used in ON ERROR, ON...GOTO/GOSUB

@@ -349,6 +349,12 @@ pub(super) fn c_function_name(name: &str) -> String {
         // Phase 5: Clipboard
         "_CLIPBOARD$" => "qb_clipboard_get".to_string(),
 
+        // Phase 5: Networking
+        "_OPENHOST" => "qb_net_openhost".to_string(),
+        "_OPENCONNECTION" => "qb_net_openconnection".to_string(),
+        "_OPENCLIENT" => "qb_net_openclient".to_string(),
+        "_CONNECTED" => "qb_net_connected".to_string(),
+
         // Default: prefix with qb_ for user functions
         _ => format!("qb_{}", c_identifier(name).to_lowercase()),
     }

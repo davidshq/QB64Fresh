@@ -506,6 +506,24 @@ impl SemanticAnalyzer {
 
         // Phase 5: Clipboard
         self.register_builtin_function("_CLIPBOARD$", &[], BasicType::String);
+
+        // Phase 5: Networking
+        self.register_builtin_function("_OPENHOST", &[("port", BasicType::Long)], BasicType::Long);
+        self.register_builtin_function(
+            "_OPENCONNECTION",
+            &[("host_handle", BasicType::Long)],
+            BasicType::Long,
+        );
+        self.register_builtin_function(
+            "_OPENCLIENT",
+            &[("connection_string", BasicType::String)],
+            BasicType::Long,
+        );
+        self.register_builtin_function(
+            "_CONNECTED",
+            &[("handle", BasicType::Long)],
+            BasicType::Integer,
+        );
     }
 
     /// Registers a single built-in function.

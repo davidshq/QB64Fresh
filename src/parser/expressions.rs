@@ -100,6 +100,12 @@ impl<'a> Parser<'a> {
             // Phase 5: Clipboard function
             TokenKind::Clipboard => self.parse_builtin_function("_CLIPBOARD$"),
 
+            // Phase 5: Networking functions
+            TokenKind::OpenHost => self.parse_builtin_function("_OPENHOST"),
+            TokenKind::OpenConnection => self.parse_builtin_function("_OPENCONNECTION"),
+            TokenKind::OpenClient => self.parse_builtin_function("_OPENCLIENT"),
+            TokenKind::Connected => self.parse_builtin_function("_CONNECTED"),
+
             _ => {
                 let span = token.span.clone().into();
                 self.errors.push(ParseError::InvalidExpression {
