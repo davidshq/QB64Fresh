@@ -323,6 +323,45 @@ pub enum TokenKind {
     #[token("UNLOCK", ignore(ascii_case))]
     Unlock,
 
+    // ==================== Graphics Keywords ====================
+    /// SCREEN statement - initialize graphics mode
+    #[token("SCREEN", ignore(ascii_case))]
+    Screen,
+
+    /// CLS statement - clear screen
+    #[token("CLS", ignore(ascii_case))]
+    Cls,
+
+    /// COLOR statement - set foreground/background colors
+    #[token("COLOR", ignore(ascii_case))]
+    Color,
+
+    /// LOCATE statement - position cursor
+    #[token("LOCATE", ignore(ascii_case))]
+    Locate,
+
+    /// PSET statement - plot pixel
+    #[token("PSET", ignore(ascii_case))]
+    Pset,
+
+    /// PRESET statement - plot pixel with background color
+    #[token("PRESET", ignore(ascii_case))]
+    Preset,
+
+    /// CIRCLE statement - draw circle
+    #[token("CIRCLE", ignore(ascii_case))]
+    Circle,
+
+    /// PAINT statement - flood fill
+    #[token("PAINT", ignore(ascii_case))]
+    Paint,
+
+    /// _DISPLAY statement - update screen
+    #[token("_DISPLAY", ignore(ascii_case))]
+    Display,
+
+    // Note: B and BF for LINE boxes are handled as identifiers in the parser
+    // since they conflict with single-letter variable names.
     /// ON keyword - used in ON ERROR, ON...GOTO/GOSUB
     #[token("ON", ignore(ascii_case))]
     On,

@@ -538,6 +538,95 @@ pub enum TypedStatementKind {
         /// Dimensions.
         dimensions: Vec<TypedArrayDimension>,
     },
+
+    // ==================== Graphics Statements ====================
+    /// SCREEN statement - sets graphics mode.
+    Screen {
+        /// Screen mode number.
+        mode: TypedExpr,
+    },
+
+    /// CLS statement - clears the screen.
+    Cls,
+
+    /// COLOR statement - sets foreground/background colors.
+    Color {
+        /// Foreground color.
+        foreground: TypedExpr,
+        /// Optional background color.
+        background: Option<TypedExpr>,
+    },
+
+    /// LOCATE statement - positions the cursor.
+    Locate {
+        /// Row (1-based).
+        row: TypedExpr,
+        /// Column (1-based).
+        col: TypedExpr,
+    },
+
+    /// PSET statement - plots a point.
+    Pset {
+        /// X coordinate.
+        x: TypedExpr,
+        /// Y coordinate.
+        y: TypedExpr,
+        /// Optional color.
+        color: Option<TypedExpr>,
+    },
+
+    /// PRESET statement - plots a point in background color.
+    Preset {
+        /// X coordinate.
+        x: TypedExpr,
+        /// Y coordinate.
+        y: TypedExpr,
+    },
+
+    /// LINE statement - draws a line or box.
+    Line {
+        /// Starting X (None uses last point).
+        x1: Option<TypedExpr>,
+        /// Starting Y (None uses last point).
+        y1: Option<TypedExpr>,
+        /// Ending X.
+        x2: TypedExpr,
+        /// Ending Y.
+        y2: TypedExpr,
+        /// Optional color.
+        color: Option<TypedExpr>,
+        /// Box style: None = line, Some(false) = box, Some(true) = filled box.
+        box_style: Option<bool>,
+    },
+
+    /// CIRCLE statement - draws a circle.
+    Circle {
+        /// Center X.
+        x: TypedExpr,
+        /// Center Y.
+        y: TypedExpr,
+        /// Radius.
+        radius: TypedExpr,
+        /// Optional color.
+        color: Option<TypedExpr>,
+        /// Whether filled.
+        filled: bool,
+    },
+
+    /// PAINT statement - flood fills an area.
+    Paint {
+        /// Starting X.
+        x: TypedExpr,
+        /// Starting Y.
+        y: TypedExpr,
+        /// Fill color (None uses current foreground).
+        color: Option<TypedExpr>,
+        /// Border color to stop at.
+        border: Option<TypedExpr>,
+    },
+
+    /// _DISPLAY statement - updates the screen.
+    GfxDisplay,
 }
 
 /// A typed variable in a COMMON statement.

@@ -89,6 +89,17 @@ impl<'a> Parser<'a> {
             TokenKind::MetaChecking => self.parse_meta_checking(),
             TokenKind::MetaCommand => self.parse_meta_command(),
 
+            // Graphics statements
+            TokenKind::Screen => self.parse_screen(),
+            TokenKind::Cls => self.parse_cls(),
+            TokenKind::Color => self.parse_color(),
+            TokenKind::Locate => self.parse_locate(),
+            TokenKind::Pset => self.parse_pset(),
+            TokenKind::Preset => self.parse_preset(),
+            TokenKind::Circle => self.parse_circle(),
+            TokenKind::Paint => self.parse_paint(),
+            TokenKind::Display => self.parse_display(),
+
             // Other
             TokenKind::Comment => self.parse_comment(),
             TokenKind::RemComment => self.parse_rem_comment(),
@@ -813,16 +824,16 @@ impl<'a> Parser<'a> {
 
     // ==================== LINE Statement ====================
 
-    /// Parses LINE INPUT or LINE INPUT #filenum.
+    /// Parses LINE INPUT, LINE INPUT #filenum, or LINE graphics.
     pub(super) fn parse_line_statement(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("LINE keyword").span.start;
 
-        // LINE INPUT expected
-        if !self.match_token(&TokenKind::Input) {
-            let span = self.span_from(start);
-            self.errors
-                .push(ParseError::syntax("expected INPUT after LINE", span));
-            return Err(());
+        // Check if this is LINE INPUT or LINE graphics
+        if self.match_token(&TokenKind::Input) {
+            // LINE INPUT - continue to file input handling below
+        } else {
+            // LINE graphics: LINE [(x1, y1)]-(x2, y2)[, color][, B|BF]
+            return self.parse_line_graphics(start);
         }
 
         // Check for file number: LINE INPUT #filenum, ...
@@ -1405,5 +1416,289 @@ impl<'a> Parser<'a> {
         self.peek()
             .map(|t| t.span.clone().into())
             .unwrap_or(Span::new(0, 0))
+    }
+
+    // ==================== Graphics Statement Parsing ====================
+
+    /// Parses SCREEN statement.
+    ///
+    /// Syntax: `SCREEN mode`
+    pub(super) fn parse_screen(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("SCREEN keyword").span.start;
+        let mode = self.parse_expression()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::Screen { mode }, span))
+    }
+
+    /// Parses CLS statement.
+    ///
+    /// Syntax: `CLS`
+    pub(super) fn parse_cls(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("CLS keyword").span.start;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::Cls, span))
+    }
+
+    /// Parses COLOR statement.
+    ///
+    /// Syntax: `COLOR foreground[, background]`
+    pub(super) fn parse_color(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("COLOR keyword").span.start;
+        let foreground = self.parse_expression()?;
+        let background = if self.match_token(&TokenKind::Comma) {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::Color {
+                foreground,
+                background,
+            },
+            span,
+        ))
+    }
+
+    /// Parses LOCATE statement.
+    ///
+    /// Syntax: `LOCATE row, col`
+    pub(super) fn parse_locate(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("LOCATE keyword").span.start;
+        let row = self.parse_expression()?;
+        self.expect(&TokenKind::Comma, ",")?;
+        let col = self.parse_expression()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::Locate { row, col }, span))
+    }
+
+    /// Parses PSET statement.
+    ///
+    /// Syntax: `PSET (x, y)[, color]`
+    pub(super) fn parse_pset(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("PSET keyword").span.start;
+
+        // Parse (x, y)
+        self.expect(&TokenKind::LeftParen, "(")?;
+        let x = self.parse_expression()?;
+        self.expect(&TokenKind::Comma, ",")?;
+        let y = self.parse_expression()?;
+        self.expect(&TokenKind::RightParen, ")")?;
+
+        // Optional color
+        let color = if self.match_token(&TokenKind::Comma) {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::Pset { x, y, color }, span))
+    }
+
+    /// Parses PRESET statement.
+    ///
+    /// Syntax: `PRESET (x, y)`
+    pub(super) fn parse_preset(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("PRESET keyword").span.start;
+
+        // Parse (x, y)
+        self.expect(&TokenKind::LeftParen, "(")?;
+        let x = self.parse_expression()?;
+        self.expect(&TokenKind::Comma, ",")?;
+        let y = self.parse_expression()?;
+        self.expect(&TokenKind::RightParen, ")")?;
+
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::Preset { x, y }, span))
+    }
+
+    /// Parses LINE statement for graphics.
+    ///
+    /// Syntax: `LINE [(x1, y1)]-(x2, y2)[, color][, B|BF]`
+    ///
+    /// Note: LINE INPUT is handled separately in parse_line_statement.
+    pub(super) fn parse_line_graphics(&mut self, start: usize) -> Result<Statement, ()> {
+        // Parse optional start point
+        let (x1, y1) = if self.check(&TokenKind::LeftParen) {
+            self.advance(); // consume (
+            let x1 = self.parse_expression()?;
+            self.expect(&TokenKind::Comma, ",")?;
+            let y1 = self.parse_expression()?;
+            self.expect(&TokenKind::RightParen, ")")?;
+            (Some(x1), Some(y1))
+        } else {
+            (None, None)
+        };
+
+        // Expect - (dash for coordinate separator)
+        self.expect(&TokenKind::Minus, "-")?;
+
+        // Parse end point
+        self.expect(&TokenKind::LeftParen, "(")?;
+        let x2 = self.parse_expression()?;
+        self.expect(&TokenKind::Comma, ",")?;
+        let y2 = self.parse_expression()?;
+        self.expect(&TokenKind::RightParen, ")")?;
+
+        // Optional color
+        let color = if self.match_token(&TokenKind::Comma) {
+            // Check if next is B or BF (box style) or another comma
+            if let Some(token) = self.peek() {
+                if token.text.eq_ignore_ascii_case("B")
+                    || token.text.eq_ignore_ascii_case("BF")
+                    || token.kind == TokenKind::Comma
+                {
+                    None // No color specified, skip to box style
+                } else {
+                    Some(self.parse_expression()?)
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // Optional box style (B or BF) - these are parsed as identifiers
+        let box_style = if self.match_token(&TokenKind::Comma) || color.is_none() {
+            if let Some(token) = self.peek() {
+                if token.text.eq_ignore_ascii_case("BF") {
+                    self.advance();
+                    Some(true) // Filled box
+                } else if token.text.eq_ignore_ascii_case("B") {
+                    self.advance();
+                    Some(false) // Box outline
+                } else {
+                    None // Just a line
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::Line {
+                x1,
+                y1,
+                x2,
+                y2,
+                color,
+                box_style,
+            },
+            span,
+        ))
+    }
+
+    /// Parses CIRCLE statement.
+    ///
+    /// Syntax: `CIRCLE (x, y), radius[, color][, , , , F]`
+    /// (simplified - not supporting arc parameters for now)
+    pub(super) fn parse_circle(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("CIRCLE keyword").span.start;
+
+        // Parse (x, y)
+        self.expect(&TokenKind::LeftParen, "(")?;
+        let x = self.parse_expression()?;
+        self.expect(&TokenKind::Comma, ",")?;
+        let y = self.parse_expression()?;
+        self.expect(&TokenKind::RightParen, ")")?;
+
+        self.expect(&TokenKind::Comma, ",")?;
+        let radius = self.parse_expression()?;
+
+        // Optional color
+        let color = if self.match_token(&TokenKind::Comma) {
+            if self.check(&TokenKind::Comma) {
+                None // Skip to next parameter
+            } else {
+                Some(self.parse_expression()?)
+            }
+        } else {
+            None
+        };
+
+        // For simplicity, skip arc parameters and check for F (filled)
+        // In full implementation, would parse start, end, aspect
+        let mut filled = false;
+        while self.match_token(&TokenKind::Comma) {
+            if let Some(token) = self.peek() {
+                if token.text.eq_ignore_ascii_case("F") {
+                    self.advance();
+                    filled = true;
+                    break;
+                } else if !self.check(&TokenKind::Comma) {
+                    // Skip this parameter
+                    let _ = self.parse_expression();
+                }
+            }
+        }
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::Circle {
+                x,
+                y,
+                radius,
+                color,
+                filled,
+            },
+            span,
+        ))
+    }
+
+    /// Parses PAINT statement.
+    ///
+    /// Syntax: `PAINT (x, y)[, color][, border]`
+    pub(super) fn parse_paint(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("PAINT keyword").span.start;
+
+        // Parse (x, y)
+        self.expect(&TokenKind::LeftParen, "(")?;
+        let x = self.parse_expression()?;
+        self.expect(&TokenKind::Comma, ",")?;
+        let y = self.parse_expression()?;
+        self.expect(&TokenKind::RightParen, ")")?;
+
+        // Optional color
+        let color = if self.match_token(&TokenKind::Comma) {
+            if self.check(&TokenKind::Comma) {
+                None
+            } else {
+                Some(self.parse_expression()?)
+            }
+        } else {
+            None
+        };
+
+        // Optional border color
+        let border = if self.match_token(&TokenKind::Comma) {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::Paint {
+                x,
+                y,
+                color,
+                border,
+            },
+            span,
+        ))
+    }
+
+    /// Parses _DISPLAY statement.
+    ///
+    /// Syntax: `_DISPLAY`
+    pub(super) fn parse_display(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_DISPLAY keyword").span.start;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::GfxDisplay, span))
     }
 }

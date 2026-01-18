@@ -98,28 +98,28 @@ A prioritized roadmap for QB64Fresh development. Items are ordered from most gra
 
 ### Graphics Architecture ✅
 - [x] Define `GraphicsBackend` trait for pluggable backends
-- [x] Implement SDL2Backend (stub, ready for integration)
+- [x] Implement SDL2Backend (full implementation with all drawing primitives)
 - [x] Implement MockBackend for testing (complete)
-- [x] Create C FFI layer design
-- [ ] Implement error handling and type system
-- [ ] Design C FFI wrapper functions
+- [x] Create C FFI layer (`graphics_ffi.rs` with all wrapper functions)
+- [x] Implement error handling and type system
+- [x] Design C FFI wrapper functions
 
 ### Screen Setup
-- [ ] `SCREEN` statement (text and graphics modes)
+- [x] `SCREEN` statement (text and graphics modes)
 - [ ] `WIDTH` statement
-- [ ] `CLS` statement (clear screen)
-- [ ] `COLOR` statement
-- [ ] `LOCATE` statement (cursor positioning)
+- [x] `CLS` statement (clear screen)
+- [x] `COLOR` statement
+- [x] `LOCATE` statement (cursor positioning)
 - [ ] `VIEW` statement (viewport)
 - [ ] `WINDOW` statement (coordinate mapping)
 
 ### Basic Drawing
-- [ ] `PSET` / `PRESET` (plot point)
-- [ ] `LINE` statement (lines and boxes)
-- [ ] `CIRCLE` statement
-- [ ] `PAINT` statement (flood fill)
+- [x] `PSET` / `PRESET` (plot point)
+- [x] `LINE` statement (lines and boxes)
+- [x] `CIRCLE` statement
+- [x] `PAINT` statement (flood fill)
 - [ ] `DRAW` statement (turtle graphics)
-- [ ] `POINT()` function (read pixel)
+- [x] `POINT()` function (read pixel) - in runtime FFI
 
 ### QB64 Graphics Extensions
 - [ ] `_NEWIMAGE` function
@@ -132,42 +132,84 @@ A prioritized roadmap for QB64Fresh development. Items are ordered from most gra
 - [ ] `_WIDTH` / `_HEIGHT` functions
 - [ ] `_PRINTSTRING` statement
 - [ ] `_PRINTWIDTH` function
-- [ ] `_RGB` / `_RGBA` functions
-- [ ] `_RGB32` / `_RGBA32` functions
+- [x] `_RGB` / `_RGBA` functions (in runtime FFI)
+- [x] `_RGB32` / `_RGBA32` functions (in runtime FFI)
 - [ ] Alpha blending support
 
 ### Graphics Backend Integration
-- [ ] Integrate SDL2 or similar for window management
-- [ ] Implement frame buffer
-- [ ] Implement `_DISPLAY` / `_AUTODISPLAY`
+- [x] Integrate SDL2 for window management
+- [x] Implement frame buffer (pixel_buffer for POINT())
+- [x] Implement `_DISPLAY` / `_AUTODISPLAY`
 - [ ] Hardware acceleration option
 
 ---
 
 ## Phase 4: Sound System (Medium-Term)
 
+### Audio Architecture (mirrors Graphics architecture)
+
+The audio system uses a trait-based backend abstraction, allowing different audio
+libraries to be swapped at compile time via Cargo feature flags. This follows the
+same pattern as the graphics system.
+
+```
+runtime/src/
+├── audio/
+│   ├── mod.rs          # AudioBackend trait + global instance
+│   ├── error.rs        # AudioError, AudioErrorKind
+│   ├── mock.rs         # MockAudioBackend for testing
+│   └── miniaudio.rs    # MiniaudioBackend (default implementation)
+├── audio_ffi.rs        # C FFI layer (qb_snd_*, qb_beep, etc.)
+```
+
+**Backend Selection (Cargo.toml features):**
+- `audio-miniaudio` - Default. Single-header C library, zero dependencies, cross-platform
+- `audio-mock` - For headless testing (no actual audio output)
+- Future: `audio-sdl2`, `audio-rodio`, `audio-webaudio`
+
+**Why miniaudio?**
+- Single-header C library (easy to integrate with generated C code)
+- Zero external dependencies (no SDL2, no system libs)
+- Cross-platform (auto-selects ALSA/PulseAudio/WASAPI/CoreAudio)
+- Public domain / MIT-0 license
+- Battle-tested (used by QB64-PE)
+
+### Audio Backend Infrastructure
+- [ ] Define `AudioBackend` trait for pluggable backends
+- [ ] Implement `AudioError` and `AudioErrorKind` types
+- [ ] Implement `MockAudioBackend` for headless testing
+- [ ] Implement `MiniaudioBackend` (initial implementation)
+- [ ] Create C FFI layer (`audio_ffi.rs`)
+- [ ] Add feature flags to `runtime/Cargo.toml`
+
 ### Classic BASIC Sound
 - [ ] `BEEP` statement
 - [ ] `SOUND` statement (frequency, duration)
-- [ ] `PLAY` statement (music macro language)
+- [ ] `PLAY` statement (music macro language parser)
 
 ### QB64 Sound Extensions
-- [ ] `_SNDOPEN` function
+- [ ] `_SNDOPEN` function (returns handle)
 - [ ] `_SNDCLOSE` statement
-- [ ] `_SNDPLAY` statement
-- [ ] `_SNDSTOP` statement
-- [ ] `_SNDPAUSE` / `_SNDRESUME`
+- [ ] `_SNDPLAY` / `_SNDSTOP` statements
+- [ ] `_SNDPAUSE` / `_SNDRESUME` statements
 - [ ] `_SNDLOOP` statement
-- [ ] `_SNDVOL` statement
-- [ ] `_SNDBAL` statement (balance)
-- [ ] `_SNDLEN` function
-- [ ] `_SNDGETPOS` / `_SNDSETPOS`
-- [ ] `_SNDPLAYING` function
-- [ ] `_SNDRAW` for direct audio synthesis
+- [ ] `_SNDVOL` statement (0.0 - 1.0)
+- [ ] `_SNDBAL` statement (stereo balance / 3D positioning)
+- [ ] `_SNDLEN` function (duration in seconds)
+- [ ] `_SNDGETPOS` / `_SNDSETPOS` (playback position)
+- [ ] `_SNDPLAYING` / `_SNDPAUSED` functions
+- [ ] `_SNDRATE` function (get sample rate, typically 48000)
 
-### Sound Backend Integration
-- [ ] Integrate audio library (SDL2_mixer, miniaudio, or similar)
-- [ ] Support common formats (WAV, MP3, OGG)
+### Raw Audio Synthesis
+- [ ] `_SNDOPENRAW` function (create raw audio stream)
+- [ ] `_SNDRAW` statement (push sample frames)
+- [ ] `_SNDRAWLEN` function (queued samples remaining)
+
+### Audio Format Support
+- [ ] WAV (PCM)
+- [ ] MP3
+- [ ] OGG Vorbis
+- [ ] FLAC (nice to have)
 
 ---
 
@@ -264,8 +306,10 @@ A prioritized roadmap for QB64Fresh development. Items are ordered from most gra
 - SDL2 crate is in Cargo.toml (for graphics/sound)
 - Runtime library has foundations for file I/O
 
+**Design Decisions Made:**
+- Graphics backend: Trait-based abstraction with SDL2 as default, mock for testing
+- Sound backend: Trait-based abstraction with miniaudio as default (see Phase 4)
+
 **Design Decisions Needed:**
-- Graphics backend: SDL2 vs native vs WebAssembly target
-- Sound backend: SDL2_mixer vs miniaudio vs platform-native
 - How to handle `PEEK`/`POKE` in a safe manner
 - Memory model for `_MEM` operations

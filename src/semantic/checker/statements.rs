@@ -824,6 +824,141 @@ impl<'a> TypeChecker<'a> {
                     stmt.span,
                 )
             }
+
+            // ==================== Graphics Statements ====================
+            StatementKind::Screen { mode } => {
+                let typed_mode = self.check_expr(mode);
+                TypedStatement::new(TypedStatementKind::Screen { mode: typed_mode }, stmt.span)
+            }
+
+            StatementKind::Cls => TypedStatement::new(TypedStatementKind::Cls, stmt.span),
+
+            StatementKind::Color {
+                foreground,
+                background,
+            } => {
+                let typed_fg = self.check_expr(foreground);
+                let typed_bg = background.as_ref().map(|e| self.check_expr(e));
+                TypedStatement::new(
+                    TypedStatementKind::Color {
+                        foreground: typed_fg,
+                        background: typed_bg,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::Locate { row, col } => {
+                let typed_row = self.check_expr(row);
+                let typed_col = self.check_expr(col);
+                TypedStatement::new(
+                    TypedStatementKind::Locate {
+                        row: typed_row,
+                        col: typed_col,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::Pset { x, y, color } => {
+                let typed_x = self.check_expr(x);
+                let typed_y = self.check_expr(y);
+                let typed_color = color.as_ref().map(|e| self.check_expr(e));
+                TypedStatement::new(
+                    TypedStatementKind::Pset {
+                        x: typed_x,
+                        y: typed_y,
+                        color: typed_color,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::Preset { x, y } => {
+                let typed_x = self.check_expr(x);
+                let typed_y = self.check_expr(y);
+                TypedStatement::new(
+                    TypedStatementKind::Preset {
+                        x: typed_x,
+                        y: typed_y,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::Line {
+                x1,
+                y1,
+                x2,
+                y2,
+                color,
+                box_style,
+            } => {
+                let typed_x1 = x1.as_ref().map(|e| self.check_expr(e));
+                let typed_y1 = y1.as_ref().map(|e| self.check_expr(e));
+                let typed_x2 = self.check_expr(x2);
+                let typed_y2 = self.check_expr(y2);
+                let typed_color = color.as_ref().map(|e| self.check_expr(e));
+                TypedStatement::new(
+                    TypedStatementKind::Line {
+                        x1: typed_x1,
+                        y1: typed_y1,
+                        x2: typed_x2,
+                        y2: typed_y2,
+                        color: typed_color,
+                        box_style: *box_style,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::Circle {
+                x,
+                y,
+                radius,
+                color,
+                filled,
+            } => {
+                let typed_x = self.check_expr(x);
+                let typed_y = self.check_expr(y);
+                let typed_radius = self.check_expr(radius);
+                let typed_color = color.as_ref().map(|e| self.check_expr(e));
+                TypedStatement::new(
+                    TypedStatementKind::Circle {
+                        x: typed_x,
+                        y: typed_y,
+                        radius: typed_radius,
+                        color: typed_color,
+                        filled: *filled,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::Paint {
+                x,
+                y,
+                color,
+                border,
+            } => {
+                let typed_x = self.check_expr(x);
+                let typed_y = self.check_expr(y);
+                let typed_color = color.as_ref().map(|e| self.check_expr(e));
+                let typed_border = border.as_ref().map(|e| self.check_expr(e));
+                TypedStatement::new(
+                    TypedStatementKind::Paint {
+                        x: typed_x,
+                        y: typed_y,
+                        color: typed_color,
+                        border: typed_border,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::GfxDisplay => {
+                TypedStatement::new(TypedStatementKind::GfxDisplay, stmt.span)
+            }
         }
     }
 

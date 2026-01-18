@@ -14,16 +14,13 @@ crate-type = ["lib", "staticlib"]
 # C library bindings (for strcmp, etc.)
 libc = "0.2"
 
-# For future graphics support
-# sdl2 = { version = "0.37", optional = true }
-
-# For future audio support
-# rodio = { version = "0.19", optional = true }
+# For graphics support
+sdl2 = { version = "0.37", optional = true }
 
 [features]
-default = []
-# graphics = ["sdl2"]
-# audio = ["rodio"]
+default = ["graphics-sdl2"]
+graphics-sdl2 = ["sdl2"]
+graphics-mock = []  # For testing without display
 
 [dev-dependencies]
 # For testing

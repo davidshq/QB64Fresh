@@ -500,6 +500,183 @@ impl StmtEmitter {
             } => {
                 self.emit_redim(&indent, *preserve, name, element_type, dimensions, output)?;
             }
+
+            // ==================== Graphics Statements ====================
+            TypedStatementKind::Screen { mode } => {
+                let mode_code = emit_expr(mode)?;
+                // SCREEN mode initializes graphics - for now mode is used to set resolution
+                // Mode 0 = text, mode 12 = 640x480, mode 13 = 320x200, etc.
+                writeln!(output, "{}qb_gfx_init((int32_t){});", indent, mode_code).unwrap();
+            }
+
+            TypedStatementKind::Cls => {
+                writeln!(output, "{}qb_gfx_cls();", indent).unwrap();
+            }
+
+            TypedStatementKind::Color {
+                foreground,
+                background,
+            } => {
+                let fg_code = emit_expr(foreground)?;
+                if let Some(bg) = background {
+                    let bg_code = emit_expr(bg)?;
+                    writeln!(
+                        output,
+                        "{}qb_gfx_color((uint32_t){}, (uint32_t){});",
+                        indent, fg_code, bg_code
+                    )
+                    .unwrap();
+                } else {
+                    // Only set foreground, pass 0 for background (unchanged)
+                    writeln!(output, "{}qb_gfx_color((uint32_t){}, 0);", indent, fg_code).unwrap();
+                }
+            }
+
+            TypedStatementKind::Locate { row, col } => {
+                let row_code = emit_expr(row)?;
+                let col_code = emit_expr(col)?;
+                writeln!(
+                    output,
+                    "{}qb_gfx_locate((int32_t){}, (int32_t){});",
+                    indent, row_code, col_code
+                )
+                .unwrap();
+            }
+
+            TypedStatementKind::Pset { x, y, color } => {
+                let x_code = emit_expr(x)?;
+                let y_code = emit_expr(y)?;
+                if let Some(c) = color {
+                    let c_code = emit_expr(c)?;
+                    writeln!(
+                        output,
+                        "{}qb_gfx_pset((int32_t){}, (int32_t){}, (uint32_t){});",
+                        indent, x_code, y_code, c_code
+                    )
+                    .unwrap();
+                } else {
+                    // Use current foreground color (pass -1 to signal "use current")
+                    writeln!(
+                        output,
+                        "{}qb_gfx_pset((int32_t){}, (int32_t){}, 0xFFFFFFFF);",
+                        indent, x_code, y_code
+                    )
+                    .unwrap();
+                }
+            }
+
+            TypedStatementKind::Preset { x, y } => {
+                let x_code = emit_expr(x)?;
+                let y_code = emit_expr(y)?;
+                // PRESET plots in background color - pass 0 (black) by default
+                writeln!(
+                    output,
+                    "{}qb_gfx_pset((int32_t){}, (int32_t){}, 0xFF000000);",
+                    indent, x_code, y_code
+                )
+                .unwrap();
+            }
+
+            TypedStatementKind::Line {
+                x1,
+                y1,
+                x2,
+                y2,
+                color,
+                box_style,
+            } => {
+                let x2_code = emit_expr(x2)?;
+                let y2_code = emit_expr(y2)?;
+                let color_code = if let Some(c) = color {
+                    emit_expr(c)?
+                } else {
+                    "0xFFFFFFFF".to_string() // Use current foreground
+                };
+
+                // Handle optional start coordinates (use 0,0 as default for now)
+                let x1_code = if let Some(e) = x1 {
+                    emit_expr(e)?
+                } else {
+                    "0".to_string()
+                };
+                let y1_code = if let Some(e) = y1 {
+                    emit_expr(e)?
+                } else {
+                    "0".to_string()
+                };
+
+                match box_style {
+                    None => {
+                        // Plain line
+                        writeln!(output, "{}qb_gfx_line((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (uint32_t){});",
+                                 indent, x1_code, y1_code, x2_code, y2_code, color_code).unwrap();
+                    }
+                    Some(false) => {
+                        // Box (outline)
+                        writeln!(output, "{}qb_gfx_box((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (uint32_t){}, 0);",
+                                 indent, x1_code, y1_code, x2_code, y2_code, color_code).unwrap();
+                    }
+                    Some(true) => {
+                        // Filled box
+                        writeln!(output, "{}qb_gfx_box((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (uint32_t){}, 1);",
+                                 indent, x1_code, y1_code, x2_code, y2_code, color_code).unwrap();
+                    }
+                }
+            }
+
+            TypedStatementKind::Circle {
+                x,
+                y,
+                radius,
+                color,
+                filled,
+            } => {
+                let x_code = emit_expr(x)?;
+                let y_code = emit_expr(y)?;
+                let r_code = emit_expr(radius)?;
+                let color_code = if let Some(c) = color {
+                    emit_expr(c)?
+                } else {
+                    "0xFFFFFFFF".to_string()
+                };
+                let filled_int = if *filled { 1 } else { 0 };
+                writeln!(
+                    output,
+                    "{}qb_gfx_circle((int32_t){}, (int32_t){}, (int32_t){}, (uint32_t){}, {});",
+                    indent, x_code, y_code, r_code, color_code, filled_int
+                )
+                .unwrap();
+            }
+
+            TypedStatementKind::Paint {
+                x,
+                y,
+                color,
+                border,
+            } => {
+                let x_code = emit_expr(x)?;
+                let y_code = emit_expr(y)?;
+                let color_code = if let Some(c) = color {
+                    emit_expr(c)?
+                } else {
+                    "0xFFFFFFFF".to_string()
+                };
+                let border_code = if let Some(b) = border {
+                    emit_expr(b)?
+                } else {
+                    color_code.clone() // Default border = fill color
+                };
+                writeln!(
+                    output,
+                    "{}qb_gfx_paint((int32_t){}, (int32_t){}, (uint32_t){}, (uint32_t){});",
+                    indent, x_code, y_code, color_code, border_code
+                )
+                .unwrap();
+            }
+
+            TypedStatementKind::GfxDisplay => {
+                writeln!(output, "{}qb_gfx_display();", indent).unwrap();
+            }
         }
 
         Ok(())

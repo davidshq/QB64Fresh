@@ -496,6 +496,95 @@ pub enum StatementKind {
         /// Whether checking is enabled.
         enabled: bool,
     },
+
+    // ==================== Graphics Statements ====================
+    /// `SCREEN mode` - Initialize graphics mode
+    Screen {
+        /// Screen mode number (0=text, 1-13=various graphics modes)
+        mode: Expr,
+    },
+
+    /// `CLS` - Clear screen
+    Cls,
+
+    /// `COLOR foreground[, background]` - Set text/drawing colors
+    Color {
+        /// Foreground color
+        foreground: Expr,
+        /// Background color (optional)
+        background: Option<Expr>,
+    },
+
+    /// `LOCATE row, col` - Position cursor
+    Locate {
+        /// Row (1-based)
+        row: Expr,
+        /// Column (1-based)
+        col: Expr,
+    },
+
+    /// `PSET (x, y)[, color]` - Plot pixel
+    Pset {
+        /// X coordinate
+        x: Expr,
+        /// Y coordinate
+        y: Expr,
+        /// Color (optional, uses foreground if not specified)
+        color: Option<Expr>,
+    },
+
+    /// `PRESET (x, y)` - Plot pixel with background color
+    Preset {
+        /// X coordinate
+        x: Expr,
+        /// Y coordinate
+        y: Expr,
+    },
+
+    /// `LINE [(x1, y1)]-(x2, y2)[, color][, B|BF]` - Draw line or box
+    Line {
+        /// Start X (optional - uses last point if not specified)
+        x1: Option<Expr>,
+        /// Start Y
+        y1: Option<Expr>,
+        /// End X
+        x2: Expr,
+        /// End Y
+        y2: Expr,
+        /// Color (optional)
+        color: Option<Expr>,
+        /// Box style: None = line, Some(false) = box outline, Some(true) = filled box
+        box_style: Option<bool>,
+    },
+
+    /// `CIRCLE (x, y), radius[, color][, start][, end][, aspect][, F]`
+    Circle {
+        /// Center X
+        x: Expr,
+        /// Center Y
+        y: Expr,
+        /// Radius
+        radius: Expr,
+        /// Color (optional)
+        color: Option<Expr>,
+        /// Whether to fill the circle
+        filled: bool,
+    },
+
+    /// `PAINT (x, y)[, color][, border]` - Flood fill
+    Paint {
+        /// Start X
+        x: Expr,
+        /// Start Y
+        y: Expr,
+        /// Fill color (optional)
+        color: Option<Expr>,
+        /// Border color (optional)
+        border: Option<Expr>,
+    },
+
+    /// `_DISPLAY` - Update screen (for double-buffered graphics)
+    GfxDisplay,
 }
 
 /// File mode for OPEN statement.

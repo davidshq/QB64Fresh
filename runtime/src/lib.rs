@@ -10,6 +10,8 @@
 //! - `string` - Dynamic string type with reference counting
 //! - `io` - PRINT, INPUT, and file operations
 //! - `math` - Mathematical functions
+//! - `graphics` - Graphics backend abstraction and implementations
+//! - `graphics_ffi` - C FFI layer for graphics operations
 //!
 //! All public functions use `extern "C"` for C ABI compatibility.
 //!
@@ -19,11 +21,15 @@
 //! count, and memory is freed when the count reaches zero. The generated C code
 //! must call `qb_string_release` when done with a string.
 
+pub mod graphics;
+pub mod graphics_ffi;
 pub mod io;
 pub mod math;
 pub mod string;
 
 // Re-export everything at the crate root for C access
+pub use graphics::*;
+pub use graphics_ffi::*;
 pub use io::*;
 pub use math::*;
 pub use string::*;

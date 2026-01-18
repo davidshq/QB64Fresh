@@ -216,7 +216,7 @@ pub trait CodeGenerator {
 
 ## Key Files Reference
 
-### Current Implementation (as of 2026-01-17)
+### Current Implementation (as of 2026-01-18)
 
 | File | Purpose | Status |
 |------|---------|--------|
@@ -227,17 +227,34 @@ pub trait CodeGenerator {
 | `src/ast/mod.rs` | AST root: Span, Program types | ✓ Complete |
 | `src/ast/expr.rs` | Expression AST nodes | ✓ Complete |
 | `src/ast/stmt.rs` | Statement AST nodes | ✓ Complete |
-| `src/parser/mod.rs` | Pratt parser + recursive descent (~1600 lines) | ✓ Complete |
+| `src/parser/mod.rs` | Parser entry point and tests | ✓ Complete |
+| `src/parser/tokens.rs` | Token navigation utilities | ✓ Complete |
+| `src/parser/expressions.rs` | Pratt parser for expressions | ✓ Complete |
+| `src/parser/statements.rs` | Statement parsing | ✓ Complete |
+| `src/parser/control_flow.rs` | IF/FOR/WHILE/DO/SELECT parsing | ✓ Complete |
+| `src/parser/procedures.rs` | SUB/FUNCTION/TYPE definitions | ✓ Complete |
+| `src/parser/directives.rs` | Preprocessor directives ($IF, $LET) | ✓ Complete |
 | `src/parser/error.rs` | Parse error types with spans | ✓ Complete |
 | `src/semantic/mod.rs` | Semantic analyzer entry point, built-ins | ✓ Complete |
 | `src/semantic/error.rs` | Semantic error types with spans | ✓ Complete |
 | `src/semantic/types.rs` | BasicType enum, type inference, conversions | ✓ Complete |
 | `src/semantic/symbols.rs` | Symbol table with scope management | ✓ Complete |
-| `src/semantic/checker.rs` | Type checker for expressions/statements | ✓ Complete |
 | `src/semantic/typed_ir.rs` | Typed IR output for codegen | ✓ Complete |
+| `src/semantic/checker/mod.rs` | Type checker entry point | ✓ Complete |
+| `src/semantic/checker/expressions.rs` | Expression type checking | ✓ Complete |
+| `src/semantic/checker/statements.rs` | Statement type checking | ✓ Complete |
+| `src/semantic/checker/control_flow.rs` | Control flow type checking | ✓ Complete |
+| `src/semantic/checker/assignments.rs` | Assignment validation | ✓ Complete |
+| `src/semantic/checker/definitions.rs` | Definition handling | ✓ Complete |
+| `src/semantic/checker/const_eval.rs` | Constant evaluation | ✓ Complete |
 | `src/codegen/mod.rs` | CodeGenerator trait, GeneratedOutput | ✓ Complete |
 | `src/codegen/error.rs` | Code generation error types | ✓ Complete |
-| `src/codegen/c_backend.rs` | C code generation (~1450 lines) | ✓ Complete |
+| `src/codegen/c_backend/mod.rs` | C backend entry point | ✓ Complete |
+| `src/codegen/c_backend/expr.rs` | Expression code generation | ✓ Complete |
+| `src/codegen/c_backend/stmt.rs` | Statement code generation | ✓ Complete |
+| `src/codegen/c_backend/types.rs` | Type mapping utilities | ✓ Complete |
+| `src/codegen/c_backend/runtime.rs` | Inline C runtime library | ✓ Complete |
+| `src/codegen/c_backend/analysis.rs` | DATA/label collection | ✓ Complete |
 | `examples/hello.bas` | Test BASIC file for development | ✓ Complete |
 | `examples/simple.bas` | Simpler test BASIC file | ✓ Complete |
 
@@ -267,13 +284,45 @@ pub trait CodeGenerator {
 QB64Fresh/                    # Main compiler workspace
 ├── src/
 │   ├── ast/                  # ✓ AST type definitions
+│   │   ├── mod.rs            # Span, Program types
+│   │   ├── expr.rs           # Expression nodes
+│   │   └── stmt.rs           # Statement nodes
 │   ├── lexer/                # ✓ Logos-based tokenizer
+│   │   ├── mod.rs            # Lexer wrapper
+│   │   └── token.rs          # Token definitions
 │   ├── parser/               # ✓ Pratt parser + recursive descent
+│   │   ├── mod.rs            # Entry point, tests
+│   │   ├── tokens.rs         # Token navigation
+│   │   ├── expressions.rs    # Expression parsing
+│   │   ├── statements.rs     # Statement parsing
+│   │   ├── control_flow.rs   # IF/FOR/WHILE/DO/SELECT
+│   │   ├── procedures.rs     # SUB/FUNCTION/TYPE
+│   │   ├── directives.rs     # $IF, $LET, $CHECKING
+│   │   └── error.rs          # Parse errors
 │   ├── semantic/             # ✓ Type checking, symbol resolution
+│   │   ├── mod.rs            # Entry point, built-ins
+│   │   ├── types.rs          # BasicType enum
+│   │   ├── symbols.rs        # Symbol table
+│   │   ├── typed_ir.rs       # Typed IR output
+│   │   ├── error.rs          # Semantic errors
+│   │   └── checker/          # Type checker modules
+│   │       ├── mod.rs        # Checker entry point
+│   │       ├── expressions.rs
+│   │       ├── statements.rs
+│   │       ├── control_flow.rs
+│   │       ├── assignments.rs
+│   │       ├── definitions.rs
+│   │       └── const_eval.rs
 │   ├── codegen/              # ✓ Backend trait + C implementation
 │   │   ├── mod.rs            # CodeGenerator trait
 │   │   ├── error.rs          # CodeGenError types
-│   │   └── c_backend.rs      # C code generation (~1375 lines)
+│   │   └── c_backend/        # C code generation
+│   │       ├── mod.rs        # Backend entry point
+│   │       ├── expr.rs       # Expression codegen
+│   │       ├── stmt.rs       # Statement codegen
+│   │       ├── types.rs      # Type mapping
+│   │       ├── runtime.rs    # Inline C runtime
+│   │       └── analysis.rs   # DATA/label collection
 │   ├── lsp/                  # ✓ Language Server Protocol
 │   │   ├── mod.rs            # LSP server implementation
 │   │   └── main.rs           # qb64fresh-lsp binary entry
