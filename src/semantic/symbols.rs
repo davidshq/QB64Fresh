@@ -65,6 +65,15 @@ pub enum SymbolKind {
         /// Information about each dimension.
         dimensions: Vec<ArrayDimInfo>,
     },
+    /// An external function declared via DECLARE LIBRARY.
+    ExternalFunction {
+        /// The C function name (from ALIAS or same as BASIC name).
+        c_name: String,
+        /// Parameter types.
+        params: Vec<BasicType>,
+        /// Return type.
+        return_type: BasicType,
+    },
 }
 
 /// Information about an array dimension.

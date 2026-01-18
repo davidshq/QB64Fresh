@@ -7,9 +7,9 @@
 //! handled in their respective modules.
 
 use crate::ast::{
-    ArrayDimension, CommonVariable, ContinueType, DataValue, ExitType, ExprKind, FileAccess,
-    FileLock, FileMode, PrintItem, PrintSeparator, ResumeTarget, Span, Statement, StatementKind,
-    ViewCoords,
+    ArrayDimension, CommonVariable, ContinueType, DataValue, ExitType, ExprKind,
+    ExternalDeclaration, ExternalParam, FileAccess, FileLock, FileMode, PrintItem, PrintSeparator,
+    ResumeTarget, Span, Statement, StatementKind, TypeSpec, ViewCoords,
 };
 use crate::lexer::TokenKind;
 
@@ -82,6 +82,9 @@ impl<'a> Parser<'a> {
             TokenKind::Type => self.parse_type_definition(),
             TokenKind::Call => self.parse_call(),
             TokenKind::Def => self.parse_def_fn(),
+
+            // C Library Integration
+            TokenKind::Declare => self.parse_declare_library(),
 
             // Preprocessor directives (delegated to directives.rs)
             TokenKind::IncludeDirective => self.parse_include_directive(),
@@ -2313,5 +2316,218 @@ impl<'a> Parser<'a> {
         let text = self.parse_expression()?;
         let span = self.span_from(start);
         Ok(Statement::new(StatementKind::ClipboardSet { text }, span))
+    }
+
+    // ==================== C Library Integration ====================
+
+    /// Parses DECLARE LIBRARY block.
+    ///
+    /// Syntax:
+    /// ```basic
+    /// DECLARE [DYNAMIC] LIBRARY ["library_name"]
+    ///     FUNCTION name[(params)] [ALIAS "c_name"]
+    ///     SUB name[(params)] [ALIAS "c_name"]
+    /// END DECLARE
+    /// ```
+    pub(super) fn parse_declare_library(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("DECLARE keyword").span.start;
+
+        // Check for DYNAMIC keyword
+        let is_dynamic = self.match_token(&TokenKind::Dynamic);
+
+        // Expect LIBRARY keyword
+        self.expect(&TokenKind::Library, "LIBRARY")?;
+
+        // Optional library name (string literal)
+        let library_name = if self.check(&TokenKind::StringLiteral) {
+            let token = self.advance().expect("string literal");
+            // Remove quotes from string literal
+            let text = &token.text;
+            Some(text[1..text.len() - 1].to_string())
+        } else {
+            None
+        };
+
+        // Skip to next line
+        self.skip_newlines();
+
+        // Parse declarations until END DECLARE
+        let mut declarations = Vec::new();
+        loop {
+            // Skip empty lines
+            self.skip_newlines();
+
+            // Check for END DECLARE
+            if self.check(&TokenKind::End)
+                && let Some(next) = self.peek_ahead(1)
+                && next.kind == TokenKind::Declare
+            {
+                self.advance(); // consume END
+                self.advance(); // consume DECLARE
+                break;
+            }
+
+            // Check for EOF
+            if self.is_at_end() {
+                let span = self.span_from(start);
+                self.errors
+                    .push(ParseError::syntax("expected END DECLARE".to_string(), span));
+                return Err(());
+            }
+
+            // Parse function or sub declaration
+            if let Some(decl) = self.parse_external_declaration()? {
+                declarations.push(decl);
+            }
+
+            // Skip to next line
+            self.skip_newlines();
+        }
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::DeclareLibrary {
+                library_name,
+                is_dynamic,
+                declarations,
+            },
+            span,
+        ))
+    }
+
+    /// Parses a single external function or sub declaration.
+    ///
+    /// Returns None for blank lines or comments.
+    fn parse_external_declaration(&mut self) -> Result<Option<ExternalDeclaration>, ()> {
+        let token = match self.peek() {
+            Some(t) => t,
+            None => return Ok(None),
+        };
+
+        let is_function = match token.kind {
+            TokenKind::Function => true,
+            TokenKind::Sub => false,
+            TokenKind::Comment => {
+                // Skip comment
+                self.advance();
+                return Ok(None);
+            }
+            _ => {
+                // Unknown token inside DECLARE LIBRARY - skip line
+                return Ok(None);
+            }
+        };
+
+        self.advance(); // consume FUNCTION or SUB
+
+        // Parse function/sub name (identifier with optional type suffix)
+        let name_token = self.expect(&TokenKind::Identifier, "function/sub name")?;
+        let name = name_token.text.to_string();
+
+        // Determine return type from name suffix (for functions)
+        let return_type = if is_function {
+            self.type_from_suffix(&name)
+        } else {
+            None
+        };
+
+        // Parse parameter list (optional)
+        let params = if self.check(&TokenKind::LeftParen) {
+            self.advance(); // consume (
+            let params = self.parse_external_param_list()?;
+            self.expect(&TokenKind::RightParen, ")")?;
+            params
+        } else {
+            Vec::new()
+        };
+
+        // Parse optional ALIAS clause
+        let alias = if self.match_token(&TokenKind::Alias) {
+            if self.check(&TokenKind::StringLiteral) {
+                let token = self.advance().expect("string literal");
+                let text = &token.text;
+                Some(text[1..text.len() - 1].to_string())
+            } else {
+                let span = self.current_span();
+                self.errors.push(ParseError::syntax(
+                    "expected string literal after ALIAS".to_string(),
+                    span,
+                ));
+                return Err(());
+            }
+        } else {
+            None
+        };
+
+        Ok(Some(ExternalDeclaration {
+            name,
+            alias,
+            params,
+            return_type,
+            is_function,
+        }))
+    }
+
+    /// Parses external function parameter list.
+    fn parse_external_param_list(&mut self) -> Result<Vec<ExternalParam>, ()> {
+        let mut params = Vec::new();
+
+        if self.check(&TokenKind::RightParen) {
+            return Ok(params);
+        }
+
+        loop {
+            // Check for BYVAL
+            let is_byval = self.match_token(&TokenKind::ByVal);
+
+            // Parse parameter name
+            let name_token = self.expect(&TokenKind::Identifier, "parameter name")?;
+            let name = name_token.text.to_string();
+
+            // Parse type (AS clause required for external functions)
+            let type_spec = if self.match_token(&TokenKind::As) {
+                self.parse_type_spec()?
+            } else {
+                // Try to infer from name suffix or default to LONG
+                self.type_from_suffix(&name).unwrap_or(TypeSpec::Long)
+            };
+
+            params.push(ExternalParam {
+                name,
+                type_spec,
+                is_byval,
+            });
+
+            if !self.match_token(&TokenKind::Comma) {
+                break;
+            }
+        }
+
+        Ok(params)
+    }
+
+    /// Extracts type from BASIC name suffix (e.g., "add_values&" -> Long).
+    fn type_from_suffix(&self, name: &str) -> Option<TypeSpec> {
+        if name.ends_with("&&") {
+            Some(TypeSpec::Integer64)
+        } else if name.ends_with("##") {
+            Some(TypeSpec::Float)
+        } else if name.ends_with("%%") {
+            Some(TypeSpec::Byte)
+        } else if name.ends_with("%&") {
+            Some(TypeSpec::Offset)
+        } else if name.ends_with('&') {
+            Some(TypeSpec::Long)
+        } else if name.ends_with('%') {
+            Some(TypeSpec::Integer)
+        } else if name.ends_with('!') {
+            Some(TypeSpec::Single)
+        } else if name.ends_with('#') {
+            Some(TypeSpec::Double)
+        } else if name.ends_with('$') {
+            Some(TypeSpec::String)
+        } else {
+            None
+        }
     }
 }

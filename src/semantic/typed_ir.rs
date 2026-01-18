@@ -847,6 +847,17 @@ pub enum TypedStatementKind {
         /// The text to set.
         text: TypedExpr,
     },
+
+    // ==================== C Library Integration ====================
+    /// DECLARE LIBRARY block for C interop.
+    DeclareLibrary {
+        /// Library name/path (without extension).
+        library_name: Option<String>,
+        /// Whether this is a dynamic library.
+        is_dynamic: bool,
+        /// External function/sub declarations.
+        declarations: Vec<TypedExternalDeclaration>,
+    },
 }
 
 /// Typed coordinates for VIEW and WINDOW statements.
@@ -988,6 +999,32 @@ impl TypedProgram {
     pub fn new(statements: Vec<TypedStatement>) -> Self {
         Self { statements }
     }
+}
+
+/// A typed external function declaration from DECLARE LIBRARY.
+#[derive(Debug, Clone)]
+pub struct TypedExternalDeclaration {
+    /// The BASIC name for the function/sub.
+    pub name: String,
+    /// The C library name (may be same as name or from ALIAS).
+    pub c_name: String,
+    /// The typed parameters.
+    pub params: Vec<TypedExternalParam>,
+    /// Return type (Void for SUBs).
+    pub return_type: BasicType,
+    /// Whether this is a FUNCTION (true) or SUB (false).
+    pub is_function: bool,
+}
+
+/// A typed parameter for an external function.
+#[derive(Debug, Clone)]
+pub struct TypedExternalParam {
+    /// Parameter name.
+    pub name: String,
+    /// Parameter type.
+    pub typ: BasicType,
+    /// Whether this is BYVAL (pass by value).
+    pub is_byval: bool,
 }
 
 #[cfg(test)]

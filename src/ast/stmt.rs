@@ -807,6 +807,27 @@ pub enum StatementKind {
         /// The text to set in the clipboard
         text: Expr,
     },
+
+    // ==================== C Library Integration ====================
+    /// `DECLARE LIBRARY "name" ... END DECLARE` or `DECLARE DYNAMIC LIBRARY "name" ... END DECLARE`
+    ///
+    /// Declares external C functions from a library.
+    /// Static libraries are linked at compile time, dynamic libraries at runtime.
+    ///
+    /// Example:
+    /// ```basic
+    /// DECLARE LIBRARY "mylib"
+    ///     FUNCTION add_values& (BYVAL a AS LONG, BYVAL b AS LONG)
+    /// END DECLARE
+    /// ```
+    DeclareLibrary {
+        /// Library name/path (without extension). None for header-only declarations.
+        library_name: Option<String>,
+        /// Whether this is a dynamic library (loaded at runtime).
+        is_dynamic: bool,
+        /// External function/sub declarations within the block.
+        declarations: Vec<ExternalDeclaration>,
+    },
 }
 
 /// File mode for OPEN statement.
@@ -1043,6 +1064,34 @@ pub struct ViewCoords {
     pub x2: Expr,
     /// Y coordinate of second corner.
     pub y2: Expr,
+}
+
+/// External function or sub declaration within DECLARE LIBRARY.
+///
+/// Represents a C function that can be called from BASIC code.
+#[derive(Debug, Clone)]
+pub struct ExternalDeclaration {
+    /// BASIC name for the function/sub.
+    pub name: String,
+    /// C library name (if different from BASIC name, specified via ALIAS).
+    pub alias: Option<String>,
+    /// Parameters of the external function.
+    pub params: Vec<ExternalParam>,
+    /// Return type for functions (None for SUBs).
+    pub return_type: Option<TypeSpec>,
+    /// Whether this is a FUNCTION (true) or SUB (false).
+    pub is_function: bool,
+}
+
+/// Parameter for an external function in DECLARE LIBRARY.
+#[derive(Debug, Clone)]
+pub struct ExternalParam {
+    /// Parameter name.
+    pub name: String,
+    /// Parameter type.
+    pub type_spec: TypeSpec,
+    /// Whether passed by value (BYVAL). Required for C interop.
+    pub is_byval: bool,
 }
 
 #[cfg(test)]

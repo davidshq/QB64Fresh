@@ -216,11 +216,13 @@ runtime/src/
 
 ## Phase 5: Advanced Features (Long-Term) - In Progress
 
-### C Library Integration
-- [ ] `DECLARE LIBRARY` statement
-- [ ] `DECLARE DYNAMIC LIBRARY`
+### C Library Integration ✅ (Parser/Semantic/Codegen complete)
+- [x] `DECLARE LIBRARY` statement - extern C function declarations
+- [x] `DECLARE DYNAMIC LIBRARY` - parsed but runtime loading deferred
+- [x] BYVAL parameter passing for C calling convention
+- [x] ALIAS clause for name mapping
 - [ ] Automatic header parsing
-- [ ] Type marshalling for C interop
+- [ ] Type marshalling for complex C types
 - [ ] Callback support
 
 ### Networking (QB64 Extensions) ✅ (Parser/Semantic/Codegen/Runtime complete)

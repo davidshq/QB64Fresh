@@ -5,7 +5,10 @@
 //! statements are handled directly here, while complex statements delegate
 //! to specialized modules.
 
-use crate::ast::{ArrayDimension, DataValue, PrintItem, Statement, StatementKind, ViewCoords};
+use crate::ast::{
+    ArrayDimension, DataValue, ExternalDeclaration, PrintItem, Span, Statement, StatementKind,
+    ViewCoords,
+};
 use crate::semantic::{
     error::SemanticError,
     symbols::{ConstValue, ScopeKind, Symbol, SymbolKind, UserTypeDefinition, UserTypeMember},
@@ -1290,6 +1293,82 @@ impl<'a> TypeChecker<'a> {
                     stmt.span,
                 )
             }
+
+            // ==================== C Library Integration ====================
+            StatementKind::DeclareLibrary {
+                library_name,
+                is_dynamic,
+                declarations,
+            } => {
+                // Register external functions in the symbol table
+                let typed_declarations = declarations
+                    .iter()
+                    .map(|decl| self.register_external_function(decl))
+                    .collect();
+
+                TypedStatement::new(
+                    TypedStatementKind::DeclareLibrary {
+                        library_name: library_name.clone(),
+                        is_dynamic: *is_dynamic,
+                        declarations: typed_declarations,
+                    },
+                    stmt.span,
+                )
+            }
+        }
+    }
+
+    /// Registers an external function/sub in the symbol table.
+    fn register_external_function(
+        &mut self,
+        decl: &ExternalDeclaration,
+    ) -> TypedExternalDeclaration {
+        // Determine the return type for functions
+        let return_type = if decl.is_function {
+            decl.return_type
+                .as_ref()
+                .map(from_type_spec)
+                .unwrap_or(BasicType::Single) // Default return type
+        } else {
+            BasicType::Void
+        };
+
+        // Convert parameters to typed form
+        let typed_params: Vec<TypedExternalParam> = decl
+            .params
+            .iter()
+            .map(|p| TypedExternalParam {
+                name: p.name.clone(),
+                typ: from_type_spec(&p.type_spec),
+                is_byval: p.is_byval,
+            })
+            .collect();
+
+        // Build parameter type list for the symbol
+        let param_types: Vec<BasicType> = typed_params.iter().map(|p| p.typ.clone()).collect();
+
+        // Register the function in the symbol table
+        let c_name = decl.alias.clone().unwrap_or_else(|| decl.name.clone());
+        // Note: We use define_symbol which may fail if symbol already exists,
+        // but we'll ignore duplicates for external functions (they can be redeclared)
+        let _ = self.symbols.define_symbol(Symbol {
+            name: decl.name.clone(),
+            kind: SymbolKind::ExternalFunction {
+                c_name: c_name.clone(),
+                params: param_types,
+                return_type: return_type.clone(),
+            },
+            basic_type: return_type.clone(),
+            span: Span::new(0, 0), // External functions don't have source location
+            is_mutable: false,
+        });
+
+        TypedExternalDeclaration {
+            name: decl.name.clone(),
+            c_name,
+            params: typed_params,
+            return_type,
+            is_function: decl.is_function,
         }
     }
 

@@ -188,6 +188,18 @@ pub enum TokenKind {
     #[token("DECLARE", ignore(ascii_case))]
     Declare,
 
+    /// LIBRARY keyword - for DECLARE LIBRARY blocks
+    #[token("LIBRARY", ignore(ascii_case))]
+    Library,
+
+    /// DYNAMIC keyword - for DECLARE DYNAMIC LIBRARY
+    #[token("DYNAMIC", ignore(ascii_case))]
+    Dynamic,
+
+    /// ALIAS keyword - maps BASIC name to C function name
+    #[token("ALIAS", ignore(ascii_case))]
+    Alias,
+
     /// SUB keyword - subroutine definition
     #[token("SUB", ignore(ascii_case))]
     Sub,

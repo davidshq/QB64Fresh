@@ -989,9 +989,76 @@ impl StmtEmitter {
                 let text_code = emit_expr(text)?;
                 writeln!(output, "{}qb_clipboard_set({}->data);", indent, text_code).unwrap();
             }
+
+            // ==================== C Library Integration ====================
+            TypedStatementKind::DeclareLibrary {
+                library_name,
+                is_dynamic,
+                declarations,
+            } => {
+                // For static libraries, we just emit extern declarations
+                // For dynamic libraries, we would need to emit dlopen/LoadLibrary code
+                // at runtime, which is more complex and deferred for now.
+                //
+                // The actual function calls are handled in expression codegen
+                // when the external function is called.
+                if *is_dynamic {
+                    writeln!(
+                        output,
+                        "{}// DECLARE DYNAMIC LIBRARY (runtime loading not yet implemented)",
+                        indent
+                    )
+                    .unwrap();
+                    if let Some(lib) = library_name {
+                        writeln!(output, "{}// Library: {}", indent, lib).unwrap();
+                    }
+                } else {
+                    writeln!(output, "{}// DECLARE LIBRARY - extern declarations", indent).unwrap();
+                    if let Some(lib) = library_name {
+                        writeln!(output, "{}// Library: {}", indent, lib).unwrap();
+                    }
+                }
+
+                // Emit extern declarations for each function
+                for decl in declarations {
+                    self.emit_extern_declaration(&indent, decl, output);
+                }
+            }
         }
 
         Ok(())
+    }
+
+    /// Emits an extern declaration for a C library function.
+    fn emit_extern_declaration(
+        &self,
+        indent: &str,
+        decl: &crate::semantic::typed_ir::TypedExternalDeclaration,
+        output: &mut String,
+    ) {
+        use super::types::c_type;
+
+        let return_type = c_type(&decl.return_type);
+        let params: Vec<String> = decl
+            .params
+            .iter()
+            .map(|p| {
+                let param_type = c_type(&p.typ);
+                format!("{} {}", param_type, p.name)
+            })
+            .collect();
+        let params_str = if params.is_empty() {
+            "void".to_string()
+        } else {
+            params.join(", ")
+        };
+
+        writeln!(
+            output,
+            "{}extern {} {}({});",
+            indent, return_type, decl.c_name, params_str
+        )
+        .unwrap();
     }
 
     // Helper methods for complex statements
