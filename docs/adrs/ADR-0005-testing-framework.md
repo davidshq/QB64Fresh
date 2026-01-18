@@ -80,19 +80,26 @@ Key considerations:
 - Some QB64pe tests may need adaptation
 - Rust's test output can be verbose
 - No built-in test coverage tool (need external tool like `tarpaulin`)
-- Snapshot testing requires additional crate
 
 ### Current Status
 
-As of Phase 3.7:
-- **Compiler**: 112 tests passing
-- **Runtime**: 22 tests passing
-- **Total**: 134 tests
-- Coverage includes:
-  - Unit tests for each module
-  - Doc tests for public APIs
-  - End-to-end compilation tests
-  - Both inline and external runtime modes
+**Implemented** - January 18, 2026
+
+| Test Suite | File | Tests | Status |
+|------------|------|-------|--------|
+| **Unit tests** | `src/*/mod.rs` | 163 | All passing |
+| **Integration tests** | `tests/integration_tests.rs` | 110 | 57 pass, 53 pending |
+| **Golden tests** | `tests/golden_tests.rs` | 10 | All passing |
+| **Compatibility tests** | `tests/compatibility.rs` | 3 | All passing |
+
+**Total**: 233 passing tests (+ 53 pending for unimplemented features)
+
+Coverage includes:
+- Unit tests for each compiler module (lexer, parser, semantic, codegen)
+- Integration tests for end-to-end compilation
+- Golden tests for C code generation regression detection
+- Compatibility test framework ready for QB64pe test porting
+- Both inline and external runtime modes
 
 ### Test Organization
 
@@ -100,14 +107,44 @@ As of Phase 3.7:
 QB64Fresh/
 ├── src/
 │   ├── lexer/
-│   │   └── mod.rs          # Contains #[cfg(test)] mod tests
+│   │   └── mod.rs              # Contains #[cfg(test)] mod tests
 │   ├── parser/
-│   │   └── mod.rs          # Contains #[cfg(test)] mod tests
+│   │   └── mod.rs              # Contains #[cfg(test)] mod tests
+│   ├── semantic/
+│   │   └── checker/*.rs        # Contains #[cfg(test)] mod tests
+│   ├── codegen/
+│   │   └── c_backend/*.rs      # Contains #[cfg(test)] mod tests
 │   └── ...
 ├── tests/
-│   ├── integration_tests.rs # End-to-end tests
-│   └── compatibility.rs     # QB64pe compatibility tests
+│   ├── integration_tests.rs    # 110 end-to-end compilation tests
+│   ├── golden_tests.rs         # Golden/snapshot test framework
+│   ├── compatibility.rs        # QB64pe-format test framework
+│   ├── common/
+│   │   └── mod.rs              # Shared test utilities
+│   ├── fixtures/
+│   │   ├── success/            # Tests expected to compile
+│   │   │   └── *.bas, *.output
+│   │   └── error/              # Tests expected to fail
+│   │       └── *.bas, *.err
+│   └── golden/
+│       └── *.bas, *.golden     # Golden test fixtures
 └── runtime/
     └── src/
-        └── lib.rs           # Contains #[cfg(test)] mod tests
+        └── lib.rs              # Contains #[cfg(test)] mod tests
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+cargo test
+
+# Run specific test suites
+cargo test --lib                    # Unit tests
+cargo test --test integration_tests # Integration tests
+cargo test --test golden_tests      # Golden tests
+cargo test --test compatibility     # Compatibility tests
+
+# Update golden files after intentional code generation changes
+UPDATE_GOLDEN=1 cargo test --test golden_tests
 ```

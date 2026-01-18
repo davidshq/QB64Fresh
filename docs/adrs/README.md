@@ -9,6 +9,9 @@ This directory contains Architecture Decision Records (ADRs) for QB64Fresh.
 - [ADR-0003: Runtime Library Approach (Hybrid Rust)](ADR-0003-runtime-library-approach.md)
 - [ADR-0004: Build System and Tooling (Cargo)](ADR-0004-build-system-tooling.md)
 - [ADR-0005: Testing Framework](ADR-0005-testing-framework.md)
+- [ADR-0006: Graphics System Architecture](ADR-0006-graphics-system.md)
+- [ADR-0007: Audio System Architecture](ADR-0007-audio-system.md)
+- [ADR-0008: C Interoperability (DECLARE LIBRARY)](ADR-0008-c-interoperability.md)
 
 ## Format
 
