@@ -1797,4 +1797,284 @@ LOOP UNTIL k = 27
         .unwrap();
         assert!(code.contains("qb_keyhit()"));
     }
+
+    #[test]
+    fn cinp_function() {
+        let code = compile_to_c(
+            r#"
+DIM c AS LONG
+c = _CINP
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_cinp()"));
+    }
+
+    #[test]
+    fn capslock_function() {
+        let code = compile_to_c(
+            r#"
+DIM state AS LONG
+state = _CAPSLOCK
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_capslock()"));
+    }
+
+    #[test]
+    fn numlock_function() {
+        let code = compile_to_c(
+            r#"
+DIM state AS LONG
+state = _NUMLOCK
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_numlock()"));
+    }
+
+    #[test]
+    fn scrolllock_function() {
+        let code = compile_to_c(
+            r#"
+DIM state AS LONG
+state = _SCROLLLOCK
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_scrolllock()"));
+    }
+}
+
+/// Tests for PRINT USING formatted output
+mod print_using {
+    use super::*;
+
+    #[test]
+    fn print_using_numeric() {
+        let code = compile_to_c("PRINT USING \"###.##\"; 123.45").unwrap();
+        assert!(code.contains("qb_print_using("));
+        assert!(code.contains("QbPrintValue"));
+    }
+
+    #[test]
+    fn print_using_string() {
+        let code = compile_to_c("PRINT USING \"&\"; \"Hello\"").unwrap();
+        assert!(code.contains("qb_print_using("));
+    }
+
+    #[test]
+    fn print_using_multiple_values() {
+        let code = compile_to_c("PRINT USING \"## ##\"; 1, 2").unwrap();
+        assert!(code.contains("qb_print_using("));
+        assert!(code.contains("_pv[0]"));
+        assert!(code.contains("_pv[1]"));
+    }
+
+    #[test]
+    fn print_using_variable_format() {
+        let code = compile_to_c("DIM fmt AS STRING\nfmt = \"###\"\nPRINT USING fmt; 123").unwrap();
+        assert!(code.contains("qb_print_using("));
+    }
+}
+
+/// Tests for ? as PRINT alias
+mod print_shorthand {
+    use super::*;
+
+    #[test]
+    fn question_mark_as_print() {
+        let code = compile_to_c(r#"? "Hello""#).unwrap();
+        assert!(code.contains("qb_print_string("));
+    }
+
+    #[test]
+    fn question_mark_with_expression() {
+        let code = compile_to_c("? 1 + 2").unwrap();
+        assert!(code.contains("qb_print_"));
+    }
+
+    #[test]
+    fn question_mark_with_semicolon() {
+        let code = compile_to_c(r#"? "A"; "B""#).unwrap();
+        assert!(code.contains("qb_print_string("));
+    }
+}
+
+/// Tests for bitwise operations
+mod bitwise_operations {
+    use super::*;
+
+    #[test]
+    fn shl_function() {
+        let code = compile_to_c(
+            r#"
+DIM result AS LONG
+result = _SHL(1, 4)
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_shl("));
+    }
+
+    #[test]
+    fn shr_function() {
+        let code = compile_to_c(
+            r#"
+DIM result AS LONG
+result = _SHR(16, 2)
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_shr("));
+    }
+
+    #[test]
+    fn rol_function() {
+        let code = compile_to_c(
+            r#"
+DIM result AS LONG
+result = _ROL(1, 63)
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_rol("));
+    }
+
+    #[test]
+    fn ror_function() {
+        let code = compile_to_c(
+            r#"
+DIM result AS LONG
+result = _ROR(1, 1)
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_ror("));
+    }
+
+    #[test]
+    fn readbit_function() {
+        let code = compile_to_c(
+            r#"
+DIM bit AS LONG
+bit = _READBIT(5, 2)
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_readbit("));
+    }
+
+    #[test]
+    fn setbit_function() {
+        let code = compile_to_c(
+            r#"
+DIM result AS LONG
+result = _SETBIT(0, 3)
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_setbit("));
+    }
+
+    #[test]
+    fn resetbit_function() {
+        let code = compile_to_c(
+            r#"
+DIM result AS LONG
+result = _RESETBIT(15, 2)
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_resetbit("));
+    }
+
+    #[test]
+    fn togglebit_function() {
+        let code = compile_to_c(
+            r#"
+DIM result AS LONG
+result = _TOGGLEBIT(5, 1)
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_togglebit("));
+    }
+}
+
+/// Tests for additional math functions
+mod extended_math {
+    use super::*;
+
+    #[test]
+    fn clamp_function() {
+        let code = compile_to_c(
+            r#"
+DIM result AS DOUBLE
+result = _CLAMP(5.5, 0, 10)
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_clamp("));
+    }
+
+    #[test]
+    fn hypot_function() {
+        let code = compile_to_c(
+            r#"
+DIM result AS DOUBLE
+result = _HYPOT(3, 4)
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("hypot("));
+    }
+}
+
+/// Tests for graphics stubs in inline runtime
+mod graphics_stubs {
+    use super::*;
+
+    #[test]
+    fn screen_compiles() {
+        let code = compile_to_c("SCREEN 12").unwrap();
+        assert!(code.contains("qb_gfx_init("));
+    }
+
+    #[test]
+    fn cls_compiles() {
+        let code = compile_to_c("CLS").unwrap();
+        assert!(code.contains("qb_gfx_cls()"));
+    }
+
+    #[test]
+    fn pset_compiles() {
+        let code = compile_to_c("PSET (100, 100), 15").unwrap();
+        assert!(code.contains("qb_gfx_pset("));
+    }
+
+    #[test]
+    fn line_compiles() {
+        let code = compile_to_c("LINE (0, 0)-(100, 100), 14").unwrap();
+        assert!(code.contains("qb_gfx_line("));
+    }
+
+    #[test]
+    fn circle_compiles() {
+        let code = compile_to_c("CIRCLE (320, 240), 50, 9").unwrap();
+        assert!(code.contains("qb_gfx_circle("));
+    }
+
+    #[test]
+    fn color_compiles() {
+        let code = compile_to_c("COLOR 15, 1").unwrap();
+        assert!(code.contains("qb_gfx_color("));
+    }
+
+    #[test]
+    fn locate_compiles() {
+        let code = compile_to_c("LOCATE 10, 20").unwrap();
+        assert!(code.contains("qb_gfx_locate("));
+    }
 }

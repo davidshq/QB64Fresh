@@ -274,6 +274,16 @@ pub(super) fn c_function_name(name: &str) -> String {
         "_MAX" => "fmax".to_string(),
         "_CLAMP" => "qb_clamp".to_string(),
 
+        // Bitwise operations
+        "_SHL" => "qb_shl".to_string(),
+        "_SHR" => "qb_shr".to_string(),
+        "_ROL" => "qb_rol".to_string(),
+        "_ROR" => "qb_ror".to_string(),
+        "_READBIT" => "qb_readbit".to_string(),
+        "_SETBIT" => "qb_setbit".to_string(),
+        "_RESETBIT" => "qb_resetbit".to_string(),
+        "_TOGGLEBIT" => "qb_togglebit".to_string(),
+
         // String functions
         "LEN" => "qb_len".to_string(),
         "CHR$" => "qb_chr".to_string(),
@@ -329,6 +339,12 @@ pub(super) fn c_function_name(name: &str) -> String {
         // QB64 keyboard extensions
         "_KEYHIT" => "qb_keyhit".to_string(),
         "_KEYDOWN" => "qb_keydown".to_string(),
+        "_CINP" => "qb_cinp".to_string(),
+
+        // Lock key state functions
+        "_CAPSLOCK" => "qb_capslock".to_string(),
+        "_NUMLOCK" => "qb_numlock".to_string(),
+        "_SCROLLLOCK" => "qb_scrolllock".to_string(),
 
         // Phase 2: String enhancements
         "_INSTRREV" => "qb_instrrev".to_string(),

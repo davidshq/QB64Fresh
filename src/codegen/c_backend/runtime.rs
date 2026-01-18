@@ -87,6 +87,7 @@ fn emit_runtime_declarations(output: &mut String) {
     emit_keyboard_functions(output);
     emit_timing_functions(output);
     emit_array_functions(output);
+    emit_graphics_stubs(output);
 }
 
 /// Emits the qb_string type definition.
@@ -216,6 +217,196 @@ fn emit_print_functions(output: &mut String) {
     // CSRLIN - returns current cursor row
     writeln!(output, "int qb_csrlin(void) {{").unwrap();
     writeln!(output, "    return qb_cursor_row;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // PRINT USING support
+    // Type constants for QbPrintValue
+    writeln!(output, "#define QB_TYPE_STRING 0").unwrap();
+    writeln!(output, "#define QB_TYPE_INT 1").unwrap();
+    writeln!(output, "#define QB_TYPE_DOUBLE 2").unwrap();
+    writeln!(output).unwrap();
+
+    // Value union for PRINT USING
+    writeln!(output, "typedef struct {{").unwrap();
+    writeln!(output, "    int type;").unwrap();
+    writeln!(output, "    union {{").unwrap();
+    writeln!(output, "        qb_string* str_val;").unwrap();
+    writeln!(output, "        int64_t int_val;").unwrap();
+    writeln!(output, "        double dbl_val;").unwrap();
+    writeln!(output, "    }};").unwrap();
+    writeln!(output, "}} QbPrintValue;").unwrap();
+    writeln!(output).unwrap();
+
+    // PRINT USING implementation
+    writeln!(
+        output,
+        "void qb_print_using(qb_string* fmt, QbPrintValue* values, int num_values) {{"
+    )
+    .unwrap();
+    writeln!(output, "    if (!fmt || !fmt->data) return;").unwrap();
+    writeln!(output, "    const char* f = fmt->data;").unwrap();
+    writeln!(output, "    int val_idx = 0;").unwrap();
+    writeln!(output, "    while (*f) {{").unwrap();
+    writeln!(output, "        // Check for format specifiers").unwrap();
+    writeln!(
+        output,
+        "        if (*f == '#' || *f == '+' || *f == '-' || *f == '$' || *f == '*' || *f == '^') {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "            // Numeric format - count consecutive format chars"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "            int width = 0, decimals = 0, has_decimal = 0, has_sign = 0;"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "            int has_dollar = 0, has_asterisk = 0, has_exp = 0, exp_digits = 0;"
+    )
+    .unwrap();
+    writeln!(output, "            const char* start = f;").unwrap();
+    writeln!(
+        output,
+        "            if (*f == '+' || *f == '-') {{ has_sign = 1; f++; width++; }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "            if (*f == '$' && *(f+1) == '$') {{ has_dollar = 1; f += 2; width += 2; }}"
+    )
+    .unwrap();
+    writeln!(output, "            else if (*f == '*' && *(f+1) == '*') {{ has_asterisk = 1; f += 2; width += 2; }}").unwrap();
+    writeln!(output, "            while (*f == '#') {{ width++; f++; }}").unwrap();
+    writeln!(output, "            if (*f == '.') {{ has_decimal = 1; f++; width++; while (*f == '#') {{ decimals++; width++; f++; }} }}").unwrap();
+    writeln!(
+        output,
+        "            while (*f == '^') {{ has_exp = 1; exp_digits++; f++; width++; }}"
+    )
+    .unwrap();
+    writeln!(output, "            // Now format the value").unwrap();
+    writeln!(
+        output,
+        "            if (val_idx < num_values && width > 0) {{"
+    )
+    .unwrap();
+    writeln!(output, "                double val = 0;").unwrap();
+    writeln!(output, "                if (values[val_idx].type == QB_TYPE_INT) val = (double)values[val_idx].int_val;").unwrap();
+    writeln!(output, "                else if (values[val_idx].type == QB_TYPE_DOUBLE) val = values[val_idx].dbl_val;").unwrap();
+    writeln!(output, "                char buf[64];").unwrap();
+    writeln!(output, "                if (has_exp) {{").unwrap();
+    writeln!(
+        output,
+        "                    snprintf(buf, sizeof(buf), \"%*.*e\", width, decimals, val);"
+    )
+    .unwrap();
+    writeln!(output, "                }} else if (has_decimal) {{").unwrap();
+    writeln!(
+        output,
+        "                    snprintf(buf, sizeof(buf), \"%*.*f\", width, decimals, val);"
+    )
+    .unwrap();
+    writeln!(output, "                }} else {{").unwrap();
+    writeln!(
+        output,
+        "                    snprintf(buf, sizeof(buf), \"%*lld\", width, (long long)val);"
+    )
+    .unwrap();
+    writeln!(output, "                }}").unwrap();
+    writeln!(output, "                // Handle asterisk fill").unwrap();
+    writeln!(output, "                if (has_asterisk) {{").unwrap();
+    writeln!(
+        output,
+        "                    for (int i = 0; buf[i] == ' '; i++) buf[i] = '*';"
+    )
+    .unwrap();
+    writeln!(output, "                }}").unwrap();
+    writeln!(output, "                printf(\"%s\", buf);").unwrap();
+    writeln!(output, "                val_idx++;").unwrap();
+    writeln!(output, "            }}").unwrap();
+    writeln!(output, "        }} else if (*f == '&') {{").unwrap();
+    writeln!(output, "            // String - print full string").unwrap();
+    writeln!(output, "            f++;").unwrap();
+    writeln!(
+        output,
+        "            if (val_idx < num_values && values[val_idx].type == QB_TYPE_STRING) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "                if (values[val_idx].str_val && values[val_idx].str_val->data) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "                    printf(\"%s\", values[val_idx].str_val->data);"
+    )
+    .unwrap();
+    writeln!(output, "                }}").unwrap();
+    writeln!(output, "                val_idx++;").unwrap();
+    writeln!(output, "            }}").unwrap();
+    writeln!(output, "        }} else if (*f == '!') {{").unwrap();
+    writeln!(output, "            // String - print first character only").unwrap();
+    writeln!(output, "            f++;").unwrap();
+    writeln!(
+        output,
+        "            if (val_idx < num_values && values[val_idx].type == QB_TYPE_STRING) {{"
+    )
+    .unwrap();
+    writeln!(output, "                if (values[val_idx].str_val && values[val_idx].str_val->data && values[val_idx].str_val->data[0]) {{").unwrap();
+    writeln!(
+        output,
+        "                    printf(\"%c\", values[val_idx].str_val->data[0]);"
+    )
+    .unwrap();
+    writeln!(output, "                }}").unwrap();
+    writeln!(output, "                val_idx++;").unwrap();
+    writeln!(output, "            }}").unwrap();
+    writeln!(output, "        }} else if (*f == '\\\\') {{").unwrap();
+    writeln!(
+        output,
+        "            // Fixed-width string - count spaces between backslashes"
+    )
+    .unwrap();
+    writeln!(output, "            f++;").unwrap();
+    writeln!(
+        output,
+        "            int str_width = 2; // includes both backslashes"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "            while (*f && *f != '\\\\') {{ str_width++; f++; }}"
+    )
+    .unwrap();
+    writeln!(output, "            if (*f == '\\\\') f++;").unwrap();
+    writeln!(
+        output,
+        "            if (val_idx < num_values && values[val_idx].type == QB_TYPE_STRING) {{"
+    )
+    .unwrap();
+    writeln!(output, "                const char* s = values[val_idx].str_val ? values[val_idx].str_val->data : \"\";").unwrap();
+    writeln!(
+        output,
+        "                printf(\"%-*.*s\", str_width, str_width, s ? s : \"\");"
+    )
+    .unwrap();
+    writeln!(output, "                val_idx++;").unwrap();
+    writeln!(output, "            }}").unwrap();
+    writeln!(output, "        }} else if (*f == '_') {{").unwrap();
+    writeln!(output, "            // Literal next character").unwrap();
+    writeln!(output, "            f++;").unwrap();
+    writeln!(output, "            if (*f) {{ printf(\"%c\", *f); f++; }}").unwrap();
+    writeln!(output, "        }} else {{").unwrap();
+    writeln!(output, "            // Literal character").unwrap();
+    writeln!(output, "            printf(\"%c\", *f);").unwrap();
+    writeln!(output, "            f++;").unwrap();
+    writeln!(output, "        }}").unwrap();
+    writeln!(output, "    }}").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 }
@@ -379,6 +570,67 @@ fn emit_math_functions(output: &mut String) {
         "    return (float)((double)qb_rng_state / (double)UINT64_MAX);"
     )
     .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // Bitwise operations
+    // _SHL - shift left
+    writeln!(output, "int64_t qb_shl(int64_t value, int64_t bits) {{").unwrap();
+    writeln!(
+        output,
+        "    return (int64_t)((uint64_t)value << (bits & 63));"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _SHR - shift right (arithmetic)
+    writeln!(output, "int64_t qb_shr(int64_t value, int64_t bits) {{").unwrap();
+    writeln!(output, "    return value >> (bits & 63);").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _ROL - rotate left (64-bit)
+    writeln!(output, "int64_t qb_rol(int64_t value, int64_t bits) {{").unwrap();
+    writeln!(output, "    uint64_t v = (uint64_t)value;").unwrap();
+    writeln!(output, "    int n = (int)(bits & 63);").unwrap();
+    writeln!(output, "    return (int64_t)((v << n) | (v >> (64 - n)));").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _ROR - rotate right (64-bit)
+    writeln!(output, "int64_t qb_ror(int64_t value, int64_t bits) {{").unwrap();
+    writeln!(output, "    uint64_t v = (uint64_t)value;").unwrap();
+    writeln!(output, "    int n = (int)(bits & 63);").unwrap();
+    writeln!(output, "    return (int64_t)((v >> n) | (v << (64 - n)));").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _READBIT - read a specific bit (0 = rightmost)
+    writeln!(output, "int64_t qb_readbit(int64_t value, int64_t bit) {{").unwrap();
+    writeln!(output, "    return (value >> (bit & 63)) & 1;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _SETBIT - set a specific bit to 1
+    writeln!(output, "int64_t qb_setbit(int64_t value, int64_t bit) {{").unwrap();
+    writeln!(output, "    return value | ((int64_t)1 << (bit & 63));").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _RESETBIT - clear a specific bit to 0
+    writeln!(output, "int64_t qb_resetbit(int64_t value, int64_t bit) {{").unwrap();
+    writeln!(output, "    return value & ~((int64_t)1 << (bit & 63));").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _TOGGLEBIT - flip a specific bit
+    writeln!(
+        output,
+        "int64_t qb_togglebit(int64_t value, int64_t bit) {{"
+    )
+    .unwrap();
+    writeln!(output, "    return value ^ ((int64_t)1 << (bit & 63));").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 }
@@ -1215,6 +1467,49 @@ fn emit_keyboard_functions(output: &mut String) {
     writeln!(output, "#endif").unwrap();
     writeln!(output).unwrap();
 
+    // _CINP - raw console input (returns character code, no echo)
+    writeln!(output, "#ifdef _WIN32").unwrap();
+    writeln!(output, "int64_t qb_cinp(void) {{").unwrap();
+    writeln!(output, "    return _getch();").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output, "#else").unwrap();
+    writeln!(output, "int64_t qb_cinp(void) {{").unwrap();
+    writeln!(output, "    struct termios oldt, newt;").unwrap();
+    writeln!(output, "    tcgetattr(STDIN_FILENO, &oldt);").unwrap();
+    writeln!(output, "    newt = oldt;").unwrap();
+    writeln!(output, "    newt.c_lflag &= ~(ICANON | ECHO);").unwrap();
+    writeln!(output, "    tcsetattr(STDIN_FILENO, TCSANOW, &newt);").unwrap();
+    writeln!(output, "    int ch = getchar();").unwrap();
+    writeln!(output, "    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);").unwrap();
+    writeln!(output, "    return (ch == EOF) ? 0 : ch;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output, "#endif").unwrap();
+    writeln!(output).unwrap();
+
+    // Lock key state functions
+    writeln!(output, "#ifdef _WIN32").unwrap();
+    writeln!(output, "int64_t qb_capslock(void) {{").unwrap();
+    writeln!(output, "    return (GetKeyState(VK_CAPITAL) & 1) ? -1 : 0;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output, "int64_t qb_numlock(void) {{").unwrap();
+    writeln!(output, "    return (GetKeyState(VK_NUMLOCK) & 1) ? -1 : 0;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output, "int64_t qb_scrolllock(void) {{").unwrap();
+    writeln!(output, "    return (GetKeyState(VK_SCROLL) & 1) ? -1 : 0;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output, "#else").unwrap();
+    writeln!(
+        output,
+        "// On Linux/macOS, lock key states require X11 or reading /sys files"
+    )
+    .unwrap();
+    writeln!(output, "// Simplified stub implementation").unwrap();
+    writeln!(output, "int64_t qb_capslock(void) {{ return 0; }}").unwrap();
+    writeln!(output, "int64_t qb_numlock(void) {{ return 0; }}").unwrap();
+    writeln!(output, "int64_t qb_scrolllock(void) {{ return 0; }}").unwrap();
+    writeln!(output, "#endif").unwrap();
+    writeln!(output).unwrap();
+
     // Environment functions
     writeln!(output, "/* Environment Functions */").unwrap();
     writeln!(output).unwrap();
@@ -1862,5 +2157,178 @@ fn emit_array_functions(output: &mut String) {
     )
     .unwrap();
     writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+}
+
+/// Emits stub functions for graphics operations in inline runtime mode.
+///
+/// These stubs allow programs that use graphics commands to compile even when
+/// using the inline runtime. They print a warning message on first use and
+/// return safe default values.
+fn emit_graphics_stubs(output: &mut String) {
+    writeln!(output, "/* Graphics Stubs (Inline Runtime) */").unwrap();
+    writeln!(
+        output,
+        "/* For full graphics support, use --runtime external and link with libqb64fresh_rt */"
+    )
+    .unwrap();
+    writeln!(output).unwrap();
+
+    // Warning flag
+    writeln!(output, "static int _qb_gfx_warned = 0;").unwrap();
+    writeln!(output, "static void _qb_gfx_warn(void) {{").unwrap();
+    writeln!(output, "    if (!_qb_gfx_warned) {{").unwrap();
+    writeln!(output, "        fprintf(stderr, \"Warning: Graphics functions require external runtime. Use --runtime external\\n\");").unwrap();
+    writeln!(output, "        _qb_gfx_warned = 1;").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // Initialization
+    writeln!(
+        output,
+        "int qb_gfx_init(int32_t mode) {{ _qb_gfx_warn(); (void)mode; return 0; }}"
+    )
+    .unwrap();
+    writeln!(output, "int qb_gfx_shutdown(void) {{ return 0; }}").unwrap();
+    writeln!(output).unwrap();
+
+    // Basic graphics operations
+    writeln!(output, "int qb_gfx_cls(void) {{ return 0; }}").unwrap();
+    writeln!(
+        output,
+        "int qb_gfx_color(uint32_t fg, uint32_t bg) {{ (void)fg; (void)bg; return 0; }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "int qb_gfx_locate(int32_t row, int32_t col) {{ (void)row; (void)col; return 0; }}"
+    )
+    .unwrap();
+    writeln!(output).unwrap();
+
+    // Drawing
+    writeln!(output, "int qb_gfx_pset(int32_t x, int32_t y, uint32_t color) {{ (void)x; (void)y; (void)color; return 0; }}").unwrap();
+    writeln!(
+        output,
+        "uint32_t qb_gfx_point(int32_t x, int32_t y) {{ (void)x; (void)y; return 0; }}"
+    )
+    .unwrap();
+    writeln!(output, "int qb_gfx_line(int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color) {{ (void)x1; (void)y1; (void)x2; (void)y2; (void)color; return 0; }}").unwrap();
+    writeln!(output, "int qb_gfx_box(int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color, int filled) {{ (void)x1; (void)y1; (void)x2; (void)y2; (void)color; (void)filled; return 0; }}").unwrap();
+    writeln!(output, "int qb_gfx_circle(int32_t x, int32_t y, int32_t radius, uint32_t color, int filled) {{ (void)x; (void)y; (void)radius; (void)color; (void)filled; return 0; }}").unwrap();
+    writeln!(output, "int qb_gfx_paint(int32_t x, int32_t y, uint32_t color, uint32_t boundary) {{ (void)x; (void)y; (void)color; (void)boundary; return 0; }}").unwrap();
+    writeln!(output).unwrap();
+
+    // Display
+    writeln!(output, "int qb_gfx_display(void) {{ return 0; }}").unwrap();
+    writeln!(output, "int qb_gfx_poll_events(void) {{ return 1; }}").unwrap();
+    writeln!(output, "uint32_t qb_gfx_width(void) {{ return 80; }}").unwrap();
+    writeln!(output, "uint32_t qb_gfx_height(void) {{ return 25; }}").unwrap();
+    writeln!(output).unwrap();
+
+    // Extended graphics
+    writeln!(
+        output,
+        "int qb_gfx_set_width(uint32_t cols, uint32_t rows) {{ (void)cols; (void)rows; return 0; }}"
+    )
+    .unwrap();
+    writeln!(output, "int qb_gfx_view(int screen, int32_t x1, int32_t y1, int32_t x2, int32_t y2, int32_t fill, int32_t border) {{ (void)screen; (void)x1; (void)y1; (void)x2; (void)y2; (void)fill; (void)border; return 0; }}").unwrap();
+    writeln!(output, "int qb_gfx_view_reset(void) {{ return 0; }}").unwrap();
+    writeln!(output, "int qb_gfx_window(int screen, double x1, double y1, double x2, double y2) {{ (void)screen; (void)x1; (void)y1; (void)x2; (void)y2; return 0; }}").unwrap();
+    writeln!(output, "int qb_gfx_window_reset(void) {{ return 0; }}").unwrap();
+    writeln!(
+        output,
+        "int qb_gfx_draw(const char* cmd) {{ (void)cmd; return 0; }}"
+    )
+    .unwrap();
+    writeln!(output).unwrap();
+
+    // Image operations
+    writeln!(output, "int32_t qb_gfx_newimage(int32_t w, int32_t h, int32_t mode) {{ (void)w; (void)h; (void)mode; return -1; }}").unwrap();
+    writeln!(output, "int32_t qb_gfx_loadimage(const char* fn, int32_t mode) {{ (void)fn; (void)mode; return -1; }}").unwrap();
+    writeln!(
+        output,
+        "int qb_gfx_freeimage(int32_t h) {{ (void)h; return 0; }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "int qb_gfx_putimage_simple(int32_t src, int32_t dst) {{ (void)src; (void)dst; return 0; }}"
+    )
+    .unwrap();
+    writeln!(output, "int qb_gfx_putimage(int32_t dx1, int32_t dy1, int32_t dx2, int32_t dy2, int32_t src, int32_t dst) {{ (void)dx1; (void)dy1; (void)dx2; (void)dy2; (void)src; (void)dst; return 0; }}").unwrap();
+    writeln!(output, "int qb_gfx_putimage_full(int32_t dx1, int32_t dy1, int32_t dx2, int32_t dy2, int32_t src, int32_t dst, int32_t sx1, int32_t sy1, int32_t sx2, int32_t sy2) {{ (void)dx1; (void)dy1; (void)dx2; (void)dy2; (void)src; (void)dst; (void)sx1; (void)sy1; (void)sx2; (void)sy2; return 0; }}").unwrap();
+    writeln!(
+        output,
+        "int qb_gfx_source(int32_t h) {{ (void)h; return 0; }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "int qb_gfx_dest(int32_t h) {{ (void)h; return 0; }}"
+    )
+    .unwrap();
+    writeln!(output, "int qb_gfx_printstring(int32_t x, int32_t y, const char* text) {{ (void)x; (void)y; (void)text; return 0; }}").unwrap();
+    writeln!(
+        output,
+        "int qb_gfx_autodisplay(int enabled) {{ (void)enabled; return 0; }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "int32_t qb_gfx_image_width(int32_t h) {{ (void)h; return 0; }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "int32_t qb_gfx_image_height(int32_t h) {{ (void)h; return 0; }}"
+    )
+    .unwrap();
+    writeln!(output).unwrap();
+
+    // Color helpers
+    writeln!(output, "uint32_t qb_rgb(uint32_t r, uint32_t g, uint32_t b) {{ return 0xFF000000 | ((r & 255) << 16) | ((g & 255) << 8) | (b & 255); }}").unwrap();
+    writeln!(output, "uint32_t qb_rgba(uint32_t r, uint32_t g, uint32_t b, uint32_t a) {{ return ((a & 255) << 24) | ((r & 255) << 16) | ((g & 255) << 8) | (b & 255); }}").unwrap();
+    writeln!(
+        output,
+        "uint32_t qb_rgb32(uint32_t r, uint32_t g, uint32_t b) {{ return qb_rgb(r, g, b); }}"
+    )
+    .unwrap();
+    writeln!(output, "uint32_t qb_rgba32(uint32_t r, uint32_t g, uint32_t b, uint32_t a) {{ return qb_rgba(r, g, b, a); }}").unwrap();
+    writeln!(output).unwrap();
+
+    // Mouse stubs
+    writeln!(output, "int32_t qb_mouse_x(void) {{ return 0; }}").unwrap();
+    writeln!(output, "int32_t qb_mouse_y(void) {{ return 0; }}").unwrap();
+    writeln!(
+        output,
+        "int32_t qb_mouse_button(int32_t b) {{ (void)b; return 0; }}"
+    )
+    .unwrap();
+    writeln!(output, "int32_t qb_mouse_input(void) {{ return 0; }}").unwrap();
+    writeln!(output, "int32_t qb_mouse_movement_x(void) {{ return 0; }}").unwrap();
+    writeln!(output, "int32_t qb_mouse_movement_y(void) {{ return 0; }}").unwrap();
+    writeln!(output, "int32_t qb_mouse_wheel(void) {{ return 0; }}").unwrap();
+    writeln!(output, "void qb_mouse_hide(void) {{ }}").unwrap();
+    writeln!(output, "void qb_mouse_show(void) {{ }}").unwrap();
+    writeln!(
+        output,
+        "void qb_mouse_move(int32_t x, int32_t y) {{ (void)x; (void)y; }}"
+    )
+    .unwrap();
+    writeln!(output).unwrap();
+
+    // Clipboard stubs (return empty string)
+    writeln!(
+        output,
+        "qb_string* qb_clipboard_get(void) {{ return qb_string_new(\"\"); }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "void qb_clipboard_set(const char* text) {{ (void)text; }}"
+    )
+    .unwrap();
     writeln!(output).unwrap();
 }

@@ -24,8 +24,9 @@ A prioritized roadmap for QB64Fresh development. Items are ordered from most gra
 ### Keyboard Input
 - [x] Implement `INKEY$` function
 - [x] Implement `INPUT$()` function (read n characters)
-- [ ] Implement `_KEYHIT` function (deferred - QB64-specific extension)
-- [ ] Implement `_KEYDOWN` function (deferred - QB64-specific extension)
+- [x] Implement `_KEYHIT` function (QB64 extension)
+- [x] Implement `_KEYDOWN` function (QB64 extension - stub, always returns 0)
+- [x] Implement `_KEYCLEAR` statement (QB64 extension)
 
 ### Error Handling
 - [x] Implement `ON ERROR GOTO` statement
@@ -293,10 +294,11 @@ runtime/src/
 - [ ] Example programs
 
 ### Testing (See TESTING_INFRASTRUCTURE_PLAN.md for details)
-- [x] Integration tests for compiled programs (128 tests)
+- [x] Integration tests for compiled programs (176 tests)
 - [x] Golden/snapshot tests for codegen (10 tests)
 - [x] Property-based testing with proptest (19 tests)
 - [x] Fuzz testing infrastructure (3 targets: lexer, parser, full pipeline)
+- [x] Fuzz testing verified (~4.6M inputs, 0 crashes)
 - [x] Achieve 60%+ line coverage (currently 59.92%)
 - [ ] Expand test suite for all built-ins
 - [ ] Compatibility tests against QB64 programs
@@ -313,7 +315,7 @@ against the current QB64Fresh implementation. Organized by priority and category
 ### High Priority - QB4.5 Core Features
 
 #### Timing & Flow Control
-- [ ] `SLEEP` statement - pause execution
+- [x] `SLEEP` statement - pause execution
 - [x] `TIMER` function - seconds since midnight (with millisecond precision)
 - [x] `RANDOMIZE` statement - seed random number generator
 - [ ] `RUN` statement - run program
@@ -322,14 +324,14 @@ against the current QB64Fresh implementation. Organized by priority and category
 - [ ] `TROFF` / `TRON` statements - debug trace off/on
 
 #### Print Formatting
-- [ ] `TAB(n)` function - move to column n in PRINT
-- [ ] `SPC(n)` function - output n spaces in PRINT
-- [ ] `USING` clause - formatted PRINT output
+- [x] `TAB(n)` function - move to column n in PRINT
+- [x] `SPC(n)` function - output n spaces in PRINT
+- [x] `USING` clause - formatted PRINT output (PRINT USING)
 - [ ] `LPRINT` statement - printer output
 - [ ] `LPOS(n)` function - printer position
-- [ ] `POS(n)` function - current cursor column position
-- [ ] `CSRLIN` variable - current cursor row
-- [ ] `?` - PRINT alias (question mark)
+- [x] `POS(n)` function - current cursor column position
+- [x] `CSRLIN` function - current cursor row
+- [x] `?` - PRINT alias (question mark)
 
 #### Memory/Legacy
 - [ ] `BLOAD` / `BSAVE` statements - binary load/save to memory
@@ -347,7 +349,7 @@ against the current QB64Fresh implementation. Organized by priority and category
 - [ ] `RESET` statement - close all open files
 
 #### Arrays
-- [ ] `ERASE` statement - clear/deallocate arrays
+- [x] `ERASE` statement - clear/deallocate arrays
 
 #### Type Conversion (Microsoft Binary Format)
 - [ ] `CVDMBF()` / `CVSMBF()` functions - convert MBF strings to numbers
@@ -401,23 +403,23 @@ against the current QB64Fresh implementation. Organized by priority and category
 ### Medium Priority - QB64 Extensions
 
 #### Keyboard Input (Important for games)
-- [ ] `_KEYHIT` function - get key code without waiting
-- [ ] `_KEYDOWN(code)` function - check if key pressed
-- [ ] `_KEYCLEAR` statement - clear keyboard buffer
-- [ ] `_CINP` function - raw console input
-- [ ] `_CAPSLOCK` / `_NUMLOCK` / `_SCROLLLOCK` - lock key states
+- [x] `_KEYHIT` function - get key code without waiting
+- [x] `_KEYDOWN(code)` function - check if key pressed (stub - always 0)
+- [x] `_KEYCLEAR` statement - clear keyboard buffer
+- [x] `_CINP` function - raw console input
+- [x] `_CAPSLOCK` / `_NUMLOCK` / `_SCROLLLOCK` - lock key states
 
 #### Timing Functions
-- [ ] `_DELAY(seconds)` statement - pause execution (float precision)
-- [ ] `_LIMIT(fps)` statement - limit frame rate
+- [x] `_DELAY(seconds)` statement - pause execution (float precision)
+- [x] `_LIMIT(fps)` statement - limit frame rate
 
 #### Math Functions
-- [ ] `_CEIL(n)` function - ceiling
-- [ ] `_ROUND(n)` function - round to nearest
-- [ ] `_PI` constant - pi (3.14159...)
-- [ ] `_MIN(a, b)` / `_MAX(a, b)` functions
-- [ ] `_CLAMP(val, min, max)` function
-- [ ] `_HYPOT(x, y)` function - hypotenuse
+- [x] `_CEIL(n)` function - ceiling
+- [x] `_ROUND(n)` function - round to nearest
+- [x] `_PI` constant - pi (3.14159...)
+- [x] `_MIN(a, b)` / `_MAX(a, b)` functions
+- [x] `_CLAMP(val, min, max)` function
+- [x] `_HYPOT(x, y)` function - hypotenuse
 - [ ] `_NEGATE(n)` function - negate value
 
 #### Trigonometric (Extended)
@@ -431,15 +433,15 @@ against the current QB64Fresh implementation. Organized by priority and category
 - [ ] `_D2R(degrees)` / `_R2D(radians)` - degree/radian conversion
 - [ ] `_D2G(degrees)` / `_G2D(gradians)` / `_G2R(gradians)` / `_R2G(radians)` - gradian conversions
 
-#### Bitwise Operations
-- [ ] `_SHL(value, bits)` function - shift left
-- [ ] `_SHR(value, bits)` function - shift right
-- [ ] `_ROL(value, bits)` function - rotate left
-- [ ] `_ROR(value, bits)` function - rotate right
-- [ ] `_READBIT(value, bit)` function - read bit
-- [ ] `_SETBIT(value, bit)` function - set bit
-- [ ] `_RESETBIT(value, bit)` function - clear bit
-- [ ] `_TOGGLEBIT(value, bit)` function - toggle bit
+#### Bitwise Operations ✅
+- [x] `_SHL(value, bits)` function - shift left
+- [x] `_SHR(value, bits)` function - shift right
+- [x] `_ROL(value, bits)` function - rotate left
+- [x] `_ROR(value, bits)` function - rotate right
+- [x] `_READBIT(value, bit)` function - read bit
+- [x] `_SETBIT(value, bit)` function - set bit
+- [x] `_RESETBIT(value, bit)` function - clear bit
+- [x] `_TOGGLEBIT(value, bit)` function - toggle bit
 
 #### String Functions
 - [ ] `_STRCMP(a$, b$)` function - case-sensitive compare

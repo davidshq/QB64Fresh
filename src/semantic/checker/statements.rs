@@ -38,6 +38,31 @@ impl<'a> TypeChecker<'a> {
                 self.check_print(values, *newline, stmt.span)
             }
 
+            StatementKind::PrintUsing {
+                format,
+                values,
+                newline,
+            } => {
+                let typed_format = self.check_expr(format);
+                // Format string should be a string type
+                if typed_format.basic_type != BasicType::String {
+                    self.errors.push(SemanticError::type_mismatch(
+                        "String",
+                        format!("{:?}", typed_format.basic_type),
+                        stmt.span,
+                    ));
+                }
+                let typed_values: Vec<_> = values.iter().map(|v| self.check_expr(v)).collect();
+                TypedStatement::new(
+                    TypedStatementKind::PrintUsing {
+                        format: typed_format,
+                        values: typed_values,
+                        newline: *newline,
+                    },
+                    stmt.span,
+                )
+            }
+
             StatementKind::Input {
                 prompt,
                 show_question_mark,

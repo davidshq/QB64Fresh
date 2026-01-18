@@ -369,6 +369,48 @@ impl SemanticAnalyzer {
             BasicType::Double,
         );
 
+        // Bitwise operations
+        self.register_builtin_function(
+            "_SHL",
+            &[("value", BasicType::Long), ("bits", BasicType::Long)],
+            BasicType::Long,
+        );
+        self.register_builtin_function(
+            "_SHR",
+            &[("value", BasicType::Long), ("bits", BasicType::Long)],
+            BasicType::Long,
+        );
+        self.register_builtin_function(
+            "_ROL",
+            &[("value", BasicType::Long), ("bits", BasicType::Long)],
+            BasicType::Long,
+        );
+        self.register_builtin_function(
+            "_ROR",
+            &[("value", BasicType::Long), ("bits", BasicType::Long)],
+            BasicType::Long,
+        );
+        self.register_builtin_function(
+            "_READBIT",
+            &[("value", BasicType::Long), ("bit", BasicType::Long)],
+            BasicType::Long,
+        );
+        self.register_builtin_function(
+            "_SETBIT",
+            &[("value", BasicType::Long), ("bit", BasicType::Long)],
+            BasicType::Long,
+        );
+        self.register_builtin_function(
+            "_RESETBIT",
+            &[("value", BasicType::Long), ("bit", BasicType::Long)],
+            BasicType::Long,
+        );
+        self.register_builtin_function(
+            "_TOGGLEBIT",
+            &[("value", BasicType::Long), ("bit", BasicType::Long)],
+            BasicType::Long,
+        );
+
         // Type conversion
         self.register_builtin_function("HEX$", &[("n", BasicType::Long)], BasicType::String);
         self.register_builtin_function("OCT$", &[("n", BasicType::Long)], BasicType::String);
@@ -402,7 +444,13 @@ impl SemanticAnalyzer {
         // QB64 keyboard extensions
         self.register_builtin_function("_KEYHIT", &[], BasicType::Long);
         self.register_builtin_function("_KEYDOWN", &[("code", BasicType::Long)], BasicType::Long);
+        self.register_builtin_function("_CINP", &[], BasicType::Long);
         // _KEYCLEAR is a statement, not a function - handled separately
+
+        // Lock key state functions
+        self.register_builtin_function("_CAPSLOCK", &[], BasicType::Long);
+        self.register_builtin_function("_NUMLOCK", &[], BasicType::Long);
+        self.register_builtin_function("_SCROLLLOCK", &[], BasicType::Long);
 
         // Error handling functions
         self.register_builtin_function("ERR", &[], BasicType::Integer);

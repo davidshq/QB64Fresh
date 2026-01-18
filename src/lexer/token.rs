@@ -279,8 +279,9 @@ pub enum TokenKind {
     Unsigned,
 
     // ==================== I/O Keywords ====================
-    /// PRINT statement
+    /// PRINT statement (also recognized as ? for shorthand)
     #[token("PRINT", ignore(ascii_case))]
+    #[token("?")]
     Print,
 
     /// INPUT statement
@@ -350,6 +351,10 @@ pub enum TokenKind {
     /// APPEND keyword - append file mode
     #[token("APPEND", ignore(ascii_case))]
     Append,
+
+    /// USING keyword - format string for PRINT USING
+    #[token("USING", ignore(ascii_case))]
+    Using,
 
     /// LEN keyword - record length for random access files
     #[token("LEN", ignore(ascii_case))]

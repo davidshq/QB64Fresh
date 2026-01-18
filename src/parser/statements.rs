@@ -7,7 +7,7 @@
 //! handled in their respective modules.
 
 use crate::ast::{
-    ArrayDimension, CommonVariable, ContinueType, DataValue, ExitType, ExprKind,
+    ArrayDimension, CommonVariable, ContinueType, DataValue, ExitType, Expr, ExprKind,
     ExternalDeclaration, ExternalParam, FileAccess, FileLock, FileMode, PrintItem, PrintSeparator,
     ResumeTarget, Span, Statement, StatementKind, TypeSpec, ViewCoords,
 };
@@ -826,7 +826,7 @@ impl<'a> Parser<'a> {
 
     // ==================== PRINT with File Support ====================
 
-    /// Parses PRINT or PRINT #filenum (file output).
+    /// Parses PRINT, PRINT #filenum (file output), or PRINT USING (formatted).
     pub(super) fn parse_print_or_file_print(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("PRINT keyword").span.start;
 
@@ -838,8 +838,63 @@ impl<'a> Parser<'a> {
             return self.parse_file_print(start, file_num);
         }
 
+        // Check for PRINT USING format$; value1, value2, ...
+        if self.check(&TokenKind::Using) {
+            return self.parse_print_using(start);
+        }
+
         // Regular PRINT statement
         self.parse_print_items(start)
+    }
+
+    /// Parses PRINT USING format$; value1, value2, ...
+    fn parse_print_using(&mut self, start: usize) -> Result<Statement, ()> {
+        self.advance(); // consume USING
+
+        // Parse the format string
+        let format = self.parse_expression()?;
+
+        // Expect semicolon after format string
+        self.expect(&TokenKind::Semicolon, "`;` after format string")?;
+
+        // Parse values separated by commas or semicolons
+        let mut values: Vec<Expr> = Vec::new();
+        let mut newline = true;
+
+        while !self.is_at_end()
+            && !self.check(&TokenKind::Newline)
+            && !self.check(&TokenKind::Colon)
+        {
+            let expr = self.parse_expression()?;
+            values.push(expr);
+
+            // Check for comma or semicolon separator
+            if self.check(&TokenKind::Comma) {
+                self.advance();
+            } else if self.check(&TokenKind::Semicolon) {
+                self.advance();
+                // Trailing semicolon suppresses newline
+                if self.is_at_end()
+                    || self.check(&TokenKind::Newline)
+                    || self.check(&TokenKind::Colon)
+                {
+                    newline = false;
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::PrintUsing {
+                format,
+                values,
+                newline,
+            },
+            span,
+        ))
     }
 
     /// Parses the items in a PRINT statement (shared between PRINT and PRINT #).

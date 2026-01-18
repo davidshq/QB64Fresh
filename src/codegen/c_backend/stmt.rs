@@ -113,6 +113,79 @@ impl StmtEmitter {
                 }
             }
 
+            TypedStatementKind::PrintUsing {
+                format,
+                values,
+                newline,
+            } => {
+                let format_code = emit_expr(format)?;
+                // Generate code to print each value using the format string
+                // We use a runtime function that handles format string parsing
+                if values.is_empty() {
+                    // Just print the format string as-is if no values
+                    writeln!(
+                        output,
+                        "{}qb_print_using({}, NULL, 0);",
+                        indent, format_code
+                    )
+                    .unwrap();
+                } else {
+                    // Build array of values
+                    writeln!(output, "{}{{", indent).unwrap();
+                    writeln!(output, "{}    QbPrintValue _pv[{}];", indent, values.len()).unwrap();
+                    for (i, value) in values.iter().enumerate() {
+                        let value_code = emit_expr(value)?;
+                        match &value.basic_type {
+                            BasicType::String => {
+                                writeln!(
+                                    output,
+                                    "{}    _pv[{}].type = QB_TYPE_STRING; _pv[{}].str_val = {};",
+                                    indent, i, i, value_code
+                                )
+                                .unwrap();
+                            }
+                            BasicType::Integer | BasicType::Long => {
+                                writeln!(
+                                    output,
+                                    "{}    _pv[{}].type = QB_TYPE_INT; _pv[{}].int_val = (int64_t){};",
+                                    indent, i, i, value_code
+                                )
+                                .unwrap();
+                            }
+                            BasicType::Single | BasicType::Double => {
+                                writeln!(
+                                    output,
+                                    "{}    _pv[{}].type = QB_TYPE_DOUBLE; _pv[{}].dbl_val = (double){};",
+                                    indent, i, i, value_code
+                                )
+                                .unwrap();
+                            }
+                            _ => {
+                                // For other types, try to convert to double
+                                writeln!(
+                                    output,
+                                    "{}    _pv[{}].type = QB_TYPE_DOUBLE; _pv[{}].dbl_val = (double){};",
+                                    indent, i, i, value_code
+                                )
+                                .unwrap();
+                            }
+                        }
+                    }
+                    writeln!(
+                        output,
+                        "{}    qb_print_using({}, _pv, {});",
+                        indent,
+                        format_code,
+                        values.len()
+                    )
+                    .unwrap();
+                    writeln!(output, "{}}}", indent).unwrap();
+                }
+                if *newline {
+                    writeln!(output, "{}qb_print_newline();", indent).unwrap();
+                }
+            }
+
             TypedStatementKind::Input {
                 prompt,
                 show_question_mark,

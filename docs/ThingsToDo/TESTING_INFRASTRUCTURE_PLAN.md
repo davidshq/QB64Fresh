@@ -13,16 +13,16 @@
 
 **UPDATE:** As of 2026-01-18, the testing infrastructure has been substantially implemented:
 - **163 unit tests** in source modules
-- **128 integration tests** (0 ignored)
+- **176 integration tests** (0 ignored)
 - **10 golden tests** for C code generation snapshots
 - **16 compatibility test fixtures** (auto-discovered)
 - **19 property-based tests** using proptest (thousands of iterations)
 - **30 benchmarks** measuring compiler performance
 - **37 runtime tests**
 
-Total: **350+ tests** across the workspace.
+Total: **398+ tests** across the workspace.
 **Line coverage:** 59.92% (measured via cargo-llvm-cov)
-**Fuzz testing:** 3 fuzz targets ready (requires nightly + cargo-fuzz)
+**Fuzz testing:** 3 fuzz targets verified (~4.6M inputs, 0 crashes)
 
 ---
 
@@ -31,7 +31,7 @@ Total: **350+ tests** across the workspace.
 ### What We Have (Updated)
 - Unit tests integrated into source files using `#[cfg(test)]` modules
 - **163 passing unit tests** across compiler modules
-- **128 integration tests** covering full compilation pipeline
+- **148 integration tests** covering full compilation pipeline
 - **10 golden tests** for codegen snapshot verification
 - **16 compatibility test fixtures** in QB64pe-style format
 - **30 criterion benchmarks** for performance tracking
@@ -74,7 +74,7 @@ src/
 ### Tier 2: Integration Tests ✅ IMPLEMENTED
 **Location:** `tests/integration_tests.rs`
 **Purpose:** Test complete compiler pipeline end-to-end
-**Status:** 128 tests passing, 0 ignored
+**Status:** 176 tests passing, 0 ignored
 
 Tests cover:
 - Basic programs (hello world, comments, END)
@@ -169,10 +169,10 @@ Property tests verify the compiler never panics on arbitrary input:
 
 Run: `cargo test --test proptest_tests`
 
-### Tier 7: Fuzz Testing ✅ INFRASTRUCTURE READY
+### Tier 7: Fuzz Testing ✅ VERIFIED
 **Location:** `fuzz/`
 **Purpose:** Continuous fuzzing to find edge cases
-**Status:** Infrastructure in place, requires nightly Rust and cargo-fuzz
+**Status:** All 3 targets verified with ~4.6M total inputs, 0 crashes found
 
 Fuzz targets:
 - `fuzz_lexer` - Fuzz arbitrary input to the lexer
@@ -200,7 +200,7 @@ cargo +nightly fuzz run fuzz_lexer -- -max_total_time=60
 ### Phase 1: Foundation ✅ COMPLETE
 
 #### 1.1 Integration Test Framework ✅
-Implemented in `tests/integration_tests.rs` with 128 tests covering:
+Implemented in `tests/integration_tests.rs` with 148 tests covering:
 - Full compilation pipeline (lex → parse → analyze → codegen)
 - Helper functions: `compile_to_c()`, `assert_compiles()`, `assert_compile_error()`
 - Organized into modules by feature area
@@ -403,11 +403,11 @@ fn compile_compat_qb45_arrays()
 - [ ] 50+ QB4.5 compatibility tests passing (blocked by unimplemented features)
 - [ ] Automated comparison with QB64PE output
 
-### Phase 4 Goals ✅ BENCHMARKS + PROPTEST COMPLETE
+### Phase 4 Goals ✅ BENCHMARKS + PROPTEST + FUZZING COMPLETE
 - [x] Criterion benchmarks operational (30 benchmarks)
 - [x] Property tests pass (19 proptest tests, thousands of iterations per test)
-- [ ] Fuzzing catches no new panics (not yet implemented)
-- [ ] 80%+ line coverage (currently 56.53%)
+- [x] Fuzzing verified (~4.6M inputs across 3 targets, 0 crashes)
+- [ ] 80%+ line coverage (currently 59.92%)
 
 ---
 
@@ -445,7 +445,7 @@ fn compile_compat_qb45_arrays()
 cargo test --workspace
 
 # Run specific test suites
-cargo test --test integration_tests    # 128 integration tests
+cargo test --test integration_tests    # 176 integration tests
 cargo test --test golden_tests         # 10 golden tests
 cargo test --test compatibility        # 16 fixture tests
 cargo test --test proptest_tests       # 19 property-based tests
@@ -485,3 +485,5 @@ cargo llvm-cov --workspace --lcov      # LCOV format for CI
 *Updated: 2026-01-18 - Added coverage reporting (56.53%), property-based testing (19 tests), CI coverage job*
 *Updated: 2026-01-18 - String functions and RND/RANDOMIZE implemented, 5 tests enabled (110 passing, 2 ignored)*
 *Updated: 2026-01-18 - Session 019: SYSTEM, labeled DATA, File I/O tests, console INPUT tests, built-in functions (TIMER, DATE$, TIME$, TRIM$), fuzz infrastructure (128 tests, 0 ignored, 59.92% coverage)*
+*Updated: 2026-01-18 - Session 020: SLEEP, _DELAY, _LIMIT, ERASE, TAB, SPC, POS, CSRLIN, _KEYHIT, _KEYDOWN, _KEYCLEAR; fuzz testing verified (~4.6M inputs, 0 crashes); 148 tests*
+*Updated: 2026-01-18 - Session 021: PRINT USING, ? as PRINT alias, bitwise ops (_SHL/_SHR/_ROL/_ROR/_READBIT/_SETBIT/_RESETBIT/_TOGGLEBIT), keyboard (_CINP, lock keys), graphics stubs, _CLAMP/_HYPOT tests; 176 tests*

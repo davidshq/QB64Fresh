@@ -175,6 +175,16 @@ pub enum TypedStatementKind {
         newline: bool,
     },
 
+    /// PRINT USING formatted output.
+    PrintUsing {
+        /// The format string expression.
+        format: TypedExpr,
+        /// Values to format.
+        values: Vec<TypedExpr>,
+        /// Whether to print newline.
+        newline: bool,
+    },
+
     /// INPUT statement with typed variables.
     Input {
         prompt: Option<String>,

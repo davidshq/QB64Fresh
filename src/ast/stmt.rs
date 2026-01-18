@@ -44,6 +44,18 @@ pub enum StatementKind {
         newline: bool,
     },
 
+    /// `PRINT USING format$; value1, value2, ...`
+    ///
+    /// Formatted output using a format string with placeholders.
+    PrintUsing {
+        /// The format string expression.
+        format: Expr,
+        /// Values to format and print.
+        values: Vec<Expr>,
+        /// Whether to print a newline at the end (false if trailing `;`).
+        newline: bool,
+    },
+
     /// `[LET] variable = expression`
     ///
     /// Assignment statement. The LET keyword is optional in modern BASIC.
