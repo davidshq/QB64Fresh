@@ -113,9 +113,40 @@ double qb_clamp(double value, double min, double max) {
     return value < min ? min : (value > max ? max : value);
 }
 
-float qb_rnd(float seed) {
-    (void)seed; /* QB RND ignores seed for now */
-    return (float)rand() / (float)RAND_MAX;
+static uint64_t qb_rng_state = 0x853c49e6748fea9b;
+
+void qb_randomize(double seed) {
+    union { double d; uint64_t u; } conv;
+    conv.d = seed;
+    qb_rng_state = conv.u;
+    if (qb_rng_state == 0) qb_rng_state = 1;
+}
+
+void qb_randomize_timer(void) {
+#ifdef _WIN32
+    LARGE_INTEGER pc;
+    QueryPerformanceCounter(&pc);
+    qb_rng_state = (uint64_t)pc.QuadPart;
+#else
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    qb_rng_state = (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+#endif
+    if (qb_rng_state == 0) qb_rng_state = 1;
+}
+
+float qb_rnd(float n) {
+    if (n < 0.0f) {
+        /* Negative seed: reseed and return first value */
+        qb_randomize((double)n);
+    }
+    if (n != 0.0f) {
+        /* xorshift64 algorithm */
+        qb_rng_state ^= qb_rng_state << 13;
+        qb_rng_state ^= qb_rng_state >> 7;
+        qb_rng_state ^= qb_rng_state << 17;
+    }
+    return (float)((double)qb_rng_state / (double)UINT64_MAX);
 }
 
 qb_string* qb_left(qb_string* s, int32_t n) {

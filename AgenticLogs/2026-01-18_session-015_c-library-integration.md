@@ -101,3 +101,65 @@ struct ExternalParam {
 - Automatic header parsing
 - Complex type marshalling (structs, unions)
 - Callback support (C calling BASIC functions)
+
+## Codebase Review (Continued Session)
+
+After C Library Integration was committed, a comprehensive codebase review was performed.
+
+### Review Summary
+
+Created `docs/ThingsToDo/2026-01-18_codebase-review.md` with findings:
+
+**Critical Issues (Document/Accept):**
+- SHELL command injection risk (expected BASIC behavior)
+- Path traversal in file operations (expected BASIC behavior)
+
+**High Priority:**
+- 1,024 `unwrap()` calls (up from 945) - needs incremental conversion
+- 12 `panic!()` calls in non-panic contexts
+- Test coverage gaps - major modules like `stmt.rs` have no dedicated tests
+
+**Medium Priority:**
+- 200+ excessive `.clone()` calls
+- Inconsistent error handling patterns
+- Missing module documentation
+
+**Architecture Health:**
+- Clean pipeline separation (lexer → parser → semantic → codegen)
+- Well-designed trait abstractions for backends
+- stmt.rs files growing large (1000-2500 lines) - consider splitting
+
+### Progress Assessment
+
+| Phase | Status |
+|-------|--------|
+| Phase 1 | Complete |
+| Phase 2 | Complete |
+| Phase 3 | In Progress (framework done) |
+| Phase 4 | In Progress (framework done) |
+| Phase 5 | In Progress (C Library ✅, Networking ✅) |
+
+## Documentation Improvements (Continued Session)
+
+Based on the codebase review findings, addressed the "Missing Documentation" item.
+
+### Review Findings
+
+**Assessment of existing documentation:**
+- `src/codegen/c_backend/` - Already well-documented (mod.rs, expr.rs, types.rs, analysis.rs, runtime.rs all have thorough module-level docs)
+- `src/semantic/checker/` - Already well-documented (mod.rs has comprehensive module docs, sub-modules have section docs)
+- Runtime FFI functions - Most already had `# Safety` sections
+
+### Changes Made
+
+Added missing `# Safety` documentation to 4 FFI functions:
+1. `runtime/src/graphics_ffi.rs`:
+   - `qb_gfx_draw` - Added safety note for `commands` parameter
+   - `qb_gfx_loadimage` - Added safety note for `filename` parameter
+   - `qb_gfx_printstring` - Added safety note for `text` parameter
+2. `runtime/src/audio_ffi.rs`:
+   - `qb_sndopen` - Added safety note for `filename` parameter
+
+### Conclusion
+
+The codebase review's "Medium Priority: Missing Documentation" finding was largely addressed already. The existing documentation is thorough and follows Rust conventions. Only 4 FFI functions needed safety documentation additions.

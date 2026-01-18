@@ -83,6 +83,9 @@ impl<'a> Parser<'a> {
             TokenKind::Minus => self.parse_unary(UnaryOp::Negate),
             TokenKind::Not => self.parse_unary(UnaryOp::Not),
 
+            // String function that's also a keyword (LEN is used in OPEN...LEN=n)
+            TokenKind::Len => self.parse_builtin_function("LEN"),
+
             // Phase 5: System Integration functions
             TokenKind::FileExists => self.parse_builtin_function("_FILEEXISTS"),
             TokenKind::DirExists => self.parse_builtin_function("_DIREXISTS"),

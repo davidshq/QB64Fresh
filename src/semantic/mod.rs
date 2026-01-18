@@ -268,32 +268,33 @@ impl SemanticAnalyzer {
     /// Registers all built-in functions.
     fn register_builtins(&mut self) {
         // String functions
+        // Note: Using Long for integer parameters since integer literals default to Long in QB64
         self.register_builtin_function("LEN", &[("s", BasicType::String)], BasicType::Long);
-        self.register_builtin_function("CHR$", &[("n", BasicType::Integer)], BasicType::String);
-        self.register_builtin_function("ASC", &[("s", BasicType::String)], BasicType::Integer);
+        self.register_builtin_function("CHR$", &[("n", BasicType::Long)], BasicType::String);
+        self.register_builtin_function("ASC", &[("s", BasicType::String)], BasicType::Long);
         self.register_builtin_function(
             "LEFT$",
-            &[("s", BasicType::String), ("n", BasicType::Integer)],
+            &[("s", BasicType::String), ("n", BasicType::Long)],
             BasicType::String,
         );
         self.register_builtin_function(
             "RIGHT$",
-            &[("s", BasicType::String), ("n", BasicType::Integer)],
+            &[("s", BasicType::String), ("n", BasicType::Long)],
             BasicType::String,
         );
         self.register_builtin_function(
             "MID$",
             &[
                 ("s", BasicType::String),
-                ("start", BasicType::Integer),
-                ("len", BasicType::Integer),
+                ("start", BasicType::Long),
+                ("len", BasicType::Long),
             ],
             BasicType::String,
         );
         self.register_builtin_function(
             "INSTR",
             &[
-                ("start", BasicType::Integer),
+                ("start", BasicType::Long),
                 ("s", BasicType::String),
                 ("find", BasicType::String),
             ],
@@ -307,10 +308,10 @@ impl SemanticAnalyzer {
         self.register_builtin_function("VAL", &[("s", BasicType::String)], BasicType::Double);
         self.register_builtin_function(
             "STRING$",
-            &[("n", BasicType::Integer), ("c", BasicType::String)],
+            &[("n", BasicType::Long), ("c", BasicType::String)],
             BasicType::String,
         );
-        self.register_builtin_function("SPACE$", &[("n", BasicType::Integer)], BasicType::String);
+        self.register_builtin_function("SPACE$", &[("n", BasicType::Long)], BasicType::String);
 
         // Math functions
         self.register_builtin_function("ABS", &[("n", BasicType::Double)], BasicType::Double);
@@ -328,7 +329,8 @@ impl SemanticAnalyzer {
         self.register_builtin_function("COS", &[("n", BasicType::Double)], BasicType::Double);
         self.register_builtin_function("TAN", &[("n", BasicType::Double)], BasicType::Double);
         self.register_builtin_function("ATN", &[("n", BasicType::Double)], BasicType::Double);
-        self.register_builtin_function("RND", &[("n", BasicType::Single)], BasicType::Single);
+        // RND can be called without arguments (defaults to RND(1))
+        self.register_builtin_function("RND", &[], BasicType::Single);
 
         // QB64 extended math functions
         self.register_builtin_function("_PI", &[], BasicType::Double);

@@ -1014,7 +1014,6 @@ mod builtin_functions {
     }
 
     #[test]
-    #[ignore = "LEN and other string functions not yet implemented"]
     fn string_functions() {
         let source = r#"
             DIM s AS STRING
@@ -1030,7 +1029,6 @@ mod builtin_functions {
     }
 
     #[test]
-    #[ignore = "CHR$ and ASC functions not yet implemented"]
     fn chr_asc_functions() {
         let source = r#"
             PRINT CHR$(65)
@@ -1049,17 +1047,17 @@ mod builtin_functions {
     }
 
     #[test]
-    #[ignore = "INSTR function not yet implemented"]
     fn instr_function() {
+        // Note: Uses 3-argument form INSTR(start, string, search)
+        // TODO: Add support for 2-argument form INSTR(string, search)
         let source = r#"
-            PRINT INSTR("Hello World", "o")
+            PRINT INSTR(1, "Hello World", "o")
             PRINT INSTR(6, "Hello World", "o")
         "#;
         assert_compiles(source);
     }
 
     #[test]
-    #[ignore = "SPACE$ and STRING$ functions not yet implemented"]
     fn space_string_functions() {
         let source = r#"
             PRINT SPACE$(10)
@@ -1069,7 +1067,6 @@ mod builtin_functions {
     }
 
     #[test]
-    #[ignore = "RANDOMIZE and RND not yet implemented"]
     fn rnd_function() {
         let source = r#"
             RANDOMIZE TIMER

@@ -374,6 +374,27 @@ impl<'a> TypeChecker<'a> {
                 )
             }
 
+            StatementKind::Randomize { seed, use_timer } => {
+                // Type check the seed expression if provided
+                let typed_seed = seed.as_ref().map(|s| self.check_expr(s));
+
+                // Seed should be a numeric type (but we'll allow any for flexibility)
+                if let Some(ref typed) = typed_seed
+                    && typed.basic_type == BasicType::String
+                {
+                    self.errors
+                        .push(SemanticError::type_mismatch("numeric", "STRING", stmt.span));
+                }
+
+                TypedStatement::new(
+                    TypedStatementKind::Randomize {
+                        seed: typed_seed,
+                        use_timer: *use_timer,
+                    },
+                    stmt.span,
+                )
+            }
+
             // ==================== File I/O Statements ====================
             StatementKind::OpenFile {
                 filename,

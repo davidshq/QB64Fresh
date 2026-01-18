@@ -268,9 +268,59 @@ fn emit_math_functions(output: &mut String) {
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
-    writeln!(output, "float qb_rnd(float seed) {{").unwrap();
-    writeln!(output, "    (void)seed; /* QB RND ignores seed for now */").unwrap();
-    writeln!(output, "    return (float)rand() / (float)RAND_MAX;").unwrap();
+    // Random number generator state (xorshift64)
+    writeln!(output, "static uint64_t qb_rng_state = 0x853c49e6748fea9b;").unwrap();
+    writeln!(output).unwrap();
+
+    // RANDOMIZE with specific seed
+    writeln!(output, "void qb_randomize(double seed) {{").unwrap();
+    writeln!(output, "    union {{ double d; uint64_t u; }} conv;").unwrap();
+    writeln!(output, "    conv.d = seed;").unwrap();
+    writeln!(output, "    qb_rng_state = conv.u;").unwrap();
+    writeln!(output, "    if (qb_rng_state == 0) qb_rng_state = 1;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // RANDOMIZE TIMER - seed with system time
+    writeln!(output, "void qb_randomize_timer(void) {{").unwrap();
+    writeln!(output, "#ifdef _WIN32").unwrap();
+    writeln!(output, "    LARGE_INTEGER pc;").unwrap();
+    writeln!(output, "    QueryPerformanceCounter(&pc);").unwrap();
+    writeln!(output, "    qb_rng_state = (uint64_t)pc.QuadPart;").unwrap();
+    writeln!(output, "#else").unwrap();
+    writeln!(output, "    struct timespec ts;").unwrap();
+    writeln!(output, "    clock_gettime(CLOCK_REALTIME, &ts);").unwrap();
+    writeln!(
+        output,
+        "    qb_rng_state = (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;"
+    )
+    .unwrap();
+    writeln!(output, "#endif").unwrap();
+    writeln!(output, "    if (qb_rng_state == 0) qb_rng_state = 1;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // RND function - returns random float 0.0 to 1.0
+    writeln!(output, "float qb_rnd(float n) {{").unwrap();
+    writeln!(output, "    if (n < 0.0f) {{").unwrap();
+    writeln!(
+        output,
+        "        /* Negative seed: reseed and return first value */"
+    )
+    .unwrap();
+    writeln!(output, "        qb_randomize((double)n);").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    if (n != 0.0f) {{").unwrap();
+    writeln!(output, "        /* xorshift64 algorithm */").unwrap();
+    writeln!(output, "        qb_rng_state ^= qb_rng_state << 13;").unwrap();
+    writeln!(output, "        qb_rng_state ^= qb_rng_state >> 7;").unwrap();
+    writeln!(output, "        qb_rng_state ^= qb_rng_state << 17;").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(
+        output,
+        "    return (float)((double)qb_rng_state / (double)UINT64_MAX);"
+    )
+    .unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 }

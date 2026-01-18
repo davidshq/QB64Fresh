@@ -131,6 +131,9 @@ pub unsafe extern "C" fn qb_play(commands: *const c_char) -> c_int {
 
 /// Open a sound file.
 ///
+/// # Safety
+/// - `filename` must be a valid null-terminated C string
+///
 /// # Returns
 /// Sound handle (positive) or error code (negative)
 #[no_mangle]

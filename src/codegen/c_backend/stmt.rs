@@ -359,6 +359,21 @@ impl StmtEmitter {
                 self.emit_restore(&indent, label, output)?;
             }
 
+            TypedStatementKind::Randomize { seed, use_timer } => {
+                if *use_timer {
+                    // RANDOMIZE TIMER - seed with system time
+                    writeln!(output, "{}qb_randomize_timer();", indent).unwrap();
+                } else if let Some(seed_expr) = seed {
+                    // RANDOMIZE expr - seed with specific value
+                    let seed_code = emit_expr(seed_expr)?;
+                    writeln!(output, "{}qb_randomize((double)({}));", indent, seed_code).unwrap();
+                } else {
+                    // RANDOMIZE without arguments - for compatibility, use timer
+                    // (in original BASIC, this would prompt the user)
+                    writeln!(output, "{}qb_randomize_timer();", indent).unwrap();
+                }
+            }
+
             // ==================== File I/O Statements ====================
             TypedStatementKind::OpenFile {
                 filename,

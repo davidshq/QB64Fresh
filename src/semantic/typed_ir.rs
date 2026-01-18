@@ -377,6 +377,18 @@ pub enum TypedStatementKind {
         label: Option<String>,
     },
 
+    /// RANDOMIZE statement to seed the random number generator.
+    ///
+    /// - `RANDOMIZE` - prompt user for seed (not typically used in modern programs)
+    /// - `RANDOMIZE TIMER` - seed with system time
+    /// - `RANDOMIZE expr` - seed with specific value
+    Randomize {
+        /// The seed expression (if provided).
+        seed: Option<TypedExpr>,
+        /// Whether to use TIMER (system time) as the seed.
+        use_timer: bool,
+    },
+
     // ==================== File I/O Statements ====================
     /// OPEN statement for file operations.
     OpenFile {

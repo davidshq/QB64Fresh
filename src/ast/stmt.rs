@@ -209,6 +209,17 @@ pub enum StatementKind {
         label: Option<String>,
     },
 
+    /// `RANDOMIZE [seed]` or `RANDOMIZE TIMER`
+    ///
+    /// Seeds the random number generator. If no argument, prompts user for seed.
+    /// RANDOMIZE TIMER seeds with the current system time.
+    Randomize {
+        /// Seed expression. None means prompt user, Some with TIMER uses system time.
+        seed: Option<Expr>,
+        /// True if TIMER keyword was used (RANDOMIZE TIMER).
+        use_timer: bool,
+    },
+
     /// Label definition: `labelName:`
     Label { name: String },
 

@@ -76,6 +76,9 @@ impl<'a> Parser<'a> {
             TokenKind::Read => self.parse_read(),
             TokenKind::Restore => self.parse_restore(),
 
+            // Random number seeding
+            TokenKind::Randomize => self.parse_randomize(),
+
             // Procedure definitions (delegated to procedures.rs)
             TokenKind::Sub => self.parse_sub(),
             TokenKind::Function => self.parse_function(),
@@ -619,6 +622,53 @@ impl<'a> Parser<'a> {
 
         let span = self.span_from(start);
         Ok(Statement::new(StatementKind::Restore { label }, span))
+    }
+
+    /// Parses a RANDOMIZE statement.
+    ///
+    /// RANDOMIZE [seed | TIMER]
+    ///
+    /// # Examples
+    /// - `RANDOMIZE` - prompts user for seed
+    /// - `RANDOMIZE TIMER` - seeds with system time
+    /// - `RANDOMIZE 12345` - seeds with specific value
+    pub(super) fn parse_randomize(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("RANDOMIZE keyword").span.start;
+
+        // Check for TIMER keyword (handled as identifier since it's not a reserved keyword)
+        if let Some(token) = self.peek()
+            && token.kind == TokenKind::Identifier
+            && token.text.eq_ignore_ascii_case("TIMER")
+        {
+            self.advance(); // consume TIMER
+            let span = self.span_from(start);
+            return Ok(Statement::new(
+                StatementKind::Randomize {
+                    seed: None,
+                    use_timer: true,
+                },
+                span,
+            ));
+        }
+
+        // Check for seed expression - if we have something that could be an expression
+        let seed = if !self.is_at_end()
+            && !self.check(&TokenKind::Colon)
+            && !self.check(&TokenKind::Newline)
+        {
+            self.parse_expression().ok()
+        } else {
+            None
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::Randomize {
+                seed,
+                use_timer: false,
+            },
+            span,
+        ))
     }
 
     // ==================== Other Statements ====================

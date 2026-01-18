@@ -315,6 +315,10 @@ pub enum TokenKind {
     #[token("RANDOM", ignore(ascii_case))]
     Random,
 
+    /// RANDOMIZE keyword - seed random number generator
+    #[token("RANDOMIZE", ignore(ascii_case))]
+    Randomize,
+
     /// OUTPUT keyword - output file mode
     #[token("OUTPUT", ignore(ascii_case))]
     Output,

@@ -569,6 +569,9 @@ pub extern "C" fn qb_gfx_window_reset() -> c_int {
 }
 
 /// Execute DRAW turtle graphics commands.
+///
+/// # Safety
+/// - `commands` must be a valid null-terminated C string
 #[no_mangle]
 pub unsafe extern "C" fn qb_gfx_draw(commands: *const c_char) -> c_int {
     if commands.is_null() {
@@ -607,6 +610,9 @@ pub extern "C" fn qb_gfx_newimage(width: i32, height: i32, mode: i32) -> i32 {
 }
 
 /// Load an image from file.
+///
+/// # Safety
+/// - `filename` must be a valid null-terminated C string
 #[no_mangle]
 pub unsafe extern "C" fn qb_gfx_loadimage(filename: *const c_char, mode: i32) -> i32 {
     if filename.is_null() {
@@ -746,6 +752,9 @@ pub extern "C" fn qb_gfx_dest(handle: i32) -> c_int {
 }
 
 /// Print string at pixel coordinates.
+///
+/// # Safety
+/// - `text` must be a valid null-terminated C string
 #[no_mangle]
 pub unsafe extern "C" fn qb_gfx_printstring(x: i32, y: i32, text: *const c_char) -> c_int {
     if text.is_null() {

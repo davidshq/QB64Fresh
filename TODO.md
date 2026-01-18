@@ -290,11 +290,384 @@ runtime/src/
 - [ ] Tutorial/getting started guide
 - [ ] Example programs
 
-### Testing
+### Testing (See TESTING_INFRASTRUCTURE_PLAN.md for details)
 - [ ] Expand test suite for all built-ins
 - [ ] Integration tests for compiled programs
 - [ ] Compatibility tests against QB64 programs
 - [ ] Fuzzing for parser robustness
+- [ ] Add snapshot testing with `insta` crate
+- [ ] Port QB4.5 test cases from QB64pe
+- [ ] Achieve 60%+ file coverage (currently ~39%)
+- [ ] Add codegen unit tests (stmt.rs has 2533 lines, 0 tests)
+
+---
+
+## Phase 7: Missing Language Features (Discovered 2026-01-18)
+
+The following features were identified by comparing the QB64pe syntax highlighter keyword list
+against the current QB64Fresh implementation. Organized by priority and category.
+
+### High Priority - QB4.5 Core Features
+
+#### Timing & Flow Control
+- [ ] `SLEEP` statement - pause execution
+- [ ] `TIMER` variable - seconds since midnight
+- [ ] `RANDOMIZE` statement - seed random number generator
+- [ ] `RUN` statement - run program
+- [ ] `CHAIN` statement - run another program, optionally passing variables
+- [ ] `SYSTEM` statement - exit program to operating system
+- [ ] `TROFF` / `TRON` statements - debug trace off/on
+
+#### Print Formatting
+- [ ] `TAB(n)` function - move to column n in PRINT
+- [ ] `SPC(n)` function - output n spaces in PRINT
+- [ ] `USING` clause - formatted PRINT output
+- [ ] `LPRINT` statement - printer output
+- [ ] `LPOS(n)` function - printer position
+- [ ] `POS(n)` function - current cursor column position
+- [ ] `CSRLIN` variable - current cursor row
+- [ ] `?` - PRINT alias (question mark)
+
+#### Memory/Legacy
+- [ ] `BLOAD` / `BSAVE` statements - binary load/save to memory
+- [ ] `CLEAR` statement - clear memory/variables
+- [ ] `VARPTR()` / `VARPTR$()` / `VARSEG()` - memory address functions
+- [ ] `SADD()` function - string address
+- [ ] `SETMEM` statement - set available memory
+- [ ] `SEG` clause - segment for CALL ABSOLUTE
+
+#### File System
+- [ ] `FILES` statement - directory listing display
+- [ ] `FIELD` statement - define record fields for random access
+- [ ] `LSET` / `RSET` statements - left/right justify in field
+- [ ] `FILEATTR()` function - file attributes
+- [ ] `RESET` statement - close all open files
+
+#### Arrays
+- [ ] `ERASE` statement - clear/deallocate arrays
+
+#### Type Conversion (Microsoft Binary Format)
+- [ ] `CVDMBF()` / `CVSMBF()` functions - convert MBF strings to numbers
+- [ ] `MKDMBF$()` / `MKSMBF$()` functions - convert numbers to MBF strings
+
+#### Procedure Calling
+- [ ] `ABSOLUTE` clause - call machine language routine
+- [ ] `CALLS` statement - call with far pointers
+- [ ] `CDECL` clause - C calling convention
+
+#### Event Handling
+- [ ] `KEY` statement - key event trapping (KEY ON/OFF/STOP)
+- [ ] `KEY(n)` function - check key trap status
+- [ ] `ON KEY(n) GOSUB` - key event handler
+- [ ] `COM` statement - serial port event trapping
+- [ ] `ON COM(n) GOSUB` - serial port event handler
+- [ ] `PEN` statement - light pen event trapping
+- [ ] `ON PEN GOSUB` - light pen event handler
+- [ ] `STRIG` statement - joystick trigger event trapping
+- [ ] `ON STRIG(n) GOSUB` - joystick trigger handler
+- [ ] `UEVENT` - user-defined event
+- [ ] `ON UEVENT GOSUB` - user event handler
+- [ ] `SIGNAL` statement - signal handling
+
+#### Input Devices (QB4.5)
+- [ ] `STICK(n)` function - joystick position
+- [ ] `STRIG(n)` function - joystick trigger state
+
+#### System Interrupts (Legacy)
+- [ ] `INTERRUPT` / `INTERRUPTX` statements - call system interrupts
+
+#### Serial I/O
+- [ ] `ERDEV` / `ERDEV$` - error device information
+- [ ] `IOCTL` / `IOCTL$` - device control
+
+#### Miscellaneous QB4.5
+- [ ] `FRE()` function - free memory
+- [ ] `FREE` statement - free string space
+- [ ] `WAIT` statement - wait for port
+- [ ] `INP()` / `OUT` - port I/O (may need sandboxing)
+- [ ] `PALETTE` statement - set palette colors
+- [ ] `PCOPY` statement - copy screen page
+- [ ] `PMAP()` function - coordinate mapping
+- [ ] `OFF` keyword - turn off event trapping (KEY OFF, etc.)
+- [ ] `ONLY` keyword - exclusive file access (OPEN...FOR...ONLY)
+- [ ] `SMOOTH` keyword - graphics smooth mode
+- [ ] `STRETCH` keyword - graphics stretch mode
+- [ ] `CUSTOMTYPE` - TYPE declaration modifier
+- [ ] `ENDIF` - alternative END IF syntax (no space)
+
+### Medium Priority - QB64 Extensions
+
+#### Keyboard Input (Important for games)
+- [ ] `_KEYHIT` function - get key code without waiting
+- [ ] `_KEYDOWN(code)` function - check if key pressed
+- [ ] `_KEYCLEAR` statement - clear keyboard buffer
+- [ ] `_CINP` function - raw console input
+- [ ] `_CAPSLOCK` / `_NUMLOCK` / `_SCROLLLOCK` - lock key states
+
+#### Timing Functions
+- [ ] `_DELAY(seconds)` statement - pause execution (float precision)
+- [ ] `_LIMIT(fps)` statement - limit frame rate
+
+#### Math Functions
+- [ ] `_CEIL(n)` function - ceiling
+- [ ] `_ROUND(n)` function - round to nearest
+- [ ] `_PI` constant - pi (3.14159...)
+- [ ] `_MIN(a, b)` / `_MAX(a, b)` functions
+- [ ] `_CLAMP(val, min, max)` function
+- [ ] `_HYPOT(x, y)` function - hypotenuse
+- [ ] `_NEGATE(n)` function - negate value
+
+#### Trigonometric (Extended)
+- [ ] `_ACOS(n)` / `_ASIN(n)` functions - arc cosine/sine
+- [ ] `_ATAN2(y, x)` function - arc tangent of y/x
+- [ ] `_SINH(n)` / `_COSH(n)` / `_TANH(n)` - hyperbolic functions
+- [ ] `_ASINH(n)` / `_ACOSH(n)` / `_ATANH(n)` - inverse hyperbolic
+- [ ] `_SEC(n)` / `_CSC(n)` / `_COT(n)` - secant/cosecant/cotangent
+- [ ] `_SECH(n)` / `_CSCH(n)` / `_COTH(n)` - hyperbolic sec/csc/cot
+- [ ] `_ARCSEC(n)` / `_ARCCSC(n)` / `_ARCCOT(n)` - inverse sec/csc/cot
+- [ ] `_D2R(degrees)` / `_R2D(radians)` - degree/radian conversion
+- [ ] `_D2G(degrees)` / `_G2D(gradians)` / `_G2R(gradians)` / `_R2G(radians)` - gradian conversions
+
+#### Bitwise Operations
+- [ ] `_SHL(value, bits)` function - shift left
+- [ ] `_SHR(value, bits)` function - shift right
+- [ ] `_ROL(value, bits)` function - rotate left
+- [ ] `_ROR(value, bits)` function - rotate right
+- [ ] `_READBIT(value, bit)` function - read bit
+- [ ] `_SETBIT(value, bit)` function - set bit
+- [ ] `_RESETBIT(value, bit)` function - clear bit
+- [ ] `_TOGGLEBIT(value, bit)` function - toggle bit
+
+#### String Functions
+- [ ] `_STRCMP(a$, b$)` function - case-sensitive compare
+- [ ] `_STRICMP(a$, b$)` function - case-insensitive compare
+- [ ] `_TOSTR$(n)` function - number to string (no leading space)
+- [ ] `_BIN$(n)` function - number to binary string
+- [ ] `_CV(type, string$)` function - generic convert string to type
+- [ ] `_MK$(type, value)` function - generic convert value to string
+
+#### Error Handling (Extended)
+- [ ] `_ERRORLINE` variable - line number of error
+- [ ] `_ERRORMESSAGE$` function - error message text
+- [ ] `_INCLERRORFILE$` / `_INCLERRORLINE` - include file error info
+- [ ] `_ASSERT` statement - assertions
+- [ ] `$ASSERTS` metacommand - enable assertions
+- [ ] `_EXIT` statement - exit program with code
+
+#### Utility Functions
+- [ ] `_IIF(condition, true_val, false_val)` function - inline IF
+- [ ] `_CAST(type, value)` function - explicit type cast
+- [ ] `_DEFINE` statement - define default variable types by letter range
+- [ ] `_COMMANDCOUNT` function - count of command line arguments
+- [ ] `_ENVIRONCOUNT` function - count of environment variables
+- [ ] `_STATUSCODE` function - status code from last operation
+
+#### Networking (Extended)
+- [ ] `_CONNECTIONADDRESS(handle)` function - get connection IP address
+- [ ] `_CONNECTIONADDRESS$(handle)` function - get connection IP as string
+- [ ] `_DONTWAIT` keyword - non-blocking network operations
+
+### Lower Priority - QB64 Advanced Extensions
+
+#### Desktop/Window Info
+- [ ] `_DESKTOPHEIGHT` / `_DESKTOPWIDTH` functions - desktop dimensions
+- [ ] `_SCREENX` / `_SCREENY` functions - window position
+- [ ] `_SCREENMOVE x, y` statement - move window
+- [ ] `_SCREENEXISTS` function - check if window exists
+- [ ] `_SCREENHIDE` / `_SCREENSHOW` statements - hide/show window
+- [ ] `_SCREENICON` function - check if window is minimized
+- [ ] `_SCREENPRINT` statement - print screen contents
+- [ ] `_SCREENCLICK` statement - simulate screen click
+- [ ] `_FULLSCREEN` statement - toggle fullscreen
+- [ ] `_ALLOWFULLSCREEN` statement - allow/disallow fullscreen toggle
+- [ ] `_TITLE` / `_TITLE$` - set/get window title
+- [ ] `_ICON` statement - set window icon
+- [ ] `_HIDE` / `_SHOW` statements - hide/show window (alias)
+- [ ] `_ONTOP` statement - set window always on top
+- [ ] `_WINDOWHANDLE` function - get native window handle
+- [ ] `_WINDOWHASFOCUS` function - check if window has focus
+
+#### Font Support
+- [ ] `_LOADFONT(file$, size)` function - load font
+- [ ] `_FONT` statement - set current font
+- [ ] `_FREEFONT(handle)` statement - release font
+- [ ] `_FONTHEIGHT` / `_FONTWIDTH` functions - font dimensions
+
+#### Unicode Font Support
+- [ ] `_UCHARPOS` function - Unicode character position
+- [ ] `_UFONTHEIGHT` function - Unicode font height
+- [ ] `_ULINESPACING` function - Unicode line spacing
+- [ ] `_UPRINTSTRING` statement - Unicode print string
+- [ ] `_UPRINTWIDTH` function - Unicode print width
+- [ ] `_MAPUNICODE` statement - map Unicode code points
+
+#### Color Functions
+- [ ] `_RED(color)` / `_GREEN(color)` / `_BLUE(color)` / `_ALPHA(color)` - color components
+- [ ] `_RED32` / `_GREEN32` / `_BLUE32` / `_ALPHA32` - 32-bit color components
+- [ ] `_PALETTECOLOR(index, color)` statement - set palette entry
+- [ ] `_COPYPALETTE` statement - copy palette between images
+- [ ] `_DEFAULTCOLOR` / `_BACKGROUNDCOLOR` functions
+- [ ] `_SETALPHA` statement - set image alpha
+- [ ] `_HSB32(h, s, b)` / `_HSBA32(h, s, b, a)` - HSB color creation
+- [ ] `_HUE32(color)` / `_SATURATION32(color)` / `_BRIGHTNESS32(color)` - HSB components
+- [ ] `_PIXELSIZE` function - bytes per pixel
+
+#### Graphics (Extended)
+- [ ] `_SAVEIMAGE(file$, handle)` statement - save image to file
+- [ ] `_MAPTRIANGLE` statement - 3D triangle mapping
+- [ ] `_BLEND` / `_DONTBLEND` statements - alpha blending control
+- [ ] `_CLEARCOLOR` statement - set transparent color
+- [ ] `_CLIP` keyword - clipping mode for _PUTIMAGE
+- [ ] `_DEPTHBUFFER` statement - depth buffer control
+- [ ] `_SMOOTH` / `_SMOOTHSHRUNK` / `_SMOOTHSTRETCHED` - image scaling modes
+- [ ] `_HARDWARE` / `_HARDWARE1` / `_SOFTWARE` - rendering modes
+- [ ] `_DISPLAYORDER` statement - set display layer order
+- [ ] `_GLRENDER` statement - OpenGL render mode
+- [ ] `_SQUAREPIXELS` keyword - square pixels mode
+- [ ] `_SEAMLESS` keyword - seamless image tiling
+- [ ] `_STRETCH` keyword - stretch mode for _PUTIMAGE
+- [ ] `_ANTICLOCKWISE` / `_CLOCKWISE` keywords - drawing direction
+- [ ] `_BEHIND` keyword - draw behind existing content
+- [ ] `_KEEPBACKGROUND` keyword - preserve background
+- [ ] `_FILLBACKGROUND` keyword - fill background
+- [ ] `_ONLYBACKGROUND` keyword - affect only background
+- [ ] `_PRINTIMAGE` statement - print to image instead of screen
+- [ ] `_PRINTMODE` statement - set print mode (fill/keep/only)
+
+#### Device Input (Gamepad/Joystick)
+- [ ] `_DEVICES` function - number of input devices
+- [ ] `_DEVICE$(n)` function - device name
+- [ ] `_DEVICEINPUT` function - check for device input
+- [ ] `_LASTAXIS(device)` / `_LASTBUTTON(device)` / `_LASTWHEEL(device)` - device capabilities
+- [ ] `_AXIS(device, axis)` function - read axis value
+- [ ] `_BUTTON(device, button)` function - read button state
+- [ ] `_BUTTONCHANGE(device, button)` function - button state changed
+- [ ] `_WHEEL(device, wheel)` function - read wheel value
+- [ ] `_LASTHANDLER` function - get last event handler
+- [ ] `_NEWHANDLER` statement - create new event handler
+
+#### Mouse (Extended)
+- [ ] `_MOUSEHIDDEN` function - check if mouse cursor is hidden
+
+#### Clipboard (Extended)
+- [ ] `_CLIPBOARDIMAGE` function - get image from clipboard
+
+#### Dialog Boxes
+- [ ] `_MESSAGEBOX` function - display message box
+- [ ] `_INPUTBOX$` function - input dialog
+- [ ] `_OPENFILEDIALOG$` function - file open dialog
+- [ ] `_SAVEFILEDIALOG$` function - file save dialog
+- [ ] `_SELECTFOLDERDIALOG$` function - folder select dialog
+- [ ] `_COLORCHOOSERDIALOG` function - color picker
+- [ ] `_NOTIFYPOPUP` function - system notification
+
+#### Drag and Drop
+- [ ] `_ACCEPTFILEDROP` statement - enable file drop
+- [ ] `_TOTALDROPPEDFILES` function - count dropped files
+- [ ] `_DROPPEDFILE` / `_DROPPEDFILE$` functions - get dropped file
+- [ ] `_FINISHDROP` statement - complete drop handling
+
+#### Hash and Encoding Functions
+- [ ] `_CRC32(data$)` function - CRC32 checksum
+- [ ] `_MD5$(data$)` function - MD5 hash
+- [ ] `_ADLER32(data$)` function - Adler32 checksum
+- [ ] `_BASE64ENCODE$(data$)` / `_BASE64DECODE$(data$)` - Base64
+- [ ] `_DEFLATE$(data$)` / `_INFLATE$(data$)` - compression
+- [ ] `_ENCODEURL$(url$)` / `_DECODEURL$(url$)` - URL encoding
+
+#### Memory (Extended)
+- [ ] `_MEMEXISTS(mem)` function - check if memory valid
+- [ ] `_MEMELEMENT(mem, index)` function - get element offset
+- [ ] `_MEMIMAGE(handle)` function - get image memory
+- [ ] `_MEMSOUND(handle)` function - get sound memory
+
+#### Sound (Extended)
+- [ ] `_SNDCOPY(handle)` function - copy sound
+- [ ] `_SNDPLAYCOPY(handle)` statement - play copy
+- [ ] `_SNDPLAYFILE(file$)` statement - quick play file
+- [ ] `_SNDRAWDONE` function - raw buffer done
+- [ ] `_SNDLIMIT(handle, seconds)` statement - limit sound length
+- [ ] `_SNDNEW(frames, channels, bits)` function - create sound buffer
+- [ ] `_SNDRAWBATCH` statement - batch raw samples
+- [ ] `_WAVE` keyword - waveform type for sound synthesis
+- [ ] `_MIDISOUNDBANK` statement - set MIDI soundbank
+
+#### Console Mode
+- [ ] `$CONSOLE` / `$CONSOLE:ONLY` metacommands
+- [ ] `_CONSOLE` statement - enable console
+- [ ] `_CONSOLETITLE` statement - set console title
+- [ ] `_CONSOLECURSOR` statement - console cursor control
+- [ ] `_CONSOLEFONT` statement - console font
+- [ ] `_CONSOLEINPUT` function - console input available
+- [ ] `_CONTROLCHR` statement - control character handling
+- [ ] `_ECHO` statement - console output
+
+#### Logging (QB64 extension)
+- [ ] `_LOGTRACE` / `_LOGINFO` / `_LOGWARN` / `_LOGERROR` statements
+- [ ] `_LOGMINLEVEL` statement - set minimum log level
+
+#### Resize Events
+- [ ] `$RESIZE:ON` / `$RESIZE:OFF` metacommands
+- [ ] `$RESIZE:STRETCH` / `$RESIZE:SMOOTH` metacommands
+- [ ] `_RESIZE` function - check for resize
+- [ ] `_RESIZEHEIGHT` / `_RESIZEWIDTH` functions - new dimensions
+- [ ] `_SCALEDHEIGHT` / `_SCALEDWIDTH` functions - scaled dimensions
+
+#### File I/O (Extended)
+- [ ] `_READFILE$(file$)` function - read entire file
+- [ ] `_WRITEFILE(file$, content$)` statement - write entire file
+- [ ] `_EMBEDDED$(name$)` function - get embedded file data
+- [ ] `$EMBED:'filename'` metacommand - embed file in executable
+- [ ] `_FULLPATH$(path$)` function - get full path
+- [ ] `_FILES$(pattern$)` function - file listing iterator
+
+#### Miscellaneous QB64 Features
+- [ ] `_ANDALSO` / `_ORELSE` operators - short-circuit evaluation
+- [ ] `_NEGATE` function - negate value
+- [ ] `OPTION _EXPLICIT` / `OPTION _EXPLICITARRAY` - require declarations
+- [ ] `SELECT EVERYCASE` - check all cases
+- [ ] `_TRUE` / `_FALSE` constants
+- [ ] `_FPS` function - current frame rate
+- [ ] `_FREETIMER` function - free a timer
+
+### Metacommands (Not Yet Implemented)
+- [ ] `$STATIC` / `$DYNAMIC` - array allocation mode
+- [ ] `$COLOR:0` / `$COLOR:32` - color mode
+- [ ] `$EXEICON:'file.ico'` - executable icon
+- [ ] `$VERSIONINFO:key=value` - version info
+- [ ] `$MIDISOUNDFONT:'file.sf2'` - MIDI soundfont
+- [ ] `$DEBUG` - enable debug mode
+- [ ] `$INCLUDEONCE` - include file only once
+- [ ] `$NOPREFIX` - allow keywords without underscore
+- [ ] `$UNSTABLE:feature` - enable unstable features
+- [ ] `$ERROR message` - compiler error
+- [ ] `$FORMAT` - code formatting directive
+- [ ] `$SCREENHIDE` / `$SCREENSHOW` - hide/show window on startup
+- [ ] `$USELIBRARY` - use external library
+
+### Type Modifiers & Keywords (Not Yet Implemented)
+- [ ] `_BIT` type - single bit type modifier
+- [ ] `_ALL` keyword - all items/modes modifier
+- [ ] `_AUTO` keyword - auto display mode
+- [ ] `_BLINK` keyword - text blinking mode
+- [ ] `_CLEAR` statement - clear specific resource
+- [ ] `_MIDDLE` keyword - middle alignment
+- [ ] `_NONE` constant - none/null value
+- [ ] `_OFF` keyword - off state for toggles
+- [ ] `_ONLY` keyword - exclusive mode modifier
+- [ ] `_TOGGLE` statement - toggle a setting
+
+### OpenGL Commands (Intentionally Excluded)
+
+QB64PE includes ~300+ `_GL*` commands (e.g., `_GLBEGIN`, `_GLEND`, `_GLVERTEX3F`, etc.)
+for raw OpenGL access. These are **intentionally excluded** from QB64Fresh because:
+
+1. We use SDL2/winit for graphics, not raw OpenGL
+2. Raw GL commands expose implementation details that reduce portability
+3. The `_MAPTRIANGLE` statement provides 3D capability without raw GL
+4. Future WebGL/Vulkan backends would be incompatible with GL commands
+
+If raw OpenGL is needed, users can use `DECLARE LIBRARY` to call OpenGL functions directly.
 
 ---
 

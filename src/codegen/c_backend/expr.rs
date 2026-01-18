@@ -67,6 +67,12 @@ pub(super) fn emit_expr(expr: &TypedExpr) -> Result<String, CodeGenError> {
             let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
             let args_str = args_code?.join(", ");
             let c_name = c_function_name(name);
+
+            // Special case: RND without arguments defaults to RND(1)
+            if name == "RND" && args.is_empty() {
+                return Ok(format!("{}(1.0f)", c_name));
+            }
+
             Ok(format!("{}({})", c_name, args_str))
         }
 
