@@ -391,18 +391,22 @@ impl<'a> Parser<'a> {
             if self.check(&TokenKind::Next) {
                 break;
             }
-            // Check for leftover NEXT variable pattern: identifier followed by comma or end-of-statement
-            // This happens with "NEXT j%, i%" where inner loop consumed "NEXT j%, " leaving "i%"
-            // BUT exclude identifier followed by colon - that's a label definition (e.g., "skip:")
-            if self.check(&TokenKind::Identifier) {
+            // Check for leftover NEXT variable pattern from multi-variable NEXT (e.g., "NEXT j, i")
+            // This happens when inner loop consumed "NEXT j, " leaving "i" for outer loop.
+            // We detect this when:
+            // 1. Current token is an identifier that matches our loop variable
+            // 2. It's followed by comma (more variables) or end-of-statement
+            if self.check(&TokenKind::Identifier)
+                && let Some(tok) = self.peek()
+                && tok.text.eq_ignore_ascii_case(&variable)
+            {
                 if let Some(next) = self.peek_ahead(1) {
-                    // If identifier is followed by comma or newline (but NOT colon), it's a NEXT variable
-                    // Colon after identifier means it's a label definition, not a NEXT variable
+                    // Match if followed by comma or newline (end of NEXT statement)
                     if next.kind == TokenKind::Comma || next.kind == TokenKind::Newline {
                         break;
                     }
                 } else {
-                    // Identifier at end of file - treat as NEXT variable
+                    // End of file after our variable name
                     break;
                 }
             }

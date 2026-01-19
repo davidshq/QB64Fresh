@@ -279,6 +279,16 @@ pub enum TypedStatementKind {
         seconds: Option<TypedExpr>,
     },
 
+    /// WAIT statement (wait for hardware port condition).
+    Wait {
+        /// Port address to check.
+        port: TypedExpr,
+        /// AND mask for port value.
+        and_mask: TypedExpr,
+        /// Optional XOR mask (invert bits).
+        xor_mask: Option<TypedExpr>,
+    },
+
     /// _DELAY statement (pause execution, QB64).
     Delay {
         /// Duration in seconds (float).

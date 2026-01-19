@@ -326,6 +326,31 @@ impl StmtEmitter {
                 }
             }
 
+            TypedStatementKind::Wait {
+                port,
+                and_mask,
+                xor_mask,
+            } => {
+                let port_code = emit_expr(port)?;
+                let and_code = emit_expr(and_mask)?;
+                if let Some(xor) = xor_mask {
+                    let xor_code = emit_expr(xor)?;
+                    writeln!(
+                        output,
+                        "{}qb_wait((int){}, (int){}, (int){});",
+                        indent, port_code, and_code, xor_code
+                    )
+                    .unwrap();
+                } else {
+                    writeln!(
+                        output,
+                        "{}qb_wait((int){}, (int){}, 0);",
+                        indent, port_code, and_code
+                    )
+                    .unwrap();
+                }
+            }
+
             TypedStatementKind::Delay { seconds } => {
                 let secs_code = emit_expr(seconds)?;
                 writeln!(output, "{}qb_delay({});", indent, secs_code).unwrap();

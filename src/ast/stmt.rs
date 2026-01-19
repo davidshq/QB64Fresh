@@ -200,6 +200,16 @@ pub enum StatementKind {
         seconds: Option<Expr>,
     },
 
+    /// `WAIT port, and_mask[, xor_mask]` - Wait for hardware port condition
+    Wait {
+        /// Port address to check.
+        port: Expr,
+        /// AND mask for port value.
+        and_mask: Expr,
+        /// Optional XOR mask (invert bits).
+        xor_mask: Option<Expr>,
+    },
+
     /// `_DELAY seconds` - Pause execution (QB64, float precision)
     Delay {
         /// Duration in seconds (float).

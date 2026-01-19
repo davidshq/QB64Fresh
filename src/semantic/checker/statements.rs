@@ -150,6 +150,24 @@ impl<'a> TypeChecker<'a> {
                 )
             }
 
+            StatementKind::Wait {
+                port,
+                and_mask,
+                xor_mask,
+            } => {
+                let typed_port = self.check_expr(port);
+                let typed_and = self.check_expr(and_mask);
+                let typed_xor = xor_mask.as_ref().map(|x| self.check_expr(x));
+                TypedStatement::new(
+                    TypedStatementKind::Wait {
+                        port: typed_port,
+                        and_mask: typed_and,
+                        xor_mask: typed_xor,
+                    },
+                    stmt.span,
+                )
+            }
+
             StatementKind::Delay { seconds } => {
                 let typed_seconds = self.check_expr(seconds);
                 TypedStatement::new(

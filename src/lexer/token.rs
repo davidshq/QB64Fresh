@@ -143,6 +143,10 @@ pub enum TokenKind {
     #[token("SLEEP", ignore(ascii_case))]
     Sleep,
 
+    /// WAIT keyword - wait for hardware port condition
+    #[token("WAIT", ignore(ascii_case))]
+    Wait,
+
     /// _DELAY keyword - pause execution (float seconds, QB64)
     #[token("_DELAY", ignore(ascii_case))]
     Delay,

@@ -75,6 +75,7 @@ impl<'a> Parser<'a> {
             TokenKind::Stop => self.parse_stop(),
             TokenKind::System => self.parse_system(),
             TokenKind::Sleep => self.parse_sleep(),
+            TokenKind::Wait => self.parse_wait(),
             TokenKind::Delay => self.parse_delay(),
             TokenKind::Limit => self.parse_limit(),
             TokenKind::Erase => self.parse_erase(),
@@ -721,6 +722,33 @@ impl<'a> Parser<'a> {
 
         let span = self.span_from(start);
         Ok(Statement::new(StatementKind::Sleep { seconds }, span))
+    }
+
+    /// Parses a WAIT statement.
+    /// Syntax: WAIT port, and_mask[, xor_mask]
+    pub(super) fn parse_wait(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("WAIT keyword").span.start;
+
+        let port = self.parse_expression()?;
+        self.expect(&TokenKind::Comma, ",")?;
+        let and_mask = self.parse_expression()?;
+
+        // Optional xor_mask
+        let xor_mask = if self.match_token(&TokenKind::Comma) {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::Wait {
+                port,
+                and_mask,
+                xor_mask,
+            },
+            span,
+        ))
     }
 
     /// Parses a _DELAY statement (QB64).
