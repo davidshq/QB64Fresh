@@ -299,6 +299,18 @@ impl<'a> TypeChecker<'a> {
                 stmt.span,
             ),
 
+            StatementKind::MetaConsole { only } => {
+                TypedStatement::new(TypedStatementKind::MetaConsole { only: *only }, stmt.span)
+            }
+
+            StatementKind::MetaScreenHide => {
+                TypedStatement::new(TypedStatementKind::MetaScreenHide, stmt.span)
+            }
+
+            StatementKind::MetaScreenShow => {
+                TypedStatement::new(TypedStatementKind::MetaScreenShow, stmt.span)
+            }
+
             StatementKind::Swap { left, right } => {
                 let typed_left = self.check_expr(left);
                 let typed_right = self.check_expr(right);

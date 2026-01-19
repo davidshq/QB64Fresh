@@ -617,6 +617,23 @@ pub enum StatementKind {
         enabled: bool,
     },
 
+    /// `$CONSOLE` or `$CONSOLE:ONLY` - enable console window
+    ///
+    /// - `$CONSOLE` enables a console window in addition to the graphics window
+    /// - `$CONSOLE:ONLY` runs as a console-only application (no graphics window)
+    MetaConsole {
+        /// If true, run as console-only (no graphics window)
+        only: bool,
+    },
+
+    /// `$SCREENHIDE` - hide the graphics window on startup
+    ///
+    /// Used with `$CONSOLE:ONLY` to create console-only programs
+    MetaScreenHide,
+
+    /// `$SCREENSHOW` - show the graphics window on startup (default behavior)
+    MetaScreenShow,
+
     // ==================== Graphics Statements ====================
     /// `SCREEN [mode][,[colorswitch]][,[apage]][,[vpage]]` - Initialize graphics mode
     ///

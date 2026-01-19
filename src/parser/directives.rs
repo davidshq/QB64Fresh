@@ -342,4 +342,35 @@ impl<'a> Parser<'a> {
             span,
         ))
     }
+
+    /// Parses a `$CONSOLE` or `$CONSOLE:ONLY` directive.
+    ///
+    /// - `$CONSOLE` enables console window alongside graphics
+    /// - `$CONSOLE:ONLY` runs as console-only (no graphics window)
+    pub(super) fn parse_meta_console(&mut self, only: bool) -> Result<Statement, ()> {
+        let token = self.advance().expect("$CONSOLE token");
+        let span: Span = token.span.clone().into();
+
+        Ok(Statement::new(StatementKind::MetaConsole { only }, span))
+    }
+
+    /// Parses a `$SCREENHIDE` directive.
+    ///
+    /// Hides the graphics window on program startup.
+    pub(super) fn parse_meta_screenhide(&mut self) -> Result<Statement, ()> {
+        let token = self.advance().expect("$SCREENHIDE token");
+        let span: Span = token.span.clone().into();
+
+        Ok(Statement::new(StatementKind::MetaScreenHide, span))
+    }
+
+    /// Parses a `$SCREENSHOW` directive.
+    ///
+    /// Shows the graphics window on program startup (default behavior).
+    pub(super) fn parse_meta_screenshow(&mut self) -> Result<Statement, ()> {
+        let token = self.advance().expect("$SCREENSHOW token");
+        let span: Span = token.span.clone().into();
+
+        Ok(Statement::new(StatementKind::MetaScreenShow, span))
+    }
 }

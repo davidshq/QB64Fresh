@@ -1022,6 +1022,22 @@ pub enum TokenKind {
     #[token("$CHECKING", ignore(ascii_case))]
     MetaChecking,
 
+    /// $CONSOLE - enable console window (must be before generic MetaCommand)
+    #[regex(r"\$CONSOLE\s*:\s*ONLY", ignore(ascii_case))]
+    MetaConsoleOnly,
+
+    /// $CONSOLE - enable console window
+    #[token("$CONSOLE", ignore(ascii_case))]
+    MetaConsole,
+
+    /// $SCREENHIDE - hide graphics window on startup
+    #[token("$SCREENHIDE", ignore(ascii_case))]
+    MetaScreenHide,
+
+    /// $SCREENSHOW - show graphics window on startup
+    #[token("$SCREENSHOW", ignore(ascii_case))]
+    MetaScreenShow,
+
     /// Other $ directives (catch-all for unrecognized metacommands)
     #[regex(r"\$[A-Za-z][A-Za-z0-9]*")]
     MetaCommand,

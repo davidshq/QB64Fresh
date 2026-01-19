@@ -111,6 +111,10 @@ impl<'a> Parser<'a> {
             TokenKind::MetaIf => self.parse_meta_if(),
             TokenKind::MetaLet => self.parse_meta_let(),
             TokenKind::MetaChecking => self.parse_meta_checking(),
+            TokenKind::MetaConsole => self.parse_meta_console(false),
+            TokenKind::MetaConsoleOnly => self.parse_meta_console(true),
+            TokenKind::MetaScreenHide => self.parse_meta_screenhide(),
+            TokenKind::MetaScreenShow => self.parse_meta_screenshow(),
             TokenKind::MetaCommand => self.parse_meta_command(),
 
             // Graphics statements

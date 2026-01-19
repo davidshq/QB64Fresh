@@ -113,30 +113,76 @@ tests/
 Update golden files: `UPDATE_GOLDEN=1 cargo test --test golden_tests`
 
 ### Tier 4: Compatibility Tests ✅ IMPLEMENTED
+
+QB64Fresh has **two complementary compatibility test systems**:
+
+#### 4a. Local Fixtures (`tests/compatibility.rs`)
 **Location:** `tests/compatibility.rs` + `tests/fixtures/`
-**Purpose:** Verify compatibility with existing BASIC programs
+**Purpose:** Curated tests for features we've implemented
 **Status:** 16 fixture files auto-discovered
+
+These are tests written specifically for QB64Fresh that verify compilation succeeds
+and (optionally) that output matches expected values.
 
 ```
 tests/
-├── compatibility.rs           # QB64pe-style test harness
-├── common/mod.rs              # Shared test utilities
+├── compatibility.rs           # Test harness for local fixtures
 └── fixtures/
     ├── success/               # Tests that should compile successfully
-    │   ├── hello.bas + .output
-    │   ├── for_step.bas + .output
-    │   ├── select_case.bas + .output
-    │   ├── while_wend.bas + .output
-    │   ├── do_loop.bas + .output
-    │   ├── sub_function.bas + .output
-    │   ├── data_read.bas + .output
-    │   ├── array_ops.bas + .output
-    │   └── math_expr.bas + .output
+    │   ├── print_hello.bas    # Basic output
+    │   ├── for_loop.bas       # FOR/NEXT loops
+    │   ├── for_step.bas       # FOR with STEP
+    │   ├── select_case.bas    # SELECT CASE
+    │   ├── while_wend.bas     # WHILE/WEND loops
+    │   ├── do_loop.bas        # DO/LOOP variants
+    │   ├── sub_function.bas   # SUB and FUNCTION
+    │   ├── data_read.bas      # DATA/READ statements
+    │   ├── array_ops.bas      # Array operations
+    │   ├── math_expr.bas      # Mathematical expressions
+    │   ├── string_concat.bas  # String concatenation
+    │   └── basic_math.bas     # Basic arithmetic
     └── error/                 # Tests that should produce errors
         ├── type_mismatch.bas + .err
         ├── undefined_var.bas + .err
+        ├── unclosed_if.bas + .err
         └── duplicate_definition.bas + .err
 ```
+
+Run: `cargo test --test compatibility`
+
+#### 4b. QB64pe Test Suite (`tests/qb45_compat.rs`)
+**Location:** `tests/qb45_compat.rs` (reads from `../QB64pe/tests/`)
+**Purpose:** Track compatibility with real-world QB64 programs
+**Status:** 141 files tested, **39 passing (27.7%)**
+
+This test runner executes tests directly from the QB64pe repository without
+copying them. It provides compatibility tracking against real QB4.5 and QB64 programs.
+
+**Current Results (2026-01-19):**
+| Category | Files | Passing | Rate |
+|----------|-------|---------|------|
+| qb45com | 5 | 0 | 0% |
+| misc | 46 | 11 | 23.9% |
+| n54 | 3 | 0 | 0% |
+| pete | 68 | 28 | 41.2% |
+| thebob | 19 | 0 | 0% |
+| **Total** | **141** | **39** | **27.7%** |
+
+**Failure breakdown:**
+- Semantic errors: 52 (missing features like SHARED, DEF SEG, etc.)
+- Parser errors: 25 (unimplemented syntax)
+- I/O errors: 24 (missing files, encoding issues)
+- Lexer errors: 1
+
+**Recent improvements (Session 025):**
+- Implicit numeric type coercion (INTEGER↔LONG, etc.) - unlocked 23 more tests
+- `$CONSOLE`, `$CONSOLE:ONLY`, `$SCREENHIDE`, `$SCREENSHOW` metacommands
+
+Run: `cargo test --test qb45_compat -- --nocapture`
+
+**Note:** The QB64pe repository also has `tests/compile_tests/` with 100+ structured
+tests (`.bas` + `.output` pairs). These now parse correctly with the new metacommand
+support.
 
 ### Tier 5: Benchmarks ✅ IMPLEMENTED
 **Location:** `benches/compiler_benchmarks.rs`
@@ -227,19 +273,26 @@ Integration tests cover each statement type:
 Covered via integration tests and error detection tests:
 - [ ] Array bounds checking (runtime feature)
 
-### Phase 3: Compatibility Testing ✅ STARTED
+### Phase 3: Compatibility Testing ✅ IMPLEMENTED
 
-#### 3.1 QB64pe-Style Test Format ✅
+#### 3.1 Local Fixtures ✅
 Implemented in `tests/compatibility.rs`:
 - Auto-discovers `.bas` files in `tests/fixtures/`
 - Matches `.output` files for success tests
 - Matches `.err` files for error tests
 - 16 fixture files currently
 
-#### 3.2 Future: Port QB4.5 Test Cases
-From `QB64pe/tests/qbasic_testcases/qb45com/`:
-- Many programs require unimplemented features (string functions, INKEY$, etc.)
-- Will port as features are implemented
+#### 3.2 QB64pe Test Runner ✅
+Implemented in `tests/qb45_compat.rs`:
+- Runs tests directly from `../QB64pe/tests/qbasic_testcases/`
+- No need to copy/port files - reads them in place
+- Currently tests 141 files, 39 passing (27.7%)
+- Provides failure diagnostics by stage (lexer/parser/semantic/codegen)
+
+#### 3.3 Future: Increase Compatibility
+- Most failures are semantic errors (52) from missing features
+- Key missing features: SHARED scope, DEF SEG, graphics primitives
+- As features are implemented, more tests will automatically pass
 
 ### Phase 4: Benchmarking ✅ COMPLETE
 
@@ -292,8 +345,9 @@ Verified with ~4.6M total inputs, 0 crashes found.
 ## Success Metrics
 
 ### Phase 3 Goals 🔄 IN PROGRESS
-- [ ] 50+ QB4.5 compatibility tests passing (blocked by unimplemented features)
-- [ ] Automated comparison with QB64PE output
+- [x] QB64pe test runner implemented (reads tests in place, no porting needed)
+- [ ] 50+ QB4.5 compatibility tests passing (currently 39/141 = 27.7%)
+- [ ] Automated comparison with QB64PE output (compile_tests now supported)
 
 ### Phase 4 Goals ✅ BENCHMARKS + PROPTEST + FUZZING COMPLETE
 - [ ] 80%+ line coverage (currently 72.67% - up from 59.92%)
@@ -302,16 +356,19 @@ Verified with ~4.6M total inputs, 0 crashes found.
 
 ## Implementation Checklist
 
-### Short Term (Next 2 Weeks) ✅ MOSTLY COMPLETE
-- [ ] Port more QB4.5 test cases (as features are implemented)
+### Short Term ✅ COMPLETE
+- [x] QB64pe test runner implemented - no need to port, tests run from source
+- [x] Implicit numeric type coercion (INTEGER↔LONG, DOUBLE↔INTEGER, etc.)
+- [x] Console metacommands (`$CONSOLE`, `$CONSOLE:ONLY`, `$SCREENHIDE`, `$SCREENSHOW`)
 
-### Medium Term (Next Month) 🔄 IN PROGRESS
-- [ ] Port 50+ compatibility tests
+### Medium Term 🔄 IN PROGRESS
+- [ ] Get 50+ QB64pe tests passing (currently 39, need to implement SHARED scope)
+- [ ] Integrate `compile_tests` runner for structured output comparison
 
-### Long Term (Next Quarter)
+### Long Term
 - [x] Set up continuous fuzzing with `cargo-fuzz` ✅
 - [ ] Achieve 80%+ coverage (currently 72.67%)
-- [ ] All QB4.5 compatibility tests passing
+- [ ] 50%+ QB4.5 compatibility tests passing
 
 ---
 
@@ -324,11 +381,18 @@ cargo test --workspace
 # Run specific test suites
 cargo test --test integration_tests    # 277 integration tests
 cargo test --test golden_tests         # 10 golden tests
-cargo test --test compatibility        # 16 fixture tests
+cargo test --test compatibility        # 16 local fixture tests
 cargo test --test proptest_tests       # 19 property-based tests
+cargo test --test qb45_compat          # QB64pe compatibility (141 files)
 
 # Run unit tests only
 cargo test --lib
+
+# QB64pe compatibility tests (with output)
+cargo test --test qb45_compat -- --nocapture
+cargo test --test qb45_compat all_testcases_summary -- --nocapture  # Full summary
+cargo test --test qb45_compat diagnose_failures -- --nocapture      # Debug failures
+VERBOSE=1 cargo test --test qb45_compat -- --nocapture              # Show passing files
 
 # Run benchmarks
 cargo bench                            # Full benchmark suite

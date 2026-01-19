@@ -2,18 +2,14 @@
 
 *Last updated: 2026-01-19*
 
-A prioritized roadmap for QB64Fresh development. Items are ordered from most granular (near-term) to high-level (long-term).
+A prioritized roadmap for QB64Fresh development. For completed features, see [TODO-completed.md](TODO-completed.md).
 
 ---
 
-## Phase 1: Language Completeness (Near-Term) ✅ COMPLETED
-- File I/O (Framework exists, needs code generation)
-- Keyboard Input
+## Phase 1: Language Completeness - Remaining Items
 
 ### Error Handling
 - [ ] Add error code constants (standard error codes are used)
-
-### Computed Control Flow
 
 ### Missing Built-in Functions
 - [ ] `DEF SEG` statement (legacy, low priority)
@@ -29,53 +25,20 @@ A prioritized roadmap for QB64Fresh development. Items are ordered from most gra
 
 ---
 
-## Phase 2: Core Extensions (Medium-Term) ✅ COMPLETED
+## Phase 2: Core Extensions - Remaining Items
 
 ### Conditional Compilation
 - [ ] `$INCLUDE` - actually read and parse included files
 - [ ] Built-in constants: `WIN`, `LINUX`, `MAC`, `32BIT`, `64BIT`
-
-- Memory Operations
-- String Enhancements
 
 ### Date/Time Enhancements
 - [ ] `_AUTODISPLAY` / `_DISPLAY` timing
 
 ---
 
-## Phase 3: Graphics System (In Progress)
+## Phase 3: Graphics System - Remaining Items
 
-### Graphics Architecture ✅
-```
-runtime/src/
-├── graphics/
-│   ├── mod.rs      # GraphicsBackend trait + global instance ✅
-│   ├── error.rs    # GraphicsError, GraphicsErrorKind ✅
-│   ├── mock.rs     # MockGraphicsBackend for testing ✅
-│   └── sdl2.rs     # SDL2Backend (actual rendering) ✅
-├── graphics_ffi.rs # C FFI layer (qb_gfx_*, qb_mouse_*, etc.) ✅
-```
-
-### Core Graphics ✅
-- [x] PSET, POINT - pixel plotting and reading
-- [x] LINE - line drawing with STEP support
-- [x] BOX - rectangle outline and filled (via LINE B/BF)
-- [x] CIRCLE - circle outline and filled (midpoint algorithm)
-- [x] PAINT - flood fill (scanline algorithm)
-- [x] CLS, COLOR, LOCATE - screen/color management
-- [x] _DISPLAY - double-buffered rendering
-- [x] SDL2 backend with pixel buffer for fast POINT()
-- [x] Mouse input (_MOUSEX, _MOUSEY, _MOUSEBUTTON, _MOUSEINPUT, _MOUSEWHEEL, etc.)
-
-### Extended Graphics ✅
-- [x] VIEW - viewport clipping with fill/border colors
-- [x] WINDOW - world coordinate system (Cartesian and screen modes)
-- [x] DRAW - turtle graphics (U/D/L/R/E/F/G/H/M/B/N/A/T/C/S/P commands)
-- [x] Image buffers (_NEWIMAGE, _LOADIMAGE, _PUTIMAGE, _FREEIMAGE)
-- [x] _SOURCE, _DEST - image handle selection
-- [x] _COPYIMAGE, _SCREENIMAGE - image copying
-
-### Partially Implemented ⚠️
+### Partially Implemented
 - [ ] Text rendering - currently 8x8 bitmap font (needs SDL2_ttf for TrueType)
 - [ ] `_PRINTWIDTH` function
 - [ ] GET/PUT graphics arrays - structure exists, needs testing
@@ -88,68 +51,25 @@ runtime/src/
 
 ---
 
-## Phase 4: Sound System (In Progress)
+## Phase 4: Sound System - Remaining Items
 
-### Audio Architecture (mirrors Graphics architecture) ✅
-
-The audio system uses a trait-based backend abstraction, allowing different audio
-libraries to be swapped at compile time via Cargo feature flags. This follows the
-same pattern as the graphics system.
-
-```
-runtime/src/
-├── audio/
-│   ├── mod.rs           # AudioBackend trait + global instance ✅
-│   ├── error.rs         # AudioError, AudioErrorKind ✅
-│   ├── mock.rs          # MockAudioBackend for testing ✅
-│   └── rodio_backend.rs # RodioBackend (actual audio output) ✅
-├── audio_ffi.rs         # C FFI layer (qb_snd_*, qb_beep, etc.) ✅
-```
-
-**Backend Selection (Cargo.toml features):**
-- `audio-rodio` - Default. Pure Rust audio library via cpal
-- `audio-mock` - For headless testing (no actual audio output)
-
-**Why rodio (chosen over miniaudio)?**
-- Pure Rust (no C dependencies, better safety)
-- Cross-platform (ALSA/PulseAudio/WASAPI/CoreAudio via cpal)
-- Good format support (WAV, MP3, OGG, FLAC)
-- Simple API, well-maintained
-- Note: miniaudio was considered (used by QB64-PE) but rodio integrates better with Rust
-
-### Audio Backend Infrastructure ✅
-- [x] Implement `RodioBackend` (actual audio playback) - pure Rust, cross-platform
-- [x] Add feature flags to `runtime/Cargo.toml` (`audio-rodio`, `audio-mock`)
-- Note: miniaudio backend not needed - rodio provides equivalent functionality
-
-- Classic BASIC Sound (Parser, Semantic, Codegen, FFI complete)
-- QB64 Sound Extensions (Parser, Semantic, Codegen, FFI complete)
-- Raw Audio Synthesis (FFI complete, backend needs implementation)
-
-### Audio Format Support ✅ (via rodio)
-- [x] WAV (PCM)
-- [x] MP3
-- [x] OGG Vorbis
-- [x] FLAC
+(All core features complete - see TODO-completed.md)
 
 ---
 
-## Phase 5: Advanced Features (Long-Term) - In Progress
+## Phase 5: Advanced Features - Remaining Items
 
-### C Library Integration ✅ (Parser/Semantic/Codegen complete)
+### C Library Integration
 - [ ] Automatic header parsing
 - [ ] Type marshalling for complex C types
 - [ ] Callback support
 
-### Networking (QB64 Extensions) ✅ (Parser/Semantic/Codegen/Runtime complete)
+### Networking
 - [ ] Network stream I/O (PUT/GET with network handles)
 
-### Input Devices ✅ (Parser/Semantic/Codegen complete - backend integration pending)
+### Input Devices
 - [ ] Joystick/gamepad support
 - [ ] Touch input support
-
-- Clipboard ✅ (Parser/Semantic/Codegen complete - backend integration pending)
-- System Integration ✅
 
 ### Multi-threading (QB64 Extension)
 - [ ] `_THREAD` support
@@ -157,7 +77,7 @@ runtime/src/
 
 ---
 
-## Phase 6: Tooling & Ecosystem (Long-Term)
+## Phase 6: Tooling & Ecosystem
 
 ### Language Server Protocol
 - [ ] Implement full LSP server
@@ -187,49 +107,28 @@ runtime/src/
 - [ ] Example programs
 
 ### Testing (See TESTING_INFRASTRUCTURE_PLAN.md for details)
-- [x] Expand test suite for all built-ins (303 integration tests) ✅
 - [ ] Compatibility tests against QB64 programs (16 fixture files, need more)
 - [ ] Port QB4.5 test cases from QB64pe
 - [ ] Achieve 80%+ line coverage (currently 72.67%)
 
 ---
 
-## Phase 7: Missing Language Features (Discovered 2026-01-18)
-
-The following features were identified by comparing the QB64pe syntax highlighter keyword list
-against the current QB64Fresh implementation. Organized by priority and category.
-
-**Progress Update (2026-01-19):** Significant progress made on Phase 7 - 16 new statements implemented,
-26 new integration tests added (303 total). Parser, semantic analysis, and codegen complete for all
-implemented features.
+## Phase 7: Missing Language Features
 
 ### High Priority - QB4.5 Core Features
 
-#### Timing & Flow Control
-- [x] `RUN` statement - run program ✅
-- [x] `CHAIN` statement - run another program, optionally passing variables ✅
-- [x] `TROFF` / `TRON` statements - debug trace off/on ✅
-
 #### Print Formatting
-- [x] `LPRINT` statement - printer output ✅
 - [ ] `LPOS(n)` function - printer position
 
 #### Memory/Legacy
 - [ ] `BLOAD` / `BSAVE` statements - binary load/save to memory
-- [x] `CLEAR` statement - clear memory/variables ✅
 - [ ] `VARPTR()` / `VARPTR$()` / `VARSEG()` - memory address functions
 - [ ] `SADD()` function - string address
 - [ ] `SETMEM` statement - set available memory
 - [ ] `SEG` clause - segment for CALL ABSOLUTE
 
 #### File System
-- [x] `FILES` statement - directory listing display ✅
-- [x] `FIELD` statement - define record fields for random access ✅
-- [x] `LSET` / `RSET` statements - left/right justify in field ✅
 - [ ] `FILEATTR()` function - file attributes
-- [x] `RESET` statement - close all open files ✅
-
-- Arrays
 
 #### Type Conversion (Microsoft Binary Format)
 - [ ] `CVDMBF()` / `CVSMBF()` functions - convert MBF strings to numbers
@@ -241,14 +140,12 @@ implemented features.
 - [ ] `CDECL` clause - C calling convention
 
 #### Event Handling
-- [x] `KEY(n) ON/OFF/STOP` statement - key event trapping ✅
 - [ ] `KEY(n)` function - check key trap status
 - [ ] `ON KEY(n) GOSUB` - key event handler (parser ready, needs ON statement integration)
 - [ ] `COM` statement - serial port event trapping
 - [ ] `ON COM(n) GOSUB` - serial port event handler
 - [ ] `PEN` statement - light pen event trapping
 - [ ] `ON PEN GOSUB` - light pen event handler
-- [x] `STRIG(n) ON/OFF/STOP` statement - joystick trigger event trapping ✅
 - [ ] `ON STRIG(n) GOSUB` - joystick trigger handler (parser ready, needs ON statement integration)
 - [ ] `UEVENT` - user-defined event
 - [ ] `ON UEVENT GOSUB` - user event handler
@@ -270,23 +167,13 @@ implemented features.
 - [ ] `FREE` statement - free string space
 - [ ] `WAIT` statement - wait for port
 - [ ] `INP()` / `OUT` - port I/O (may need sandboxing)
-- [x] `PALETTE` statement - set palette colors ✅
-- [x] `PCOPY` statement - copy screen page ✅
-- [x] `PMAP()` function - coordinate mapping ✅
 - [ ] `OFF` keyword - turn off event trapping (KEY OFF, etc.)
 - [ ] `ONLY` keyword - exclusive file access (OPEN...FOR...ONLY)
 - [ ] `SMOOTH` keyword - graphics smooth mode
 - [ ] `STRETCH` keyword - graphics stretch mode
 - [ ] `CUSTOMTYPE` - TYPE declaration modifier
-- [x] `ENDIF` - alternative END IF syntax (no space) ✅
 
 ### Medium Priority - QB64 Extensions
-
-- Keyboard Input (Important for games)
-- Timing Functions
-- Math Functions
-- Trigonometric (Extended)
-- Bitwise Operations ✅
 
 #### String Functions
 - [ ] `_CV(type, string$)` function - generic convert string to type
@@ -294,8 +181,6 @@ implemented features.
 
 #### Error Handling (Extended)
 - [ ] `_INCLERRORFILE$` / `_INCLERRORLINE` - include file error info
-- [x] `_ASSERT` statement - assertions ✅
-- [x] `$ASSERTS` metacommand - enable assertions (parser ready) ✅
 - [ ] `_EXIT` statement - exit program with code
 
 #### Utility Functions
@@ -312,18 +197,10 @@ implemented features.
 
 #### Desktop/Window Info
 - [ ] `_SCREENEXISTS` function - check if window exists
-- [x] `_SCREENICON` statement - minimize window ✅
 - [ ] `_SCREENPRINT` statement - print screen contents
-- [x] `_ALLOWFULLSCREEN` statement - allow/disallow fullscreen toggle ✅
-- [x] `_TITLE$` - get window title (codegen complete, backend pending) ✅
-- [ ] `_TITLE` statement - set window title (parser ready, dual-use with function)
 - [ ] `_ICON` statement - set window icon (parser ready, dual-use with function)
 - [ ] `_HIDE` / `_SHOW` statements - hide/show window (alias)
 - [ ] `_ONTOP` statement - set window always on top
-- [x] `_WINDOWHANDLE` function - get native window handle (codegen complete) ✅
-- [x] `_WINDOWHASFOCUS` function - check if window has focus (codegen complete) ✅
-
-#### Font Support
 
 #### Unicode Font Support
 - [ ] `_UCHARPOS` function - Unicode character position
@@ -421,8 +298,6 @@ implemented features.
 
 #### Console Mode
 - [ ] `$CONSOLE` / `$CONSOLE:ONLY` metacommands
-- [x] `_CONSOLE ON/OFF` statement - enable/disable console ✅
-- [x] `_CONSOLETITLE` statement - set console title ✅
 - [ ] `_CONSOLECURSOR` statement - console cursor control
 - [ ] `_CONSOLEFONT` statement - console font
 - [ ] `_CONSOLEINPUT` function - console input available
@@ -441,8 +316,6 @@ implemented features.
 - [ ] `_SCALEDHEIGHT` / `_SCALEDWIDTH` functions - scaled dimensions
 
 #### File I/O (Extended)
-- [x] `_READFILE$(file$)` function - read entire file ✅
-- [x] `_WRITEFILE(file$, content$)` statement - write entire file ✅
 - [ ] `_EMBEDDED$(name$)` function - get embedded file data
 - [ ] `$EMBED:'filename'` metacommand - embed file in executable
 - [ ] `_FULLPATH$(path$)` function - get full path
@@ -450,10 +323,8 @@ implemented features.
 
 #### Miscellaneous QB64 Features
 - [ ] `_ANDALSO` / `_ORELSE` operators - short-circuit evaluation
-- [ ] `_NEGATE` function - negate value
 - [ ] `OPTION _EXPLICIT` / `OPTION _EXPLICITARRAY` - require declarations
 - [ ] `SELECT EVERYCASE` - check all cases
-- [x] `_TRUE` / `_FALSE` constants ✅
 - [ ] `_FPS` function - current frame rate
 - [ ] `_FREETIMER` function - free a timer
 
@@ -504,8 +375,6 @@ If raw OpenGL is needed, users can use `DECLARE LIBRARY` to call OpenGL function
 - [ ] Large array handling: Verify stack vs heap allocation
 - [ ] Unicode support: Currently ASCII-focused
 - [ ] Windows-specific path handling in file I/O
-- [x] **Implicit SUB calls without parentheses** - `Greet "World"` works correctly ✅
-      (Verified 2026-01-19: was already implemented, session 021 issue was keyword-as-identifier)
 - [ ] **GOSUB uses GCC computed goto extension** - The GOSUB/RETURN implementation uses GCC's
       computed goto extension (`&&label` for label addresses, `goto *ptr` for indirect jumps).
       This works with GCC and Clang but NOT MSVC. For MSVC support, would need a switch-based

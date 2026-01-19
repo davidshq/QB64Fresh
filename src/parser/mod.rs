@@ -691,4 +691,46 @@ PRINT x
             panic!("Expected MetaChecking statement");
         }
     }
+
+    #[test]
+    fn test_parse_meta_console() {
+        let program = parse("$CONSOLE").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        if let StatementKind::MetaConsole { only } = &program.statements[0].kind {
+            assert!(!*only);
+        } else {
+            panic!("Expected MetaConsole statement");
+        }
+    }
+
+    #[test]
+    fn test_parse_meta_console_only() {
+        let program = parse("$CONSOLE:ONLY").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        if let StatementKind::MetaConsole { only } = &program.statements[0].kind {
+            assert!(*only);
+        } else {
+            panic!("Expected MetaConsole statement with only=true");
+        }
+    }
+
+    #[test]
+    fn test_parse_meta_screenhide() {
+        let program = parse("$SCREENHIDE").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::MetaScreenHide
+        ));
+    }
+
+    #[test]
+    fn test_parse_meta_screenshow() {
+        let program = parse("$SCREENSHOW").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::MetaScreenShow
+        ));
+    }
 }

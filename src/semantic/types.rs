@@ -116,9 +116,11 @@ impl BasicType {
             return true;
         }
 
-        // Numeric widening: smaller rank can convert to larger rank
-        if let (Some(self_rank), Some(target_rank)) = (self.numeric_rank(), target.numeric_rank()) {
-            return self_rank <= target_rank;
+        // Numeric conversion: BASIC allows implicit conversion between all numeric types
+        // This includes both widening (INTEGER -> LONG) and narrowing (LONG -> INTEGER)
+        // with potential data loss on narrowing (truncation/overflow)
+        if self.numeric_rank().is_some() && target.numeric_rank().is_some() {
+            return true;
         }
 
         false
@@ -387,17 +389,27 @@ mod tests {
         // Integer to Long (widening)
         assert!(BasicType::Integer.is_convertible_to(&BasicType::Long));
 
-        // Long to Integer (narrowing - not allowed)
-        assert!(!BasicType::Long.is_convertible_to(&BasicType::Integer));
+        // Long to Integer (narrowing - BASIC allows this with implicit truncation)
+        assert!(BasicType::Long.is_convertible_to(&BasicType::Integer));
 
         // Integer to Double (widening)
         assert!(BasicType::Integer.is_convertible_to(&BasicType::Double));
 
-        // String to Integer (not allowed)
+        // Double to Integer (narrowing - allowed in BASIC)
+        assert!(BasicType::Double.is_convertible_to(&BasicType::Integer));
+
+        // String to Integer (not allowed - different type categories)
         assert!(!BasicType::String.is_convertible_to(&BasicType::Integer));
+
+        // Integer to String (not allowed)
+        assert!(!BasicType::Integer.is_convertible_to(&BasicType::String));
 
         // Same type
         assert!(BasicType::Integer.is_convertible_to(&BasicType::Integer));
+
+        // All numeric types can convert to each other
+        assert!(BasicType::Single.is_convertible_to(&BasicType::Long));
+        assert!(BasicType::Integer64.is_convertible_to(&BasicType::Byte));
     }
 
     #[test]

@@ -519,6 +519,26 @@ impl StmtEmitter {
                 writeln!(output, "{}/* $CHECKING:{} */", indent, state).unwrap();
             }
 
+            TypedStatementKind::MetaConsole { only } => {
+                // Console mode directive - affects program initialization
+                // For now, generate a comment; actual console setup is runtime-dependent
+                if *only {
+                    writeln!(output, "{}/* $CONSOLE:ONLY - console-only mode */", indent).unwrap();
+                } else {
+                    writeln!(output, "{}/* $CONSOLE - enable console window */", indent).unwrap();
+                }
+            }
+
+            TypedStatementKind::MetaScreenHide => {
+                // Hide graphics window on startup
+                writeln!(output, "{}/* $SCREENHIDE */", indent).unwrap();
+            }
+
+            TypedStatementKind::MetaScreenShow => {
+                // Show graphics window on startup (default)
+                writeln!(output, "{}/* $SCREENSHOW */", indent).unwrap();
+            }
+
             TypedStatementKind::Swap { left, right } => {
                 let left_code = emit_expr(left)?;
                 let right_code = emit_expr(right)?;

@@ -413,6 +413,18 @@ pub enum TypedStatementKind {
         enabled: bool,
     },
 
+    /// $CONSOLE or $CONSOLE:ONLY directive.
+    MetaConsole {
+        /// If true, console-only mode (no graphics window).
+        only: bool,
+    },
+
+    /// $SCREENHIDE directive - hide graphics window on startup.
+    MetaScreenHide,
+
+    /// $SCREENSHOW directive - show graphics window on startup.
+    MetaScreenShow,
+
     /// SWAP statement - exchange values of two variables.
     Swap {
         /// First variable/expression to swap.
