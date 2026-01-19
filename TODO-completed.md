@@ -481,3 +481,10 @@
 - [x] `ERDEV$` function - device error name (stub, returns "")
 - [x] `IOCTL [#]filenum, string$` statement - send device control string (stub)
 - [x] `IOCTL$(filenum)` function - get device status string (stub, returns "")
+
+### QB4.5 Remaining Items (Session 029)
+- [x] `WAIT port, and_mask [, xor_mask]` statement - wait for hardware port condition (stub on modern systems)
+- [x] `ONLY` keyword - exclusive file access mode for `OPEN...FOR...ONLY AS #n`
+- [x] `SMOOTH` keyword - bilinear interpolation scaling mode for `_PUTIMAGE`
+- [x] `STRETCH` keyword - nearest-neighbor scaling mode for `_PUTIMAGE`
+- [x] `CUSTOMTYPE` modifier - TYPE declaration modifier for C-compatible (packed) memory layout using `#pragma pack`

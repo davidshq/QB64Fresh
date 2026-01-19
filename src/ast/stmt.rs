@@ -330,7 +330,7 @@ pub enum StatementKind {
         is_static: bool,
     },
 
-    /// `TYPE TypeName ... END TYPE` - User-defined type definition
+    /// `TYPE TypeName [CUSTOMTYPE] ... END TYPE` - User-defined type definition
     ///
     /// Example:
     /// ```basic
@@ -338,12 +338,18 @@ pub enum StatementKind {
     ///     name AS STRING * 20
     ///     age AS INTEGER
     /// END TYPE
+    ///
+    /// TYPE CStruct CUSTOMTYPE
+    ///     value AS LONG
+    /// END TYPE
     /// ```
     TypeDefinition {
         /// The name of the user-defined type.
         name: String,
         /// The members of the type.
         members: Vec<TypeMember>,
+        /// QB4.5 CUSTOMTYPE modifier - indicates C-compatible memory layout
+        custom_type: bool,
     },
 
     /// `CALL SubName(args)` or `SubName args`
@@ -902,7 +908,7 @@ pub enum StatementKind {
         handle: Expr,
     },
 
-    /// `_PUTIMAGE [(dx1,dy1)-(dx2,dy2)][, src&][, dest&][, (sx1,sy1)-(sx2,sy2)]`
+    /// `_PUTIMAGE [(dx1,dy1)-(dx2,dy2)][, src&][, dest&][, (sx1,sy1)-(sx2,sy2)][, _SMOOTH|_STRETCH]`
     PutImage {
         /// Destination coordinates (optional) - boxed to reduce enum size
         dest_coords: Option<Box<ViewCoords>>,
@@ -912,6 +918,8 @@ pub enum StatementKind {
         dest: Option<Expr>,
         /// Source coordinates (optional) - boxed to reduce enum size
         source_coords: Option<Box<ViewCoords>>,
+        /// Scaling mode: _SMOOTH (bilinear) or _STRETCH (nearest-neighbor)
+        scale_mode: ImageScaleMode,
     },
 
     /// `_SOURCE handle&` - Set source image for reading operations
@@ -1557,6 +1565,9 @@ pub enum FileLock {
     LockWrite,
     /// LOCK READ WRITE - exclusive access
     LockReadWrite,
+    /// ONLY - exclusive file access (QB4.5 syntax)
+    /// Prevents any other process from opening the file
+    Only,
 }
 
 /// Field specification for FIELD statement.
@@ -1566,6 +1577,18 @@ pub struct FieldSpec {
     pub width: Expr,
     /// Variable name for this field.
     pub variable: String,
+}
+
+/// Image scaling mode for _PUTIMAGE statement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ImageScaleMode {
+    /// Default scaling (no explicit mode specified)
+    #[default]
+    Default,
+    /// _SMOOTH - bilinear interpolation for smooth scaling
+    Smooth,
+    /// _STRETCH - nearest-neighbor scaling (no interpolation)
+    Stretch,
 }
 
 /// Event control mode for KEY(n), TIMER, STRIG, etc.

@@ -146,6 +146,13 @@ impl<'a> Parser<'a> {
     ///     ...
     /// END TYPE
     /// ```
+    ///
+    /// Also supports QB4.5 CUSTOMTYPE modifier:
+    /// ```basic
+    /// TYPE CStruct CUSTOMTYPE
+    ///     value AS LONG
+    /// END TYPE
+    /// ```
     pub(super) fn parse_type_definition(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("TYPE keyword").span.start; // consume TYPE
 
@@ -153,7 +160,10 @@ impl<'a> Parser<'a> {
         let name_token = self.expect(&TokenKind::Identifier, "type name")?;
         let name = name_token.text.to_string();
 
-        // Skip any newlines after the type name
+        // Check for optional CUSTOMTYPE modifier (QB4.5)
+        let custom_type = self.match_token(&TokenKind::CustomType);
+
+        // Skip any newlines after the type name (and optional modifier)
         self.skip_newlines();
 
         // Parse member definitions until END TYPE
@@ -196,7 +206,11 @@ impl<'a> Parser<'a> {
 
         let span = self.span_from(start);
         Ok(Statement::new(
-            StatementKind::TypeDefinition { name, members },
+            StatementKind::TypeDefinition {
+                name,
+                members,
+                custom_type,
+            },
             span,
         ))
     }

@@ -13,7 +13,7 @@
 
 use crate::ast::{
     AllowFullScreenMode, BinaryOp, ContinueType, EventControlMode, ExitType, FileAccess, FileLock,
-    FileMode, FullScreenMode, PrintSeparator, ResumeTarget, Span, UnaryOp,
+    FileMode, FullScreenMode, ImageScaleMode, PrintSeparator, ResumeTarget, Span, UnaryOp,
 };
 use crate::semantic::types::BasicType;
 
@@ -460,6 +460,8 @@ pub enum TypedStatementKind {
         name: String,
         /// The type members with their types.
         members: Vec<TypedMember>,
+        /// QB4.5 CUSTOMTYPE modifier - indicates C-compatible memory layout.
+        custom_type: bool,
     },
 
     /// DATA statement - compile-time data values.
@@ -898,6 +900,8 @@ pub enum TypedStatementKind {
         dest: Option<TypedExpr>,
         /// Source coordinates.
         source_coords: Option<Box<TypedViewCoords>>,
+        /// Scaling mode (_SMOOTH or _STRETCH).
+        scale_mode: ImageScaleMode,
     },
 
     /// _SOURCE statement.

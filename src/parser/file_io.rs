@@ -98,9 +98,19 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses optional file lock mode.
+    ///
+    /// Supports:
+    /// - SHARED - other processes can read and write
+    /// - LOCK READ - other processes cannot read
+    /// - LOCK WRITE - other processes cannot write
+    /// - LOCK READ WRITE - exclusive access
+    /// - ONLY - exclusive file access (QB4.5 syntax)
     fn parse_file_lock(&mut self) -> Result<Option<FileLock>, ()> {
         if self.match_token(&TokenKind::Shared) {
             Ok(Some(FileLock::Shared))
+        } else if self.match_token(&TokenKind::Only) {
+            // QB4.5 ONLY keyword - exclusive file access
+            Ok(Some(FileLock::Only))
         } else if self.match_token(&TokenKind::Lock) {
             if self.match_token(&TokenKind::Read) {
                 if self.match_token(&TokenKind::Write) {

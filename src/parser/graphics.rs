@@ -6,7 +6,7 @@
 //! - Viewport control: VIEW, WINDOW, PCOPY, PALETTE
 //! - QB64 extensions: _DISPLAY, _FREEIMAGE, _PUTIMAGE, _SOURCE, _DEST, _PRINTSTRING, _AUTODISPLAY
 
-use crate::ast::{Statement, StatementKind, ViewCoords};
+use crate::ast::{ImageScaleMode, Statement, StatementKind, ViewCoords};
 use crate::lexer::TokenKind;
 
 use super::Parser;
@@ -620,7 +620,7 @@ impl<'a> Parser<'a> {
 
     /// Parses _PUTIMAGE statement.
     ///
-    /// Syntax: `_PUTIMAGE [(dx1,dy1)-(dx2,dy2)][, src&][, dest&][, (sx1,sy1)-(sx2,sy2)]`
+    /// Syntax: `_PUTIMAGE [(dx1,dy1)-(dx2,dy2)][, src&][, dest&][, (sx1,sy1)-(sx2,sy2)][, _SMOOTH|_STRETCH]`
     pub(super) fn parse_putimage(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("_PUTIMAGE keyword").span.start;
 
@@ -660,6 +660,20 @@ impl<'a> Parser<'a> {
             None
         };
 
+        // Parse optional scale mode: SMOOTH or STRETCH
+        // Note: QB64 uses _SMOOTH/_STRETCH but we recognize both with and without underscore
+        let scale_mode = if self.match_token(&TokenKind::Comma) {
+            if self.match_token(&TokenKind::Smooth) {
+                ImageScaleMode::Smooth
+            } else if self.match_token(&TokenKind::Stretch) {
+                ImageScaleMode::Stretch
+            } else {
+                ImageScaleMode::Default
+            }
+        } else {
+            ImageScaleMode::Default
+        };
+
         let span = self.span_from(start);
         Ok(Statement::new(
             StatementKind::PutImage {
@@ -667,6 +681,7 @@ impl<'a> Parser<'a> {
                 source,
                 dest,
                 source_coords,
+                scale_mode,
             },
             span,
         ))

@@ -13,7 +13,7 @@ use std::fmt::Write;
 
 use crate::ast::{
     AllowFullScreenMode, EventControlMode, ExitType, FileAccess, FileLock, FileMode,
-    FullScreenMode, PrintSeparator,
+    FullScreenMode, ImageScaleMode, PrintSeparator,
 };
 use crate::codegen::error::CodeGenError;
 use crate::semantic::typed_ir::{
@@ -581,8 +581,12 @@ impl StmtEmitter {
                 writeln!(output, "{}continue;", indent).unwrap();
             }
 
-            TypedStatementKind::TypeDefinition { name, members } => {
-                self.emit_type_definition(&indent, name, members, output)?;
+            TypedStatementKind::TypeDefinition {
+                name,
+                members,
+                custom_type,
+            } => {
+                self.emit_type_definition(&indent, name, members, *custom_type, output)?;
             }
 
             TypedStatementKind::Data { .. } => {
@@ -1264,6 +1268,7 @@ impl StmtEmitter {
                 source,
                 dest,
                 source_coords,
+                scale_mode,
             } => {
                 // Generate _PUTIMAGE call with all optional parameters
                 let src_handle = source
@@ -1277,6 +1282,13 @@ impl StmtEmitter {
                     .transpose()?
                     .unwrap_or_else(|| "-1".to_string());
 
+                // Scale mode: 0 = default, 1 = smooth (bilinear), 2 = stretch (nearest-neighbor)
+                let scale_code = match scale_mode {
+                    ImageScaleMode::Default => "0",
+                    ImageScaleMode::Smooth => "1",
+                    ImageScaleMode::Stretch => "2",
+                };
+
                 if let (Some(dc), Some(sc)) = (dest_coords, source_coords) {
                     let dx1 = emit_expr(&dc.x1)?;
                     let dy1 = emit_expr(&dc.y1)?;
@@ -1286,20 +1298,20 @@ impl StmtEmitter {
                     let sy1 = emit_expr(&sc.y1)?;
                     let sx2 = emit_expr(&sc.x2)?;
                     let sy2 = emit_expr(&sc.y2)?;
-                    writeln!(output, "{}qb_gfx_putimage_full((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){});",
-                             indent, dx1, dy1, dx2, dy2, src_handle, dst_handle, sx1, sy1, sx2, sy2).unwrap();
+                    writeln!(output, "{}qb_gfx_putimage_full((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, {});",
+                             indent, dx1, dy1, dx2, dy2, src_handle, dst_handle, sx1, sy1, sx2, sy2, scale_code).unwrap();
                 } else if let Some(dc) = dest_coords {
                     let dx1 = emit_expr(&dc.x1)?;
                     let dy1 = emit_expr(&dc.y1)?;
                     let dx2 = emit_expr(&dc.x2)?;
                     let dy2 = emit_expr(&dc.y2)?;
-                    writeln!(output, "{}qb_gfx_putimage((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){});",
-                             indent, dx1, dy1, dx2, dy2, src_handle, dst_handle).unwrap();
+                    writeln!(output, "{}qb_gfx_putimage((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, {});",
+                             indent, dx1, dy1, dx2, dy2, src_handle, dst_handle, scale_code).unwrap();
                 } else {
                     writeln!(
                         output,
-                        "{}qb_gfx_putimage_simple((int32_t){}, (int32_t){});",
-                        indent, src_handle, dst_handle
+                        "{}qb_gfx_putimage_simple((int32_t){}, (int32_t){}, {});",
+                        indent, src_handle, dst_handle, scale_code
                     )
                     .unwrap();
                 }
@@ -2581,9 +2593,17 @@ impl StmtEmitter {
         indent: &str,
         name: &str,
         members: &[TypedMember],
+        custom_type: bool,
         output: &mut String,
     ) -> Result<(), CodeGenError> {
         let c_name = c_identifier(name);
+
+        // CUSTOMTYPE modifier indicates C-compatible (packed) memory layout
+        // This uses #pragma pack to ensure no padding between members
+        if custom_type {
+            writeln!(output, "{}#pragma pack(push, 1)", indent).unwrap();
+        }
+
         writeln!(output, "{}typedef struct {} {{", indent, c_name).unwrap();
 
         for member in members {
@@ -2598,6 +2618,11 @@ impl StmtEmitter {
         }
 
         writeln!(output, "{}}} {};", indent, c_name).unwrap();
+
+        if custom_type {
+            writeln!(output, "{}#pragma pack(pop)", indent).unwrap();
+        }
+
         writeln!(output).unwrap();
         Ok(())
     }
@@ -2849,7 +2874,9 @@ impl StmtEmitter {
             FileMode::Random => "\"r+b\"",
         };
 
-        // Emit comment about access/lock for documentation
+        // File access and lock modes are not yet implemented in the runtime
+        // access: READ, WRITE, READ WRITE
+        // lock: SHARED, LOCK READ, LOCK WRITE, LOCK READ WRITE, ONLY
         let _ = access;
         let _ = lock;
 

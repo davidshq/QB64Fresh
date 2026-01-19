@@ -401,7 +401,11 @@ impl<'a> TypeChecker<'a> {
                 )
             }
 
-            StatementKind::TypeDefinition { name, members } => {
+            StatementKind::TypeDefinition {
+                name,
+                members,
+                custom_type,
+            } => {
                 // Convert AST type members to semantic type members
                 let typed_members: Vec<TypedMember> = members
                     .iter()
@@ -422,6 +426,7 @@ impl<'a> TypeChecker<'a> {
                         })
                         .collect(),
                     span: stmt.span,
+                    custom_type: *custom_type,
                 };
 
                 if let Err(_existing) = self.symbols.define_user_type(user_type) {
@@ -436,6 +441,7 @@ impl<'a> TypeChecker<'a> {
                     TypedStatementKind::TypeDefinition {
                         name: name.clone(),
                         members: typed_members,
+                        custom_type: *custom_type,
                     },
                     stmt.span,
                 )
@@ -1658,6 +1664,7 @@ impl<'a> TypeChecker<'a> {
                 source,
                 dest,
                 source_coords,
+                scale_mode,
             } => {
                 let typed_dest_coords = dest_coords
                     .as_ref()
@@ -1673,6 +1680,7 @@ impl<'a> TypeChecker<'a> {
                         source: typed_source,
                         dest: typed_dest,
                         source_coords: typed_source_coords,
+                        scale_mode: *scale_mode,
                     },
                     stmt.span,
                 )

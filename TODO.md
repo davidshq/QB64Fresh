@@ -98,11 +98,7 @@ All Phase 2 items have been completed:
 ### High Priority - QB4.5 Core Features
 
 #### Remaining QB4.5 Items
-- [ ] `WAIT` statement - wait for port
-- [ ] `ONLY` keyword - exclusive file access (OPEN...FOR...ONLY) - token added
-- [ ] `SMOOTH` keyword - graphics smooth mode - token added
-- [ ] `STRETCH` keyword - graphics stretch mode - token added
-- [ ] `CUSTOMTYPE` - TYPE declaration modifier - token added
+*(All completed - see TODO-completed.md)*
 
 ### Medium Priority - QB64 Extensions
 

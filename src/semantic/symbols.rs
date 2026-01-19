@@ -144,6 +144,8 @@ pub struct UserTypeDefinition {
     pub members: Vec<UserTypeMember>,
     /// Where the type was defined.
     pub span: Span,
+    /// QB4.5 CUSTOMTYPE modifier - indicates C-compatible memory layout.
+    pub custom_type: bool,
 }
 
 /// A member of a user-defined TYPE.

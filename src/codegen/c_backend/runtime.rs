@@ -2728,13 +2728,15 @@ fn emit_graphics_stubs(output: &mut String) {
         "int qb_gfx_freeimage(int32_t h) {{ (void)h; return 0; }}"
     )
     .unwrap();
+    // _PUTIMAGE functions with scale_mode parameter:
+    // scale_mode: 0 = default, 1 = smooth (bilinear), 2 = stretch (nearest-neighbor)
     writeln!(
         output,
-        "int qb_gfx_putimage_simple(int32_t src, int32_t dst) {{ (void)src; (void)dst; return 0; }}"
+        "int qb_gfx_putimage_simple(int32_t src, int32_t dst, int scale_mode) {{ (void)src; (void)dst; (void)scale_mode; return 0; }}"
     )
     .unwrap();
-    writeln!(output, "int qb_gfx_putimage(int32_t dx1, int32_t dy1, int32_t dx2, int32_t dy2, int32_t src, int32_t dst) {{ (void)dx1; (void)dy1; (void)dx2; (void)dy2; (void)src; (void)dst; return 0; }}").unwrap();
-    writeln!(output, "int qb_gfx_putimage_full(int32_t dx1, int32_t dy1, int32_t dx2, int32_t dy2, int32_t src, int32_t dst, int32_t sx1, int32_t sy1, int32_t sx2, int32_t sy2) {{ (void)dx1; (void)dy1; (void)dx2; (void)dy2; (void)src; (void)dst; (void)sx1; (void)sy1; (void)sx2; (void)sy2; return 0; }}").unwrap();
+    writeln!(output, "int qb_gfx_putimage(int32_t dx1, int32_t dy1, int32_t dx2, int32_t dy2, int32_t src, int32_t dst, int scale_mode) {{ (void)dx1; (void)dy1; (void)dx2; (void)dy2; (void)src; (void)dst; (void)scale_mode; return 0; }}").unwrap();
+    writeln!(output, "int qb_gfx_putimage_full(int32_t dx1, int32_t dy1, int32_t dx2, int32_t dy2, int32_t src, int32_t dst, int32_t sx1, int32_t sy1, int32_t sx2, int32_t sy2, int scale_mode) {{ (void)dx1; (void)dy1; (void)dx2; (void)dy2; (void)src; (void)dst; (void)sx1; (void)sy1; (void)sx2; (void)sy2; (void)scale_mode; return 0; }}").unwrap();
     writeln!(
         output,
         "int qb_gfx_source(int32_t h) {{ (void)h; return 0; }}"
@@ -3699,6 +3701,28 @@ fn emit_legacy_functions(output: &mut String) {
     writeln!(
         output,
         "    // Port I/O is not available on protected-mode systems"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // WAIT port, and_mask [, xor_mask] - wait for hardware port condition
+    // In original QB4.5, this would busy-wait until (INP(port) XOR xor_mask) AND and_mask <> 0
+    // On modern protected-mode systems, this is a no-op stub
+    writeln!(
+        output,
+        "void qb_wait(int32_t port, int32_t and_mask, int32_t xor_mask) {{"
+    )
+    .unwrap();
+    writeln!(output, "    (void)port; (void)and_mask; (void)xor_mask;").unwrap();
+    writeln!(
+        output,
+        "    // WAIT is not available on protected-mode systems"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    // In original BASIC: loops until (INP(port) XOR xor_mask) AND and_mask <> 0"
     )
     .unwrap();
     writeln!(output, "}}").unwrap();
