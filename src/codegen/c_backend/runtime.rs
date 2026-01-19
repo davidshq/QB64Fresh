@@ -89,6 +89,7 @@ fn emit_runtime_declarations(output: &mut String) {
     emit_array_functions(output);
     emit_audio_functions(output);
     emit_graphics_stubs(output);
+    emit_gosub_stack(output);
 }
 
 /// Emits the qb_string type definition.
@@ -97,6 +98,7 @@ fn emit_string_type(output: &mut String) {
     writeln!(output, "    char* data;").unwrap();
     writeln!(output, "    size_t len;").unwrap();
     writeln!(output, "    size_t capacity;").unwrap();
+    writeln!(output, "    int refcount;").unwrap();
     writeln!(output, "}} qb_string;").unwrap();
     writeln!(output).unwrap();
 }
@@ -2772,14 +2774,7 @@ fn emit_graphics_stubs(output: &mut String) {
     writeln!(output).unwrap();
 
     // _COMMANDCOUNT - returns number of command line arguments
-    // Uses the stored argc from main
-    writeln!(output, "static int _qb_argc = 0;").unwrap();
-    writeln!(output, "static char** _qb_argv = NULL;").unwrap();
-    writeln!(
-        output,
-        "void qb_set_args(int argc, char** argv) {{ _qb_argc = argc; _qb_argv = argv; }}"
-    )
-    .unwrap();
+    // Uses _qb_argc/argv defined earlier for COMMAND$
     writeln!(
         output,
         "int64_t qb_commandcount(void) {{ return _qb_argc - 1; }}"
@@ -3004,5 +2999,18 @@ fn emit_graphics_stubs(output: &mut String) {
     writeln!(output, "    fprintf(stderr, \"Note: _SELECTFOLDERDIALOG$ requires external runtime for GUI support\\n\");").unwrap();
     writeln!(output, "    return qb_string_new(\"\");").unwrap();
     writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+}
+
+/// Emits the GOSUB return address stack.
+///
+/// GOSUB in BASIC is a "jump with return" - it jumps to a label and RETURN
+/// jumps back to the statement after the GOSUB. We implement this using
+/// GCC's computed goto extension (&&label gives the address of a label).
+fn emit_gosub_stack(output: &mut String) {
+    writeln!(output, "/* GOSUB Return Stack */").unwrap();
+    writeln!(output, "#define GOSUB_STACK_SIZE 256").unwrap();
+    writeln!(output, "static void* _gosub_stack[GOSUB_STACK_SIZE];").unwrap();
+    writeln!(output, "static int _gosub_sp = 0;").unwrap();
     writeln!(output).unwrap();
 }

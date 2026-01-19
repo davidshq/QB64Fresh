@@ -684,7 +684,11 @@ If raw OpenGL is needed, users can use `DECLARE LIBRARY` to call OpenGL function
 - [ ] Large array handling: Verify stack vs heap allocation
 - [ ] Unicode support: Currently ASCII-focused
 - [ ] Windows-specific path handling in file I/O
-- [ ] Line number support for legacy BASIC (currently labels only)
+- [x] Line number support for legacy BASIC (implemented: `100 PRINT`, `GOTO 100`, etc.)
+- [ ] **GOSUB uses GCC computed goto extension** - The GOSUB/RETURN implementation uses GCC's
+      computed goto extension (`&&label` for label addresses, `goto *ptr` for indirect jumps).
+      This works with GCC and Clang but NOT MSVC. For MSVC support, would need a switch-based
+      dispatch table alternative. Low priority since most users compile with GCC/MinGW.
 
 ---
 

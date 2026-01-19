@@ -20,6 +20,7 @@ typedef struct qb_string {
     char* data;
     size_t len;
     size_t capacity;
+    int refcount;
 } qb_string;
 
 qb_string* qb_string_new(const char* s) {
@@ -1427,9 +1428,6 @@ void qb_clipboard_set(const char* text) { (void)text; }
 
 /* Utility Functions */
 
-static int _qb_argc = 0;
-static char** _qb_argv = NULL;
-void qb_set_args(int argc, char** argv) { _qb_argc = argc; _qb_argv = argv; }
 int64_t qb_commandcount(void) { return _qb_argc - 1; }
 
 #ifdef _WIN32
@@ -1556,6 +1554,11 @@ qb_string* qb_selectfolderdialog(qb_string* title) {
     fprintf(stderr, "Note: _SELECTFOLDERDIALOG$ requires external runtime for GUI support\n");
     return qb_string_new("");
 }
+
+/* GOSUB Return Stack */
+#define GOSUB_STACK_SIZE 256
+static void* _gosub_stack[GOSUB_STACK_SIZE];
+static int _gosub_sp = 0;
 
 /* Global Variables */
 int32_t a = 0;

@@ -160,6 +160,9 @@ impl<'a> Parser<'a> {
             TokenKind::RemComment => self.parse_rem_comment(),
             TokenKind::Identifier => self.parse_identifier_statement(),
 
+            // Line numbers (e.g., "100 PRINT" becomes label + statement)
+            TokenKind::IntegerLiteral => self.parse_line_number_statement(),
+
             _ => {
                 let span: Span = token.span.clone().into();
                 self.errors.push(ParseError::InvalidStatement {
@@ -225,6 +228,21 @@ impl<'a> Parser<'a> {
             },
             span,
         ))
+    }
+
+    /// Parses a line number at the start of a statement (e.g., "100 PRINT").
+    /// Returns a Label statement. The subsequent statement (if any) is parsed
+    /// by the main parser loop since we're at the statement boundary.
+    fn parse_line_number_statement(&mut self) -> Result<Statement, ()> {
+        let start = self.peek().expect("integer token").span.start;
+        let line_num_token = self.advance().expect("integer literal");
+        let line_num = line_num_token.text.to_string();
+
+        // Create a label name from the line number (prefixed to be valid C identifier)
+        let name = format!("_line_{}", line_num);
+        let span = self.span_from(start);
+
+        Ok(Statement::new(StatementKind::Label { name }, span))
     }
 
     /// Parses an identifier statement (assignment or procedure call).
@@ -397,21 +415,47 @@ impl<'a> Parser<'a> {
     // ==================== Simple Flow Control ====================
 
     /// Parses a GOTO statement.
+    /// Target can be an identifier (named label) or integer (line number).
     pub(super) fn parse_goto(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("GOTO keyword").span.start; // consume GOTO
-        let target_token = self.expect(&TokenKind::Identifier, "label")?;
-        let target = target_token.text.to_string();
+        let target = self.parse_label_target()?;
         let span = self.span_from(start);
         Ok(Statement::new(StatementKind::Goto { target }, span))
     }
 
     /// Parses a GOSUB statement.
+    /// Target can be an identifier (named label) or integer (line number).
     pub(super) fn parse_gosub(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("GOSUB keyword").span.start; // consume GOSUB
-        let target_token = self.expect(&TokenKind::Identifier, "label")?;
-        let target = target_token.text.to_string();
+        let target = self.parse_label_target()?;
         let span = self.span_from(start);
         Ok(Statement::new(StatementKind::Gosub { target }, span))
+    }
+
+    /// Parses a label target (identifier or line number).
+    fn parse_label_target(&mut self) -> Result<String, ()> {
+        let token = self.peek();
+        match token.map(|t| &t.kind) {
+            Some(TokenKind::Identifier) => {
+                let target_token = self.advance().expect("identifier");
+                Ok(target_token.text.to_string())
+            }
+            Some(TokenKind::IntegerLiteral) => {
+                let target_token = self.advance().expect("integer");
+                // Prefix with underscore to create valid C identifier for line numbers
+                Ok(format!("_line_{}", target_token.text))
+            }
+            _ => {
+                let span = token
+                    .map(|t| t.span.clone().into())
+                    .unwrap_or_else(|| Span::new(0, 0));
+                self.errors.push(ParseError::InvalidStatement {
+                    span,
+                    message: "expected label name or line number".to_string(),
+                });
+                Err(())
+            }
+        }
     }
 
     /// Parses a RETURN statement.
@@ -1457,10 +1501,16 @@ impl<'a> Parser<'a> {
     /// Parses ON ERROR GOTO/RESUME.
     fn parse_on_error(&mut self, start: usize) -> Result<Statement, ()> {
         if self.match_token(&TokenKind::Goto) {
-            // ON ERROR GOTO label or ON ERROR GOTO 0
+            // ON ERROR GOTO label or ON ERROR GOTO 0 (0 disables error handler)
             let target = if self.check(&TokenKind::IntegerLiteral) {
                 let token = self.advance().expect("integer literal");
-                token.text.to_string()
+                let num = token.text.to_string();
+                // "0" is special - it disables the error handler
+                if num == "0" {
+                    num
+                } else {
+                    format!("_line_{}", num)
+                }
             } else {
                 let token = self.expect(&TokenKind::Identifier, "label or 0")?;
                 token.text.to_string()
@@ -1483,13 +1533,13 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Parses a comma-separated list of labels.
+    /// Parses a comma-separated list of label targets (identifiers or line numbers).
     fn parse_label_list(&mut self) -> Result<Vec<String>, ()> {
         let mut labels = Vec::new();
 
         loop {
-            let token = self.expect(&TokenKind::Identifier, "label")?;
-            labels.push(token.text.to_string());
+            let label = self.parse_label_target()?;
+            labels.push(label);
 
             if !self.match_token(&TokenKind::Comma) {
                 break;

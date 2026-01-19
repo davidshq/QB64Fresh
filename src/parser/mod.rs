@@ -89,12 +89,15 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses a complete program (sequence of statements).
+    ///
+    /// Statements are separated by either newlines or colons.
+    /// BASIC allows multiple statements on one line: `x = 1: y = 2: PRINT x + y`
     fn parse_program(&mut self) -> Vec<crate::ast::Statement> {
         let mut statements = Vec::new();
 
         while !self.is_at_end() {
-            // Skip any leading newlines
-            self.skip_newlines();
+            // Skip any statement separators (newlines and colons)
+            self.skip_statement_separators();
 
             if self.is_at_end() {
                 break;

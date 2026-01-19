@@ -104,6 +104,17 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Skips statement separators (newlines and colons).
+    ///
+    /// In BASIC, both newlines and colons separate statements:
+    /// - `x = 1` / `y = 2` (newline separator)
+    /// - `x = 1: y = 2` (colon separator on same line)
+    pub(super) fn skip_statement_separators(&mut self) {
+        while self.check(&TokenKind::Newline) || self.check(&TokenKind::Colon) {
+            self.advance();
+        }
+    }
+
     /// Attempts to recover from an error by skipping to a synchronization point.
     ///
     /// Synchronization points are:

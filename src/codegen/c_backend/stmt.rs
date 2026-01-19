@@ -262,17 +262,26 @@ impl StmtEmitter {
 
             TypedStatementKind::Gosub { target } => {
                 let c_label = c_identifier(target);
+                let return_label = self.next_label("gosub_ret");
+                // Push return address onto stack and jump to subroutine
                 writeln!(
                     output,
-                    "{}/* GOSUB {} - treating as function call */",
-                    indent, target
+                    "{}_gosub_stack[_gosub_sp++] = &&{};",
+                    indent, return_label
                 )
                 .unwrap();
-                writeln!(output, "{}{}();", indent, c_label).unwrap();
+                writeln!(output, "{}goto {};", indent, c_label).unwrap();
+                writeln!(output, "{}{}:;", indent, return_label).unwrap();
             }
 
             TypedStatementKind::Return => {
-                writeln!(output, "{}return;", indent).unwrap();
+                // RETURN from GOSUB - pop return address from stack and jump
+                writeln!(
+                    output,
+                    "{}if (_gosub_sp > 0) goto *_gosub_stack[--_gosub_sp];",
+                    indent
+                )
+                .unwrap();
             }
 
             TypedStatementKind::Exit { exit_type } => {
@@ -2242,7 +2251,7 @@ impl StmtEmitter {
             writeln!(output, "{}_qb_error_resume_next = 0;", indent).unwrap();
         } else {
             let label = c_identifier(target);
-            writeln!(output, "{}_qb_error_handler = &&_label_{};", indent, label).unwrap();
+            writeln!(output, "{}_qb_error_handler = &&{};", indent, label).unwrap();
             writeln!(output, "{}_qb_error_resume_next = 0;", indent).unwrap();
         }
         Ok(())
@@ -2284,7 +2293,7 @@ impl StmtEmitter {
             Some(crate::ast::ResumeTarget::Label(label)) => {
                 let c_label = c_identifier(label);
                 writeln!(output, "{}_qb_err = 0;", indent).unwrap();
-                writeln!(output, "{}goto _label_{};", indent, c_label).unwrap();
+                writeln!(output, "{}goto {};", indent, c_label).unwrap();
             }
         }
         Ok(())
@@ -2317,12 +2326,7 @@ impl StmtEmitter {
         writeln!(output, "{}switch ((int32_t)({}) - 1) {{", indent, sel_code).unwrap();
         for (i, target) in targets.iter().enumerate() {
             let c_label = c_identifier(target);
-            writeln!(
-                output,
-                "{}    case {}: goto _label_{}; break;",
-                indent, i, c_label
-            )
-            .unwrap();
+            writeln!(output, "{}    case {}: goto {}; break;", indent, i, c_label).unwrap();
         }
         writeln!(output, "{}    default: break;", indent).unwrap();
         writeln!(output, "{}}}", indent).unwrap();
@@ -2346,7 +2350,7 @@ impl StmtEmitter {
             let c_label = c_identifier(target);
             writeln!(
                 output,
-                "{}    case {}: _gosub_stack[_gosub_sp++] = &&{}; goto _label_{}; break;",
+                "{}    case {}: _gosub_stack[_gosub_sp++] = &&{}; goto {}; break;",
                 indent, i, return_label, c_label
             )
             .unwrap();
