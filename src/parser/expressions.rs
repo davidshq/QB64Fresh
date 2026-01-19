@@ -118,6 +118,17 @@ impl<'a> Parser<'a> {
             // Text metrics function
             TokenKind::PrintWidth => self.parse_builtin_function("_PRINTWIDTH"),
 
+            // QB4.5 Event Handling / Input Functions (keywords that are also functions)
+            TokenKind::Timer => self.parse_builtin_function("TIMER"),
+            TokenKind::Stick => self.parse_builtin_function("STICK"),
+            TokenKind::Strig => self.parse_builtin_function("STRIG"),
+            TokenKind::Fre => self.parse_builtin_function("FRE"),
+            TokenKind::Inp => self.parse_builtin_function("INP"),
+            TokenKind::Pen => self.parse_builtin_function("PEN"),
+            TokenKind::Erdev => self.parse_builtin_function("ERDEV"),
+            TokenKind::Ioctl => self.parse_builtin_function("IOCTL$"),
+            TokenKind::Key => self.parse_builtin_function("KEY"),
+
             // Keywords that can be used as variable names in expression context
             // In BASIC, keywords like NAME, INPUT, OUTPUT can be used as variable names
             // when context makes it unambiguous that an identifier is expected.

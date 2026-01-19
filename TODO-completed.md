@@ -434,4 +434,50 @@
 
 ---
 
-*Last updated: 2026-01-19 (Session 028 - Phase 7 legacy compatibility: MBF conversions, memory functions, BLOAD/BSAVE)*
+*Last updated: 2026-01-19 (Session 028 - QB4.5 event handling, input devices, legacy functions)*
+
+---
+
+## Phase 7: QB4.5 Event Handling & Legacy Features ✅ (Session 028)
+
+### Event Handling
+- [x] `KEY(n)` function - check key trap status (stub, returns 0)
+- [x] `ON KEY(n) GOSUB` statement - key event handler
+- [x] `ON TIMER(n) GOSUB` statement - timer event handler
+- [x] `ON STRIG(n) GOSUB` statement - joystick trigger handler
+- [x] `ON COM(n) GOSUB` statement - serial port event handler (stub)
+- [x] `ON PEN GOSUB` statement - light pen event handler (stub)
+- [x] `ON UEVENT GOSUB` statement - user-defined event handler (stub)
+- [x] `ON SIGNAL(n) GOSUB` statement - signal event handler (stub)
+- [x] `KEY(n) ON/OFF/STOP` statement - key event trapping control
+- [x] `TIMER ON/OFF/STOP` statement - timer event trapping control
+- [x] `STRIG(n) ON/OFF/STOP` statement - joystick trigger event trapping control
+- [x] `COM(n) ON/OFF/STOP` statement - serial port event trapping control (stub)
+- [x] `PEN ON/OFF/STOP` statement - light pen event trapping control (stub)
+- [x] `UEVENT ON/OFF/STOP` statement - user event trapping control (stub)
+- [x] `UEVENT` statement - trigger user-defined event (stub)
+- [x] `SIGNAL(n) ON/OFF/STOP` statement - signal event trapping control (stub)
+- [x] `OFF` keyword - token for event trapping (KEY OFF, etc.)
+
+### Input Devices (QB4.5)
+- [x] `STICK(n)` function - joystick position (stub, returns center=127)
+- [x] `STRIG(n)` function - joystick trigger state (stub, returns 0)
+- [x] `PEN(n)` function - light pen information (stub, returns 0)
+
+### Memory Functions (QB4.5)
+- [x] `FRE(n)` function - free memory (returns 64MB on modern systems)
+- [x] `FREE` statement - free string space (no-op, GC handles it)
+
+### Port I/O (QB4.5 - Sandboxed)
+- [x] `INP(port)` function - read byte from I/O port (stub, returns 0xFF)
+- [x] `OUT port, value` statement - write byte to I/O port (stub, no-op)
+
+### System Interrupts (Legacy)
+- [x] `INTERRUPT intnum, inregs, outregs` statement - call system interrupt (stub with warning)
+- [x] `INTERRUPTX intnum, inregs, outregs` statement - extended interrupt call (stub with warning)
+
+### Serial I/O (QB4.5)
+- [x] `ERDEV` function - device error code (stub, returns 0)
+- [x] `ERDEV$` function - device error name (stub, returns "")
+- [x] `IOCTL [#]filenum, string$` statement - send device control string (stub)
+- [x] `IOCTL$(filenum)` function - get device status string (stub, returns "")

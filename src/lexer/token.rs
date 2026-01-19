@@ -227,6 +227,82 @@ pub enum TokenKind {
     #[token("STRIG", ignore(ascii_case))]
     Strig,
 
+    /// STICK keyword - joystick position function
+    #[token("STICK", ignore(ascii_case))]
+    Stick,
+
+    /// COM keyword - serial port event trapping
+    #[token("COM", ignore(ascii_case))]
+    Com,
+
+    /// PEN keyword - light pen event trapping
+    #[token("PEN", ignore(ascii_case))]
+    Pen,
+
+    /// UEVENT keyword - user-defined event
+    #[token("UEVENT", ignore(ascii_case))]
+    Uevent,
+
+    /// SIGNAL keyword - signal handling
+    #[token("SIGNAL", ignore(ascii_case))]
+    Signal,
+
+    /// INTERRUPT keyword - system interrupt call
+    #[token("INTERRUPT", ignore(ascii_case))]
+    Interrupt,
+
+    /// INTERRUPTX keyword - extended system interrupt call
+    #[token("INTERRUPTX", ignore(ascii_case))]
+    InterruptX,
+
+    /// ERDEV keyword - error device information
+    #[token("ERDEV", ignore(ascii_case))]
+    Erdev,
+
+    /// IOCTL keyword - device control
+    #[token("IOCTL", ignore(ascii_case))]
+    Ioctl,
+
+    /// FRE keyword - free memory function
+    #[token("FRE", ignore(ascii_case))]
+    Fre,
+
+    /// FREE keyword - free string space statement
+    #[token("FREE", ignore(ascii_case))]
+    Free,
+
+    /// INP keyword - port input function
+    #[token("INP", ignore(ascii_case))]
+    Inp,
+
+    /// OUT keyword - port output statement
+    #[token("OUT", ignore(ascii_case))]
+    Out,
+
+    /// OFF keyword - turn off event trapping
+    #[token("OFF", ignore(ascii_case))]
+    Off,
+
+    /// ONLY keyword - exclusive file access
+    #[token("ONLY", ignore(ascii_case))]
+    Only,
+
+    /// SMOOTH keyword - graphics smooth mode
+    #[token("SMOOTH", ignore(ascii_case))]
+    Smooth,
+
+    /// STRETCH keyword - graphics stretch mode
+    #[token("STRETCH", ignore(ascii_case))]
+    Stretch,
+
+    /// CUSTOMTYPE keyword - TYPE declaration modifier
+    #[token("CUSTOMTYPE", ignore(ascii_case))]
+    CustomType,
+
+    /// TIMER keyword - timer event control
+    #[token("TIMER", ignore(ascii_case))]
+    Timer,
+
     /// CLEAR keyword - clear variables and set memory
     #[token("CLEAR", ignore(ascii_case))]
     Clear,

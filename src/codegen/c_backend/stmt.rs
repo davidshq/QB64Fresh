@@ -1732,6 +1732,143 @@ impl StmtEmitter {
                 .unwrap();
             }
 
+            TypedStatementKind::OnCom { port_num, target } => {
+                let port_code = emit_expr(port_num)?;
+                writeln!(
+                    output,
+                    "{}qb_on_com((int32_t)({}), &&{});",
+                    indent, port_code, target
+                )
+                .unwrap();
+            }
+
+            TypedStatementKind::ComControl { port_num, mode } => {
+                let port_code = emit_expr(port_num)?;
+                let mode_code = match mode {
+                    EventControlMode::On => "1",
+                    EventControlMode::Off => "0",
+                    EventControlMode::Stop => "2",
+                };
+                writeln!(
+                    output,
+                    "{}qb_com_control((int32_t)({}), {});",
+                    indent, port_code, mode_code
+                )
+                .unwrap();
+            }
+
+            TypedStatementKind::OnPen { target } => {
+                writeln!(output, "{}qb_on_pen(&&{});", indent, target).unwrap();
+            }
+
+            TypedStatementKind::PenControl { mode } => {
+                let mode_code = match mode {
+                    EventControlMode::On => "1",
+                    EventControlMode::Off => "0",
+                    EventControlMode::Stop => "2",
+                };
+                writeln!(output, "{}qb_pen_control({});", indent, mode_code).unwrap();
+            }
+
+            TypedStatementKind::OnUevent { target } => {
+                writeln!(output, "{}qb_on_uevent(&&{});", indent, target).unwrap();
+            }
+
+            TypedStatementKind::UeventControl { mode } => {
+                let mode_code = match mode {
+                    EventControlMode::On => "1",
+                    EventControlMode::Off => "0",
+                    EventControlMode::Stop => "2",
+                };
+                writeln!(output, "{}qb_uevent_control({});", indent, mode_code).unwrap();
+            }
+
+            TypedStatementKind::UeventTrigger => {
+                writeln!(output, "{}qb_uevent_trigger();", indent).unwrap();
+            }
+
+            TypedStatementKind::OnSignal { signal_num, target } => {
+                let signal_code = emit_expr(signal_num)?;
+                writeln!(
+                    output,
+                    "{}qb_on_signal((int32_t)({}), &&{});",
+                    indent, signal_code, target
+                )
+                .unwrap();
+            }
+
+            TypedStatementKind::SignalControl { signal_num, mode } => {
+                let signal_code = emit_expr(signal_num)?;
+                let mode_code = match mode {
+                    EventControlMode::On => "1",
+                    EventControlMode::Off => "0",
+                    EventControlMode::Stop => "2",
+                };
+                writeln!(
+                    output,
+                    "{}qb_signal_control((int32_t)({}), {});",
+                    indent, signal_code, mode_code
+                )
+                .unwrap();
+            }
+
+            TypedStatementKind::OutPort { port, value } => {
+                let port_code = emit_expr(port)?;
+                let value_code = emit_expr(value)?;
+                writeln!(
+                    output,
+                    "{}qb_out((int32_t)({}), (int32_t)({}));",
+                    indent, port_code, value_code
+                )
+                .unwrap();
+            }
+
+            TypedStatementKind::InterruptStmt {
+                int_num,
+                in_regs,
+                out_regs,
+            } => {
+                let int_code = emit_expr(int_num)?;
+                writeln!(
+                    output,
+                    "{}qb_interrupt((int32_t)({}), &{}, &{});",
+                    indent, int_code, in_regs, out_regs
+                )
+                .unwrap();
+            }
+
+            TypedStatementKind::InterruptXStmt {
+                int_num,
+                in_regs,
+                out_regs,
+            } => {
+                let int_code = emit_expr(int_num)?;
+                writeln!(
+                    output,
+                    "{}qb_interruptx((int32_t)({}), &{}, &{});",
+                    indent, int_code, in_regs, out_regs
+                )
+                .unwrap();
+            }
+
+            TypedStatementKind::IoctlStmt {
+                file_num,
+                control_string,
+            } => {
+                let file_code = emit_expr(file_num)?;
+                let string_code = emit_expr(control_string)?;
+                writeln!(
+                    output,
+                    "{}qb_ioctl((int32_t)({}), {});",
+                    indent, file_code, string_code
+                )
+                .unwrap();
+            }
+
+            TypedStatementKind::FreeStmt => {
+                writeln!(output, "{}qb_free();", indent).unwrap();
+            }
+
             TypedStatementKind::ClearStmt { stack_size } => {
                 if let Some(size) = stack_size {
                     let size_code = emit_expr(size)?;

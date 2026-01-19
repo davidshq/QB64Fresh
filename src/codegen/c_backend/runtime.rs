@@ -2996,7 +2996,7 @@ fn emit_graphics_stubs(output: &mut String) {
         "    if (text == NULL || text->data == NULL) return 0;"
     )
     .unwrap();
-    writeln!(output, "    return (int64_t)text->length * qb_fontwidth();").unwrap();
+    writeln!(output, "    return (int64_t)text->len * qb_fontwidth();").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
@@ -3496,6 +3496,292 @@ fn emit_legacy_functions(output: &mut String) {
     writeln!(output, "        fwrite(address, 1, length, f);").unwrap();
     writeln!(output, "    }}").unwrap();
     writeln!(output, "    fclose(f);").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // ==================== QB4.5 Event Handling Functions ====================
+    writeln!(output, "/* QB4.5 Event Handling Functions (stubs) */").unwrap();
+    writeln!(output).unwrap();
+
+    // KEY(n) function - check key trap status
+    // Returns: -1 = enabled, 0 = disabled, 1 = event pending but suspended
+    writeln!(output, "int qb_key_status(int64_t n) {{").unwrap();
+    writeln!(output, "    (void)n;").unwrap();
+    writeln!(
+        output,
+        "    return 0; // Event trapping not fully implemented"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // Event handler registration stubs
+    // These would store the label address for calling when events occur
+    writeln!(output, "void qb_on_key(int32_t key_num, void* target) {{").unwrap();
+    writeln!(output, "    (void)key_num; (void)target;").unwrap();
+    writeln!(
+        output,
+        "    // Key event trapping stub - would register handler"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "void qb_key_control(int32_t key_num, int mode) {{").unwrap();
+    writeln!(output, "    (void)key_num; (void)mode;").unwrap();
+    writeln!(
+        output,
+        "    // Key event control stub - 0=off, 1=on, 2=stop"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "void qb_on_timer(float interval, void* target) {{").unwrap();
+    writeln!(output, "    (void)interval; (void)target;").unwrap();
+    writeln!(output, "    // Timer event trapping stub").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "void qb_timer_control(int mode) {{").unwrap();
+    writeln!(output, "    (void)mode;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(
+        output,
+        "void qb_on_strig(int32_t button_num, void* target) {{"
+    )
+    .unwrap();
+    writeln!(output, "    (void)button_num; (void)target;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(
+        output,
+        "void qb_strig_control(int32_t button_num, int mode) {{"
+    )
+    .unwrap();
+    writeln!(output, "    (void)button_num; (void)mode;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "void qb_on_com(int32_t port_num, void* target) {{").unwrap();
+    writeln!(output, "    (void)port_num; (void)target;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "void qb_com_control(int32_t port_num, int mode) {{").unwrap();
+    writeln!(output, "    (void)port_num; (void)mode;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "void qb_on_pen(void* target) {{").unwrap();
+    writeln!(output, "    (void)target;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "void qb_pen_control(int mode) {{").unwrap();
+    writeln!(output, "    (void)mode;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "void qb_on_uevent(void* target) {{").unwrap();
+    writeln!(output, "    (void)target;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "void qb_uevent_control(int mode) {{").unwrap();
+    writeln!(output, "    (void)mode;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "void qb_uevent_trigger(void) {{").unwrap();
+    writeln!(output, "    // Trigger user-defined event stub").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(
+        output,
+        "void qb_on_signal(int32_t signal_num, void* target) {{"
+    )
+    .unwrap();
+    writeln!(output, "    (void)signal_num; (void)target;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(
+        output,
+        "void qb_signal_control(int32_t signal_num, int mode) {{"
+    )
+    .unwrap();
+    writeln!(output, "    (void)signal_num; (void)mode;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // ==================== QB4.5 Joystick Functions ====================
+    writeln!(output, "/* QB4.5 Joystick Functions (stubs) */").unwrap();
+    writeln!(output).unwrap();
+
+    // STICK(n) - returns joystick position (stub returns center position)
+    writeln!(output, "int qb_stick(int64_t n) {{").unwrap();
+    writeln!(output, "    (void)n;").unwrap();
+    writeln!(output, "    // Return center position (stub)").unwrap();
+    writeln!(output, "    // n=0,2: X coordinate, n=1,3: Y coordinate").unwrap();
+    writeln!(output, "    return 127; // Center of 0-255 range").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // STRIG(n) - returns joystick trigger state (stub returns 0 = not pressed)
+    writeln!(output, "int qb_strig(int64_t n) {{").unwrap();
+    writeln!(output, "    (void)n;").unwrap();
+    writeln!(output, "    return 0; // Not pressed (stub)").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // ==================== QB4.5 Memory Functions ====================
+    writeln!(output, "/* QB4.5 Memory Functions (stubs) */").unwrap();
+    writeln!(output).unwrap();
+
+    // FRE(n) - returns free memory
+    // Modern systems have essentially unlimited memory compared to DOS
+    writeln!(output, "int32_t qb_fre(int64_t n) {{").unwrap();
+    writeln!(output, "    (void)n;").unwrap();
+    writeln!(
+        output,
+        "    // Return a large value indicating plenty of memory"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    // n=-1: string space, n=-2: stack, n=0: far heap"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    return 64 * 1024 * 1024; // 64 MB (arbitrary large value)"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // FREE statement - no-op on modern systems
+    writeln!(output, "void qb_free(void) {{").unwrap();
+    writeln!(output, "    // String garbage collection is automatic").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // ==================== QB4.5 Port I/O Functions ====================
+    writeln!(output, "/* QB4.5 Port I/O Functions (stubs - sandboxed) */").unwrap();
+    writeln!(output).unwrap();
+
+    // INP(port) - read byte from I/O port
+    // This is potentially dangerous and not available on modern protected-mode systems
+    writeln!(output, "int qb_inp(int64_t port) {{").unwrap();
+    writeln!(output, "    (void)port;").unwrap();
+    writeln!(
+        output,
+        "    // Port I/O is not available on protected-mode systems"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    // Return 0xFF (all bits set) as if port not present"
+    )
+    .unwrap();
+    writeln!(output, "    return 0xFF;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // OUT port, value - write byte to I/O port
+    writeln!(output, "void qb_out(int32_t port, int32_t value) {{").unwrap();
+    writeln!(output, "    (void)port; (void)value;").unwrap();
+    writeln!(
+        output,
+        "    // Port I/O is not available on protected-mode systems"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // ==================== QB4.5 Light Pen Function ====================
+    writeln!(output, "/* QB4.5 Light Pen Function (stub) */").unwrap();
+    writeln!(output).unwrap();
+
+    // PEN(n) - returns light pen information (always 0 - no light pen)
+    writeln!(output, "int qb_pen(int64_t n) {{").unwrap();
+    writeln!(output, "    (void)n;").unwrap();
+    writeln!(output, "    return 0; // Light pen not present").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // ==================== QB4.5 Serial I/O Functions ====================
+    writeln!(output, "/* QB4.5 Serial I/O Functions (stubs) */").unwrap();
+    writeln!(output).unwrap();
+
+    // ERDEV - device error code
+    writeln!(output, "int qb_erdev(void) {{").unwrap();
+    writeln!(output, "    return 0; // No device error").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // ERDEV$ - device error name
+    writeln!(output, "qb_string* qb_erdev_str(void) {{").unwrap();
+    writeln!(output, "    return qb_string_new(\"\"); // No device error").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // IOCTL statement
+    writeln!(
+        output,
+        "void qb_ioctl(int32_t file_num, qb_string* control_string) {{"
+    )
+    .unwrap();
+    writeln!(output, "    (void)file_num; (void)control_string;").unwrap();
+    writeln!(output, "    // Device control string stub").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // IOCTL$ function - returns device status
+    writeln!(output, "qb_string* qb_ioctl_str(int64_t file_num) {{").unwrap();
+    writeln!(output, "    (void)file_num;").unwrap();
+    writeln!(
+        output,
+        "    return qb_string_new(\"\"); // Empty status string"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // ==================== QB4.5 System Interrupt Functions ====================
+    writeln!(output, "/* QB4.5 System Interrupt Functions (stubs) */").unwrap();
+    writeln!(output).unwrap();
+
+    // INTERRUPT - call system interrupt
+    // This is not implementable on modern protected-mode systems
+    writeln!(
+        output,
+        "void qb_interrupt(int32_t int_num, void* in_regs, void* out_regs) {{"
+    )
+    .unwrap();
+    writeln!(output, "    (void)int_num; (void)in_regs; (void)out_regs;").unwrap();
+    writeln!(
+        output,
+        "    // System interrupts not available on protected-mode systems"
+    )
+    .unwrap();
+    writeln!(output, "    fprintf(stderr, \"Warning: INTERRUPT statement is not supported on modern systems\\n\");").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // INTERRUPTX - extended system interrupt
+    writeln!(
+        output,
+        "void qb_interruptx(int32_t int_num, void* in_regs, void* out_regs) {{"
+    )
+    .unwrap();
+    writeln!(output, "    (void)int_num; (void)in_regs; (void)out_regs;").unwrap();
+    writeln!(output, "    fprintf(stderr, \"Warning: INTERRUPTX statement is not supported on modern systems\\n\");").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 }

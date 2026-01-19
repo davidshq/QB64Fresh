@@ -2149,6 +2149,137 @@ impl<'a> TypeChecker<'a> {
                 )
             }
 
+            StatementKind::OnCom { port_num, target } => {
+                let typed_port_num = self.check_expr(port_num);
+                TypedStatement::new(
+                    TypedStatementKind::OnCom {
+                        port_num: typed_port_num,
+                        target: target.clone(),
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::ComControl { port_num, mode } => {
+                let typed_port_num = self.check_expr(port_num);
+                TypedStatement::new(
+                    TypedStatementKind::ComControl {
+                        port_num: typed_port_num,
+                        mode: *mode,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::OnPen { target } => TypedStatement::new(
+                TypedStatementKind::OnPen {
+                    target: target.clone(),
+                },
+                stmt.span,
+            ),
+
+            StatementKind::PenControl { mode } => {
+                TypedStatement::new(TypedStatementKind::PenControl { mode: *mode }, stmt.span)
+            }
+
+            StatementKind::OnUevent { target } => TypedStatement::new(
+                TypedStatementKind::OnUevent {
+                    target: target.clone(),
+                },
+                stmt.span,
+            ),
+
+            StatementKind::UeventControl { mode } => {
+                TypedStatement::new(TypedStatementKind::UeventControl { mode: *mode }, stmt.span)
+            }
+
+            StatementKind::UeventTrigger => {
+                TypedStatement::new(TypedStatementKind::UeventTrigger, stmt.span)
+            }
+
+            StatementKind::OnSignal { signal_num, target } => {
+                let typed_signal_num = self.check_expr(signal_num);
+                TypedStatement::new(
+                    TypedStatementKind::OnSignal {
+                        signal_num: typed_signal_num,
+                        target: target.clone(),
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::SignalControl { signal_num, mode } => {
+                let typed_signal_num = self.check_expr(signal_num);
+                TypedStatement::new(
+                    TypedStatementKind::SignalControl {
+                        signal_num: typed_signal_num,
+                        mode: *mode,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::OutPort { port, value } => {
+                let typed_port = self.check_expr(port);
+                let typed_value = self.check_expr(value);
+                TypedStatement::new(
+                    TypedStatementKind::OutPort {
+                        port: typed_port,
+                        value: typed_value,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::InterruptStmt {
+                int_num,
+                in_regs,
+                out_regs,
+            } => {
+                let typed_int_num = self.check_expr(int_num);
+                TypedStatement::new(
+                    TypedStatementKind::InterruptStmt {
+                        int_num: typed_int_num,
+                        in_regs: in_regs.clone(),
+                        out_regs: out_regs.clone(),
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::InterruptXStmt {
+                int_num,
+                in_regs,
+                out_regs,
+            } => {
+                let typed_int_num = self.check_expr(int_num);
+                TypedStatement::new(
+                    TypedStatementKind::InterruptXStmt {
+                        int_num: typed_int_num,
+                        in_regs: in_regs.clone(),
+                        out_regs: out_regs.clone(),
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::IoctlStmt {
+                file_num,
+                control_string,
+            } => {
+                let typed_file_num = self.check_expr(file_num);
+                let typed_control_string = self.check_expr(control_string);
+                TypedStatement::new(
+                    TypedStatementKind::IoctlStmt {
+                        file_num: typed_file_num,
+                        control_string: typed_control_string,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::FreeStmt => TypedStatement::new(TypedStatementKind::FreeStmt, stmt.span),
+
             StatementKind::ClearStmt { stack_size } => {
                 let typed_stack_size = stack_size.as_ref().map(|s| self.check_expr(s));
                 TypedStatement::new(

@@ -191,6 +191,17 @@ impl<'a> Parser<'a> {
             TokenKind::Lset => self.parse_lset(),
             TokenKind::Rset => self.parse_rset(),
             TokenKind::Key => self.parse_key_statement(),
+            TokenKind::Strig => self.parse_strig_statement(),
+            TokenKind::Com => self.parse_com_statement(),
+            TokenKind::Pen => self.parse_pen_statement(),
+            TokenKind::Uevent => self.parse_uevent_statement(),
+            TokenKind::Signal => self.parse_signal_statement(),
+            TokenKind::Timer => self.parse_timer_statement(),
+            TokenKind::Out => self.parse_out_statement(),
+            TokenKind::Interrupt => self.parse_interrupt_statement(),
+            TokenKind::InterruptX => self.parse_interruptx_statement(),
+            TokenKind::Ioctl => self.parse_ioctl_statement(),
+            TokenKind::Free => self.parse_free_statement(),
             TokenKind::Clear => self.parse_clear(),
             TokenKind::Reset => self.parse_reset(),
 
@@ -1649,9 +1660,16 @@ impl<'a> Parser<'a> {
 
     // ==================== Error Handling Statements ====================
 
-    /// Parses an ON statement (ON ERROR or ON...GOTO/GOSUB).
+    /// Parses an ON statement (ON ERROR, ON KEY, ON TIMER, ON STRIG, ON COM, ON PEN, ON UEVENT, ON SIGNAL, or ON...GOTO/GOSUB).
     ///
     /// Syntax: `ON ERROR GOTO label` or `ON ERROR RESUME NEXT`
+    ///         `ON KEY(n) GOSUB label`
+    ///         `ON TIMER(seconds) GOSUB label`
+    ///         `ON STRIG(n) GOSUB label`
+    ///         `ON COM(n) GOSUB label`
+    ///         `ON PEN GOSUB label`
+    ///         `ON UEVENT GOSUB label`
+    ///         `ON SIGNAL(n) GOSUB label`
     ///         `ON expr GOTO label1, label2, ...`
     ///         `ON expr GOSUB label1, label2, ...`
     pub(super) fn parse_on_statement(&mut self) -> Result<Statement, ()> {
@@ -1660,6 +1678,92 @@ impl<'a> Parser<'a> {
         // Check for ON ERROR
         if self.match_token(&TokenKind::ErrorKw) {
             return self.parse_on_error(start);
+        }
+
+        // Check for ON KEY(n) GOSUB
+        if self.match_token(&TokenKind::Key) {
+            self.expect(&TokenKind::LeftParen, "(")?;
+            let key_num = self.parse_expression()?;
+            self.expect(&TokenKind::RightParen, ")")?;
+            self.expect(&TokenKind::Gosub, "GOSUB")?;
+            let target = self.parse_label_target()?;
+            let span = self.span_from(start);
+            return Ok(Statement::new(
+                StatementKind::OnKey { key_num, target },
+                span,
+            ));
+        }
+
+        // Check for ON TIMER(seconds) GOSUB
+        if self.match_token(&TokenKind::Timer) {
+            self.expect(&TokenKind::LeftParen, "(")?;
+            let interval = self.parse_expression()?;
+            self.expect(&TokenKind::RightParen, ")")?;
+            self.expect(&TokenKind::Gosub, "GOSUB")?;
+            let target = self.parse_label_target()?;
+            let span = self.span_from(start);
+            return Ok(Statement::new(
+                StatementKind::OnTimer { interval, target },
+                span,
+            ));
+        }
+
+        // Check for ON STRIG(n) GOSUB
+        if self.match_token(&TokenKind::Strig) {
+            self.expect(&TokenKind::LeftParen, "(")?;
+            let button_num = self.parse_expression()?;
+            self.expect(&TokenKind::RightParen, ")")?;
+            self.expect(&TokenKind::Gosub, "GOSUB")?;
+            let target = self.parse_label_target()?;
+            let span = self.span_from(start);
+            return Ok(Statement::new(
+                StatementKind::OnStrig { button_num, target },
+                span,
+            ));
+        }
+
+        // Check for ON COM(n) GOSUB
+        if self.match_token(&TokenKind::Com) {
+            self.expect(&TokenKind::LeftParen, "(")?;
+            let port_num = self.parse_expression()?;
+            self.expect(&TokenKind::RightParen, ")")?;
+            self.expect(&TokenKind::Gosub, "GOSUB")?;
+            let target = self.parse_label_target()?;
+            let span = self.span_from(start);
+            return Ok(Statement::new(
+                StatementKind::OnCom { port_num, target },
+                span,
+            ));
+        }
+
+        // Check for ON PEN GOSUB
+        if self.match_token(&TokenKind::Pen) {
+            self.expect(&TokenKind::Gosub, "GOSUB")?;
+            let target = self.parse_label_target()?;
+            let span = self.span_from(start);
+            return Ok(Statement::new(StatementKind::OnPen { target }, span));
+        }
+
+        // Check for ON UEVENT GOSUB
+        if self.match_token(&TokenKind::Uevent) {
+            self.expect(&TokenKind::Gosub, "GOSUB")?;
+            let target = self.parse_label_target()?;
+            let span = self.span_from(start);
+            return Ok(Statement::new(StatementKind::OnUevent { target }, span));
+        }
+
+        // Check for ON SIGNAL(n) GOSUB
+        if self.match_token(&TokenKind::Signal) {
+            self.expect(&TokenKind::LeftParen, "(")?;
+            let signal_num = self.parse_expression()?;
+            self.expect(&TokenKind::RightParen, ")")?;
+            self.expect(&TokenKind::Gosub, "GOSUB")?;
+            let target = self.parse_label_target()?;
+            let span = self.span_from(start);
+            return Ok(Statement::new(
+                StatementKind::OnSignal { signal_num, target },
+                span,
+            ));
         }
 
         // ON expr GOTO/GOSUB
@@ -2629,7 +2733,11 @@ impl<'a> Parser<'a> {
         if self.check(&TokenKind::On) {
             self.advance();
             Ok(EventControlMode::On)
+        } else if self.check(&TokenKind::Off) {
+            self.advance();
+            Ok(EventControlMode::Off)
         } else if self.check_identifier_text("OFF") {
+            // Also accept OFF as identifier for backwards compatibility
             self.advance();
             Ok(EventControlMode::Off)
         } else if self.check(&TokenKind::Stop) {
@@ -2640,6 +2748,174 @@ impl<'a> Parser<'a> {
             self.error_at_span_msg(span, "expected ON, OFF, or STOP");
             Err(())
         }
+    }
+
+    /// Parses STRIG statement: `STRIG(n) ON|OFF|STOP`.
+    pub(super) fn parse_strig_statement(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("STRIG keyword").span.start;
+
+        self.expect(&TokenKind::LeftParen, "(")?;
+        let button_num = self.parse_expression()?;
+        self.expect(&TokenKind::RightParen, ")")?;
+
+        let mode = self.parse_event_control_mode()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::StrigControl { button_num, mode },
+            span,
+        ))
+    }
+
+    /// Parses COM statement: `COM(n) ON|OFF|STOP`.
+    pub(super) fn parse_com_statement(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("COM keyword").span.start;
+
+        self.expect(&TokenKind::LeftParen, "(")?;
+        let port_num = self.parse_expression()?;
+        self.expect(&TokenKind::RightParen, ")")?;
+
+        let mode = self.parse_event_control_mode()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::ComControl { port_num, mode },
+            span,
+        ))
+    }
+
+    /// Parses PEN statement: `PEN ON|OFF|STOP`.
+    pub(super) fn parse_pen_statement(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("PEN keyword").span.start;
+
+        let mode = self.parse_event_control_mode()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::PenControl { mode }, span))
+    }
+
+    /// Parses UEVENT statement: `UEVENT ON|OFF|STOP` or just `UEVENT` to trigger.
+    pub(super) fn parse_uevent_statement(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("UEVENT keyword").span.start;
+
+        // Check if it's a control statement or a trigger
+        if self.is_at_statement_end() {
+            // Just UEVENT alone triggers the event
+            let span = self.span_from(start);
+            return Ok(Statement::new(StatementKind::UeventTrigger, span));
+        }
+
+        let mode = self.parse_event_control_mode()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::UeventControl { mode }, span))
+    }
+
+    /// Parses SIGNAL statement: `SIGNAL(n) ON|OFF|STOP`.
+    pub(super) fn parse_signal_statement(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("SIGNAL keyword").span.start;
+
+        self.expect(&TokenKind::LeftParen, "(")?;
+        let signal_num = self.parse_expression()?;
+        self.expect(&TokenKind::RightParen, ")")?;
+
+        let mode = self.parse_event_control_mode()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::SignalControl { signal_num, mode },
+            span,
+        ))
+    }
+
+    /// Parses TIMER statement: `TIMER ON|OFF|STOP`.
+    pub(super) fn parse_timer_statement(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("TIMER keyword").span.start;
+
+        let mode = self.parse_event_control_mode()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::TimerControl { mode }, span))
+    }
+
+    /// Parses OUT statement: `OUT port, value`.
+    pub(super) fn parse_out_statement(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("OUT keyword").span.start;
+
+        let port = self.parse_expression()?;
+        self.expect(&TokenKind::Comma, ",")?;
+        let value = self.parse_expression()?;
+
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::OutPort { port, value }, span))
+    }
+
+    /// Parses INTERRUPT statement: `INTERRUPT intnum, inregs, outregs`.
+    pub(super) fn parse_interrupt_statement(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("INTERRUPT keyword").span.start;
+
+        let int_num = self.parse_expression()?;
+        self.expect(&TokenKind::Comma, ",")?;
+        let in_regs_token = self.expect(&TokenKind::Identifier, "input registers variable")?;
+        let in_regs = in_regs_token.text.to_string();
+        self.expect(&TokenKind::Comma, ",")?;
+        let out_regs_token = self.expect(&TokenKind::Identifier, "output registers variable")?;
+        let out_regs = out_regs_token.text.to_string();
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::InterruptStmt {
+                int_num,
+                in_regs,
+                out_regs,
+            },
+            span,
+        ))
+    }
+
+    /// Parses INTERRUPTX statement: `INTERRUPTX intnum, inregs, outregs`.
+    pub(super) fn parse_interruptx_statement(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("INTERRUPTX keyword").span.start;
+
+        let int_num = self.parse_expression()?;
+        self.expect(&TokenKind::Comma, ",")?;
+        let in_regs_token = self.expect(&TokenKind::Identifier, "input registers variable")?;
+        let in_regs = in_regs_token.text.to_string();
+        self.expect(&TokenKind::Comma, ",")?;
+        let out_regs_token = self.expect(&TokenKind::Identifier, "output registers variable")?;
+        let out_regs = out_regs_token.text.to_string();
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::InterruptXStmt {
+                int_num,
+                in_regs,
+                out_regs,
+            },
+            span,
+        ))
+    }
+
+    /// Parses IOCTL statement: `IOCTL [#]filenum, string$`.
+    pub(super) fn parse_ioctl_statement(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("IOCTL keyword").span.start;
+
+        // Skip optional # before file number
+        self.match_token(&TokenKind::Hash);
+
+        let file_num = self.parse_expression()?;
+        self.expect(&TokenKind::Comma, ",")?;
+        let control_string = self.parse_expression()?;
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::IoctlStmt {
+                file_num,
+                control_string,
+            },
+            span,
+        ))
+    }
+
+    /// Parses FREE statement.
+    pub(super) fn parse_free_statement(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("FREE keyword").span.start;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::FreeStmt, span))
     }
 
     /// Parses `CLEAR [stack_size]` - clear all variables.

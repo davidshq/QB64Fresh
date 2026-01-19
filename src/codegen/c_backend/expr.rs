@@ -498,6 +498,27 @@ pub(super) fn c_function_name(name: &str) -> String {
         // Coordinate mapping
         "PMAP" => "qb_gfx_pmap".to_string(),
 
+        // Event handling functions (QB4.5)
+        "KEY" => "qb_key_status".to_string(), // KEY(n) function - check key trap status
+
+        // Joystick functions (QB4.5)
+        "STICK" => "qb_stick".to_string(),
+        "STRIG" => "qb_strig".to_string(),
+
+        // Memory functions (QB4.5)
+        "FRE" => "qb_fre".to_string(),
+
+        // Port I/O functions (QB4.5)
+        "INP" => "qb_inp".to_string(),
+
+        // Light pen function (QB4.5 legacy)
+        "PEN" => "qb_pen".to_string(),
+
+        // Serial I/O functions (QB4.5)
+        "ERDEV" => "qb_erdev".to_string(),
+        "ERDEV$" => "qb_erdev_str".to_string(),
+        "IOCTL$" => "qb_ioctl_str".to_string(),
+
         // Legacy BASIC functions
         "LPOS" => "qb_lpos".to_string(),
         "VARPTR" => "qb_varptr".to_string(),

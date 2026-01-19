@@ -810,6 +810,56 @@ impl SemanticAnalyzer {
         // LPOS returns the current position of the line printer
         self.register_builtin_function("LPOS", &[("n", BasicType::Long)], BasicType::Integer);
 
+        // Event Handling Functions (QB4.5)
+        // KEY(n) function - check key trap status (returns event status: -1=enabled, 0=disabled, 1=event pending)
+        self.register_builtin_function("KEY", &[("n", BasicType::Long)], BasicType::Integer);
+
+        // Joystick Functions (QB4.5)
+        // STICK(n) - returns joystick position
+        // n=0: returns X coordinate of joystick A (and latches Y)
+        // n=1: returns Y coordinate of joystick A
+        // n=2: returns X coordinate of joystick B (and latches Y)
+        // n=3: returns Y coordinate of joystick B
+        self.register_builtin_function("STICK", &[("n", BasicType::Long)], BasicType::Integer);
+        // STRIG(n) - returns joystick trigger state
+        // n=0: lower trigger A pressed since last STRIG(0)
+        // n=1: lower trigger A currently pressed
+        // n=2: lower trigger B pressed since last STRIG(2)
+        // n=3: lower trigger B currently pressed
+        // n=4: upper trigger A pressed since last STRIG(4)
+        // n=5: upper trigger A currently pressed
+        // n=6: upper trigger B pressed since last STRIG(6)
+        // n=7: upper trigger B currently pressed
+        self.register_builtin_function("STRIG", &[("n", BasicType::Long)], BasicType::Integer);
+
+        // Memory Functions (QB4.5)
+        // FRE(n) - returns free memory
+        // n=-1: largest block of free string space
+        // n=-2: available stack space
+        // n=0 or "string": free string space
+        // n=any other: far heap space (legacy, returns large number on modern systems)
+        self.register_builtin_function("FRE", &[("n", BasicType::Long)], BasicType::Long);
+
+        // Port I/O Functions (QB4.5 - may be sandboxed)
+        // INP(port) - reads a byte from hardware I/O port
+        self.register_builtin_function("INP", &[("port", BasicType::Long)], BasicType::Integer);
+
+        // Light Pen Functions (QB4.5 legacy)
+        // PEN(n) - returns light pen information (stub - returns 0)
+        self.register_builtin_function("PEN", &[("n", BasicType::Long)], BasicType::Integer);
+
+        // Serial I/O Functions (QB4.5)
+        // ERDEV - returns device error code
+        self.register_builtin_function("ERDEV", &[], BasicType::Integer);
+        // ERDEV$ - returns device error name
+        self.register_builtin_function("ERDEV$", &[], BasicType::String);
+        // IOCTL$(filenum) - returns device control string from driver
+        self.register_builtin_function(
+            "IOCTL$",
+            &[("filenum", BasicType::Long)],
+            BasicType::String,
+        );
+
         // Memory/Legacy functions
         // VARPTR returns the offset address of a variable within its segment
         self.register_builtin_function(

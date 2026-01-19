@@ -97,39 +97,12 @@ All Phase 2 items have been completed:
 
 ### High Priority - QB4.5 Core Features
 
-#### Event Handling
-- [ ] `KEY(n)` function - check key trap status
-- [ ] `ON KEY(n) GOSUB` - key event handler (parser ready, needs ON statement integration)
-- [ ] `COM` statement - serial port event trapping
-- [ ] `ON COM(n) GOSUB` - serial port event handler
-- [ ] `PEN` statement - light pen event trapping
-- [ ] `ON PEN GOSUB` - light pen event handler
-- [ ] `ON STRIG(n) GOSUB` - joystick trigger handler (parser ready, needs ON statement integration)
-- [ ] `UEVENT` - user-defined event
-- [ ] `ON UEVENT GOSUB` - user event handler
-- [ ] `SIGNAL` statement - signal handling
-
-#### Input Devices (QB4.5)
-- [ ] `STICK(n)` function - joystick position
-- [ ] `STRIG(n)` function - joystick trigger state
-
-#### System Interrupts (Legacy)
-- [ ] `INTERRUPT` / `INTERRUPTX` statements - call system interrupts
-
-#### Serial I/O
-- [ ] `ERDEV` / `ERDEV$` - error device information
-- [ ] `IOCTL` / `IOCTL$` - device control
-
-#### Miscellaneous QB4.5
-- [ ] `FRE()` function - free memory
-- [ ] `FREE` statement - free string space
+#### Remaining QB4.5 Items
 - [ ] `WAIT` statement - wait for port
-- [ ] `INP()` / `OUT` - port I/O (may need sandboxing)
-- [ ] `OFF` keyword - turn off event trapping (KEY OFF, etc.)
-- [ ] `ONLY` keyword - exclusive file access (OPEN...FOR...ONLY)
-- [ ] `SMOOTH` keyword - graphics smooth mode
-- [ ] `STRETCH` keyword - graphics stretch mode
-- [ ] `CUSTOMTYPE` - TYPE declaration modifier
+- [ ] `ONLY` keyword - exclusive file access (OPEN...FOR...ONLY) - token added
+- [ ] `SMOOTH` keyword - graphics smooth mode - token added
+- [ ] `STRETCH` keyword - graphics stretch mode - token added
+- [ ] `CUSTOMTYPE` - TYPE declaration modifier - token added
 
 ### Medium Priority - QB64 Extensions
 

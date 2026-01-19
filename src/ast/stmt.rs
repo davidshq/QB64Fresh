@@ -1308,6 +1308,126 @@ pub enum StatementKind {
         target: String,
     },
 
+    /// `ON COM(n) GOSUB label` - Set up serial port event handler
+    ///
+    /// Defines a subroutine to call when data is received on a serial port.
+    OnCom {
+        /// COM port number (1-4)
+        port_num: Expr,
+        /// Label to GOSUB when data is received
+        target: String,
+    },
+
+    /// `COM(n) ON|OFF|STOP` - Enable/disable/suspend serial port event trapping
+    ComControl {
+        /// COM port number
+        port_num: Expr,
+        /// Control mode
+        mode: EventControlMode,
+    },
+
+    /// `ON PEN GOSUB label` - Set up light pen event handler
+    ///
+    /// Defines a subroutine to call when the light pen is activated.
+    OnPen {
+        /// Label to GOSUB when pen is activated
+        target: String,
+    },
+
+    /// `PEN ON|OFF|STOP` - Enable/disable/suspend light pen event trapping
+    PenControl {
+        /// Control mode
+        mode: EventControlMode,
+    },
+
+    /// `ON UEVENT GOSUB label` - Set up user-defined event handler
+    ///
+    /// Defines a subroutine to call when a user event is triggered.
+    OnUevent {
+        /// Label to GOSUB when event fires
+        target: String,
+    },
+
+    /// `UEVENT ON|OFF|STOP` - Enable/disable/suspend user event trapping
+    UeventControl {
+        /// Control mode
+        mode: EventControlMode,
+    },
+
+    /// `UEVENT` - Trigger a user-defined event
+    UeventTrigger,
+
+    /// `ON SIGNAL(n) GOSUB label` - Set up signal event handler
+    ///
+    /// Defines a subroutine to call when a system signal is received.
+    OnSignal {
+        /// Signal number
+        signal_num: Expr,
+        /// Label to GOSUB when signal is received
+        target: String,
+    },
+
+    /// `SIGNAL(n) ON|OFF|STOP` - Enable/disable/suspend signal event trapping
+    SignalControl {
+        /// Signal number
+        signal_num: Expr,
+        /// Control mode
+        mode: EventControlMode,
+    },
+
+    /// `OUT port, value` - Write byte to I/O port
+    ///
+    /// Writes a byte to a hardware I/O port. This is a legacy feature that
+    /// may be sandboxed or disabled for security reasons.
+    OutPort {
+        /// Port address
+        port: Expr,
+        /// Value to write (0-255)
+        value: Expr,
+    },
+
+    /// `INTERRUPT intnum, inregs, outregs` - Call system interrupt
+    ///
+    /// Legacy statement for invoking DOS/BIOS interrupts. Primarily for
+    /// compatibility; most interrupts are not meaningfully implementable
+    /// on modern systems.
+    InterruptStmt {
+        /// Interrupt number
+        int_num: Expr,
+        /// Input registers (TYPE variable)
+        in_regs: String,
+        /// Output registers (TYPE variable)
+        out_regs: String,
+    },
+
+    /// `INTERRUPTX intnum, inregs, outregs` - Extended system interrupt call
+    ///
+    /// Like INTERRUPT but uses extended registers. Legacy compatibility feature.
+    InterruptXStmt {
+        /// Interrupt number
+        int_num: Expr,
+        /// Input registers (TYPE variable)
+        in_regs: String,
+        /// Output registers (TYPE variable)
+        out_regs: String,
+    },
+
+    /// `IOCTL [#]filenum, string$` - Send device control string
+    ///
+    /// Sends control data to a device driver.
+    IoctlStmt {
+        /// File number of the device
+        file_num: Expr,
+        /// Control string to send
+        control_string: Expr,
+    },
+
+    /// `FREE` - Free unused string space
+    ///
+    /// Releases memory used by discarded strings. In modern systems with
+    /// automatic garbage collection, this is a no-op stub.
+    FreeStmt,
+
     /// `CLEAR [stack_size]` - Clear all variables and optionally set stack size
     ///
     /// Resets all variables to their default values.

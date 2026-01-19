@@ -1226,6 +1226,104 @@ pub enum TypedStatementKind {
         target: String,
     },
 
+    /// ON COM(n) GOSUB statement.
+    OnCom {
+        /// COM port number.
+        port_num: TypedExpr,
+        /// Target label.
+        target: String,
+    },
+
+    /// COM(n) ON|OFF|STOP statement.
+    ComControl {
+        /// COM port number.
+        port_num: TypedExpr,
+        /// Control mode.
+        mode: EventControlMode,
+    },
+
+    /// ON PEN GOSUB statement.
+    OnPen {
+        /// Target label.
+        target: String,
+    },
+
+    /// PEN ON|OFF|STOP statement.
+    PenControl {
+        /// Control mode.
+        mode: EventControlMode,
+    },
+
+    /// ON UEVENT GOSUB statement.
+    OnUevent {
+        /// Target label.
+        target: String,
+    },
+
+    /// UEVENT ON|OFF|STOP statement.
+    UeventControl {
+        /// Control mode.
+        mode: EventControlMode,
+    },
+
+    /// UEVENT statement - trigger user event.
+    UeventTrigger,
+
+    /// ON SIGNAL(n) GOSUB statement.
+    OnSignal {
+        /// Signal number.
+        signal_num: TypedExpr,
+        /// Target label.
+        target: String,
+    },
+
+    /// SIGNAL(n) ON|OFF|STOP statement.
+    SignalControl {
+        /// Signal number.
+        signal_num: TypedExpr,
+        /// Control mode.
+        mode: EventControlMode,
+    },
+
+    /// OUT port, value statement.
+    OutPort {
+        /// Port address.
+        port: TypedExpr,
+        /// Value to write.
+        value: TypedExpr,
+    },
+
+    /// INTERRUPT statement.
+    InterruptStmt {
+        /// Interrupt number.
+        int_num: TypedExpr,
+        /// Input registers variable.
+        in_regs: String,
+        /// Output registers variable.
+        out_regs: String,
+    },
+
+    /// INTERRUPTX statement.
+    InterruptXStmt {
+        /// Interrupt number.
+        int_num: TypedExpr,
+        /// Input registers variable.
+        in_regs: String,
+        /// Output registers variable.
+        out_regs: String,
+    },
+
+    /// IOCTL statement.
+    IoctlStmt {
+        /// File number.
+        file_num: TypedExpr,
+        /// Control string.
+        control_string: TypedExpr,
+    },
+
+    /// FREE statement.
+    FreeStmt,
+
     /// CLEAR statement - clear variables.
     ClearStmt {
         /// Optional stack size.
