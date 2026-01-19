@@ -104,6 +104,20 @@ impl StmtEmitter {
                 )?;
             }
 
+            TypedStatementKind::ArrayFieldAssignment {
+                name,
+                indices,
+                fields,
+                value,
+                dimensions,
+                element_type: _,
+                field_type: _,
+            } => {
+                self.emit_array_field_assignment(
+                    &indent, name, indices, fields, value, dimensions, output,
+                )?;
+            }
+
             TypedStatementKind::Print { items, newline } => {
                 for item in items {
                     self.emit_print_item(item, output)?;
@@ -359,30 +373,32 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::Dim {
-                name,
-                basic_type,
-                dimensions,
+                variables,
                 shared: _,
             } => {
-                self.emit_dim(&indent, name, basic_type, dimensions, output)?;
+                for var in variables {
+                    self.emit_dim(&indent, &var.name, &var.basic_type, &var.dimensions, output)?;
+                }
             }
 
-            TypedStatementKind::Const {
-                name,
-                value,
-                basic_type: _,
-            } => {
-                let c_name = c_identifier(name);
-                let value_code = emit_expr(value)?;
-                writeln!(
-                    output,
-                    "{}const {} {} = {};",
-                    indent,
-                    c_type(&value.basic_type),
-                    c_name,
-                    value_code
-                )
-                .unwrap();
+            TypedStatementKind::Const { definitions } => {
+                for (name, value, _basic_type) in definitions {
+                    let c_name = c_identifier(name);
+                    let value_code = emit_expr(value)?;
+                    writeln!(
+                        output,
+                        "{}const {} {} = {};",
+                        indent,
+                        c_type(&value.basic_type),
+                        c_name,
+                        value_code
+                    )
+                    .unwrap();
+                }
+            }
+
+            TypedStatementKind::DefType => {
+                // DEFxxx statements affect type inference but generate no C code
             }
 
             TypedStatementKind::Label { name } => {
@@ -890,6 +906,95 @@ impl StmtEmitter {
                 writeln!(output, "{}qb_gfx_draw({});", indent, cmd_code).unwrap();
             }
 
+            TypedStatementKind::GraphicsGet {
+                x1,
+                y1,
+                x2,
+                y2,
+                step2,
+                array_name,
+                array_index,
+            } => {
+                let x1_code = emit_expr(x1)?;
+                let y1_code = emit_expr(y1)?;
+                let x2_code = emit_expr(x2)?;
+                let y2_code = emit_expr(y2)?;
+                let arr_name = c_identifier(array_name);
+
+                // Calculate array pointer - either base or with offset
+                let arr_ptr = if let Some(idx) = array_index {
+                    let idx_code = emit_expr(idx)?;
+                    format!("&{}[{}]", arr_name, idx_code)
+                } else {
+                    arr_name.clone()
+                };
+
+                if *step2 {
+                    // STEP means x2,y2 are relative (width, height)
+                    writeln!(
+                        output,
+                        "{}qb_gfx_get_step((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, {});",
+                        indent, x1_code, y1_code, x2_code, y2_code, arr_ptr
+                    )
+                    .unwrap();
+                } else {
+                    writeln!(
+                        output,
+                        "{}qb_gfx_get((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, {});",
+                        indent, x1_code, y1_code, x2_code, y2_code, arr_ptr
+                    )
+                    .unwrap();
+                }
+            }
+
+            TypedStatementKind::GraphicsPut {
+                x,
+                y,
+                step,
+                array_name,
+                array_index,
+                action,
+            } => {
+                use crate::ast::PutAction;
+
+                let x_code = emit_expr(x)?;
+                let y_code = emit_expr(y)?;
+                let arr_name = c_identifier(array_name);
+
+                // Calculate array pointer
+                let arr_ptr = if let Some(idx) = array_index {
+                    let idx_code = emit_expr(idx)?;
+                    format!("&{}[{}]", arr_name, idx_code)
+                } else {
+                    arr_name.clone()
+                };
+
+                // Map action to C constant
+                let action_code = match action {
+                    PutAction::Xor => "QB_PUT_XOR",
+                    PutAction::Pset => "QB_PUT_PSET",
+                    PutAction::Preset => "QB_PUT_PRESET",
+                    PutAction::And => "QB_PUT_AND",
+                    PutAction::Or => "QB_PUT_OR",
+                };
+
+                if *step {
+                    writeln!(
+                        output,
+                        "{}qb_gfx_put_step((int32_t){}, (int32_t){}, {}, {});",
+                        indent, x_code, y_code, arr_ptr, action_code
+                    )
+                    .unwrap();
+                } else {
+                    writeln!(
+                        output,
+                        "{}qb_gfx_put((int32_t){}, (int32_t){}, {}, {});",
+                        indent, x_code, y_code, arr_ptr, action_code
+                    )
+                    .unwrap();
+                }
+            }
+
             // ==================== QB64 Graphics Extensions ====================
             TypedStatementKind::FreeImage { handle } => {
                 let h_code = emit_expr(handle)?;
@@ -1285,6 +1390,64 @@ impl StmtEmitter {
             )
             .unwrap();
         }
+        Ok(())
+    }
+
+    /// Emits a UDT array field assignment: `array(i).field = value`
+    #[allow(clippy::too_many_arguments)]
+    fn emit_array_field_assignment(
+        &self,
+        indent: &str,
+        name: &str,
+        indices: &[crate::semantic::typed_ir::TypedExpr],
+        fields: &[String],
+        value: &crate::semantic::typed_ir::TypedExpr,
+        dimensions: &[TypedArrayDimension],
+        output: &mut String,
+    ) -> Result<(), CodeGenError> {
+        let c_name = c_identifier(name);
+        let value_code = emit_expr(value)?;
+
+        let indices_code: Result<Vec<_>, _> = indices.iter().map(emit_expr).collect();
+        let indices_code = indices_code?;
+
+        // Calculate linear index for multi-dimensional arrays
+        let index_expr = if dimensions.is_empty() || indices_code.len() == 1 {
+            if let Some(dim) = dimensions.first() {
+                format!("{} - {}", indices_code[0], dim.lower)
+            } else {
+                indices_code[0].clone()
+            }
+        } else {
+            let mut linear_parts = Vec::new();
+            for (i, (idx, dim)) in indices_code.iter().zip(dimensions.iter()).enumerate() {
+                let adjusted = format!("({} - {})", idx, dim.lower);
+                if i < dimensions.len() - 1 {
+                    let stride: i64 = dimensions[i + 1..]
+                        .iter()
+                        .map(|d| d.upper - d.lower + 1)
+                        .product();
+                    linear_parts.push(format!("{} * {}", adjusted, stride));
+                } else {
+                    linear_parts.push(adjusted);
+                }
+            }
+            linear_parts.join(" + ")
+        };
+
+        // Build field access chain: .field1.field2...
+        let field_chain: String = fields
+            .iter()
+            .map(|f| format!(".{}", c_identifier(f)))
+            .collect();
+
+        writeln!(
+            output,
+            "{}{}[{}]{} = {};",
+            indent, c_name, index_expr, field_chain, value_code
+        )
+        .unwrap();
+
         Ok(())
     }
 

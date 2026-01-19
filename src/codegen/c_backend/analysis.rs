@@ -63,16 +63,18 @@ pub(super) fn collect_globals(
     for stmt in &program.statements {
         match &stmt.kind {
             TypedStatementKind::Dim {
-                name,
-                basic_type,
-                dimensions,
+                variables,
                 shared: _,
-            } if dimensions.is_empty() => {
-                // Simple global variable (non-array)
-                let c_ty = c_type(basic_type);
-                let c_name = c_identifier(name);
-                let init = default_init(basic_type);
-                globals.push(format!("{} {} = {};", c_ty, c_name, init));
+            } => {
+                // Simple global variables (non-array)
+                for var in variables {
+                    if var.dimensions.is_empty() {
+                        let c_ty = c_type(&var.basic_type);
+                        let c_name = c_identifier(&var.name);
+                        let init = default_init(&var.basic_type);
+                        globals.push(format!("{} {} = {};", c_ty, c_name, init));
+                    }
+                }
             }
 
             TypedStatementKind::SubDefinition { name, params, .. } => {

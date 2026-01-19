@@ -169,6 +169,21 @@ pub enum TypedStatementKind {
         element_type: BasicType,
     },
 
+    /// Array field assignment (UDT member in array).
+    ArrayFieldAssignment {
+        name: String,
+        indices: Vec<TypedExpr>,
+        /// Field access chain.
+        fields: Vec<String>,
+        value: TypedExpr,
+        /// Dimension info for linear index calculation.
+        dimensions: Vec<TypedArrayDimension>,
+        /// The type of the array element (the UDT type).
+        element_type: BasicType,
+        /// The type of the final field being assigned.
+        field_type: BasicType,
+    },
+
     /// PRINT statement with typed items.
     Print {
         items: Vec<TypedPrintItem>,
@@ -305,20 +320,23 @@ pub enum TypedStatementKind {
         is_static: bool,
     },
 
-    /// DIM statement (variable/array declaration).
+    /// DIM statement (variable/array declaration) - may declare multiple variables.
     Dim {
-        name: String,
-        basic_type: BasicType,
-        dimensions: Vec<TypedArrayDimension>,
+        /// List of variables declared by this DIM statement
+        variables: Vec<TypedDimVariable>,
+        /// Whether SHARED was specified
         shared: bool,
     },
 
-    /// CONST statement.
+    /// CONST statement(s) - may define multiple constants on one line.
     Const {
-        name: String,
-        value: TypedExpr,
-        basic_type: BasicType,
+        /// List of (name, typed_value, basic_type) for each constant
+        definitions: Vec<(String, TypedExpr, BasicType)>,
     },
+
+    /// DEFxxx statement (DEFINT, DEFLNG, DEFSNG, DEFDBL, DEFSTR).
+    /// This statement only affects the symbol table and generates no code.
+    DefType,
 
     /// Label definition.
     Label { name: String },
@@ -718,6 +736,40 @@ pub enum TypedStatementKind {
         commands: TypedExpr,
     },
 
+    /// GET graphics statement - capture screen region to array.
+    GraphicsGet {
+        /// First corner X coordinate.
+        x1: TypedExpr,
+        /// First corner Y coordinate.
+        y1: TypedExpr,
+        /// Second corner X coordinate (or width if step2).
+        x2: TypedExpr,
+        /// Second corner Y coordinate (or height if step2).
+        y2: TypedExpr,
+        /// Whether second coordinate pair is relative (STEP).
+        step2: bool,
+        /// Array name to store captured image.
+        array_name: String,
+        /// Optional array index.
+        array_index: Option<TypedExpr>,
+    },
+
+    /// PUT graphics statement - draw array contents to screen.
+    GraphicsPut {
+        /// X coordinate for placing image.
+        x: TypedExpr,
+        /// Y coordinate for placing image.
+        y: TypedExpr,
+        /// Whether coordinates are relative (STEP).
+        step: bool,
+        /// Array name containing image data.
+        array_name: String,
+        /// Optional array index.
+        array_index: Option<TypedExpr>,
+        /// Action for combining pixels.
+        action: crate::ast::PutAction,
+    },
+
     // ==================== QB64 Graphics Extensions ====================
     /// _FREEIMAGE statement.
     FreeImage {
@@ -1054,6 +1106,17 @@ pub struct TypedArrayDimension {
     pub lower: i64,
     /// Upper bound (evaluated to constant).
     pub upper: i64,
+}
+
+/// A typed variable in a DIM statement.
+#[derive(Debug, Clone)]
+pub struct TypedDimVariable {
+    /// Variable name.
+    pub name: String,
+    /// Basic type of the variable.
+    pub basic_type: BasicType,
+    /// Array dimensions (empty if scalar).
+    pub dimensions: Vec<TypedArrayDimension>,
 }
 
 /// The complete typed program - output of semantic analysis.

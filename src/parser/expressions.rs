@@ -177,7 +177,10 @@ impl<'a> Parser<'a> {
         let token = self.advance().expect("integer literal token");
         let span: Span = token.span.clone().into();
 
-        let value: i64 = token.text.parse().map_err(|e| {
+        // Strip optional type suffix before parsing
+        let text = token.text.trim_end_matches(['%', '&', '!', '#']);
+
+        let value: i64 = text.parse().map_err(|e| {
             self.errors.push(ParseError::InvalidNumber {
                 span,
                 message: format!("invalid integer: {}", e),
@@ -192,8 +195,10 @@ impl<'a> Parser<'a> {
         let token = self.advance().expect("float literal token");
         let span: Span = token.span.clone().into();
 
+        // Strip optional type suffix (! for SINGLE, # for DOUBLE) before parsing
+        let text = token.text.trim_end_matches(['!', '#']);
         // BASIC uses D for double exponents, convert to E for Rust parsing
-        let text = token.text.replace('D', "E").replace('d', "e");
+        let text = text.replace('D', "E").replace('d', "e");
         let value: f64 = text.parse().map_err(|e| {
             self.errors.push(ParseError::InvalidNumber {
                 span,

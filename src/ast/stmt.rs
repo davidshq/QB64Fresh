@@ -73,20 +73,48 @@ pub enum StatementKind {
         value: Expr,
     },
 
-    /// `DIM variable AS type` or `DIM array(size) AS type`
-    Dim {
-        /// Variable name.
+    /// `array(indices).field = expression`
+    ///
+    /// Assignment to a field of a UDT stored in an array.
+    ArrayFieldAssignment {
+        /// Array name.
         name: String,
-        /// Array dimensions (empty if not an array).
-        dimensions: Vec<ArrayDimension>,
-        /// Type specification (if AS clause present).
-        type_spec: Option<TypeSpec>,
-        /// Whether SHARED was specified.
+        /// Index expressions.
+        indices: Vec<Expr>,
+        /// Field access chain (e.g., ["R"] for `.R` or ["pos", "x"] for `.pos.x`).
+        fields: Vec<String>,
+        /// Value to assign.
+        value: Expr,
+    },
+
+    /// `DIM variable AS type` or `DIM array(size) AS type`
+    ///
+    /// Multiple variables can be declared on one line: `DIM a, b(10), c AS STRING`
+    Dim {
+        /// List of variables to declare
+        variables: Vec<DimVariable>,
+        /// Whether SHARED was specified (applies to all variables)
         shared: bool,
     },
 
-    /// `CONST name = value`
-    Const { name: String, value: Expr },
+    /// `CONST name = value [, name2 = value2, ...]` - Constant definition(s)
+    ///
+    /// Multiple constants can be defined on the same line, separated by commas.
+    Const {
+        /// List of (name, value) pairs for constants defined on this line
+        definitions: Vec<(String, Expr)>,
+    },
+
+    /// `DEFINT A-Z` - Set default type for variable names starting with letters in range
+    ///
+    /// DEFINT, DEFLNG, DEFSNG, DEFDBL, DEFSTR set the default type for variables
+    /// whose names begin with letters in the specified range.
+    DefType {
+        /// The type keyword used (DefInt, DefLng, DefSng, DefDbl, DefStr)
+        type_kind: DefTypeKind,
+        /// List of letter ranges, e.g., [('A', 'Z')] or [('I', 'N'), ('X', 'X')]
+        ranges: Vec<(char, char)>,
+    },
 
     /// Single-line: `IF condition THEN statement [ELSE statement]`
     /// Multi-line: `IF condition THEN ... [ELSEIF ...] [ELSE ...] END IF`
@@ -677,6 +705,51 @@ pub enum StatementKind {
         commands: Expr,
     },
 
+    /// `GET (x1, y1)-(x2, y2), array[(index)]` - Capture screen region to array
+    ///
+    /// Captures a rectangular screen region into an array for later use with PUT.
+    /// The array must be large enough to hold the captured image data.
+    GraphicsGet {
+        /// First corner X coordinate
+        x1: Expr,
+        /// First corner Y coordinate
+        y1: Expr,
+        /// Second corner X coordinate (or width if step2 is true)
+        x2: Expr,
+        /// Second corner Y coordinate (or height if step2 is true)
+        y2: Expr,
+        /// Whether x2,y2 are relative (STEP)
+        step2: bool,
+        /// Array name to store the captured image
+        array_name: String,
+        /// Optional array index for storing in array of arrays
+        array_index: Option<Expr>,
+    },
+
+    /// `PUT (x, y), array[(index)][, action]` - Draw array contents to screen
+    ///
+    /// Draws a previously captured image (via GET) to the screen at the specified
+    /// coordinates. The action parameter determines how pixels are combined:
+    /// - PSET: Replace destination pixels
+    /// - PRESET: Replace with inverted pixels
+    /// - AND: Bitwise AND with destination
+    /// - OR: Bitwise OR with destination
+    /// - XOR: Bitwise XOR with destination (default)
+    GraphicsPut {
+        /// X coordinate for placing the image
+        x: Expr,
+        /// Y coordinate for placing the image
+        y: Expr,
+        /// Whether coordinates are relative (STEP)
+        step: bool,
+        /// Array name containing the image data
+        array_name: String,
+        /// Optional array index
+        array_index: Option<Expr>,
+        /// Action for combining pixels with existing screen content
+        action: PutAction,
+    },
+
     // ==================== QB64 Graphics Extensions ====================
     /// `_FREEIMAGE handle&` - Release image buffer
     FreeImage {
@@ -1009,6 +1082,17 @@ pub struct ArrayDimension {
     pub upper: Expr,
 }
 
+/// A single variable in a DIM statement.
+#[derive(Debug, Clone)]
+pub struct DimVariable {
+    /// Variable name.
+    pub name: String,
+    /// Array dimensions (empty if not an array).
+    pub dimensions: Vec<ArrayDimension>,
+    /// Type specification (if AS clause present).
+    pub type_spec: Option<TypeSpec>,
+}
+
 /// Type specification for DIM statements.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeSpec {
@@ -1109,6 +1193,24 @@ pub enum ContinueType {
     Do,
 }
 
+/// Action mode for graphics PUT statement.
+///
+/// Determines how pixel values are combined with existing screen content.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PutAction {
+    /// XOR pixels (default) - toggleable sprites
+    #[default]
+    Xor,
+    /// Replace destination with source pixels
+    Pset,
+    /// Replace destination with inverted source pixels
+    Preset,
+    /// Bitwise AND - useful for masks
+    And,
+    /// Bitwise OR - additive sprites
+    Or,
+}
+
 /// Parameter definition for SUB/FUNCTION.
 #[derive(Debug, Clone)]
 pub struct Parameter {
@@ -1118,6 +1220,8 @@ pub struct Parameter {
     pub type_spec: Option<TypeSpec>,
     /// Whether this is a BYVAL parameter.
     pub by_val: bool,
+    /// Whether this is an array parameter (e.g., `arr() AS INTEGER`).
+    pub is_array: bool,
 }
 
 /// Parameter definition for DECLARE SUB/FUNCTION forward declarations.
@@ -1130,6 +1234,8 @@ pub struct DeclareParam {
     pub name: String,
     /// Parameter type name (if specified with AS).
     pub param_type: Option<String>,
+    /// Whether this is an array parameter (e.g., `arr() AS INTEGER`).
+    pub is_array: bool,
 }
 
 /// Member definition for TYPE (user-defined type).
@@ -1195,6 +1301,21 @@ pub struct ExternalParam {
     pub type_spec: TypeSpec,
     /// Whether passed by value (BYVAL). Required for C interop.
     pub is_byval: bool,
+}
+
+/// The kind of DEFxxx statement (DEFINT, DEFLNG, DEFSNG, DEFDBL, DEFSTR).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DefTypeKind {
+    /// DEFINT - default to INTEGER (16-bit signed)
+    Integer,
+    /// DEFLNG - default to LONG (32-bit signed)
+    Long,
+    /// DEFSNG - default to SINGLE (32-bit float)
+    Single,
+    /// DEFDBL - default to DOUBLE (64-bit float)
+    Double,
+    /// DEFSTR - default to STRING
+    String,
 }
 
 #[cfg(test)]

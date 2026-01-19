@@ -7,9 +7,9 @@
 //! handled in their respective modules.
 
 use crate::ast::{
-    ArrayDimension, CommonVariable, ContinueType, DataValue, DeclareParam, ExitType, Expr,
-    ExternalDeclaration, ExternalParam, FileAccess, FileLock, FileMode, PrintItem, PrintSeparator,
-    ResumeTarget, Span, Statement, StatementKind, TypeSpec, ViewCoords,
+    ArrayDimension, CommonVariable, ContinueType, DataValue, DeclareParam, DefTypeKind, ExitType,
+    Expr, ExternalDeclaration, ExternalParam, FileAccess, FileLock, FileMode, PrintItem,
+    PrintSeparator, ResumeTarget, Span, Statement, StatementKind, TypeSpec, ViewCoords,
 };
 use crate::lexer::TokenKind;
 
@@ -51,6 +51,13 @@ impl<'a> Parser<'a> {
             TokenKind::Const => self.parse_const(),
             TokenKind::Swap => self.parse_swap(),
             TokenKind::Common => self.parse_common(),
+
+            // Default type declarations
+            TokenKind::DefInt => self.parse_deftype(),
+            TokenKind::DefLng => self.parse_deftype(),
+            TokenKind::DefSng => self.parse_deftype(),
+            TokenKind::DefDbl => self.parse_deftype(),
+            TokenKind::DefStr => self.parse_deftype(),
 
             // Control flow (delegated to control_flow.rs)
             TokenKind::If => self.parse_if(),
@@ -197,6 +204,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses an array element assignment: `array(i, j, ...) = value`
+    /// or array field assignment: `array(i).field = value`
     pub(super) fn parse_array_assignment(&mut self, start: usize) -> Result<Statement, ()> {
         let name_token = self.expect(&TokenKind::Identifier, "array name")?;
         let name = name_token.text.to_string();
@@ -215,19 +223,39 @@ impl<'a> Parser<'a> {
         }
 
         self.expect(&TokenKind::RightParen, ")")?;
+
+        // Check for field access chain: .field.subfield...
+        let mut fields = Vec::new();
+        while self.match_token(&TokenKind::Dot) {
+            let field_token = self.expect(&TokenKind::Identifier, "field name")?;
+            fields.push(field_token.text.to_string());
+        }
+
         self.expect(&TokenKind::Equals, "=")?;
 
         let value = self.parse_expression()?;
         let span = self.span_from(start);
 
-        Ok(Statement::new(
-            StatementKind::ArrayAssignment {
-                name,
-                indices,
-                value,
-            },
-            span,
-        ))
+        if fields.is_empty() {
+            Ok(Statement::new(
+                StatementKind::ArrayAssignment {
+                    name,
+                    indices,
+                    value,
+                },
+                span,
+            ))
+        } else {
+            Ok(Statement::new(
+                StatementKind::ArrayFieldAssignment {
+                    name,
+                    indices,
+                    fields,
+                    value,
+                },
+                span,
+            ))
+        }
     }
 
     /// Parses a line number at the start of a statement (e.g., "100 PRINT").
@@ -333,7 +361,10 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    /// Checks if the current tokens form an array assignment pattern: id(...) =
+    /// Checks if the current tokens form an array/field assignment pattern:
+    /// - `id(...) = value` (array element assignment)
+    /// - `id(...).field = value` (UDT array member assignment)
+    /// - `id(...).field.subfield = value` (nested UDT member assignment)
     fn is_array_assignment(&self) -> bool {
         // Start after the identifier (at position self.current + 1 should be LeftParen)
         let mut depth = 0;
@@ -345,9 +376,20 @@ impl<'a> Parser<'a> {
                 TokenKind::RightParen => {
                     depth -= 1;
                     if depth == 0 {
-                        // Check if next token is =
-                        if pos + 1 < self.tokens.len() {
-                            return self.tokens[pos + 1].kind == TokenKind::Equals;
+                        // After closing paren, check for = or .field chain followed by =
+                        pos += 1;
+
+                        // Skip any .field chains
+                        while pos + 1 < self.tokens.len()
+                            && self.tokens[pos].kind == TokenKind::Dot
+                            && self.tokens[pos + 1].kind == TokenKind::Identifier
+                        {
+                            pos += 2; // skip . and field name
+                        }
+
+                        // Check if we now have =
+                        if pos < self.tokens.len() {
+                            return self.tokens[pos].kind == TokenKind::Equals;
                         }
                         return false;
                     }
@@ -363,38 +405,53 @@ impl<'a> Parser<'a> {
     // ==================== DIM Statement ====================
 
     /// Parses a DIM statement.
+    /// Parses DIM statement(s).
+    ///
+    /// Syntax: `DIM [SHARED] var1[(dims)][AS type], var2[(dims)][AS type], ...`
     pub(super) fn parse_dim(&mut self) -> Result<Statement, ()> {
+        use crate::ast::DimVariable;
+
         let start = self.advance().expect("DIM keyword").span.start; // consume DIM
 
         let shared = self.match_token(&TokenKind::Shared);
 
-        let name_token = self.expect(&TokenKind::Identifier, "variable name")?;
-        let name = name_token.text.to_string();
+        let mut variables = Vec::new();
 
-        // Check for array dimensions
-        let dimensions = if self.match_token(&TokenKind::LeftParen) {
-            let dims = self.parse_array_dimensions()?;
-            self.expect(&TokenKind::RightParen, ")")?;
-            dims
-        } else {
-            Vec::new()
-        };
+        loop {
+            let name_token = self.expect(&TokenKind::Identifier, "variable name")?;
+            let name = name_token.text.to_string();
 
-        // Check for AS type
-        let type_spec = if self.match_token(&TokenKind::As) {
-            Some(self.parse_type_spec()?)
-        } else {
-            None
-        };
+            // Check for array dimensions
+            let dimensions = if self.match_token(&TokenKind::LeftParen) {
+                let dims = self.parse_array_dimensions()?;
+                self.expect(&TokenKind::RightParen, ")")?;
+                dims
+            } else {
+                Vec::new()
+            };
 
-        let span = self.span_from(start);
-        Ok(Statement::new(
-            StatementKind::Dim {
+            // Check for AS type
+            let type_spec = if self.match_token(&TokenKind::As) {
+                Some(self.parse_type_spec()?)
+            } else {
+                None
+            };
+
+            variables.push(DimVariable {
                 name,
                 dimensions,
                 type_spec,
-                shared,
-            },
+            });
+
+            // Check for more variables on the same line
+            if !self.match_token(&TokenKind::Comma) {
+                break;
+            }
+        }
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::Dim { variables, shared },
             span,
         ))
     }
@@ -432,18 +489,107 @@ impl<'a> Parser<'a> {
     // ==================== CONST Statement ====================
 
     /// Parses a CONST statement.
+    /// Parses CONST statement(s).
+    ///
+    /// Syntax: `CONST name = value [, name2 = value2, ...]`
     pub(super) fn parse_const(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("CONST keyword").span.start; // consume CONST
 
-        let name_token = self.expect(&TokenKind::Identifier, "constant name")?;
-        let name = name_token.text.to_string();
+        let mut definitions = Vec::new();
 
-        self.expect(&TokenKind::Equals, "=")?;
+        loop {
+            let name_token = self.expect(&TokenKind::Identifier, "constant name")?;
+            let name = name_token.text.to_string();
 
-        let value = self.parse_expression()?;
+            self.expect(&TokenKind::Equals, "=")?;
+
+            let value = self.parse_expression()?;
+            definitions.push((name, value));
+
+            // Check for more constants on the same line
+            if !self.match_token(&TokenKind::Comma) {
+                break;
+            }
+        }
+
         let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::Const { definitions }, span))
+    }
 
-        Ok(Statement::new(StatementKind::Const { name, value }, span))
+    /// Parses a DEFxxx statement (DEFINT, DEFLNG, DEFSNG, DEFDBL, DEFSTR).
+    ///
+    /// Syntax: `DEFINT A-Z` or `DEFINT I-N, X`
+    /// Sets the default type for variables starting with letters in the given ranges.
+    pub(super) fn parse_deftype(&mut self) -> Result<Statement, ()> {
+        let token = self.advance().expect("DEFxxx keyword");
+        let start = token.span.start;
+
+        // Determine which type based on the keyword
+        let type_kind = match token.kind {
+            TokenKind::DefInt => DefTypeKind::Integer,
+            TokenKind::DefLng => DefTypeKind::Long,
+            TokenKind::DefSng => DefTypeKind::Single,
+            TokenKind::DefDbl => DefTypeKind::Double,
+            TokenKind::DefStr => DefTypeKind::String,
+            _ => unreachable!("parse_deftype called with wrong token"),
+        };
+
+        let mut ranges = Vec::new();
+
+        loop {
+            // Expect a letter (as an identifier)
+            let first_token = self.expect(&TokenKind::Identifier, "letter")?;
+            let first_text = first_token.text.to_uppercase();
+            let first_span: Span = first_token.span.clone().into();
+
+            // Get the first letter
+            let first_char = match first_text
+                .chars()
+                .next()
+                .filter(|c| c.is_ascii_alphabetic())
+            {
+                Some(c) => c,
+                None => {
+                    self.errors.push(ParseError::syntax(
+                        "expected single letter for DEFxxx range".to_string(),
+                        first_span,
+                    ));
+                    return Err(());
+                }
+            };
+
+            // Check for range (letter-letter)
+            let last_char = if self.match_token(&TokenKind::Minus) {
+                let last_token = self.expect(&TokenKind::Identifier, "letter")?;
+                let last_text = last_token.text.to_uppercase();
+                let last_span: Span = last_token.span.clone().into();
+                match last_text.chars().next().filter(|c| c.is_ascii_alphabetic()) {
+                    Some(c) => c,
+                    None => {
+                        self.errors.push(ParseError::syntax(
+                            "expected single letter for DEFxxx range".to_string(),
+                            last_span,
+                        ));
+                        return Err(());
+                    }
+                }
+            } else {
+                first_char // Single letter, same start and end
+            };
+
+            ranges.push((first_char, last_char));
+
+            // Check for more ranges
+            if !self.match_token(&TokenKind::Comma) {
+                break;
+            }
+        }
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::DefType { type_kind, ranges },
+            span,
+        ))
     }
 
     // ==================== Simple Flow Control ====================
@@ -1048,11 +1194,12 @@ impl<'a> Parser<'a> {
     }
 
     /// Checks if current token terminates a PRINT statement.
-    /// This includes newlines, colons, and ELSE (for single-line IF...THEN...ELSE).
+    /// This includes newlines, colons, comments, and ELSE (for single-line IF...THEN...ELSE).
     fn is_print_terminator(&self) -> bool {
         self.check(&TokenKind::Newline)
             || self.check(&TokenKind::Colon)
             || self.check(&TokenKind::Else)
+            || self.check(&TokenKind::Comment)
     }
 
     /// Parses PRINT #filenum, items.
@@ -1428,10 +1575,20 @@ impl<'a> Parser<'a> {
     /// Parses a GET statement.
     ///
     /// Syntax: `GET [#]filenum, [position], variable`
+    /// Parses a GET statement.
+    ///
+    /// File syntax: `GET [#]filenum, [position], variable`
+    /// Graphics syntax: `GET (x1, y1)-(x2, y2), array[(index)]`
+    ///                  `GET (x1, y1)-STEP(w, h), array[(index)]`
     pub(super) fn parse_get(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("GET keyword").span.start;
 
-        // Optional # before file number
+        // Check if this is graphics GET (starts with parenthesis) or file GET
+        if self.check(&TokenKind::LeftParen) {
+            return self.parse_graphics_get(start);
+        }
+
+        // File GET: optional # before file number
         self.match_token(&TokenKind::Hash);
 
         let file_num = self.parse_expression()?;
@@ -1460,13 +1617,73 @@ impl<'a> Parser<'a> {
         ))
     }
 
+    /// Parses graphics GET: `GET (x1, y1)-(x2, y2), array[(index)]`
+    fn parse_graphics_get(&mut self, start: usize) -> Result<Statement, ()> {
+        // Parse first coordinate pair: (x1, y1)
+        self.expect(&TokenKind::LeftParen, "`(` for coordinates")?;
+        let x1 = self.parse_expression()?;
+        self.expect(&TokenKind::Comma, "`,` between x1 and y1")?;
+        let y1 = self.parse_expression()?;
+        self.expect(&TokenKind::RightParen, "`)` after y1")?;
+
+        // Expect - separator
+        self.expect(&TokenKind::Minus, "`-` between coordinate pairs")?;
+
+        // Check for STEP keyword
+        let step2 = self.match_token(&TokenKind::Step);
+
+        // Parse second coordinate pair: (x2, y2) or STEP(w, h)
+        self.expect(&TokenKind::LeftParen, "`(` for second coordinates")?;
+        let x2 = self.parse_expression()?;
+        self.expect(&TokenKind::Comma, "`,` between x2 and y2")?;
+        let y2 = self.parse_expression()?;
+        self.expect(&TokenKind::RightParen, "`)` after y2")?;
+
+        // Comma before array name
+        self.expect(&TokenKind::Comma, "`,` before array name")?;
+
+        // Parse array name and optional index
+        let array_token = self.expect(&TokenKind::Identifier, "array name")?;
+        let array_name = array_token.text.to_string();
+
+        // Check for optional array index: array(expr)
+        let array_index = if self.match_token(&TokenKind::LeftParen) {
+            let idx = self.parse_expression()?;
+            self.expect(&TokenKind::RightParen, "`)` after array index")?;
+            Some(idx)
+        } else {
+            None
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::GraphicsGet {
+                x1,
+                y1,
+                x2,
+                y2,
+                step2,
+                array_name,
+                array_index,
+            },
+            span,
+        ))
+    }
+
     /// Parses a PUT statement.
     ///
-    /// Syntax: `PUT [#]filenum, [position], variable`
+    /// File syntax: `PUT [#]filenum, [position], variable`
+    /// Graphics syntax: `PUT (x, y), array[(index)][, action]`
+    ///                  `PUT STEP(x, y), array[(index)][, action]`
     pub(super) fn parse_put(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("PUT keyword").span.start;
 
-        // Optional # before file number
+        // Check if this is graphics PUT (starts with ( or STEP) or file PUT
+        if self.check(&TokenKind::LeftParen) || self.check(&TokenKind::Step) {
+            return self.parse_graphics_put(start);
+        }
+
+        // File PUT: optional # before file number
         self.match_token(&TokenKind::Hash);
 
         let file_num = self.parse_expression()?;
@@ -1490,6 +1707,74 @@ impl<'a> Parser<'a> {
                 file_num,
                 position,
                 variable,
+            },
+            span,
+        ))
+    }
+
+    /// Parses graphics PUT: `PUT (x, y), array[(index)][, action]`
+    fn parse_graphics_put(&mut self, start: usize) -> Result<Statement, ()> {
+        use crate::ast::PutAction;
+
+        // Check for STEP keyword
+        let step = self.match_token(&TokenKind::Step);
+
+        // Parse coordinate pair: (x, y)
+        self.expect(&TokenKind::LeftParen, "`(` for coordinates")?;
+        let x = self.parse_expression()?;
+        self.expect(&TokenKind::Comma, "`,` between x and y")?;
+        let y = self.parse_expression()?;
+        self.expect(&TokenKind::RightParen, "`)` after y")?;
+
+        // Comma before array name
+        self.expect(&TokenKind::Comma, "`,` before array name")?;
+
+        // Parse array name and optional index
+        let array_token = self.expect(&TokenKind::Identifier, "array name")?;
+        let array_name = array_token.text.to_string();
+
+        // Check for optional array index: array(expr)
+        let array_index = if self.match_token(&TokenKind::LeftParen) {
+            let idx = self.parse_expression()?;
+            self.expect(&TokenKind::RightParen, "`)` after array index")?;
+            Some(idx)
+        } else {
+            None
+        };
+
+        // Check for optional action: , PSET|PRESET|AND|OR|XOR
+        let action = if self.match_token(&TokenKind::Comma) {
+            if self.match_token(&TokenKind::Pset) {
+                PutAction::Pset
+            } else if self.match_token(&TokenKind::Preset) {
+                PutAction::Preset
+            } else if self.match_token(&TokenKind::And) {
+                PutAction::And
+            } else if self.match_token(&TokenKind::Or) {
+                PutAction::Or
+            } else if self.match_token(&TokenKind::Xor) {
+                PutAction::Xor
+            } else {
+                // Unknown action keyword
+                self.errors.push(ParseError::syntax(
+                    "expected PUT action: PSET, PRESET, AND, OR, or XOR",
+                    self.span_from(start),
+                ));
+                return Err(());
+            }
+        } else {
+            PutAction::default() // XOR
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::GraphicsPut {
+                x,
+                y,
+                step,
+                array_name,
+                array_index,
+                action,
             },
             span,
         ))
@@ -2744,6 +3029,14 @@ impl<'a> Parser<'a> {
             let name_token = self.expect_name("parameter name")?;
             let name = name_token.text.to_string();
 
+            // Check for array parameter: name()
+            let is_array = if self.match_token(&TokenKind::LeftParen) {
+                self.expect(&TokenKind::RightParen, "`)` after array parameter")?;
+                true
+            } else {
+                false
+            };
+
             // Check for AS TYPE
             let param_type = if self.match_token(&TokenKind::As) {
                 match self.advance() {
@@ -2757,7 +3050,11 @@ impl<'a> Parser<'a> {
                 None
             };
 
-            params.push(DeclareParam { name, param_type });
+            params.push(DeclareParam {
+                name,
+                param_type,
+                is_array,
+            });
 
             if !self.match_token(&TokenKind::Comma) {
                 break;

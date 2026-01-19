@@ -231,6 +231,14 @@ impl<'a> Parser<'a> {
             let name_token = self.expect_name("parameter name")?;
             let name = name_token.text.to_string();
 
+            // Check for array parameter: name()
+            let is_array = if self.match_token(&TokenKind::LeftParen) {
+                self.expect(&TokenKind::RightParen, "`)` after array parameter")?;
+                true
+            } else {
+                false
+            };
+
             let type_spec = if self.match_token(&TokenKind::As) {
                 Some(self.parse_type_spec()?)
             } else {
@@ -241,6 +249,7 @@ impl<'a> Parser<'a> {
                 name,
                 type_spec,
                 by_val,
+                is_array,
             });
 
             if !self.match_token(&TokenKind::Comma) {

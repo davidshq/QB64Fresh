@@ -119,7 +119,7 @@ impl<'a> TypeChecker<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{BinaryOp, ExprKind, Span, StatementKind};
+    use crate::ast::{BinaryOp, DimVariable, ExprKind, Span, StatementKind};
     use crate::semantic::symbols::{Symbol, SymbolKind};
 
     fn make_int_expr(val: i64) -> Expr {
@@ -142,8 +142,7 @@ mod tests {
         // CONST X = 42 should succeed
         let stmt = Statement::new(
             StatementKind::Const {
-                name: "X".to_string(),
-                value: make_int_expr(42),
+                definitions: vec![("X".to_string(), make_int_expr(42))],
             },
             Span::new(0, 10),
         );
@@ -173,8 +172,7 @@ mod tests {
         // CONST X = someVar should error
         let stmt = Statement::new(
             StatementKind::Const {
-                name: "X".to_string(),
-                value: make_ident_expr("someVar"),
+                definitions: vec![("X".to_string(), make_ident_expr("someVar"))],
             },
             Span::new(0, 15),
         );
@@ -201,15 +199,17 @@ mod tests {
         // CONST X = 1 + 2 should succeed (constant expression)
         let stmt = Statement::new(
             StatementKind::Const {
-                name: "X".to_string(),
-                value: Expr::new(
-                    ExprKind::Binary {
-                        left: Box::new(make_int_expr(1)),
-                        op: BinaryOp::Add,
-                        right: Box::new(make_int_expr(2)),
-                    },
-                    Span::new(0, 5),
-                ),
+                definitions: vec![(
+                    "X".to_string(),
+                    Expr::new(
+                        ExprKind::Binary {
+                            left: Box::new(make_int_expr(1)),
+                            op: BinaryOp::Add,
+                            right: Box::new(make_int_expr(2)),
+                        },
+                        Span::new(0, 5),
+                    ),
+                )],
             },
             Span::new(0, 15),
         );
@@ -242,8 +242,7 @@ mod tests {
         // CONST B = A should succeed (reference to another constant)
         let stmt = Statement::new(
             StatementKind::Const {
-                name: "B".to_string(),
-                value: make_ident_expr("A"),
+                definitions: vec![("B".to_string(), make_ident_expr("A"))],
             },
             Span::new(0, 10),
         );
@@ -264,12 +263,14 @@ mod tests {
         // DIM arr(10) should succeed
         let stmt = Statement::new(
             StatementKind::Dim {
-                name: "arr".to_string(),
-                dimensions: vec![crate::ast::ArrayDimension {
-                    lower: None,
-                    upper: make_int_expr(10),
+                variables: vec![DimVariable {
+                    name: "arr".to_string(),
+                    dimensions: vec![crate::ast::ArrayDimension {
+                        lower: None,
+                        upper: make_int_expr(10),
+                    }],
+                    type_spec: Some(crate::ast::TypeSpec::Integer),
                 }],
-                type_spec: Some(crate::ast::TypeSpec::Integer),
                 shared: false,
             },
             Span::new(0, 15),
@@ -283,10 +284,11 @@ mod tests {
         );
 
         // Verify the dimensions were correctly evaluated
-        if let TypedStatementKind::Dim { dimensions, .. } = &typed.kind {
-            assert_eq!(dimensions.len(), 1);
-            assert_eq!(dimensions[0].lower, 0); // Default OPTION BASE
-            assert_eq!(dimensions[0].upper, 10);
+        if let TypedStatementKind::Dim { variables, .. } = &typed.kind {
+            assert_eq!(variables.len(), 1);
+            assert_eq!(variables[0].dimensions.len(), 1);
+            assert_eq!(variables[0].dimensions[0].lower, 0); // Default OPTION BASE
+            assert_eq!(variables[0].dimensions[0].upper, 10);
         } else {
             panic!("Expected Dim statement");
         }
@@ -300,19 +302,21 @@ mod tests {
         // DIM arr(5 + 5) should succeed and evaluate to 10
         let stmt = Statement::new(
             StatementKind::Dim {
-                name: "arr".to_string(),
-                dimensions: vec![crate::ast::ArrayDimension {
-                    lower: None,
-                    upper: Expr::new(
-                        ExprKind::Binary {
-                            left: Box::new(make_int_expr(5)),
-                            op: BinaryOp::Add,
-                            right: Box::new(make_int_expr(5)),
-                        },
-                        Span::new(0, 5),
-                    ),
+                variables: vec![DimVariable {
+                    name: "arr".to_string(),
+                    dimensions: vec![crate::ast::ArrayDimension {
+                        lower: None,
+                        upper: Expr::new(
+                            ExprKind::Binary {
+                                left: Box::new(make_int_expr(5)),
+                                op: BinaryOp::Add,
+                                right: Box::new(make_int_expr(5)),
+                            },
+                            Span::new(0, 5),
+                        ),
+                    }],
+                    type_spec: Some(crate::ast::TypeSpec::Integer),
                 }],
-                type_spec: Some(crate::ast::TypeSpec::Integer),
                 shared: false,
             },
             Span::new(0, 20),
@@ -326,8 +330,8 @@ mod tests {
         );
 
         // Verify the dimensions were correctly evaluated
-        if let TypedStatementKind::Dim { dimensions, .. } = &typed.kind {
-            assert_eq!(dimensions[0].upper, 10);
+        if let TypedStatementKind::Dim { variables, .. } = &typed.kind {
+            assert_eq!(variables[0].dimensions[0].upper, 10);
         } else {
             panic!("Expected Dim statement");
         }
@@ -341,12 +345,14 @@ mod tests {
         // DIM arr(1 TO 10) should succeed
         let stmt = Statement::new(
             StatementKind::Dim {
-                name: "arr".to_string(),
-                dimensions: vec![crate::ast::ArrayDimension {
-                    lower: Some(make_int_expr(1)),
-                    upper: make_int_expr(10),
+                variables: vec![DimVariable {
+                    name: "arr".to_string(),
+                    dimensions: vec![crate::ast::ArrayDimension {
+                        lower: Some(make_int_expr(1)),
+                        upper: make_int_expr(10),
+                    }],
+                    type_spec: Some(crate::ast::TypeSpec::Integer),
                 }],
-                type_spec: Some(crate::ast::TypeSpec::Integer),
                 shared: false,
             },
             Span::new(0, 20),
@@ -360,9 +366,9 @@ mod tests {
         );
 
         // Verify both bounds
-        if let TypedStatementKind::Dim { dimensions, .. } = &typed.kind {
-            assert_eq!(dimensions[0].lower, 1);
-            assert_eq!(dimensions[0].upper, 10);
+        if let TypedStatementKind::Dim { variables, .. } = &typed.kind {
+            assert_eq!(variables[0].dimensions[0].lower, 1);
+            assert_eq!(variables[0].dimensions[0].upper, 10);
         } else {
             panic!("Expected Dim statement");
         }
@@ -386,12 +392,14 @@ mod tests {
         // DIM arr(size) should error - variable bounds not allowed
         let stmt = Statement::new(
             StatementKind::Dim {
-                name: "arr".to_string(),
-                dimensions: vec![crate::ast::ArrayDimension {
-                    lower: None,
-                    upper: make_ident_expr("size"),
+                variables: vec![DimVariable {
+                    name: "arr".to_string(),
+                    dimensions: vec![crate::ast::ArrayDimension {
+                        lower: None,
+                        upper: make_ident_expr("size"),
+                    }],
+                    type_spec: Some(crate::ast::TypeSpec::Integer),
                 }],
-                type_spec: Some(crate::ast::TypeSpec::Integer),
                 shared: false,
             },
             Span::new(0, 15),
@@ -758,6 +766,7 @@ mod tests {
                     name: "x".to_string(),
                     type_spec: None,
                     by_val: false,
+                    is_array: false,
                 }],
                 body: Expr::new(
                     ExprKind::Binary {

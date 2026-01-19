@@ -34,6 +34,13 @@ impl<'a> TypeChecker<'a> {
                 value,
             } => self.check_array_assignment(name, indices, value, stmt.span),
 
+            StatementKind::ArrayFieldAssignment {
+                name,
+                indices,
+                fields,
+                value,
+            } => self.check_array_field_assignment(name, indices, fields, value, stmt.span),
+
             StatementKind::Print { values, newline } => {
                 self.check_print(values, *newline, stmt.span)
             }
@@ -169,14 +176,15 @@ impl<'a> TypeChecker<'a> {
 
             StatementKind::Call { name, args } => self.check_call(name, args, stmt.span),
 
-            StatementKind::Dim {
-                name,
-                dimensions,
-                type_spec,
-                shared,
-            } => self.check_dim(name, dimensions, type_spec, *shared, stmt.span),
+            StatementKind::Dim { variables, shared } => {
+                self.check_dim(variables, *shared, stmt.span)
+            }
 
-            StatementKind::Const { name, value } => self.check_const(name, value, stmt.span),
+            StatementKind::Const { definitions } => self.check_const(definitions, stmt.span),
+
+            StatementKind::DefType { type_kind, ranges } => {
+                self.check_deftype(type_kind, ranges, stmt.span)
+            }
 
             StatementKind::Label { name } => {
                 TypedStatement::new(TypedStatementKind::Label { name: name.clone() }, stmt.span)
@@ -1097,6 +1105,58 @@ impl<'a> TypeChecker<'a> {
                 TypedStatement::new(
                     TypedStatementKind::DrawCmd {
                         commands: typed_commands,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::GraphicsGet {
+                x1,
+                y1,
+                x2,
+                y2,
+                step2,
+                array_name,
+                array_index,
+            } => {
+                let typed_x1 = self.check_expr(x1);
+                let typed_y1 = self.check_expr(y1);
+                let typed_x2 = self.check_expr(x2);
+                let typed_y2 = self.check_expr(y2);
+                let typed_index = array_index.as_ref().map(|e| self.check_expr(e));
+                TypedStatement::new(
+                    TypedStatementKind::GraphicsGet {
+                        x1: typed_x1,
+                        y1: typed_y1,
+                        x2: typed_x2,
+                        y2: typed_y2,
+                        step2: *step2,
+                        array_name: array_name.clone(),
+                        array_index: typed_index,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::GraphicsPut {
+                x,
+                y,
+                step,
+                array_name,
+                array_index,
+                action,
+            } => {
+                let typed_x = self.check_expr(x);
+                let typed_y = self.check_expr(y);
+                let typed_index = array_index.as_ref().map(|e| self.check_expr(e));
+                TypedStatement::new(
+                    TypedStatementKind::GraphicsPut {
+                        x: typed_x,
+                        y: typed_y,
+                        step: *step,
+                        array_name: array_name.clone(),
+                        array_index: typed_index,
+                        action: *action,
                     },
                     stmt.span,
                 )

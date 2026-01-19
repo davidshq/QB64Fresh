@@ -204,6 +204,26 @@ pub enum TokenKind {
     #[token("CONST", ignore(ascii_case))]
     Const,
 
+    /// DEFINT keyword - set default type to INTEGER for letter range
+    #[token("DEFINT", ignore(ascii_case))]
+    DefInt,
+
+    /// DEFLNG keyword - set default type to LONG for letter range
+    #[token("DEFLNG", ignore(ascii_case))]
+    DefLng,
+
+    /// DEFSNG keyword - set default type to SINGLE for letter range
+    #[token("DEFSNG", ignore(ascii_case))]
+    DefSng,
+
+    /// DEFDBL keyword - set default type to DOUBLE for letter range
+    #[token("DEFDBL", ignore(ascii_case))]
+    DefDbl,
+
+    /// DEFSTR keyword - set default type to STRING for letter range
+    #[token("DEFSTR", ignore(ascii_case))]
+    DefStr,
+
     /// TYPE keyword - begins user-defined type
     #[token("TYPE", ignore(ascii_case))]
     Type,
@@ -794,9 +814,10 @@ pub enum TokenKind {
 
     // ==================== Literals ====================
 
-    /// Integer literal (decimal)
-    /// Examples: 123, 0, 999999
-    #[regex(r"[0-9]+", priority = 2)]
+    /// Integer literal (decimal) with optional type suffix
+    /// Examples: 123, 0, 999999, 2000&, 100%, 50!
+    /// Suffixes: % (INTEGER), & (LONG), ! (SINGLE), # (DOUBLE)
+    #[regex(r"[0-9]+[%&!#]?", priority = 2)]
     IntegerLiteral,
 
     /// Hexadecimal literal
@@ -814,9 +835,10 @@ pub enum TokenKind {
     #[regex(r"&[Bb][01]+")]
     BinaryLiteral,
 
-    /// Floating point literal
-    /// Examples: 1.5, .5, 1., 1.5E10, 1.5D-3
-    #[regex(r"[0-9]*\.[0-9]+([EeDd][+-]?[0-9]+)?|[0-9]+[EeDd][+-]?[0-9]+")]
+    /// Floating point literal with optional type suffix
+    /// Examples: 1.5, .5, 1., 1.5E10, 1.5D-3, 3.14!, 2.71828#
+    /// Suffixes: ! (SINGLE), # (DOUBLE)
+    #[regex(r"([0-9]*\.[0-9]+([EeDd][+-]?[0-9]+)?|[0-9]+[EeDd][+-]?[0-9]+)[!#]?")]
     FloatLiteral,
 
     /// String literal

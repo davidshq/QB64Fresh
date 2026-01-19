@@ -856,9 +856,11 @@ mod tests {
         let program = make_program(vec![
             Statement::new(
                 StatementKind::Dim {
-                    name: "x".to_string(),
-                    dimensions: vec![],
-                    type_spec: Some(crate::ast::TypeSpec::Integer),
+                    variables: vec![crate::ast::DimVariable {
+                        name: "x".to_string(),
+                        dimensions: vec![],
+                        type_spec: Some(crate::ast::TypeSpec::Integer),
+                    }],
                     shared: false,
                 },
                 Span::new(0, 15),

@@ -104,14 +104,25 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Returns true if we're at the end of a statement (newline, colon, or EOF).
+    /// Skips comment and newline tokens.
+    ///
+    /// Useful after THEN when a comment may appear before the newline.
+    pub(super) fn skip_comments_and_newlines(&mut self) {
+        while self.check(&TokenKind::Comment) || self.check(&TokenKind::Newline) {
+            self.advance();
+        }
+    }
+
+    /// Returns true if we're at the end of a statement (newline, colon, comment, or EOF).
     ///
     /// Useful for determining if a statement has optional trailing arguments.
+    /// Comments on the same line also indicate statement end since they continue to EOL.
     pub(super) fn is_at_statement_end(&self) -> bool {
         self.is_at_end()
             || self.check(&TokenKind::Newline)
             || self.check(&TokenKind::Colon)
             || self.check(&TokenKind::Else)
+            || self.check(&TokenKind::Comment)
     }
 
     /// Skips statement separators (newlines and colons).

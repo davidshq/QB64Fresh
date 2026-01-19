@@ -22,10 +22,42 @@ impl<'a> Parser<'a> {
         let start = self.advance().expect("IF keyword").span.start; // consume IF
 
         let condition = self.parse_expression()?;
-        self.expect(&TokenKind::Then, "THEN")?;
+
+        // THEN is optional in "IF condition GOTO label" or "IF condition GOSUB label"
+        // This is an old BASIC pattern supported for compatibility
+        let has_then = self.match_token(&TokenKind::Then);
+        if !has_then {
+            // If no THEN, we must have GOTO or GOSUB (single-line only)
+            if !self.check(&TokenKind::Goto) && !self.check(&TokenKind::Gosub) {
+                self.errors.push(super::ParseError::unexpected(
+                    "THEN",
+                    self.peek()
+                        .map(|t| format!("{:?}", t.kind))
+                        .unwrap_or("EOF".to_string()),
+                    self.peek()
+                        .map(|t| t.span.clone().into())
+                        .unwrap_or_else(|| crate::ast::Span { start: 0, end: 0 }),
+                ));
+                return Err(());
+            }
+            // Parse the implicit single-line IF without THEN
+            let then_stmt = self.parse_statement()?;
+            let span = self.span_from(start);
+            return Ok(Statement::new(
+                StatementKind::If {
+                    condition,
+                    then_branch: vec![then_stmt],
+                    elseif_branches: Vec::new(),
+                    else_branch: None,
+                },
+                span,
+            ));
+        }
 
         // Check if this is single-line IF
-        if !self.check(&TokenKind::Newline) && !self.is_at_end() {
+        // A comment after THEN still makes it multi-line (the comment ends the line)
+        if !self.check(&TokenKind::Newline) && !self.check(&TokenKind::Comment) && !self.is_at_end()
+        {
             // Single-line IF - handle line numbers as implicit GOTO
             let then_stmt = self.parse_single_line_if_statement()?;
             let else_branch = if self.match_token(&TokenKind::Else) {
@@ -46,8 +78,8 @@ impl<'a> Parser<'a> {
             ));
         }
 
-        // Multi-line IF
-        self.skip_newlines();
+        // Multi-line IF - skip any trailing comment and newlines
+        self.skip_comments_and_newlines();
 
         let mut then_branch = Vec::new();
         let mut elseif_branches = Vec::new();
@@ -138,6 +170,16 @@ impl<'a> Parser<'a> {
         false
     }
 
+    /// Checks for END SELECT.
+    fn check_end_select(&self) -> bool {
+        if self.check(&TokenKind::End)
+            && let Some(next) = self.peek_ahead(1)
+        {
+            return next.kind == TokenKind::Select;
+        }
+        false
+    }
+
     /// Expects END IF.
     fn expect_end_if(&mut self) -> Result<(), ()> {
         self.expect(&TokenKind::End, "END")?;
@@ -160,7 +202,7 @@ impl<'a> Parser<'a> {
         while !self.is_at_end() {
             self.skip_statement_separators();
 
-            if self.check(&TokenKind::End) {
+            if self.check_end_select() {
                 break;
             }
 
@@ -173,7 +215,7 @@ impl<'a> Parser<'a> {
                 let mut body = Vec::new();
                 while !self.is_at_end() {
                     self.skip_statement_separators();
-                    if self.check(&TokenKind::End) || self.check(&TokenKind::Case) {
+                    if self.check_end_select() || self.check(&TokenKind::Case) {
                         break;
                     }
                     body.push(self.parse_statement()?);
@@ -188,7 +230,7 @@ impl<'a> Parser<'a> {
             let mut body = Vec::new();
             while !self.is_at_end() {
                 self.skip_statement_separators();
-                if self.check(&TokenKind::Case) || self.check(&TokenKind::End) {
+                if self.check(&TokenKind::Case) || self.check_end_select() {
                     break;
                 }
                 body.push(self.parse_statement()?);
@@ -305,13 +347,12 @@ impl<'a> Parser<'a> {
             }
             // Check for leftover NEXT variable pattern: identifier followed by comma or end-of-statement
             // This happens with "NEXT j%, i%" where inner loop consumed "NEXT j%, " leaving "i%"
+            // BUT exclude identifier followed by colon - that's a label definition (e.g., "skip:")
             if self.check(&TokenKind::Identifier) {
                 if let Some(next) = self.peek_ahead(1) {
-                    // If identifier is followed by comma or statement end, it's a NEXT variable
-                    if next.kind == TokenKind::Comma
-                        || next.kind == TokenKind::Newline
-                        || next.kind == TokenKind::Colon
-                    {
+                    // If identifier is followed by comma or newline (but NOT colon), it's a NEXT variable
+                    // Colon after identifier means it's a label definition, not a NEXT variable
+                    if next.kind == TokenKind::Comma || next.kind == TokenKind::Newline {
                         break;
                     }
                 } else {

@@ -21,106 +21,117 @@ impl<'a> TypeChecker<'a> {
     // DIM Statement
     // ========================================================================
 
-    /// Type checks a DIM statement.
+    /// Type checks a DIM statement (may declare multiple variables).
     pub(super) fn check_dim(
         &mut self,
-        name: &str,
-        dimensions: &[crate::ast::ArrayDimension],
-        type_spec: &Option<crate::ast::TypeSpec>,
+        variables: &[crate::ast::DimVariable],
         shared: bool,
         span: crate::ast::Span,
     ) -> TypedStatement {
-        // Determine type
-        let basic_type = type_spec
-            .as_ref()
-            .map(from_type_spec)
-            .or_else(|| type_from_suffix(name))
-            .unwrap_or_else(|| self.symbols.default_type_for(name));
+        use crate::semantic::typed_ir::TypedDimVariable;
 
         // Handle SHARED
-        if shared {
-            if !self.symbols.in_procedure() {
-                self.errors
-                    .push(SemanticError::SharedOutsideProcedure { span });
-            } else {
-                self.symbols.add_shared_var(name.to_string());
-            }
+        if shared && !self.symbols.in_procedure() {
+            self.errors
+                .push(SemanticError::SharedOutsideProcedure { span });
         }
 
-        // Evaluate array dimensions - bounds must be constant expressions
-        let typed_dims: Vec<TypedArrayDimension> = dimensions
-            .iter()
-            .map(|d| {
-                // Evaluate lower bound (if provided)
-                let lower = if let Some(lower_expr) = &d.lower {
-                    let typed_lower = self.check_expr(lower_expr);
-                    match self.try_evaluate_const_expr(&typed_lower) {
+        let mut typed_variables = Vec::new();
+
+        for var in variables {
+            // Determine type
+            let basic_type = var
+                .type_spec
+                .as_ref()
+                .map(from_type_spec)
+                .or_else(|| type_from_suffix(&var.name))
+                .unwrap_or_else(|| self.symbols.default_type_for(&var.name));
+
+            // Mark as shared if applicable
+            if shared && self.symbols.in_procedure() {
+                self.symbols.add_shared_var(var.name.clone());
+            }
+
+            // Evaluate array dimensions - bounds must be constant expressions
+            let typed_dims: Vec<TypedArrayDimension> = var
+                .dimensions
+                .iter()
+                .map(|d| {
+                    // Evaluate lower bound (if provided)
+                    let lower = if let Some(lower_expr) = &d.lower {
+                        let typed_lower = self.check_expr(lower_expr);
+                        match self.try_evaluate_const_expr(&typed_lower) {
+                            Some(crate::semantic::symbols::ConstValue::Integer(v)) => v,
+                            Some(crate::semantic::symbols::ConstValue::Float(v)) => v as i64,
+                            _ => {
+                                self.errors.push(SemanticError::NonConstantExpression {
+                                    span: lower_expr.span,
+                                });
+                                0 // Default on error
+                            }
+                        }
+                    } else {
+                        self.symbols.option_base()
+                    };
+
+                    // Evaluate upper bound (required)
+                    let typed_upper = self.check_expr(&d.upper);
+                    let upper = match self.try_evaluate_const_expr(&typed_upper) {
                         Some(crate::semantic::symbols::ConstValue::Integer(v)) => v,
                         Some(crate::semantic::symbols::ConstValue::Float(v)) => v as i64,
                         _ => {
-                            self.errors.push(SemanticError::NonConstantExpression {
-                                span: lower_expr.span,
-                            });
-                            0 // Default on error
+                            self.errors
+                                .push(SemanticError::NonConstantExpression { span: d.upper.span });
+                            10 // Default on error
                         }
-                    }
-                } else {
-                    self.symbols.option_base()
-                };
+                    };
 
-                // Evaluate upper bound (required)
-                let typed_upper = self.check_expr(&d.upper);
-                let upper = match self.try_evaluate_const_expr(&typed_upper) {
-                    Some(crate::semantic::symbols::ConstValue::Integer(v)) => v,
-                    Some(crate::semantic::symbols::ConstValue::Float(v)) => v as i64,
-                    _ => {
-                        self.errors
-                            .push(SemanticError::NonConstantExpression { span: d.upper.span });
-                        10 // Default on error
-                    }
-                };
+                    TypedArrayDimension { lower, upper }
+                })
+                .collect();
 
-                TypedArrayDimension { lower, upper }
-            })
-            .collect();
+            // Define symbol
+            let symbol_kind = if var.dimensions.is_empty() {
+                SymbolKind::Variable
+            } else {
+                SymbolKind::ArrayVariable {
+                    dimensions: typed_dims
+                        .iter()
+                        .map(|d| crate::semantic::symbols::ArrayDimInfo {
+                            lower_bound: d.lower,
+                            upper_bound: d.upper,
+                        })
+                        .collect(),
+                }
+            };
 
-        // Define symbol
-        let symbol_kind = if dimensions.is_empty() {
-            SymbolKind::Variable
-        } else {
-            SymbolKind::ArrayVariable {
-                dimensions: typed_dims
-                    .iter()
-                    .map(|d| crate::semantic::symbols::ArrayDimInfo {
-                        lower_bound: d.lower,
-                        upper_bound: d.upper,
-                    })
-                    .collect(),
+            let symbol = Symbol {
+                name: var.name.clone(),
+                kind: symbol_kind,
+                basic_type: basic_type.clone(),
+                span,
+                is_mutable: true,
+            };
+
+            if let Err(err) = self.symbols.define_symbol(symbol) {
+                let (existing, _) = *err;
+                self.errors.push(SemanticError::DuplicateVariable {
+                    name: var.name.clone(),
+                    original_span: existing.span,
+                    duplicate_span: span,
+                });
             }
-        };
 
-        let symbol = Symbol {
-            name: name.to_string(),
-            kind: symbol_kind,
-            basic_type: basic_type.clone(),
-            span,
-            is_mutable: true,
-        };
-
-        if let Err(err) = self.symbols.define_symbol(symbol) {
-            let (existing, _) = *err;
-            self.errors.push(SemanticError::DuplicateVariable {
-                name: name.to_string(),
-                original_span: existing.span,
-                duplicate_span: span,
+            typed_variables.push(TypedDimVariable {
+                name: var.name.clone(),
+                basic_type,
+                dimensions: typed_dims,
             });
         }
 
         TypedStatement::new(
             TypedStatementKind::Dim {
-                name: name.to_string(),
-                basic_type,
-                dimensions: typed_dims,
+                variables: typed_variables,
                 shared,
             },
             span,
@@ -131,51 +142,87 @@ impl<'a> TypeChecker<'a> {
     // CONST Statement
     // ========================================================================
 
-    /// Type checks a CONST statement.
+    /// Type checks a CONST statement (may define multiple constants).
     pub(super) fn check_const(
         &mut self,
-        name: &str,
-        value: &Expr,
+        definitions: &[(String, Expr)],
         span: crate::ast::Span,
     ) -> TypedStatement {
-        let typed_value = self.check_expr(value);
-        let basic_type = typed_value.basic_type.clone();
+        let mut typed_definitions = Vec::new();
 
-        // Try to evaluate the expression as a compile-time constant
-        let const_value = match self.try_evaluate_const_expr(&typed_value) {
-            Some(cv) => cv,
-            None => {
-                self.errors
-                    .push(SemanticError::NonConstantExpression { span: value.span });
-                crate::semantic::symbols::ConstValue::Integer(0)
-            }
-        };
+        for (name, value) in definitions {
+            let typed_value = self.check_expr(value);
+            let basic_type = typed_value.basic_type.clone();
 
-        let symbol = Symbol {
-            name: name.to_string(),
-            kind: SymbolKind::Constant { value: const_value },
-            basic_type: basic_type.clone(),
-            span,
-            is_mutable: false,
-        };
+            // Try to evaluate the expression as a compile-time constant
+            let const_value = match self.try_evaluate_const_expr(&typed_value) {
+                Some(cv) => cv,
+                None => {
+                    self.errors
+                        .push(SemanticError::NonConstantExpression { span: value.span });
+                    crate::semantic::symbols::ConstValue::Integer(0)
+                }
+            };
 
-        if let Err(err) = self.symbols.define_symbol(symbol) {
-            let (existing, _) = *err;
-            self.errors.push(SemanticError::DuplicateVariable {
+            let symbol = Symbol {
                 name: name.to_string(),
-                original_span: existing.span,
-                duplicate_span: span,
-            });
+                kind: SymbolKind::Constant { value: const_value },
+                basic_type: basic_type.clone(),
+                span,
+                is_mutable: false,
+            };
+
+            if let Err(err) = self.symbols.define_symbol(symbol) {
+                let (existing, _) = *err;
+                self.errors.push(SemanticError::DuplicateVariable {
+                    name: name.to_string(),
+                    original_span: existing.span,
+                    duplicate_span: span,
+                });
+            }
+
+            typed_definitions.push((name.clone(), typed_value, basic_type));
         }
 
         TypedStatement::new(
             TypedStatementKind::Const {
-                name: name.to_string(),
-                value: typed_value,
-                basic_type,
+                definitions: typed_definitions,
             },
             span,
         )
+    }
+
+    // ========================================================================
+    // DEFxxx Statement
+    // ========================================================================
+
+    /// Type checks a DEFxxx statement (DEFINT, DEFLNG, DEFSNG, DEFDBL, DEFSTR).
+    pub(super) fn check_deftype(
+        &mut self,
+        type_kind: &crate::ast::DefTypeKind,
+        ranges: &[(char, char)],
+        span: crate::ast::Span,
+    ) -> TypedStatement {
+        use crate::ast::DefTypeKind;
+        use crate::semantic::types::BasicType;
+
+        // Convert DefTypeKind to BasicType
+        let basic_type = match type_kind {
+            DefTypeKind::Integer => BasicType::Integer,
+            DefTypeKind::Long => BasicType::Long,
+            DefTypeKind::Single => BasicType::Single,
+            DefTypeKind::Double => BasicType::Double,
+            DefTypeKind::String => BasicType::String,
+        };
+
+        // Apply the type defaults to the symbol table
+        for &(start, end) in ranges {
+            self.symbols
+                .set_default_type(start, end, basic_type.clone());
+        }
+
+        // The DEFxxx statement doesn't generate code - it only affects the symbol table
+        TypedStatement::new(TypedStatementKind::DefType, span)
     }
 
     // ========================================================================
