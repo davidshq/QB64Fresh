@@ -539,6 +539,14 @@ pub enum StatementKind {
         body: Expr,
     },
 
+    /// `DEF SEG [= segment]` - Set memory segment for PEEK/POKE/BLOAD/BSAVE.
+    ///
+    /// Without an argument, resets to the default data segment.
+    DefSeg {
+        /// Optional segment address expression.
+        segment: Option<Expr>,
+    },
+
     // ==================== Variable/Scope Statements ====================
     /// `COMMON [SHARED] variable [, variable]...`
     ///
@@ -550,18 +558,15 @@ pub enum StatementKind {
         variables: Vec<CommonVariable>,
     },
 
-    /// `REDIM [_PRESERVE] array(dimensions) [AS type]`
+    /// `REDIM [_PRESERVE] array1(dims) [AS type], array2(dims) [AS type], ...`
     ///
-    /// Resizes a dynamic array, optionally preserving contents.
+    /// Resizes dynamic arrays, optionally preserving contents.
+    /// Multiple arrays can be specified on one line.
     Redim {
         /// Whether to preserve existing contents.
         preserve: bool,
-        /// Array name.
-        name: String,
-        /// New dimensions.
-        dimensions: Vec<ArrayDimension>,
-        /// Type specification.
-        type_spec: Option<TypeSpec>,
+        /// List of arrays to redimension.
+        variables: Vec<DimVariable>,
     },
 
     // ==================== Additional Conditional Compilation ====================
@@ -1219,6 +1224,12 @@ pub enum ReadTarget {
     Variable(String),
     /// Array element: `READ arr(i, j)`
     ArrayElement { name: String, indices: Vec<Expr> },
+    /// UDT array element field: `READ arr(i).field`
+    ArrayFieldElement {
+        name: String,
+        indices: Vec<Expr>,
+        field: String,
+    },
 }
 
 /// Action mode for graphics PUT statement.

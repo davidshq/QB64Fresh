@@ -338,6 +338,13 @@ pub enum TypedStatementKind {
     /// This statement only affects the symbol table and generates no code.
     DefType,
 
+    /// DEF SEG statement - set memory segment for PEEK/POKE/BLOAD/BSAVE.
+    /// In modern QB64, this is largely a no-op but must be parsed for compatibility.
+    DefSeg {
+        /// Optional segment address expression.
+        segment: Option<TypedExpr>,
+    },
+
     /// Label definition.
     Label { name: String },
 
@@ -600,12 +607,8 @@ pub enum TypedStatementKind {
     Redim {
         /// Whether to preserve contents.
         preserve: bool,
-        /// Array name.
-        name: String,
-        /// Element type.
-        element_type: BasicType,
-        /// Dimensions.
-        dimensions: Vec<TypedArrayDimension>,
+        /// Arrays to redimension.
+        variables: Vec<TypedRedimVariable>,
     },
 
     // ==================== Graphics Statements ====================
@@ -1040,6 +1043,13 @@ pub enum TypedReadTarget {
         indices: Vec<TypedExpr>,
         basic_type: BasicType,
     },
+    /// UDT array element field: `READ arr(i).field`
+    ArrayFieldElement {
+        name: String,
+        indices: Vec<TypedExpr>,
+        field: String,
+        basic_type: BasicType,
+    },
 }
 
 /// A typed value from a DATA statement.
@@ -1142,6 +1152,17 @@ pub struct TypedDimVariable {
     /// Basic type of the variable.
     pub basic_type: BasicType,
     /// Array dimensions (empty if scalar).
+    pub dimensions: Vec<TypedArrayDimension>,
+}
+
+/// A typed variable in a REDIM statement.
+#[derive(Debug, Clone)]
+pub struct TypedRedimVariable {
+    /// Array name.
+    pub name: String,
+    /// Element type.
+    pub element_type: BasicType,
+    /// Dimensions.
     pub dimensions: Vec<TypedArrayDimension>,
 }
 

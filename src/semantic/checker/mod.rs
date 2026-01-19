@@ -829,7 +829,7 @@ mod tests {
 
     #[test]
     fn test_redim_statement() {
-        use crate::ast::ArrayDimension;
+        use crate::ast::{ArrayDimension, DimVariable};
 
         let mut symbols = SymbolTable::new();
         let mut checker = TypeChecker::new(&mut symbols);
@@ -838,12 +838,14 @@ mod tests {
         let stmt = Statement::new(
             StatementKind::Redim {
                 preserve: false,
-                name: "array".to_string(),
-                dimensions: vec![ArrayDimension {
-                    lower: None,
-                    upper: make_int_expr(100),
+                variables: vec![DimVariable {
+                    name: "array".to_string(),
+                    dimensions: vec![ArrayDimension {
+                        lower: None,
+                        upper: make_int_expr(100),
+                    }],
+                    type_spec: None,
                 }],
-                type_spec: None,
             },
             Span::new(0, 15),
         );
@@ -858,7 +860,7 @@ mod tests {
 
     #[test]
     fn test_redim_preserve() {
-        use crate::ast::ArrayDimension;
+        use crate::ast::{ArrayDimension, DimVariable};
 
         let mut symbols = SymbolTable::new();
         let mut checker = TypeChecker::new(&mut symbols);
@@ -867,12 +869,14 @@ mod tests {
         let stmt = Statement::new(
             StatementKind::Redim {
                 preserve: true,
-                name: "buffer$".to_string(),
-                dimensions: vec![ArrayDimension {
-                    lower: None,
-                    upper: make_int_expr(50),
+                variables: vec![DimVariable {
+                    name: "buffer$".to_string(),
+                    dimensions: vec![ArrayDimension {
+                        lower: None,
+                        upper: make_int_expr(50),
+                    }],
+                    type_spec: None,
                 }],
-                type_spec: None,
             },
             Span::new(0, 25),
         );

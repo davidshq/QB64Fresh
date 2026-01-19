@@ -453,6 +453,38 @@ impl<'a> TypeChecker<'a> {
                                 basic_type,
                             }
                         }
+                        ReadTarget::ArrayFieldElement {
+                            name,
+                            indices,
+                            field,
+                        } => {
+                            // Type check indices
+                            let typed_indices: Vec<_> =
+                                indices.iter().map(|e| self.check_expr(e)).collect();
+
+                            // Look up array and get element type, then resolve field type
+                            let basic_type = if let Some(_symbol) = self.symbols.lookup_symbol(name)
+                            {
+                                // TODO: Properly resolve field type from UDT
+                                // For now, use default type inference
+                                type_from_suffix(field)
+                                    .unwrap_or_else(|| self.symbols.default_type_for(field))
+                            } else {
+                                // Array not declared - error
+                                self.errors.push(SemanticError::UndefinedVariable {
+                                    name: name.clone(),
+                                    span: stmt.span,
+                                });
+                                BasicType::Single // Default on error
+                            };
+
+                            TypedReadTarget::ArrayFieldElement {
+                                name: name.clone(),
+                                indices: typed_indices,
+                                field: field.clone(),
+                                basic_type,
+                            }
+                        }
                     })
                     .collect();
 
@@ -851,6 +883,16 @@ impl<'a> TypeChecker<'a> {
                 )
             }
 
+            StatementKind::DefSeg { segment } => {
+                let typed_segment = segment.as_ref().map(|e| self.check_expr(e));
+                TypedStatement::new(
+                    TypedStatementKind::DefSeg {
+                        segment: typed_segment,
+                    },
+                    stmt.span,
+                )
+            }
+
             // ==================== Variable/Scope Statements ====================
             StatementKind::CommonStmt { shared, variables } => {
                 let typed_vars: Vec<TypedCommonVariable> = variables
@@ -906,42 +948,52 @@ impl<'a> TypeChecker<'a> {
 
             StatementKind::Redim {
                 preserve,
-                name,
-                dimensions,
-                type_spec,
+                variables,
             } => {
-                // Determine element type
-                let element_type = type_spec
-                    .as_ref()
-                    .map(from_type_spec)
-                    .or_else(|| type_from_suffix(name))
-                    .unwrap_or_else(|| self.symbols.default_type_for(name));
+                use crate::semantic::typed_ir::TypedRedimVariable;
 
-                // Evaluate dimensions - REDIM allows runtime expressions
-                let typed_dims: Vec<TypedArrayDimension> = dimensions
-                    .iter()
-                    .map(|d| self.evaluate_array_dimension_runtime(d))
-                    .collect();
+                let mut typed_vars = Vec::new();
 
-                // Update symbol table (or define if not exists)
-                let symbol = Symbol {
-                    name: name.clone(),
-                    kind: SymbolKind::Variable,
-                    basic_type: BasicType::Array {
-                        element_type: Box::new(element_type.clone()),
-                        dimensions: typed_dims.len(),
-                    },
-                    span: stmt.span,
-                    is_mutable: true,
-                };
-                let _ = self.symbols.define_symbol(symbol);
+                for var in variables {
+                    // Determine element type
+                    let element_type = var
+                        .type_spec
+                        .as_ref()
+                        .map(from_type_spec)
+                        .or_else(|| type_from_suffix(&var.name))
+                        .unwrap_or_else(|| self.symbols.default_type_for(&var.name));
+
+                    // Evaluate dimensions - REDIM allows runtime expressions
+                    let typed_dims: Vec<TypedArrayDimension> = var
+                        .dimensions
+                        .iter()
+                        .map(|d| self.evaluate_array_dimension_runtime(d))
+                        .collect();
+
+                    // Update symbol table (or define if not exists)
+                    let symbol = Symbol {
+                        name: var.name.clone(),
+                        kind: SymbolKind::Variable,
+                        basic_type: BasicType::Array {
+                            element_type: Box::new(element_type.clone()),
+                            dimensions: typed_dims.len(),
+                        },
+                        span: stmt.span,
+                        is_mutable: true,
+                    };
+                    let _ = self.symbols.define_symbol(symbol);
+
+                    typed_vars.push(TypedRedimVariable {
+                        name: var.name.clone(),
+                        element_type,
+                        dimensions: typed_dims,
+                    });
+                }
 
                 TypedStatement::new(
                     TypedStatementKind::Redim {
                         preserve: *preserve,
-                        name: name.clone(),
-                        element_type,
-                        dimensions: typed_dims,
+                        variables: typed_vars,
                     },
                     stmt.span,
                 )

@@ -976,7 +976,7 @@ impl<'a> Parser<'a> {
             let var_token = self.expect(&TokenKind::Identifier, "variable name")?;
             let name = var_token.text.to_string();
 
-            // Check for array element: var(index, index, ...)
+            // Check for array element: var(index, index, ...) or var(index).field
             let target = if self.match_token(&TokenKind::LeftParen) {
                 let mut indices = Vec::new();
                 loop {
@@ -986,7 +986,19 @@ impl<'a> Parser<'a> {
                     }
                 }
                 self.expect(&TokenKind::RightParen, "`)` after array indices")?;
-                ReadTarget::ArrayElement { name, indices }
+
+                // Check for UDT field access: arr(i).field
+                if self.match_token(&TokenKind::Dot) {
+                    let field_token = self.expect(&TokenKind::Identifier, "field name")?;
+                    let field = field_token.text.to_string();
+                    ReadTarget::ArrayFieldElement {
+                        name,
+                        indices,
+                        field,
+                    }
+                } else {
+                    ReadTarget::ArrayElement { name, indices }
+                }
             } else {
                 ReadTarget::Variable(name)
             };
@@ -1944,13 +1956,20 @@ impl<'a> Parser<'a> {
         Ok(Statement::new(StatementKind::ErrorStmt { code }, span))
     }
 
-    // ==================== DEF FN ====================
+    // ==================== DEF FN / DEF SEG ====================
 
-    /// Parses a DEF FN statement.
+    /// Parses a DEF statement (DEF FN or DEF SEG).
     ///
-    /// Syntax: `DEF FNname[(params)] = expression`
+    /// Syntax:
+    /// - `DEF FNname[(params)] = expression` - define inline function
+    /// - `DEF SEG [= segment]` - set memory segment
     pub(super) fn parse_def_fn(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("DEF keyword").span.start;
+
+        // Check for DEF SEG
+        if self.match_token(&TokenKind::Seg) {
+            return self.parse_def_seg(start);
+        }
 
         // Expect FN keyword or identifier starting with FN
         let name = if self.match_token(&TokenKind::Fn) {
@@ -1998,6 +2017,24 @@ impl<'a> Parser<'a> {
             StatementKind::DefFn { name, params, body },
             span,
         ))
+    }
+
+    /// Parses DEF SEG statement.
+    ///
+    /// Syntax: `DEF SEG [= segment]`
+    ///
+    /// DEF SEG sets the current memory segment for PEEK/POKE/BLOAD/BSAVE.
+    /// Without an argument, it resets to the default segment.
+    fn parse_def_seg(&mut self, start: usize) -> Result<Statement, ()> {
+        // Optional = segment
+        let segment = if self.match_token(&TokenKind::Equals) {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::DefSeg { segment }, span))
     }
 
     // ==================== Variable/Scope Statements ====================
@@ -2058,32 +2095,46 @@ impl<'a> Parser<'a> {
 
     /// Parses a REDIM statement.
     ///
-    /// Syntax: `REDIM [_PRESERVE] array(dimensions) [AS type]`
+    /// Syntax: `REDIM [_PRESERVE] array1(dims) [AS type], array2(dims) [AS type], ...`
     pub(super) fn parse_redim(&mut self) -> Result<Statement, ()> {
+        use crate::ast::DimVariable;
+
         let start = self.advance().expect("REDIM keyword").span.start;
 
         let preserve = self.match_token(&TokenKind::Preserve);
 
-        let name_token = self.expect(&TokenKind::Identifier, "array name")?;
-        let name = name_token.text.to_string();
+        let mut variables = Vec::new();
 
-        self.expect(&TokenKind::LeftParen, "(")?;
-        let dimensions = self.parse_array_dimensions()?;
-        self.expect(&TokenKind::RightParen, ")")?;
+        loop {
+            let name_token = self.expect(&TokenKind::Identifier, "array name")?;
+            let name = name_token.text.to_string();
 
-        let type_spec = if self.match_token(&TokenKind::As) {
-            Some(self.parse_type_spec()?)
-        } else {
-            None
-        };
+            self.expect(&TokenKind::LeftParen, "(")?;
+            let dimensions = self.parse_array_dimensions()?;
+            self.expect(&TokenKind::RightParen, ")")?;
+
+            let type_spec = if self.match_token(&TokenKind::As) {
+                Some(self.parse_type_spec()?)
+            } else {
+                None
+            };
+
+            variables.push(DimVariable {
+                name,
+                dimensions,
+                type_spec,
+            });
+
+            if !self.match_token(&TokenKind::Comma) {
+                break;
+            }
+        }
 
         let span = self.span_from(start);
         Ok(Statement::new(
             StatementKind::Redim {
                 preserve,
-                name,
-                dimensions,
-                type_spec,
+                variables,
             },
             span,
         ))

@@ -402,6 +402,19 @@ impl StmtEmitter {
                 // DEFxxx statements affect type inference but generate no C code
             }
 
+            TypedStatementKind::DefSeg { segment } => {
+                // DEF SEG is a legacy statement for memory segment manipulation.
+                // In modern QB64, this is largely a no-op, but we can emit a runtime call
+                // for compatibility with PEEK/POKE/BLOAD/BSAVE.
+                if let Some(seg_expr) = segment {
+                    let seg_code = emit_expr(seg_expr)?;
+                    writeln!(output, "{}qb_def_seg((int32_t){});", indent, seg_code).unwrap();
+                } else {
+                    // DEF SEG without argument resets to default segment
+                    writeln!(output, "{}qb_def_seg(-1);", indent).unwrap();
+                }
+            }
+
             TypedStatementKind::Label { name } => {
                 let c_label = c_identifier(name);
                 writeln!(output, "{}:", c_label).unwrap();
@@ -641,11 +654,18 @@ impl StmtEmitter {
 
             TypedStatementKind::Redim {
                 preserve,
-                name,
-                element_type,
-                dimensions,
+                variables,
             } => {
-                self.emit_redim(&indent, *preserve, name, element_type, dimensions, output)?;
+                for var in variables {
+                    self.emit_redim(
+                        &indent,
+                        *preserve,
+                        &var.name,
+                        &var.element_type,
+                        &var.dimensions,
+                        output,
+                    )?;
+                }
             }
 
             // ==================== Graphics Statements ====================
@@ -1949,6 +1969,24 @@ impl StmtEmitter {
                         .collect::<Result<Vec<_>, _>>()?;
                     let idx_str = idx_parts.join("][");
                     (format!("{}[{}]", c_arr, idx_str), basic_type.clone())
+                }
+                TypedReadTarget::ArrayFieldElement {
+                    name,
+                    indices,
+                    field,
+                    basic_type,
+                } => {
+                    let c_arr = c_identifier(name);
+                    let c_field = c_identifier(field);
+                    let idx_parts: Vec<_> = indices
+                        .iter()
+                        .map(emit_expr)
+                        .collect::<Result<Vec<_>, _>>()?;
+                    let idx_str = idx_parts.join("][");
+                    (
+                        format!("{}[{}].{}", c_arr, idx_str, c_field),
+                        basic_type.clone(),
+                    )
                 }
             };
 

@@ -204,6 +204,10 @@ pub enum TokenKind {
     #[token("CONST", ignore(ascii_case))]
     Const,
 
+    /// SEG keyword - for DEF SEG statement (memory segment)
+    #[token("SEG", ignore(ascii_case))]
+    Seg,
+
     /// DEFINT keyword - set default type to INTEGER for letter range
     #[token("DEFINT", ignore(ascii_case))]
     DefInt,
@@ -810,8 +814,8 @@ pub enum TokenKind {
     #[token("&")]
     Ampersand,
 
-    /// ! single type suffix
-    #[token("!")]
+    /// ! single type suffix (standalone, low priority so identifier suffixes take precedence)
+    #[token("!", priority = 1)]
     Exclamation,
 
     /// @ _OFFSET type suffix (QB64)
@@ -862,7 +866,8 @@ pub enum TokenKind {
     /// Must start with letter, can contain letters, digits, underscores, and dots.
     /// Dots are allowed in classic BASIC for naming procedures (e.g., `player.move`)
     /// May end with type suffix ($, %, &, !, #)
-    #[regex(r"[A-Za-z_][A-Za-z0-9_.]*[$%&!#]?")]
+    /// Priority 3 ensures type suffixes are captured as part of the identifier.
+    #[regex(r"[A-Za-z_][A-Za-z0-9_.]*[$%&!#]?", priority = 3)]
     Identifier,
 
     // ==================== Special Tokens ====================
