@@ -225,6 +225,28 @@ impl<'a> TypeChecker<'a> {
         TypedStatement::new(TypedStatementKind::DefType, span)
     }
 
+    /// Type checks an OPTION BASE statement.
+    ///
+    /// OPTION BASE sets the default lower bound for array subscripts.
+    /// It must appear before any array declarations and can only be 0 or 1.
+    pub(super) fn check_option_base(
+        &mut self,
+        base: i64,
+        span: crate::ast::Span,
+    ) -> TypedStatement {
+        // Validate that base is 0 or 1 (parser should catch this, but be defensive)
+        if base != 0 && base != 1 {
+            self.errors
+                .push(SemanticError::InvalidOptionBase { value: base, span });
+        }
+
+        // Set the option base in the symbol table
+        self.symbols.set_option_base(base);
+
+        // OPTION BASE doesn't generate code - it only affects the symbol table
+        TypedStatement::new(TypedStatementKind::OptionBase, span)
+    }
+
     // ========================================================================
     // SUB Definition
     // ========================================================================

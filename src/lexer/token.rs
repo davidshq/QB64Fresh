@@ -771,6 +771,14 @@ pub enum TokenKind {
     #[token("RESUME", ignore(ascii_case))]
     Resume,
 
+    /// OPTION keyword - used in OPTION BASE
+    #[token("OPTION", ignore(ascii_case))]
+    Option,
+
+    /// BASE keyword - used in OPTION BASE
+    #[token("BASE", ignore(ascii_case))]
+    Base,
+
     /// DEF keyword - used in DEF FN
     #[token("DEF", ignore(ascii_case))]
     Def,

@@ -173,6 +173,11 @@ pub enum SemanticError {
     /// SHARED references a variable not defined at module level.
     #[error("SHARED variable `{name}` not defined at module level")]
     SharedVariableNotFound { name: String, span: Span },
+
+    // === OPTION Errors ===
+    /// OPTION BASE value is not 0 or 1.
+    #[error("OPTION BASE must be 0 or 1, found {value}")]
+    InvalidOptionBase { value: i64, span: Span },
 }
 
 impl SemanticError {
@@ -205,6 +210,7 @@ impl SemanticError {
             SemanticError::NonConstantExpression { span } => *span,
             SemanticError::SharedOutsideProcedure { span } => *span,
             SemanticError::SharedVariableNotFound { span, .. } => *span,
+            SemanticError::InvalidOptionBase { span, .. } => *span,
         }
     }
 

@@ -844,6 +844,57 @@ mod arrays {
         "#;
         assert_compiles(source);
     }
+
+    #[test]
+    fn option_base_0() {
+        // Default behavior - arrays start at 0
+        let source = r#"
+            OPTION BASE 0
+            DIM arr(10) AS LONG
+            arr(0) = 42
+            PRINT arr(0)
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn option_base_1() {
+        // OPTION BASE 1 - arrays start at 1
+        let source = r#"
+            OPTION BASE 1
+            DIM arr(10) AS LONG
+            arr(1) = 42
+            PRINT arr(1)
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn option_base_1_with_loop() {
+        // OPTION BASE 1 with FOR loop
+        let source = r#"
+            OPTION BASE 1
+            DIM arr(10) AS LONG
+            FOR i = 1 TO 10
+                arr(i) = i * 2
+            NEXT i
+            PRINT arr(5)
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn option_base_1_multidimensional() {
+        // OPTION BASE 1 with 2D array
+        let source = r#"
+            OPTION BASE 1
+            DIM arr(5, 5) AS LONG
+            arr(1, 1) = 42
+            arr(5, 5) = 100
+            PRINT arr(1, 1); arr(5, 5)
+        "#;
+        assert_compiles(source);
+    }
 }
 
 // =============================================================================

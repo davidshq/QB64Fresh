@@ -435,6 +435,10 @@ impl StmtEmitter {
                 // DEFxxx statements affect type inference but generate no C code
             }
 
+            TypedStatementKind::OptionBase => {
+                // OPTION BASE affects array bounds but generates no C code
+            }
+
             TypedStatementKind::DefSeg { segment } => {
                 // DEF SEG is a legacy statement for memory segment manipulation.
                 // In modern QB64, this is largely a no-op, but we can emit a runtime call

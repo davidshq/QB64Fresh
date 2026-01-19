@@ -116,6 +116,15 @@ pub enum StatementKind {
         ranges: Vec<(char, char)>,
     },
 
+    /// `OPTION BASE 0` or `OPTION BASE 1`
+    ///
+    /// Sets the default lower bound for array subscripts. Must appear before
+    /// any array declarations. Default is 0.
+    OptionBase {
+        /// The base value (0 or 1).
+        base: i64,
+    },
+
     /// Single-line: `IF condition THEN statement [ELSE statement]`
     /// Multi-line: `IF condition THEN ... [ELSEIF ...] [ELSE ...] END IF`
     If {

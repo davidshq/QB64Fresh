@@ -86,7 +86,7 @@ pub struct ArrayDimInfo {
 }
 
 /// A compile-time constant value.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ConstValue {
     /// Integer constant.
     Integer(i64),

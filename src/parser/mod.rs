@@ -536,6 +536,35 @@ PRINT x
         ));
     }
 
+    #[test]
+    fn test_parse_option_base_0() {
+        let program = parse("OPTION BASE 0").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        if let StatementKind::OptionBase { base } = &program.statements[0].kind {
+            assert_eq!(*base, 0);
+        } else {
+            panic!("Expected OptionBase statement");
+        }
+    }
+
+    #[test]
+    fn test_parse_option_base_1() {
+        let program = parse("OPTION BASE 1").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        if let StatementKind::OptionBase { base } = &program.statements[0].kind {
+            assert_eq!(*base, 1);
+        } else {
+            panic!("Expected OptionBase statement");
+        }
+    }
+
+    #[test]
+    fn test_parse_option_base_invalid() {
+        // Should fail - OPTION BASE can only be 0 or 1
+        let result = parse("OPTION BASE 2");
+        assert!(result.is_err());
+    }
+
     // ========================================================
     // Phase 1 Feature Tests: Computed Control Flow
     // ========================================================

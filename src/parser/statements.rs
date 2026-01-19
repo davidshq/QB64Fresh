@@ -61,6 +61,9 @@ impl<'a> Parser<'a> {
             TokenKind::DefDbl => self.parse_deftype(),
             TokenKind::DefStr => self.parse_deftype(),
 
+            // OPTION BASE
+            TokenKind::Option => self.parse_option(),
+
             // Control flow (delegated to control_flow.rs)
             TokenKind::If => self.parse_if(),
             TokenKind::Select => self.parse_select_case(),
@@ -642,6 +645,66 @@ impl<'a> Parser<'a> {
             StatementKind::DefType { type_kind, ranges },
             span,
         ))
+    }
+
+    /// Parses an OPTION statement.
+    ///
+    /// Syntax: `OPTION BASE 0` or `OPTION BASE 1`
+    /// Sets the default lower bound for array subscripts.
+    pub(super) fn parse_option(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("OPTION keyword").span.start;
+
+        // Expect BASE keyword
+        if !self.match_token(&TokenKind::Base) {
+            let span = self.current_span();
+            self.errors.push(ParseError::syntax(
+                "expected BASE after OPTION".to_string(),
+                span,
+            ));
+            return Err(());
+        }
+
+        // Expect 0 or 1
+        let base = if let Some(token) = self.peek() {
+            if token.kind == TokenKind::IntegerLiteral {
+                let text = token.text.clone();
+                match text.as_str() {
+                    "0" => {
+                        self.advance();
+                        0
+                    }
+                    "1" => {
+                        self.advance();
+                        1
+                    }
+                    _ => {
+                        let span = self.current_span();
+                        self.errors.push(ParseError::syntax(
+                            "OPTION BASE must be 0 or 1".to_string(),
+                            span,
+                        ));
+                        return Err(());
+                    }
+                }
+            } else {
+                let span = self.current_span();
+                self.errors.push(ParseError::syntax(
+                    "expected 0 or 1 after OPTION BASE".to_string(),
+                    span,
+                ));
+                return Err(());
+            }
+        } else {
+            let span = self.current_span();
+            self.errors.push(ParseError::syntax(
+                "expected 0 or 1 after OPTION BASE".to_string(),
+                span,
+            ));
+            return Err(());
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::OptionBase { base }, span))
     }
 
     // ==================== Simple Flow Control ====================

@@ -9,7 +9,7 @@ A prioritized roadmap for QB64Fresh development. For completed features, see [TO
 ## Phase 1: Language Completeness - Remaining Items
 
 ### Error Handling
-- [ ] Add error code constants (standard error codes are used)
+- [x] Add error code constants (standard error codes are used) ✓ Added 42 `_ERR_*` constants
 
 ### Missing Built-in Functions
 - [ ] `DEF SEG` statement (legacy, low priority)
@@ -18,7 +18,7 @@ A prioritized roadmap for QB64Fresh development. For completed features, see [TO
 ### Variable/Scope Enhancements
 - [ ] `SHARED` in module-level scope (partially supported via DIM SHARED)
 - [ ] `STATIC` arrays in procedures
-- [ ] Proper `OPTION BASE` support
+- [x] Proper `OPTION BASE` support ✓ Full implementation
 
 ### DEF FN Support
 - [ ] Implement multi-line `DEF FN` (QB64 extension)
@@ -28,7 +28,7 @@ A prioritized roadmap for QB64Fresh development. For completed features, see [TO
 ## Phase 2: Core Extensions - Remaining Items
 
 ### Conditional Compilation
-- [ ] `$INCLUDE` - actually read and parse included files
+- [x] `$INCLUDE` - actually read and parse included files ✓ Already implemented in preprocessor.rs
 - [ ] Built-in constants: `WIN`, `LINUX`, `MAC`, `32BIT`, `64BIT`
 
 ### Date/Time Enhancements

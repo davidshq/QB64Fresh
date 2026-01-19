@@ -882,6 +882,98 @@ impl SemanticAnalyzer {
             is_mutable: false,
         };
         let _ = self.symbols.define_symbol(false_symbol);
+
+        // Register standard QB error code constants
+        // These match the ERR values returned by the ERR function
+        self.register_error_constants();
+    }
+
+    /// Registers standard QBasic/QB64 error code constants.
+    ///
+    /// These constants correspond to the ERR values returned when runtime errors occur.
+    /// Using named constants improves code readability over magic numbers.
+    fn register_error_constants(&mut self) {
+        use symbols::{ConstValue, Symbol, SymbolKind};
+
+        // Helper to create an error constant
+        let mut define_error = |name: &str, value: i64| {
+            let symbol = Symbol {
+                name: name.to_string(),
+                kind: SymbolKind::Constant {
+                    value: ConstValue::Integer(value),
+                },
+                basic_type: BasicType::Long,
+                span: crate::ast::Span::new(0, 0),
+                is_mutable: false,
+            };
+            let _ = self.symbols.define_symbol(symbol);
+        };
+
+        // Standard QBasic/QB64 error codes (ERR values)
+        // See: https://qb64phoenix.com/qb64wiki/index.php/ERROR_Codes
+
+        // Core runtime errors (1-20)
+        define_error("_ERR_NEXT_WITHOUT_FOR", 1);
+        define_error("_ERR_SYNTAX_ERROR", 2);
+        define_error("_ERR_RETURN_WITHOUT_GOSUB", 3);
+        define_error("_ERR_OUT_OF_DATA", 4);
+        define_error("_ERR_ILLEGAL_FUNCTION_CALL", 5);
+        define_error("_ERR_OVERFLOW", 6);
+        define_error("_ERR_OUT_OF_MEMORY", 7);
+        define_error("_ERR_LABEL_NOT_DEFINED", 8);
+        define_error("_ERR_SUBSCRIPT_OUT_OF_RANGE", 9);
+        define_error("_ERR_DUPLICATE_DEFINITION", 10);
+        define_error("_ERR_DIVISION_BY_ZERO", 11);
+        define_error("_ERR_ILLEGAL_IN_DIRECT_MODE", 12);
+        define_error("_ERR_TYPE_MISMATCH", 13);
+        define_error("_ERR_OUT_OF_STRING_SPACE", 14);
+        // Note: 15 is not used in standard QBasic
+        define_error("_ERR_STRING_FORMULA_TOO_COMPLEX", 16);
+        define_error("_ERR_CANNOT_CONTINUE", 17);
+        define_error("_ERR_FUNCTION_NOT_DEFINED", 18);
+        define_error("_ERR_NO_RESUME", 19);
+        define_error("_ERR_RESUME_WITHOUT_ERROR", 20);
+
+        // Device/timeout errors (24-27)
+        define_error("_ERR_DEVICE_TIMEOUT", 24);
+        define_error("_ERR_DEVICE_FAULT", 25);
+        define_error("_ERR_FOR_WITHOUT_NEXT", 26);
+        define_error("_ERR_OUT_OF_PAPER", 27);
+
+        // Additional runtime errors (29-40)
+        define_error("_ERR_WHILE_WITHOUT_WEND", 29);
+        define_error("_ERR_WEND_WITHOUT_WHILE", 30);
+        define_error("_ERR_DUPLICATE_LABEL", 33);
+        define_error("_ERR_SUBPROGRAM_NOT_DEFINED", 35);
+        define_error("_ERR_ARGUMENT_COUNT_MISMATCH", 37);
+        define_error("_ERR_ARRAY_NOT_DEFINED", 38);
+        define_error("_ERR_VARIABLE_REQUIRED", 40);
+
+        // File I/O errors (50-76)
+        define_error("_ERR_FIELD_OVERFLOW", 50);
+        define_error("_ERR_INTERNAL_ERROR", 51);
+        define_error("_ERR_BAD_FILE_NAME_OR_NUMBER", 52);
+        define_error("_ERR_FILE_NOT_FOUND", 53);
+        define_error("_ERR_BAD_FILE_MODE", 54);
+        define_error("_ERR_FILE_ALREADY_OPEN", 55);
+        define_error("_ERR_FIELD_STATEMENT_ACTIVE", 56);
+        define_error("_ERR_DEVICE_IO_ERROR", 57);
+        define_error("_ERR_FILE_ALREADY_EXISTS", 58);
+        define_error("_ERR_BAD_RECORD_LENGTH", 59);
+        define_error("_ERR_DISK_FULL", 61);
+        define_error("_ERR_INPUT_PAST_END_OF_FILE", 62);
+        define_error("_ERR_BAD_RECORD_NUMBER", 63);
+        define_error("_ERR_BAD_FILE_NAME", 64);
+        define_error("_ERR_TOO_MANY_FILES", 67);
+        define_error("_ERR_DEVICE_UNAVAILABLE", 68);
+        define_error("_ERR_COMM_BUFFER_OVERFLOW", 69);
+        define_error("_ERR_PERMISSION_DENIED", 70);
+        define_error("_ERR_DISK_NOT_READY", 71);
+        define_error("_ERR_DISK_MEDIA_ERROR", 72);
+        define_error("_ERR_FEATURE_UNAVAILABLE", 73);
+        define_error("_ERR_RENAME_ACROSS_DISKS", 74);
+        define_error("_ERR_PATH_FILE_ACCESS_ERROR", 75);
+        define_error("_ERR_PATH_NOT_FOUND", 76);
     }
 }
 
@@ -993,6 +1085,46 @@ mod tests {
         // Case-insensitive lookup should work
         assert!(analyzer.symbols.lookup_symbol("_true").is_some());
         assert!(analyzer.symbols.lookup_symbol("_false").is_some());
+    }
+
+    #[test]
+    fn test_error_code_constants_exist() {
+        use symbols::{ConstValue, SymbolKind};
+
+        let analyzer = SemanticAnalyzer::new();
+
+        // Helper to check error constant
+        let check_error_const = |name: &str, expected_value: i64| {
+            let sym = analyzer.symbols.lookup_symbol(name);
+            assert!(sym.is_some(), "{} should exist as built-in constant", name);
+            let sym = sym.unwrap();
+            assert!(!sym.is_mutable, "{} should be immutable", name);
+            match &sym.kind {
+                SymbolKind::Constant { value } => match value {
+                    ConstValue::Integer(v) => {
+                        assert_eq!(*v, expected_value, "{} should be {}", name, expected_value)
+                    }
+                    _ => panic!("{} should be an integer constant", name),
+                },
+                _ => panic!("{} should be a constant", name),
+            }
+        };
+
+        // Check a selection of error constants
+        check_error_const("_ERR_NEXT_WITHOUT_FOR", 1);
+        check_error_const("_ERR_SYNTAX_ERROR", 2);
+        check_error_const("_ERR_RETURN_WITHOUT_GOSUB", 3);
+        check_error_const("_ERR_ILLEGAL_FUNCTION_CALL", 5);
+        check_error_const("_ERR_OVERFLOW", 6);
+        check_error_const("_ERR_SUBSCRIPT_OUT_OF_RANGE", 9);
+        check_error_const("_ERR_DIVISION_BY_ZERO", 11);
+        check_error_const("_ERR_TYPE_MISMATCH", 13);
+        check_error_const("_ERR_FILE_NOT_FOUND", 53);
+        check_error_const("_ERR_PATH_NOT_FOUND", 76);
+
+        // Case-insensitive lookup should work
+        assert!(analyzer.symbols.lookup_symbol("_err_overflow").is_some());
+        assert!(analyzer.symbols.lookup_symbol("_ERR_OVERFLOW").is_some());
     }
 
     #[test]

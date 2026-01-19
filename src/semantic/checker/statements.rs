@@ -204,6 +204,8 @@ impl<'a> TypeChecker<'a> {
                 self.check_deftype(type_kind, ranges, stmt.span)
             }
 
+            StatementKind::OptionBase { base } => self.check_option_base(*base, stmt.span),
+
             StatementKind::Label { name } => {
                 TypedStatement::new(TypedStatementKind::Label { name: name.clone() }, stmt.span)
             }

@@ -348,6 +348,10 @@ pub enum TypedStatementKind {
     /// This statement only affects the symbol table and generates no code.
     DefType,
 
+    /// OPTION BASE statement - sets default array lower bound.
+    /// This statement only affects the symbol table and generates no code.
+    OptionBase,
+
     /// DEF SEG statement - set memory segment for PEEK/POKE/BLOAD/BSAVE.
     /// In modern QB64, this is largely a no-op but must be parsed for compatibility.
     DefSeg {
