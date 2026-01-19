@@ -1464,6 +1464,59 @@ impl StmtEmitter {
                 writeln!(output, "{}qb_shell_hide({}->data);", indent, cmd_code).unwrap();
             }
 
+            TypedStatementKind::Bload { filename, address } => {
+                let filename_code = emit_expr(filename)?;
+                if let Some(addr) = address {
+                    let addr_code = emit_expr(addr)?;
+                    writeln!(
+                        output,
+                        "{}qb_bload({}->data, (void*)(intptr_t){});",
+                        indent, filename_code, addr_code
+                    )
+                    .unwrap();
+                } else {
+                    writeln!(output, "{}qb_bload({}->data, NULL);", indent, filename_code).unwrap();
+                }
+            }
+
+            TypedStatementKind::Bsave {
+                filename,
+                address,
+                length,
+            } => {
+                let filename_code = emit_expr(filename)?;
+                let addr_code = emit_expr(address)?;
+                let len_code = emit_expr(length)?;
+                writeln!(
+                    output,
+                    "{}qb_bsave({}->data, (void*)(intptr_t){}, (size_t){});",
+                    indent, filename_code, addr_code, len_code
+                )
+                .unwrap();
+            }
+
+            TypedStatementKind::Setmem { bytes } => {
+                // SETMEM is a no-op in modern systems - just evaluate the expression
+                let bytes_code = emit_expr(bytes)?;
+                writeln!(
+                    output,
+                    "{}(void){}; /* SETMEM: no-op in flat memory model */",
+                    indent, bytes_code
+                )
+                .unwrap();
+            }
+
+            TypedStatementKind::CallAbsolute { address } => {
+                // CALL ABSOLUTE is a legacy statement that cannot be safely implemented
+                let addr_code = emit_expr(address)?;
+                writeln!(
+                    output,
+                    "{}fprintf(stderr, \"Warning: CALL ABSOLUTE at address %ld not supported in flat memory model\\n\", (long){});",
+                    indent, addr_code
+                )
+                .unwrap();
+            }
+
             // ==================== Mouse Input Statements ====================
             TypedStatementKind::MouseHide => {
                 writeln!(output, "{}qb_mouse_hide();", indent).unwrap();

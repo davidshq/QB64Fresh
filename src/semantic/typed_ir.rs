@@ -1045,6 +1045,36 @@ pub enum TypedStatementKind {
         command: TypedExpr,
     },
 
+    /// BLOAD statement - load binary file to memory.
+    Bload {
+        /// The filename to load from.
+        filename: TypedExpr,
+        /// Optional memory address/offset.
+        address: Option<TypedExpr>,
+    },
+
+    /// BSAVE statement - save memory to binary file.
+    Bsave {
+        /// The filename to save to.
+        filename: TypedExpr,
+        /// Starting memory address.
+        address: TypedExpr,
+        /// Number of bytes to save.
+        length: TypedExpr,
+    },
+
+    /// SETMEM statement - set available memory (legacy stub).
+    Setmem {
+        /// Number of bytes (ignored).
+        bytes: TypedExpr,
+    },
+
+    /// CALL ABSOLUTE statement - call machine language routine (legacy stub).
+    CallAbsolute {
+        /// Memory address (ignored, generates warning).
+        address: TypedExpr,
+    },
+
     // ==================== Mouse Input Statements ====================
     /// _MOUSEHIDE statement.
     MouseHide,

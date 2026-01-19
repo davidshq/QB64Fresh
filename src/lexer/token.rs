@@ -664,6 +664,30 @@ pub enum TokenKind {
     #[token("_DIR$", ignore(ascii_case))]
     Dir,
 
+    /// BLOAD statement - binary load to memory
+    #[token("BLOAD", ignore(ascii_case))]
+    Bload,
+
+    /// BSAVE statement - binary save from memory
+    #[token("BSAVE", ignore(ascii_case))]
+    Bsave,
+
+    /// SETMEM statement - set available memory (legacy, stub)
+    #[token("SETMEM", ignore(ascii_case))]
+    Setmem,
+
+    /// ABSOLUTE keyword - call machine language routine (legacy)
+    #[token("ABSOLUTE", ignore(ascii_case))]
+    Absolute,
+
+    /// CALLS keyword - call with far pointers (legacy, stub)
+    #[token("CALLS", ignore(ascii_case))]
+    Calls,
+
+    /// CDECL keyword - C calling convention (legacy)
+    #[token("CDECL", ignore(ascii_case))]
+    Cdecl,
+
     // ==================== Mouse Input Keywords ====================
     /// _MOUSEX function - get mouse X position (QB64)
     #[token("_MOUSEX", ignore(ascii_case))]

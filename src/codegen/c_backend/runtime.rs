@@ -89,6 +89,7 @@ fn emit_runtime_declarations(output: &mut String) {
     emit_array_functions(output);
     emit_audio_functions(output);
     emit_graphics_stubs(output);
+    emit_legacy_functions(output);
     emit_gosub_stack(output);
 }
 
@@ -3169,6 +3170,332 @@ fn emit_graphics_stubs(output: &mut String) {
     writeln!(output, "    (void)title;").unwrap();
     writeln!(output, "    fprintf(stderr, \"Note: _SELECTFOLDERDIALOG$ requires external runtime for GUI support\\n\");").unwrap();
     writeln!(output, "    return qb_string_new(\"\");").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+}
+
+/// Emits legacy BASIC functions for compatibility with older BASIC programs.
+///
+/// These include:
+/// - LPOS(n) - printer position (stub)
+/// - VARPTR/VARPTR$/VARSEG - memory address functions (limited support)
+/// - SADD - string address
+/// - FILEATTR - file attribute information
+/// - CVSMBF/CVDMBF - Microsoft Binary Format conversions
+/// - MKSMBF$/MKDMBF$ - Microsoft Binary Format conversions
+fn emit_legacy_functions(output: &mut String) {
+    writeln!(output, "/* Legacy BASIC Functions */").unwrap();
+    writeln!(output).unwrap();
+
+    // LPOS(n) - printer position
+    // Returns the current column position of the printer
+    // In modern systems this is mostly a stub since line printers are rare
+    writeln!(output, "int qb_lpos(int64_t n) {{").unwrap();
+    writeln!(output, "    (void)n;  // Printer number (ignored)").unwrap();
+    writeln!(output, "    return 1; // Always return column 1 (stub)").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // VARPTR(variable) - returns address of variable
+    // In modern flat memory model, we return the actual pointer as a long
+    // Note: This is typically called with a pointer to the variable
+    writeln!(output, "int32_t qb_varptr(void* ptr) {{").unwrap();
+    writeln!(output, "    return (int32_t)(intptr_t)ptr;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // VARPTR$(variable) - returns binary string representation of variable's address
+    // Used for DRAW and PLAY statement's VARPTR$ support for accessing string data
+    writeln!(output, "qb_string* qb_varptr_str(void* ptr) {{").unwrap();
+    writeln!(output, "    qb_string* result = malloc(sizeof(qb_string));").unwrap();
+    writeln!(output, "    result->len = sizeof(void*);").unwrap();
+    writeln!(output, "    result->capacity = result->len + 1;").unwrap();
+    writeln!(output, "    result->data = malloc(result->capacity);").unwrap();
+    writeln!(output, "    memcpy(result->data, &ptr, sizeof(void*));").unwrap();
+    writeln!(output, "    result->data[result->len] = '\\0';").unwrap();
+    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // VARSEG(variable) - returns segment address
+    // In flat memory model, segment is meaningless, so we return 0
+    writeln!(output, "int32_t qb_varseg(void* ptr) {{").unwrap();
+    writeln!(output, "    (void)ptr;").unwrap();
+    writeln!(output, "    return 0; // Flat memory model, no segments").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // SADD(string$) - returns address of string's data
+    writeln!(output, "int32_t qb_sadd(qb_string* s) {{").unwrap();
+    writeln!(output, "    if (!s || !s->data) return 0;").unwrap();
+    writeln!(output, "    return (int32_t)(intptr_t)(s->data);").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // FILEATTR(filenum, attribute)
+    // attribute = 1: returns file mode (1=INPUT, 2=OUTPUT, 4=RANDOM, 8=APPEND, 32=BINARY)
+    // attribute = 2: returns DOS file handle (not meaningful in modern systems)
+    writeln!(output, "int qb_fileattr(int filenum, int attribute) {{").unwrap();
+    writeln!(output, "    (void)filenum; (void)attribute;").unwrap();
+    writeln!(
+        output,
+        "    // Stub: would need to track file modes in file table"
+    )
+    .unwrap();
+    writeln!(output, "    return 0;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // Microsoft Binary Format conversion functions
+    // MBF was the floating point format used in GW-BASIC and older MS products
+    // CVSMBF - Convert MBF single string to IEEE single
+    writeln!(output, "float qb_cvsmbf(qb_string* s) {{").unwrap();
+    writeln!(output, "    if (!s || s->len < 4) return 0.0f;").unwrap();
+    writeln!(output, "    unsigned char* mbf = (unsigned char*)s->data;").unwrap();
+    writeln!(
+        output,
+        "    // MBF format: mantissa(3 bytes) + exponent(1 byte)"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    // IEEE format: sign(1) + exponent(8) + mantissa(23)"
+    )
+    .unwrap();
+    writeln!(output, "    if (mbf[3] == 0) return 0.0f; // Zero value").unwrap();
+    writeln!(output, "    uint32_t ieee;").unwrap();
+    writeln!(output, "    int sign = mbf[2] & 0x80;").unwrap();
+    writeln!(
+        output,
+        "    int exp = mbf[3] - 2; // MBF to IEEE exponent adjustment"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    uint32_t mantissa = ((mbf[2] & 0x7F) << 16) | (mbf[1] << 8) | mbf[0];"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    ieee = (sign << 24) | ((exp & 0xFF) << 23) | (mantissa >> 1);"
+    )
+    .unwrap();
+    writeln!(output, "    float result;").unwrap();
+    writeln!(output, "    memcpy(&result, &ieee, 4);").unwrap();
+    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // CVDMBF - Convert MBF double string to IEEE double
+    writeln!(output, "double qb_cvdmbf(qb_string* s) {{").unwrap();
+    writeln!(output, "    if (!s || s->len < 8) return 0.0;").unwrap();
+    writeln!(output, "    unsigned char* mbf = (unsigned char*)s->data;").unwrap();
+    writeln!(
+        output,
+        "    // MBF double: mantissa(7 bytes) + exponent(1 byte)"
+    )
+    .unwrap();
+    writeln!(output, "    if (mbf[7] == 0) return 0.0; // Zero value").unwrap();
+    writeln!(output, "    uint64_t ieee;").unwrap();
+    writeln!(output, "    int sign = mbf[6] & 0x80;").unwrap();
+    writeln!(
+        output,
+        "    int exp = mbf[7] - 2 + 1023 - 128; // MBF to IEEE exponent"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    uint64_t mantissa = ((uint64_t)(mbf[6] & 0x7F) << 48) |"
+    )
+    .unwrap();
+    writeln!(output, "                        ((uint64_t)mbf[5] << 40) |").unwrap();
+    writeln!(output, "                        ((uint64_t)mbf[4] << 32) |").unwrap();
+    writeln!(output, "                        ((uint64_t)mbf[3] << 24) |").unwrap();
+    writeln!(output, "                        ((uint64_t)mbf[2] << 16) |").unwrap();
+    writeln!(output, "                        ((uint64_t)mbf[1] << 8) |").unwrap();
+    writeln!(output, "                        (uint64_t)mbf[0];").unwrap();
+    writeln!(
+        output,
+        "    ieee = ((uint64_t)sign << 56) | ((uint64_t)(exp & 0x7FF) << 52) | (mantissa >> 4);"
+    )
+    .unwrap();
+    writeln!(output, "    double result;").unwrap();
+    writeln!(output, "    memcpy(&result, &ieee, 8);").unwrap();
+    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // MKSMBF$ - Convert IEEE single to MBF string
+    writeln!(output, "qb_string* qb_mksmbf(float n) {{").unwrap();
+    writeln!(output, "    qb_string* result = malloc(sizeof(qb_string));").unwrap();
+    writeln!(output, "    result->len = 4;").unwrap();
+    writeln!(output, "    result->capacity = 5;").unwrap();
+    writeln!(output, "    result->data = malloc(5);").unwrap();
+    writeln!(output, "    if (n == 0.0f) {{").unwrap();
+    writeln!(output, "        memset(result->data, 0, 4);").unwrap();
+    writeln!(output, "    }} else {{").unwrap();
+    writeln!(output, "        uint32_t ieee;").unwrap();
+    writeln!(output, "        memcpy(&ieee, &n, 4);").unwrap();
+    writeln!(output, "        int sign = (ieee >> 31) & 1;").unwrap();
+    writeln!(
+        output,
+        "        int exp = ((ieee >> 23) & 0xFF) + 2; // IEEE to MBF exponent"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "        uint32_t mantissa = (ieee & 0x7FFFFF) << 1;"
+    )
+    .unwrap();
+    writeln!(output, "        result->data[0] = mantissa & 0xFF;").unwrap();
+    writeln!(output, "        result->data[1] = (mantissa >> 8) & 0xFF;").unwrap();
+    writeln!(
+        output,
+        "        result->data[2] = ((mantissa >> 16) & 0x7F) | (sign << 7);"
+    )
+    .unwrap();
+    writeln!(output, "        result->data[3] = exp & 0xFF;").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    result->data[4] = '\\0';").unwrap();
+    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // MKDMBF$ - Convert IEEE double to MBF string
+    writeln!(output, "qb_string* qb_mkdmbf(double n) {{").unwrap();
+    writeln!(output, "    qb_string* result = malloc(sizeof(qb_string));").unwrap();
+    writeln!(output, "    result->len = 8;").unwrap();
+    writeln!(output, "    result->capacity = 9;").unwrap();
+    writeln!(output, "    result->data = malloc(9);").unwrap();
+    writeln!(output, "    if (n == 0.0) {{").unwrap();
+    writeln!(output, "        memset(result->data, 0, 8);").unwrap();
+    writeln!(output, "    }} else {{").unwrap();
+    writeln!(output, "        uint64_t ieee;").unwrap();
+    writeln!(output, "        memcpy(&ieee, &n, 8);").unwrap();
+    writeln!(output, "        int sign = (ieee >> 63) & 1;").unwrap();
+    writeln!(
+        output,
+        "        int exp = ((ieee >> 52) & 0x7FF) - 1023 + 128 + 2; // IEEE to MBF"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "        uint64_t mantissa = (ieee & 0xFFFFFFFFFFFFFULL) << 4;"
+    )
+    .unwrap();
+    writeln!(output, "        result->data[0] = mantissa & 0xFF;").unwrap();
+    writeln!(output, "        result->data[1] = (mantissa >> 8) & 0xFF;").unwrap();
+    writeln!(output, "        result->data[2] = (mantissa >> 16) & 0xFF;").unwrap();
+    writeln!(output, "        result->data[3] = (mantissa >> 24) & 0xFF;").unwrap();
+    writeln!(output, "        result->data[4] = (mantissa >> 32) & 0xFF;").unwrap();
+    writeln!(output, "        result->data[5] = (mantissa >> 40) & 0xFF;").unwrap();
+    writeln!(
+        output,
+        "        result->data[6] = ((mantissa >> 48) & 0x7F) | (sign << 7);"
+    )
+    .unwrap();
+    writeln!(output, "        result->data[7] = exp & 0xFF;").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    result->data[8] = '\\0';").unwrap();
+    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // BLOAD - Load binary file to memory
+    // Original BSAVE format: 7-byte header with segment:offset and length
+    // In modern systems, we provide a simplified version that works with arbitrary memory
+    writeln!(
+        output,
+        "void qb_bload(const char* filename, void* address) {{"
+    )
+    .unwrap();
+    writeln!(output, "    FILE* f = fopen(filename, \"rb\");").unwrap();
+    writeln!(output, "    if (!f) return;").unwrap();
+    writeln!(output, "    ").unwrap();
+    writeln!(output, "    // Read BSAVE header (7 bytes)").unwrap();
+    writeln!(output, "    unsigned char header[7];").unwrap();
+    writeln!(output, "    if (fread(header, 1, 7, f) != 7) {{").unwrap();
+    writeln!(output, "        fclose(f);").unwrap();
+    writeln!(output, "        return;").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    ").unwrap();
+    writeln!(output, "    // Check magic byte (0xFD for BSAVE files)").unwrap();
+    writeln!(output, "    if (header[0] != 0xFD) {{").unwrap();
+    writeln!(output, "        // Not a BSAVE file, load as raw binary").unwrap();
+    writeln!(output, "        fseek(f, 0, SEEK_END);").unwrap();
+    writeln!(output, "        long size = ftell(f);").unwrap();
+    writeln!(output, "        fseek(f, 0, SEEK_SET);").unwrap();
+    writeln!(output, "        if (address) {{").unwrap();
+    writeln!(output, "            fread(address, 1, (size_t)size, f);").unwrap();
+    writeln!(output, "        }}").unwrap();
+    writeln!(output, "        fclose(f);").unwrap();
+    writeln!(output, "        return;").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    ").unwrap();
+    writeln!(
+        output,
+        "    // Parse BSAVE header: magic(1) + segment(2) + offset(2) + length(2)"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    uint16_t length = header[5] | (header[6] << 8);"
+    )
+    .unwrap();
+    writeln!(output, "    ").unwrap();
+    writeln!(
+        output,
+        "    // If no address provided, we'd use the segment:offset from header"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    // In flat model, this is not directly applicable, so we require address"
+    )
+    .unwrap();
+    writeln!(output, "    if (address) {{").unwrap();
+    writeln!(output, "        fread(address, 1, length, f);").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    fclose(f);").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // BSAVE - Save memory to binary file
+    writeln!(
+        output,
+        "void qb_bsave(const char* filename, void* address, size_t length) {{"
+    )
+    .unwrap();
+    writeln!(output, "    FILE* f = fopen(filename, \"wb\");").unwrap();
+    writeln!(output, "    if (!f) return;").unwrap();
+    writeln!(output, "    ").unwrap();
+    writeln!(output, "    // Write BSAVE header (7 bytes)").unwrap();
+    writeln!(output, "    unsigned char header[7];").unwrap();
+    writeln!(output, "    header[0] = 0xFD;  // Magic byte").unwrap();
+    writeln!(
+        output,
+        "    header[1] = 0;     // Segment low (not used in flat model)"
+    )
+    .unwrap();
+    writeln!(output, "    header[2] = 0;     // Segment high").unwrap();
+    writeln!(output, "    header[3] = 0;     // Offset low (not used)").unwrap();
+    writeln!(output, "    header[4] = 0;     // Offset high").unwrap();
+    writeln!(
+        output,
+        "    header[5] = length & 0xFF;         // Length low"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    header[6] = (length >> 8) & 0xFF;  // Length high"
+    )
+    .unwrap();
+    writeln!(output, "    ").unwrap();
+    writeln!(output, "    fwrite(header, 1, 7, f);").unwrap();
+    writeln!(output, "    if (address) {{").unwrap();
+    writeln!(output, "        fwrite(address, 1, length, f);").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    fclose(f);").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 }

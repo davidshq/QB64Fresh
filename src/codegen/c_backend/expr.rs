@@ -498,6 +498,20 @@ pub(super) fn c_function_name(name: &str) -> String {
         // Coordinate mapping
         "PMAP" => "qb_gfx_pmap".to_string(),
 
+        // Legacy BASIC functions
+        "LPOS" => "qb_lpos".to_string(),
+        "VARPTR" => "qb_varptr".to_string(),
+        "VARPTR$" => "qb_varptr_str".to_string(),
+        "VARSEG" => "qb_varseg".to_string(),
+        "SADD" => "qb_sadd".to_string(),
+        "FILEATTR" => "qb_fileattr".to_string(),
+
+        // Microsoft Binary Format conversions
+        "CVSMBF" => "qb_cvsmbf".to_string(),
+        "CVDMBF" => "qb_cvdmbf".to_string(),
+        "MKSMBF$" => "qb_mksmbf".to_string(),
+        "MKDMBF$" => "qb_mkdmbf".to_string(),
+
         // Default: prefix with qb_ for user functions
         _ => format!("qb_{}", c_identifier(name).to_lowercase()),
     }

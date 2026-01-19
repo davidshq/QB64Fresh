@@ -1,6 +1,6 @@
 # QB64Fresh TODO
 
-*Last updated: 2026-01-19 (Session 027)*
+*Last updated: 2026-01-19 (Session 028)*
 
 A prioritized roadmap for QB64Fresh development. For completed features, see [TODO-completed.md](TODO-completed.md).
 
@@ -96,28 +96,6 @@ All Phase 2 items have been completed:
 ## Phase 7: Missing Language Features
 
 ### High Priority - QB4.5 Core Features
-
-#### Print Formatting
-- [ ] `LPOS(n)` function - printer position
-
-#### Memory/Legacy
-- [ ] `BLOAD` / `BSAVE` statements - binary load/save to memory
-- [ ] `VARPTR()` / `VARPTR$()` / `VARSEG()` - memory address functions
-- [ ] `SADD()` function - string address
-- [ ] `SETMEM` statement - set available memory
-- [ ] `SEG` clause - segment for CALL ABSOLUTE
-
-#### File System
-- [ ] `FILEATTR()` function - file attributes
-
-#### Type Conversion (Microsoft Binary Format)
-- [ ] `CVDMBF()` / `CVSMBF()` functions - convert MBF strings to numbers
-- [ ] `MKDMBF$()` / `MKSMBF$()` functions - convert numbers to MBF strings
-
-#### Procedure Calling
-- [ ] `ABSOLUTE` clause - call machine language routine
-- [ ] `CALLS` statement - call with far pointers
-- [ ] `CDECL` clause - C calling convention
 
 #### Event Handling
 - [ ] `KEY(n)` function - check key trap status

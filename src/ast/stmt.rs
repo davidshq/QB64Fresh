@@ -1061,6 +1061,50 @@ pub enum StatementKind {
         command: Expr,
     },
 
+    /// `BLOAD filename$[, address]` - Load binary file to memory
+    ///
+    /// Loads a file previously created with BSAVE into memory.
+    /// In the original BASIC, this loaded directly into video memory or a segment.
+    /// In modern systems, this is primarily useful for loading binary data.
+    Bload {
+        /// The filename to load from
+        filename: Expr,
+        /// Optional memory address/offset (if not specified, uses BSAVE header)
+        address: Option<Expr>,
+    },
+
+    /// `BSAVE filename$, address, length` - Save memory to binary file
+    ///
+    /// Saves a region of memory to a binary file.
+    /// Originally used for saving screen contents or program data.
+    Bsave {
+        /// The filename to save to
+        filename: Expr,
+        /// Starting memory address
+        address: Expr,
+        /// Number of bytes to save
+        length: Expr,
+    },
+
+    /// `SETMEM bytes` - Set available memory for BASIC strings
+    ///
+    /// In original BASIC, this controlled memory allocation for string space.
+    /// In modern systems with virtual memory, this is a no-op stub for compatibility.
+    Setmem {
+        /// Number of bytes to reserve (ignored)
+        bytes: Expr,
+    },
+
+    /// `CALL ABSOLUTE address` - Call machine language routine
+    ///
+    /// Legacy statement for calling machine code at a specific memory address.
+    /// This is unsafe and not meaningfully implementable in modern systems.
+    /// Parsed for compatibility but generates a warning at runtime.
+    CallAbsolute {
+        /// Memory address of the routine to call
+        address: Expr,
+    },
+
     // ==================== Mouse Input Statements ====================
     /// `_MOUSEHIDE` - Hide the mouse cursor
     MouseHide,

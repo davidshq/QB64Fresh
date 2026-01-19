@@ -805,6 +805,53 @@ impl SemanticAnalyzer {
             ],
             BasicType::Double,
         );
+
+        // Print formatting functions (legacy)
+        // LPOS returns the current position of the line printer
+        self.register_builtin_function("LPOS", &[("n", BasicType::Long)], BasicType::Integer);
+
+        // Memory/Legacy functions
+        // VARPTR returns the offset address of a variable within its segment
+        self.register_builtin_function(
+            "VARPTR",
+            &[("variable", BasicType::Unknown)],
+            BasicType::Long,
+        );
+        // VARPTR$ returns a binary string representation of a variable's address
+        self.register_builtin_function(
+            "VARPTR$",
+            &[("variable", BasicType::Unknown)],
+            BasicType::String,
+        );
+        // VARSEG returns the segment address of a variable (returns 0 in flat memory model)
+        self.register_builtin_function(
+            "VARSEG",
+            &[("variable", BasicType::Unknown)],
+            BasicType::Long,
+        );
+        // SADD returns the address of a string's data
+        self.register_builtin_function("SADD", &[("s", BasicType::String)], BasicType::Long);
+
+        // File System functions
+        // FILEATTR returns file mode or handle attributes
+        self.register_builtin_function(
+            "FILEATTR",
+            &[
+                ("filenum", BasicType::Integer),
+                ("attribute", BasicType::Integer),
+            ],
+            BasicType::Integer,
+        );
+
+        // Type Conversion (Microsoft Binary Format)
+        // CVSMBF converts a 4-byte MBF string to a SINGLE
+        self.register_builtin_function("CVSMBF", &[("s", BasicType::String)], BasicType::Single);
+        // CVDMBF converts an 8-byte MBF string to a DOUBLE
+        self.register_builtin_function("CVDMBF", &[("s", BasicType::String)], BasicType::Double);
+        // MKSMBF$ converts a SINGLE to a 4-byte MBF string
+        self.register_builtin_function("MKSMBF$", &[("n", BasicType::Single)], BasicType::String);
+        // MKDMBF$ converts a DOUBLE to an 8-byte MBF string
+        self.register_builtin_function("MKDMBF$", &[("n", BasicType::Double)], BasicType::String);
     }
 
     /// Registers a single built-in function.

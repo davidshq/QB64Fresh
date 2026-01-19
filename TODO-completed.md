@@ -380,6 +380,36 @@
 
 ---
 
+## Phase 7: Legacy/Compatibility Features ✅ (Session 028)
+
+### Print Formatting
+- [x] `LPOS(n)` function - printer position (stub, returns 1)
+
+### Memory/Legacy Functions
+- [x] `BLOAD` / `BSAVE` statements - binary load/save to memory (with BSAVE header format)
+- [x] `VARPTR()` function - returns memory address of variable
+- [x] `VARPTR$()` function - returns binary string representation of address
+- [x] `VARSEG()` function - returns segment address (0 in flat memory model)
+- [x] `SADD()` function - returns address of string's data buffer
+- [x] `SETMEM` statement - set available memory (no-op in modern systems)
+- [x] `SEG` clause - segment for CALL ABSOLUTE (parsed, ignored in flat model)
+
+### File System
+- [x] `FILEATTR()` function - file attributes (stub)
+
+### Type Conversion (Microsoft Binary Format)
+- [x] `CVSMBF()` function - convert 4-byte MBF string to SINGLE
+- [x] `CVDMBF()` function - convert 8-byte MBF string to DOUBLE
+- [x] `MKSMBF$()` function - convert SINGLE to 4-byte MBF string
+- [x] `MKDMBF$()` function - convert DOUBLE to 8-byte MBF string
+
+### Procedure Calling (Legacy)
+- [x] `CALL ABSOLUTE address` statement - call machine language routine (warning stub)
+- [x] `CALLS` statement - call with far pointers (treated as regular CALL)
+- [x] `CDECL` clause - C calling convention in DECLARE (parsed, ignored)
+
+---
+
 ## Design Decisions Completed
 
 - Graphics backend: Trait-based abstraction with SDL2 as default, mock for testing
@@ -404,4 +434,4 @@
 
 ---
 
-*Last updated: 2026-01-19 (Session 027 - Phase 3 graphics completion: fonts, GET/PUT, VIEW PRINT)*
+*Last updated: 2026-01-19 (Session 028 - Phase 7 legacy compatibility: MBF conversions, memory functions, BLOAD/BSAVE)*

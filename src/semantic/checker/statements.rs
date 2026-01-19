@@ -1889,6 +1889,51 @@ impl<'a> TypeChecker<'a> {
                 )
             }
 
+            StatementKind::Bload { filename, address } => {
+                let typed_filename = self.check_expr(filename);
+                let typed_address = address.as_ref().map(|a| self.check_expr(a));
+                TypedStatement::new(
+                    TypedStatementKind::Bload {
+                        filename: typed_filename,
+                        address: typed_address,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::Bsave {
+                filename,
+                address,
+                length,
+            } => {
+                let typed_filename = self.check_expr(filename);
+                let typed_address = self.check_expr(address);
+                let typed_length = self.check_expr(length);
+                TypedStatement::new(
+                    TypedStatementKind::Bsave {
+                        filename: typed_filename,
+                        address: typed_address,
+                        length: typed_length,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::Setmem { bytes } => {
+                let typed_bytes = self.check_expr(bytes);
+                TypedStatement::new(TypedStatementKind::Setmem { bytes: typed_bytes }, stmt.span)
+            }
+
+            StatementKind::CallAbsolute { address } => {
+                let typed_address = self.check_expr(address);
+                TypedStatement::new(
+                    TypedStatementKind::CallAbsolute {
+                        address: typed_address,
+                    },
+                    stmt.span,
+                )
+            }
+
             // ==================== Mouse Input Statements ====================
             StatementKind::MouseHide => {
                 TypedStatement::new(TypedStatementKind::MouseHide, stmt.span)

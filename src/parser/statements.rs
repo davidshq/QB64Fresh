@@ -167,6 +167,10 @@ impl<'a> Parser<'a> {
             TokenKind::Chdir => self.parse_chdir(),
             TokenKind::Shell => self.parse_shell(),
             TokenKind::ShellHide => self.parse_shellhide(),
+            TokenKind::Bload => self.parse_bload(),
+            TokenKind::Bsave => self.parse_bsave(),
+            TokenKind::Setmem => self.parse_setmem(),
+            TokenKind::Calls => self.parse_calls(),
 
             // Mouse statements
             TokenKind::MouseHide => self.parse_mousehide(),
@@ -1220,6 +1224,16 @@ impl<'a> Parser<'a> {
     pub(super) fn parse_call(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("CALL keyword").span.start; // consume CALL
 
+        // Check for CALL ABSOLUTE (legacy machine code call)
+        if self.match_token(&TokenKind::Absolute) {
+            let address = self.parse_expression()?;
+            let span = self.span_from(start);
+            return Ok(Statement::new(
+                StatementKind::CallAbsolute { address },
+                span,
+            ));
+        }
+
         let name_token = self.expect(&TokenKind::Identifier, "procedure name")?;
         let name = name_token.text.to_string();
 
@@ -1232,6 +1246,29 @@ impl<'a> Parser<'a> {
         };
 
         let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::Call { name, args }, span))
+    }
+
+    /// Parses CALLS statement - call with far pointers (legacy).
+    ///
+    /// Syntax: `CALLS name [(arguments)]`
+    /// This is a legacy statement for 16-bit far calls, treated as regular CALL in modern systems.
+    pub(super) fn parse_calls(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("CALLS keyword").span.start;
+
+        let name_token = self.expect(&TokenKind::Identifier, "procedure name")?;
+        let name = name_token.text.to_string();
+
+        let args = if self.match_token(&TokenKind::LeftParen) {
+            let a = self.parse_argument_list()?;
+            self.expect(&TokenKind::RightParen, ")")?;
+            a
+        } else {
+            Vec::new()
+        };
+
+        let span = self.span_from(start);
+        // CALLS is treated as a regular CALL in flat memory model
         Ok(Statement::new(StatementKind::Call { name, args }, span))
     }
 
@@ -3479,6 +3516,58 @@ impl<'a> Parser<'a> {
         Ok(Statement::new(StatementKind::ShellHide { command }, span))
     }
 
+    /// Parses BLOAD statement.
+    ///
+    /// Syntax: `BLOAD filename$[, address]`
+    pub(super) fn parse_bload(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("BLOAD keyword").span.start;
+        let filename = self.parse_expression()?;
+
+        let address = if self.match_token(&TokenKind::Comma) {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::Bload { filename, address },
+            span,
+        ))
+    }
+
+    /// Parses BSAVE statement.
+    ///
+    /// Syntax: `BSAVE filename$, address, length`
+    pub(super) fn parse_bsave(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("BSAVE keyword").span.start;
+        let filename = self.parse_expression()?;
+        self.expect(&TokenKind::Comma, ",")?;
+        let address = self.parse_expression()?;
+        self.expect(&TokenKind::Comma, ",")?;
+        let length = self.parse_expression()?;
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::Bsave {
+                filename,
+                address,
+                length,
+            },
+            span,
+        ))
+    }
+
+    /// Parses SETMEM statement.
+    ///
+    /// Syntax: `SETMEM bytes`
+    pub(super) fn parse_setmem(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("SETMEM keyword").span.start;
+        let bytes = self.parse_expression()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::Setmem { bytes }, span))
+    }
+
     // ==================== Mouse Statements ====================
 
     /// Parses _MOUSEHIDE statement.
@@ -3549,11 +3638,24 @@ impl<'a> Parser<'a> {
     /// Parses DECLARE SUB - forward declaration of a subroutine.
     /// In classic BASIC, these are used to declare SUB signatures before use.
     /// We parse and store them but they're mainly for documentation/validation.
+    ///
+    /// Supports legacy syntax: `DECLARE SUB name CDECL [ALIAS "alias"] ([params])`
     fn parse_declare_sub(&mut self, start: usize) -> Result<Statement, ()> {
         self.advance(); // consume SUB
 
         let name_token = self.expect(&TokenKind::Identifier, "subroutine name")?;
         let name = name_token.text.to_string();
+
+        // Skip CDECL modifier if present (legacy, ignored)
+        self.match_token(&TokenKind::Cdecl);
+
+        // Skip SEG modifier if present (legacy, ignored)
+        self.match_token(&TokenKind::Seg);
+
+        // Skip ALIAS "name" if present (legacy, ignored)
+        if self.match_token(&TokenKind::Alias) {
+            self.match_token(&TokenKind::StringLiteral);
+        }
 
         // Parse optional parameter list
         let params = if self.match_token(&TokenKind::LeftParen) {
@@ -3572,11 +3674,24 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses DECLARE FUNCTION - forward declaration of a function.
+    ///
+    /// Supports legacy syntax: `DECLARE FUNCTION name CDECL [ALIAS "alias"] ([params]) [AS type]`
     fn parse_declare_function(&mut self, start: usize) -> Result<Statement, ()> {
         self.advance(); // consume FUNCTION
 
         let name_token = self.expect(&TokenKind::Identifier, "function name")?;
         let name = name_token.text.to_string();
+
+        // Skip CDECL modifier if present (legacy, ignored)
+        self.match_token(&TokenKind::Cdecl);
+
+        // Skip SEG modifier if present (legacy, ignored)
+        self.match_token(&TokenKind::Seg);
+
+        // Skip ALIAS "name" if present (legacy, ignored)
+        if self.match_token(&TokenKind::Alias) {
+            self.match_token(&TokenKind::StringLiteral);
+        }
 
         // Parse optional parameter list
         let params = if self.match_token(&TokenKind::LeftParen) {
