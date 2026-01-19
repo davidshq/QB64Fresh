@@ -324,3 +324,202 @@ fn test_single_file() {
     println!("File: {}", file_path);
     println!("Result: {:?}", result);
 }
+
+/// Detailed compile attempt that returns full error information
+fn try_compile_detailed(source: &str) -> (CompileResult, Vec<String>) {
+    let mut details = Vec::new();
+
+    // Stage 1: Lexing
+    let tokens = lex(source);
+    let lex_errors: Vec<_> = tokens
+        .iter()
+        .filter(|t| matches!(t.kind, TokenKind::Error))
+        .collect();
+
+    if !lex_errors.is_empty() {
+        for err in &lex_errors {
+            details.push(format!(
+                "Lexer error at position {}: {:?}",
+                err.span.start, err.text
+            ));
+        }
+        return (
+            CompileResult::LexError(format!("{} error token(s)", lex_errors.len())),
+            details,
+        );
+    }
+
+    // Stage 2: Parsing
+    let mut parser = Parser::new(&tokens);
+    let ast = match parser.parse() {
+        Ok(a) => a,
+        Err(errors) => {
+            for err in &errors {
+                details.push(format!("{:?}", err));
+            }
+            return (
+                CompileResult::ParseError(format!("{} error(s)", errors.len())),
+                details,
+            );
+        }
+    };
+
+    // Stage 3: Semantic Analysis
+    let mut analyzer = SemanticAnalyzer::new();
+    let typed_program = match analyzer.analyze(&ast) {
+        Ok(tp) => tp,
+        Err(errors) => {
+            for err in &errors {
+                details.push(format!("{:?}", err));
+            }
+            return (
+                CompileResult::SemanticError(format!("{} error(s)", errors.len())),
+                details,
+            );
+        }
+    };
+
+    // Stage 4: Code Generation
+    let backend = CBackend::new();
+    match backend.generate(&typed_program) {
+        Ok(_) => (CompileResult::Success, details),
+        Err(e) => {
+            details.push(format!("{:?}", e));
+            (CompileResult::CodegenError(format!("{:?}", e)), details)
+        }
+    }
+}
+
+/// Show detailed diagnostics for first N failures in each category
+#[test]
+fn diagnose_failures() {
+    let Some(base_dir) = get_qb64pe_testcases_dir() else {
+        println!("QB64PE test cases directory not found, skipping");
+        return;
+    };
+
+    println!("\n========================================");
+    println!("QB64Fresh Failure Diagnostics");
+    println!("========================================\n");
+
+    let mut parser_failures: Vec<(String, Vec<String>)> = Vec::new();
+    let mut semantic_failures: Vec<(String, Vec<String>)> = Vec::new();
+
+    // Collect failures from qb45com directory
+    let qb45_dir = base_dir.join("qb45com");
+    if qb45_dir.exists() {
+        for file in find_bas_files(&qb45_dir) {
+            if let Ok(source) = fs::read_to_string(&file) {
+                let (result, details) = try_compile_detailed(&source);
+                let relative = file
+                    .strip_prefix(&qb45_dir)
+                    .unwrap_or(&file)
+                    .display()
+                    .to_string();
+
+                match result {
+                    CompileResult::ParseError(_) if parser_failures.len() < 3 => {
+                        parser_failures.push((relative, details));
+                    }
+                    CompileResult::SemanticError(_) if semantic_failures.len() < 3 => {
+                        semantic_failures.push((relative, details));
+                    }
+                    _ => {}
+                }
+
+                // Stop early if we have enough samples
+                if parser_failures.len() >= 3 && semantic_failures.len() >= 3 {
+                    break;
+                }
+            }
+        }
+    }
+
+    // Print parser failures
+    if !parser_failures.is_empty() {
+        println!(
+            "=== PARSER FAILURES (first {}) ===\n",
+            parser_failures.len()
+        );
+        for (file, details) in &parser_failures {
+            println!("--- {} ---", file);
+            for (i, detail) in details.iter().take(5).enumerate() {
+                println!("  {}. {}", i + 1, detail);
+            }
+            if details.len() > 5 {
+                println!("  ... and {} more errors", details.len() - 5);
+            }
+            println!();
+        }
+    }
+
+    // Print semantic failures
+    if !semantic_failures.is_empty() {
+        println!(
+            "=== SEMANTIC FAILURES (first {}) ===\n",
+            semantic_failures.len()
+        );
+        for (file, details) in &semantic_failures {
+            println!("--- {} ---", file);
+            for (i, detail) in details.iter().take(5).enumerate() {
+                println!("  {}. {}", i + 1, detail);
+            }
+            if details.len() > 5 {
+                println!("  ... and {} more errors", details.len() - 5);
+            }
+            println!();
+        }
+    }
+}
+
+/// Categorize semantic errors to identify common patterns
+#[test]
+fn categorize_semantic_errors() {
+    let Some(base_dir) = get_qb64pe_testcases_dir() else {
+        println!("QB64PE test cases directory not found, skipping");
+        return;
+    };
+
+    println!("\n========================================");
+    println!("Semantic Error Categories");
+    println!("========================================\n");
+
+    let mut error_categories: HashMap<String, usize> = HashMap::new();
+
+    let qb45_dir = base_dir.join("qb45com");
+    if qb45_dir.exists() {
+        for file in find_bas_files(&qb45_dir) {
+            if let Ok(source) = fs::read_to_string(&file) {
+                let (result, details) = try_compile_detailed(&source);
+                if matches!(result, CompileResult::SemanticError(_)) {
+                    for detail in details {
+                        // Extract error type from the detail string
+                        let category = if detail.contains("type mismatch") {
+                            "type mismatch"
+                        } else if detail.contains("undefined label") {
+                            "undefined label"
+                        } else if detail.contains("undefined") {
+                            "undefined identifier"
+                        } else if detail.contains("SHARED") {
+                            "SHARED scope issue"
+                        } else if detail.contains("duplicate") {
+                            "duplicate definition"
+                        } else {
+                            "other"
+                        };
+                        *error_categories.entry(category.to_string()).or_default() += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    // Sort by count descending
+    let mut categories: Vec<_> = error_categories.into_iter().collect();
+    categories.sort_by(|a, b| b.1.cmp(&a.1));
+
+    println!("Error category breakdown:");
+    for (category, count) in categories {
+        println!("  {}: {}", category, count);
+    }
+}
