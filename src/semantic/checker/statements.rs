@@ -604,43 +604,96 @@ impl<'a> TypeChecker<'a> {
                 )
             }
 
-            StatementKind::FileInput {
-                file_num,
-                variables,
-            } => {
+            StatementKind::FileInput { file_num, targets } => {
+                use crate::ast::InputTarget;
+                use crate::semantic::typed_ir::TypedInputTarget;
+
                 let typed_file_num = self.check_expr(file_num);
 
-                // Look up each variable and get its type (similar to READ)
-                let typed_vars: Vec<(String, BasicType)> = variables
+                // Type-check each input target
+                let typed_targets: Vec<TypedInputTarget> = targets
                     .iter()
-                    .map(|var_name| {
-                        let var_type = if let Some(symbol) = self.symbols.lookup_symbol(var_name) {
-                            symbol.basic_type.clone()
-                        } else {
-                            // Infer type from suffix or default
-                            let inferred = type_from_suffix(var_name)
-                                .unwrap_or_else(|| self.symbols.default_type_for(var_name));
-
-                            // Define the variable
-                            let symbol = Symbol {
-                                name: var_name.clone(),
-                                kind: SymbolKind::Variable,
-                                basic_type: inferred.clone(),
-                                span: stmt.span,
-                                is_mutable: true,
+                    .map(|target| match target {
+                        InputTarget::Variable(name) => {
+                            let var_type = if let Some(symbol) = self.symbols.lookup_symbol(name) {
+                                symbol.basic_type.clone()
+                            } else {
+                                // Infer type from suffix or default
+                                let inferred = type_from_suffix(name)
+                                    .unwrap_or_else(|| self.symbols.default_type_for(name));
+                                let symbol = Symbol {
+                                    name: name.clone(),
+                                    kind: SymbolKind::Variable,
+                                    basic_type: inferred.clone(),
+                                    span: stmt.span,
+                                    is_mutable: true,
+                                };
+                                let _ = self.symbols.define_symbol(symbol);
+                                inferred
                             };
-                            let _ = self.symbols.define_symbol(symbol);
-
-                            inferred
-                        };
-                        (var_name.clone(), var_type)
+                            TypedInputTarget::Variable {
+                                name: name.clone(),
+                                basic_type: var_type,
+                            }
+                        }
+                        InputTarget::ArrayElement { name, indices } => {
+                            let typed_indices: Vec<_> =
+                                indices.iter().map(|i| self.check_expr(i)).collect();
+                            let element_type = if let Some(symbol) =
+                                self.symbols.lookup_symbol(name)
+                            {
+                                if let BasicType::Array { element_type, .. } = &symbol.basic_type {
+                                    (**element_type).clone()
+                                } else {
+                                    symbol.basic_type.clone()
+                                }
+                            } else {
+                                type_from_suffix(name)
+                                    .unwrap_or_else(|| self.symbols.default_type_for(name))
+                            };
+                            TypedInputTarget::ArrayElement {
+                                name: name.clone(),
+                                indices: typed_indices,
+                                element_type,
+                            }
+                        }
+                        InputTarget::ArrayElementField {
+                            name,
+                            indices,
+                            fields,
+                        } => {
+                            let typed_indices: Vec<_> =
+                                indices.iter().map(|i| self.check_expr(i)).collect();
+                            // For now, assume the field type based on suffix of field name
+                            let field_type = fields
+                                .last()
+                                .and_then(|f| type_from_suffix(f))
+                                .unwrap_or(BasicType::Single);
+                            TypedInputTarget::ArrayElementField {
+                                name: name.clone(),
+                                indices: typed_indices,
+                                fields: fields.clone(),
+                                field_type,
+                            }
+                        }
+                        InputTarget::Field { name, fields } => {
+                            let field_type = fields
+                                .last()
+                                .and_then(|f| type_from_suffix(f))
+                                .unwrap_or(BasicType::Single);
+                            TypedInputTarget::Field {
+                                name: name.clone(),
+                                fields: fields.clone(),
+                                field_type,
+                            }
+                        }
                     })
                     .collect();
 
                 TypedStatement::new(
                     TypedStatementKind::FileInput {
                         file_num: typed_file_num,
-                        variables: typed_vars,
+                        targets: typed_targets,
                     },
                     stmt.span,
                 )
@@ -946,6 +999,18 @@ impl<'a> TypeChecker<'a> {
                 )
             }
 
+            StatementKind::SharedStmt { variables } => {
+                // SHARED statement inside SUB/FUNCTION declares access to module-level shared vars
+                // For now, we just pass through the variable names; the variables should already
+                // exist at module level with DIM SHARED
+                TypedStatement::new(
+                    TypedStatementKind::SharedStmt {
+                        variables: variables.clone(),
+                    },
+                    stmt.span,
+                )
+            }
+
             StatementKind::Redim {
                 preserve,
                 variables,
@@ -1084,6 +1149,7 @@ impl<'a> TypeChecker<'a> {
                 y1,
                 x2,
                 y2,
+                step2,
                 color,
                 box_style,
             } => {
@@ -1098,6 +1164,7 @@ impl<'a> TypeChecker<'a> {
                         y1: typed_y1,
                         x2: typed_x2,
                         y2: typed_y2,
+                        step2: *step2,
                         color: typed_color,
                         box_style: *box_style,
                     },

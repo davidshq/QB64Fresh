@@ -498,8 +498,8 @@ pub enum TypedStatementKind {
     FileInput {
         /// The file number.
         file_num: TypedExpr,
-        /// Variables paired with their types.
-        variables: Vec<(String, BasicType)>,
+        /// Typed input targets (variables, array elements, field accesses).
+        targets: Vec<TypedInputTarget>,
     },
 
     /// LINE INPUT # statement (file line input).
@@ -603,6 +603,12 @@ pub enum TypedStatementKind {
         variables: Vec<TypedCommonVariable>,
     },
 
+    /// SHARED statement inside SUB/FUNCTION.
+    SharedStmt {
+        /// Names of shared variables to access.
+        variables: Vec<String>,
+    },
+
     /// REDIM statement.
     Redim {
         /// Whether to preserve contents.
@@ -677,6 +683,8 @@ pub enum TypedStatementKind {
         x2: TypedExpr,
         /// Ending Y.
         y2: TypedExpr,
+        /// Whether STEP keyword was used (relative coordinates).
+        step2: bool,
         /// Optional color.
         color: Option<TypedExpr>,
         /// Box style: None = line, Some(false) = box, Some(true) = filled box.
@@ -1036,6 +1044,32 @@ pub struct TypedMember {
     pub name: String,
     /// Member type.
     pub basic_type: BasicType,
+}
+
+/// A typed target for INPUT statement (lvalue with type info).
+#[derive(Debug, Clone)]
+pub enum TypedInputTarget {
+    /// Simple variable: `x`
+    Variable { name: String, basic_type: BasicType },
+    /// Array element: `arr(i)` or `arr(i, j)`
+    ArrayElement {
+        name: String,
+        indices: Vec<TypedExpr>,
+        element_type: BasicType,
+    },
+    /// Array element field access: `arr(i).field`
+    ArrayElementField {
+        name: String,
+        indices: Vec<TypedExpr>,
+        fields: Vec<String>,
+        field_type: BasicType,
+    },
+    /// Simple UDT field access: `udt.field`
+    Field {
+        name: String,
+        fields: Vec<String>,
+        field_type: BasicType,
+    },
 }
 
 /// A typed target for READ statement.

@@ -51,6 +51,7 @@ impl<'a> Parser<'a> {
             TokenKind::Const => self.parse_const(),
             TokenKind::Swap => self.parse_swap(),
             TokenKind::Common => self.parse_common(),
+            TokenKind::Shared => self.parse_shared_stmt(),
 
             // Default type declarations
             TokenKind::DefInt => self.parse_deftype(),
@@ -1334,10 +1335,10 @@ impl<'a> Parser<'a> {
         start: usize,
         file_num: crate::ast::Expr,
     ) -> Result<Statement, ()> {
-        let mut variables = Vec::new();
+        let mut targets = Vec::new();
         loop {
-            let var_token = self.expect(&TokenKind::Identifier, "variable name")?;
-            variables.push(var_token.text.to_string());
+            let target = self.parse_input_target()?;
+            targets.push(target);
 
             if !self.match_token(&TokenKind::Comma) {
                 break;
@@ -1346,12 +1347,60 @@ impl<'a> Parser<'a> {
 
         let span = self.span_from(start);
         Ok(Statement::new(
-            StatementKind::FileInput {
-                file_num,
-                variables,
-            },
+            StatementKind::FileInput { file_num, targets },
             span,
         ))
+    }
+
+    /// Parses a single input target (variable, array element, or field access).
+    fn parse_input_target(&mut self) -> Result<crate::ast::InputTarget, ()> {
+        use crate::ast::InputTarget;
+
+        let name_token = self.expect(&TokenKind::Identifier, "variable name")?;
+        let name = name_token.text.to_string();
+
+        // Check for array subscript: name(indices)
+        if self.match_token(&TokenKind::LeftParen) {
+            let mut indices = Vec::new();
+            loop {
+                let idx = self.parse_expression()?;
+                indices.push(idx);
+                if !self.match_token(&TokenKind::Comma) {
+                    break;
+                }
+            }
+            self.expect(&TokenKind::RightParen, ")")?;
+
+            // Check for field access chain: .field.subfield...
+            let mut fields = Vec::new();
+            while self.match_token(&TokenKind::Dot) {
+                let field_token = self.expect(&TokenKind::Identifier, "field name")?;
+                fields.push(field_token.text.to_string());
+            }
+
+            if fields.is_empty() {
+                Ok(InputTarget::ArrayElement { name, indices })
+            } else {
+                Ok(InputTarget::ArrayElementField {
+                    name,
+                    indices,
+                    fields,
+                })
+            }
+        } else if self.match_token(&TokenKind::Dot) {
+            // Simple UDT field access: name.field
+            let mut fields = Vec::new();
+            let field_token = self.expect(&TokenKind::Identifier, "field name")?;
+            fields.push(field_token.text.to_string());
+            while self.match_token(&TokenKind::Dot) {
+                let field_token = self.expect(&TokenKind::Identifier, "field name")?;
+                fields.push(field_token.text.to_string());
+            }
+            Ok(InputTarget::Field { name, fields })
+        } else {
+            // Simple variable
+            Ok(InputTarget::Variable(name))
+        }
     }
 
     // ==================== LINE Statement ====================
@@ -2039,6 +2088,42 @@ impl<'a> Parser<'a> {
 
     // ==================== Variable/Scope Statements ====================
 
+    /// Parses a SHARED statement inside SUB/FUNCTION.
+    ///
+    /// Syntax: `SHARED var1[, var2, ...]`
+    ///
+    /// This declares that the procedure uses module-level shared variables.
+    pub(super) fn parse_shared_stmt(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("SHARED keyword").span.start;
+
+        let mut variables = Vec::new();
+
+        loop {
+            let name_token = self.expect(&TokenKind::Identifier, "variable name")?;
+            variables.push(name_token.text.to_string());
+
+            // Skip optional array subscript notation like SmallFonts()
+            if self.match_token(&TokenKind::LeftParen) {
+                self.expect(&TokenKind::RightParen, ")")?;
+            }
+
+            // Skip optional AS type clause
+            if self.match_token(&TokenKind::As) {
+                self.parse_type_spec()?; // consume and discard type
+            }
+
+            if !self.match_token(&TokenKind::Comma) {
+                break;
+            }
+        }
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::SharedStmt { variables },
+            span,
+        ))
+    }
+
     /// Parses a COMMON statement.
     ///
     /// Syntax: `COMMON [SHARED] variable [, variable]...`
@@ -2326,6 +2411,9 @@ impl<'a> Parser<'a> {
         // Expect - (dash for coordinate separator)
         self.expect(&TokenKind::Minus, "-")?;
 
+        // Check for STEP keyword (relative coordinates)
+        let step2 = self.match_token(&TokenKind::Step);
+
         // Parse end point
         self.expect(&TokenKind::LeftParen, "(")?;
         let x2 = self.parse_expression()?;
@@ -2378,6 +2466,7 @@ impl<'a> Parser<'a> {
                 y1,
                 x2,
                 y2,
+                step2,
                 color,
                 box_style,
             },

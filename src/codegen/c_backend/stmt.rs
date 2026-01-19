@@ -15,7 +15,7 @@ use crate::ast::{ExitType, FileAccess, FileLock, FileMode, PrintSeparator};
 use crate::codegen::error::CodeGenError;
 use crate::semantic::typed_ir::{
     TypedArrayDimension, TypedCaseCompareOp, TypedCaseMatch, TypedDoCondition, TypedExpr,
-    TypedMember, TypedParameter, TypedPrintItem, TypedReadTarget, TypedStatement,
+    TypedInputTarget, TypedMember, TypedParameter, TypedPrintItem, TypedReadTarget, TypedStatement,
     TypedStatementKind,
 };
 use crate::semantic::types::BasicType;
@@ -556,11 +556,8 @@ impl StmtEmitter {
                 self.emit_file_write(&indent, file_num, values, output)?;
             }
 
-            TypedStatementKind::FileInput {
-                file_num,
-                variables,
-            } => {
-                self.emit_file_input(&indent, file_num, variables, output)?;
+            TypedStatementKind::FileInput { file_num, targets } => {
+                self.emit_file_input(&indent, file_num, targets, output)?;
             }
 
             TypedStatementKind::FileLineInput { file_num, variable } => {
@@ -647,6 +644,18 @@ impl StmtEmitter {
                 writeln!(
                     output,
                     "{}/* COMMON statement - handled at program level */",
+                    indent
+                )
+                .unwrap();
+            }
+
+            TypedStatementKind::SharedStmt { variables } => {
+                // SHARED inside SUB/FUNCTION declares access to module-level shared vars
+                // In C, these are already global, so just emit a comment
+                let _ = variables;
+                writeln!(
+                    output,
+                    "{}/* SHARED statement - variables accessed from module level */",
                     indent
                 )
                 .unwrap();
@@ -782,6 +791,7 @@ impl StmtEmitter {
                 y1,
                 x2,
                 y2,
+                step2,
                 color,
                 box_style,
             } => {
@@ -805,21 +815,24 @@ impl StmtEmitter {
                     "0".to_string()
                 };
 
+                // step2 flag indicates x2/y2 are relative to x1/y1
+                let step_flag = if *step2 { "1" } else { "0" };
+
                 match box_style {
                     None => {
                         // Plain line
-                        writeln!(output, "{}qb_gfx_line((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (uint32_t){});",
-                                 indent, x1_code, y1_code, x2_code, y2_code, color_code).unwrap();
+                        writeln!(output, "{}qb_gfx_line_ex((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, {}, (uint32_t){});",
+                                 indent, x1_code, y1_code, x2_code, y2_code, step_flag, color_code).unwrap();
                     }
                     Some(false) => {
                         // Box (outline)
-                        writeln!(output, "{}qb_gfx_box((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (uint32_t){}, 0);",
-                                 indent, x1_code, y1_code, x2_code, y2_code, color_code).unwrap();
+                        writeln!(output, "{}qb_gfx_box_ex((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, {}, (uint32_t){}, 0);",
+                                 indent, x1_code, y1_code, x2_code, y2_code, step_flag, color_code).unwrap();
                     }
                     Some(true) => {
                         // Filled box
-                        writeln!(output, "{}qb_gfx_box((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (uint32_t){}, 1);",
-                                 indent, x1_code, y1_code, x2_code, y2_code, color_code).unwrap();
+                        writeln!(output, "{}qb_gfx_box_ex((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, {}, (uint32_t){}, 1);",
+                                 indent, x1_code, y1_code, x2_code, y2_code, step_flag, color_code).unwrap();
                     }
                 }
             }
@@ -2370,20 +2383,60 @@ impl StmtEmitter {
         &self,
         indent: &str,
         file_num: &TypedExpr,
-        variables: &[(String, BasicType)],
+        targets: &[TypedInputTarget],
         output: &mut String,
     ) -> Result<(), CodeGenError> {
+        use TypedInputTarget::*;
         let file_num_code = emit_expr(file_num)?;
 
-        for (var_name, var_type) in variables {
-            let c_var = c_identifier(var_name);
+        for target in targets {
+            let (target_code, var_type) = match target {
+                Variable { name, basic_type } => (c_identifier(name), basic_type.clone()),
+                ArrayElement {
+                    name,
+                    indices,
+                    element_type,
+                } => {
+                    let c_arr = c_identifier(name);
+                    let idx_code: Vec<_> =
+                        indices.iter().map(emit_expr).collect::<Result<_, _>>()?;
+                    // Use first index for 1D array syntax
+                    let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
+                    (format!("{}[{}]", c_arr, idx), element_type.clone())
+                }
+                ArrayElementField {
+                    name,
+                    indices,
+                    fields,
+                    field_type,
+                } => {
+                    let c_arr = c_identifier(name);
+                    let idx_code: Vec<_> =
+                        indices.iter().map(emit_expr).collect::<Result<_, _>>()?;
+                    let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
+                    let field_chain = fields.join(".");
+                    (
+                        format!("{}[{}].{}", c_arr, idx, field_chain),
+                        field_type.clone(),
+                    )
+                }
+                Field {
+                    name,
+                    fields,
+                    field_type,
+                } => {
+                    let c_var = c_identifier(name);
+                    let field_chain = fields.join(".");
+                    (format!("{}.{}", c_var, field_chain), field_type.clone())
+                }
+            };
 
             match var_type {
                 BasicType::String | BasicType::FixedString(_) => {
                     writeln!(
                         output,
                         "{}qb_file_input_string({}, &{});",
-                        indent, file_num_code, c_var
+                        indent, file_num_code, target_code
                     )
                     .unwrap();
                 }
@@ -2391,7 +2444,7 @@ impl StmtEmitter {
                     writeln!(
                         output,
                         "{}qb_file_input_float({}, &{});",
-                        indent, file_num_code, c_var
+                        indent, file_num_code, target_code
                     )
                     .unwrap();
                 }
@@ -2399,7 +2452,7 @@ impl StmtEmitter {
                     writeln!(
                         output,
                         "{}qb_file_input_int({}, &{});",
-                        indent, file_num_code, c_var
+                        indent, file_num_code, target_code
                     )
                     .unwrap();
                 }

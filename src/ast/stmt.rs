@@ -427,8 +427,8 @@ pub enum StatementKind {
     FileInput {
         /// The file number.
         file_num: Expr,
-        /// Variables to read into.
-        variables: Vec<String>,
+        /// Variables to read into (can be simple vars, array elements, or field accesses).
+        targets: Vec<InputTarget>,
     },
 
     /// `LINE INPUT #filenum, variable$`
@@ -558,6 +558,16 @@ pub enum StatementKind {
         variables: Vec<CommonVariable>,
     },
 
+    /// `SHARED var1[, var2, ...]` inside SUB/FUNCTION
+    ///
+    /// Declares that the procedure uses module-level shared variables.
+    /// This makes variables declared with DIM SHARED at module level
+    /// accessible within the procedure.
+    SharedStmt {
+        /// Names of shared variables to access.
+        variables: Vec<String>,
+    },
+
     /// `REDIM [_PRESERVE] array1(dims) [AS type], array2(dims) [AS type], ...`
     ///
     /// Resizes dynamic arrays, optionally preserving contents.
@@ -656,7 +666,7 @@ pub enum StatementKind {
         y: Expr,
     },
 
-    /// `LINE [(x1, y1)]-(x2, y2)[, color][, B|BF]` - Draw line or box
+    /// `LINE [(x1, y1)]-[STEP](x2, y2)[, color][, B|BF]` - Draw line or box
     Line {
         /// Start X (optional - uses last point if not specified)
         x1: Option<Expr>,
@@ -666,6 +676,8 @@ pub enum StatementKind {
         x2: Expr,
         /// End Y
         y2: Expr,
+        /// Whether STEP keyword was used for end coordinates (relative to start)
+        step2: bool,
         /// Color (optional)
         color: Option<Expr>,
         /// Box style: None = line, Some(false) = box outline, Some(true) = filled box
@@ -1076,6 +1088,23 @@ pub enum ResumeTarget {
     Next,
     /// RESUME label - jump to specific label
     Label(String),
+}
+
+/// Target for INPUT statement (lvalue).
+#[derive(Debug, Clone)]
+pub enum InputTarget {
+    /// Simple variable: `x`
+    Variable(String),
+    /// Array element: `arr(i)` or `arr(i, j)`
+    ArrayElement { name: String, indices: Vec<Expr> },
+    /// Array element field access: `arr(i).field` or `arr(i).field.subfield`
+    ArrayElementField {
+        name: String,
+        indices: Vec<Expr>,
+        fields: Vec<String>,
+    },
+    /// Simple UDT field access: `udt.field`
+    Field { name: String, fields: Vec<String> },
 }
 
 /// Variable declaration in COMMON statement.
