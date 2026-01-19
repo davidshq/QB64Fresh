@@ -191,6 +191,7 @@ impl SemanticAnalyzer {
                     name: p.name.clone(),
                     basic_type,
                     by_val: p.by_val,
+                    is_optional: false,
                 }
             })
             .collect();
@@ -236,6 +237,7 @@ impl SemanticAnalyzer {
                     name: p.name.clone(),
                     basic_type,
                     by_val: p.by_val,
+                    is_optional: false,
                 }
             })
             .collect();
@@ -285,21 +287,25 @@ impl SemanticAnalyzer {
             &[("s", BasicType::String), ("n", BasicType::Long)],
             BasicType::String,
         );
-        self.register_builtin_function(
+        // MID$ can be called with 2 or 3 arguments: MID$(s$, start) or MID$(s$, start, len)
+        self.register_builtin_function_with_optionals(
             "MID$",
             &[
-                ("s", BasicType::String),
-                ("start", BasicType::Long),
-                ("len", BasicType::Long),
+                ("s", BasicType::String, false),
+                ("start", BasicType::Long, false),
+                ("len", BasicType::Long, true), // optional - if omitted, returns rest of string
             ],
             BasicType::String,
         );
-        self.register_builtin_function(
+        // INSTR can be called with 2 or 3 arguments:
+        // INSTR(string, substring) - search from beginning
+        // INSTR(start, string, substring) - search from position
+        self.register_builtin_function_with_optionals(
             "INSTR",
             &[
-                ("start", BasicType::Long),
-                ("s", BasicType::String),
-                ("find", BasicType::String),
+                ("start_or_string", BasicType::Unknown, false), // can be Long or String
+                ("string_or_find", BasicType::String, false),
+                ("find", BasicType::String, true), // optional - if omitted, arg1 is string, arg2 is find
             ],
             BasicType::Long,
         );
@@ -310,9 +316,12 @@ impl SemanticAnalyzer {
         self.register_builtin_function("TRIM$", &[("s", BasicType::String)], BasicType::String);
         self.register_builtin_function("STR$", &[("n", BasicType::Double)], BasicType::String);
         self.register_builtin_function("VAL", &[("s", BasicType::String)], BasicType::Double);
+        // STRING$ can take either a character code (integer) or a single-char string:
+        // STRING$(n, charcode%) or STRING$(n, char$)
+        // Using Unknown for the second parameter allows both
         self.register_builtin_function(
             "STRING$",
-            &[("n", BasicType::Long), ("c", BasicType::String)],
+            &[("n", BasicType::Long), ("c", BasicType::Unknown)],
             BasicType::String,
         );
         self.register_builtin_function("SPACE$", &[("n", BasicType::Long)], BasicType::String);
@@ -333,8 +342,15 @@ impl SemanticAnalyzer {
         self.register_builtin_function("COS", &[("n", BasicType::Double)], BasicType::Double);
         self.register_builtin_function("TAN", &[("n", BasicType::Double)], BasicType::Double);
         self.register_builtin_function("ATN", &[("n", BasicType::Double)], BasicType::Double);
-        // RND can be called without arguments (defaults to RND(1))
-        self.register_builtin_function("RND", &[], BasicType::Single);
+        // RND can be called with 0 or 1 arguments: RND or RND(n)
+        // RND with no args or RND(1) returns next random number
+        // RND(0) returns the last random number generated
+        // RND(negative) reseeds the generator
+        self.register_builtin_function_with_optionals(
+            "RND",
+            &[("n", BasicType::Single, true)], // optional seed/mode parameter
+            BasicType::Single,
+        );
 
         // QB64 extended math functions
         self.register_builtin_function("_PI", &[], BasicType::Double);
@@ -575,13 +591,6 @@ impl SemanticAnalyzer {
         self.register_builtin_function("_CWD$", &[], BasicType::String);
         self.register_builtin_function("_OS$", &[], BasicType::String);
         self.register_builtin_function("_STARTDIR$", &[], BasicType::String);
-
-        // Additional utility functions
-        self.register_builtin_function(
-            "STRING$",
-            &[("n", BasicType::Integer), ("char", BasicType::Integer)],
-            BasicType::String,
-        );
 
         // Phase 2: String Enhancements
         self.register_builtin_function(
@@ -840,6 +849,10 @@ impl SemanticAnalyzer {
         // n=any other: far heap space (legacy, returns large number on modern systems)
         self.register_builtin_function("FRE", &[("n", BasicType::Long)], BasicType::Long);
 
+        // PEEK(address) - reads a byte from memory address within current DEF SEG segment
+        // Returns a value from 0-255. In modern QB64, this uses an emulated memory model.
+        self.register_builtin_function("PEEK", &[("address", BasicType::Long)], BasicType::Integer);
+
         // Port I/O Functions (QB4.5 - may be sandboxed)
         // INP(port) - reads a byte from hardware I/O port
         self.register_builtin_function("INP", &[("port", BasicType::Long)], BasicType::Integer);
@@ -920,6 +933,34 @@ impl SemanticAnalyzer {
                     name: (*n).to_string(),
                     basic_type: t.clone(),
                     by_val: true,
+                    is_optional: false,
+                })
+                .collect(),
+            return_type: Some(return_type),
+            span: crate::ast::Span::new(0, 0),
+            is_static: false,
+        };
+        let _ = self.symbols.define_procedure(entry);
+    }
+
+    /// Registers a built-in function with optional parameters.
+    /// Parameters are specified as (name, type, is_optional).
+    fn register_builtin_function_with_optionals(
+        &mut self,
+        name: &str,
+        params: &[(&str, BasicType, bool)],
+        return_type: BasicType,
+    ) {
+        let entry = ProcedureEntry {
+            name: name.to_string(),
+            kind: ProcedureKind::BuiltIn,
+            params: params
+                .iter()
+                .map(|(n, t, opt)| ParameterInfo {
+                    name: (*n).to_string(),
+                    basic_type: t.clone(),
+                    by_val: true,
+                    is_optional: *opt,
                 })
                 .collect(),
             return_type: Some(return_type),
@@ -940,6 +981,7 @@ impl SemanticAnalyzer {
                     name: (*n).to_string(),
                     basic_type: t.clone(),
                     by_val: true,
+                    is_optional: false,
                 })
                 .collect(),
             return_type: None, // SUBs have no return type

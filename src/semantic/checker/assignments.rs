@@ -242,6 +242,89 @@ impl<'a> TypeChecker<'a> {
     }
 
     // ========================================================================
+    // MID$ Assignment
+    // ========================================================================
+
+    /// Type checks a MID$ assignment statement: `MID$(str$, start [, len]) = value$`
+    ///
+    /// This replaces a portion of the string in-place.
+    pub(super) fn check_mid_assignment(
+        &mut self,
+        target: &str,
+        start: &Expr,
+        length: Option<&Expr>,
+        value: &Expr,
+        span: crate::ast::Span,
+    ) -> TypedStatement {
+        // Look up the target variable - it must be a string
+        if let Some(symbol) = self.symbols.lookup_symbol(target) {
+            if symbol.basic_type != BasicType::String {
+                self.errors.push(SemanticError::TypeMismatch {
+                    expected: "STRING".to_string(),
+                    found: symbol.basic_type.to_string(),
+                    span,
+                });
+            }
+            if !symbol.is_mutable {
+                self.errors.push(SemanticError::AssignmentToConst {
+                    name: target.to_string(),
+                    span,
+                });
+            }
+        } else {
+            self.errors.push(SemanticError::UndefinedVariable {
+                name: target.to_string(),
+                span,
+            });
+        }
+
+        // Type check start position - must be numeric
+        let typed_start = self.check_expr(start);
+        if !typed_start.basic_type.is_numeric() && typed_start.basic_type != BasicType::Unknown {
+            self.errors.push(SemanticError::TypeMismatch {
+                expected: "numeric".to_string(),
+                found: typed_start.basic_type.to_string(),
+                span: start.span,
+            });
+        }
+
+        // Type check optional length - must be numeric
+        let typed_length = length.map(|len| {
+            let typed_len = self.check_expr(len);
+            if !typed_len.basic_type.is_numeric() && typed_len.basic_type != BasicType::Unknown {
+                self.errors.push(SemanticError::TypeMismatch {
+                    expected: "numeric".to_string(),
+                    found: typed_len.basic_type.to_string(),
+                    span: len.span,
+                });
+            }
+            typed_len
+        });
+
+        // Type check value - must be string
+        let typed_value = self.check_expr(value);
+        if typed_value.basic_type != BasicType::String
+            && typed_value.basic_type != BasicType::Unknown
+        {
+            self.errors.push(SemanticError::TypeMismatch {
+                expected: "STRING".to_string(),
+                found: typed_value.basic_type.to_string(),
+                span: value.span,
+            });
+        }
+
+        TypedStatement::new(
+            TypedStatementKind::MidAssignment {
+                target: target.to_string(),
+                start: typed_start,
+                length: typed_length,
+                value: typed_value,
+            },
+            span,
+        )
+    }
+
+    // ========================================================================
     // I/O Statement Checking
     // ========================================================================
 

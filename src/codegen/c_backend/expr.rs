@@ -507,6 +507,7 @@ pub(super) fn c_function_name(name: &str) -> String {
 
         // Memory functions (QB4.5)
         "FRE" => "qb_fre".to_string(),
+        "PEEK" => "qb_peek".to_string(),
 
         // Port I/O functions (QB4.5)
         "INP" => "qb_inp".to_string(),

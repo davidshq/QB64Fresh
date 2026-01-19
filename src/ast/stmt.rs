@@ -87,6 +87,22 @@ pub enum StatementKind {
         value: Expr,
     },
 
+    /// `MID$(str$, start [, length]) = value$` - Substring assignment
+    ///
+    /// Replaces a portion of the string with a new value.
+    /// If length is omitted, replaces from start to the end of the string
+    /// or to the length of the replacement value, whichever is shorter.
+    MidAssignment {
+        /// Target string variable name.
+        target: String,
+        /// Start position (1-based).
+        start: Expr,
+        /// Optional length to replace.
+        length: Option<Expr>,
+        /// Replacement value.
+        value: Expr,
+    },
+
     /// `DIM variable AS type` or `DIM array(size) AS type`
     ///
     /// Multiple variables can be declared on one line: `DIM a, b(10), c AS STRING`

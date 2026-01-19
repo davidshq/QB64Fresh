@@ -41,6 +41,13 @@ impl<'a> TypeChecker<'a> {
                 value,
             } => self.check_array_field_assignment(name, indices, fields, value, stmt.span),
 
+            StatementKind::MidAssignment {
+                target,
+                start,
+                length,
+                value,
+            } => self.check_mid_assignment(target, start, length.as_ref(), value, stmt.span),
+
             StatementKind::Print { values, newline } => {
                 self.check_print(values, *newline, stmt.span)
             }
@@ -2470,7 +2477,9 @@ impl<'a> TypeChecker<'a> {
             .collect()
     }
 
-    /// Evaluates array dimensions that must be constant expressions.
+    /// Evaluates array dimensions for STATIC arrays.
+    /// While STATIC arrays ideally have constant bounds, we allow variable bounds
+    /// for compatibility with QB code that uses variables in DIM.
     fn evaluate_array_dimension(
         &mut self,
         dim: &ArrayDimension,
@@ -2479,15 +2488,20 @@ impl<'a> TypeChecker<'a> {
         // Evaluate lower bound (if provided)
         let lower = if let Some(lower_expr) = &dim.lower {
             let typed_lower = self.check_expr(lower_expr);
+            // Ensure the expression is numeric
+            if !typed_lower.basic_type.is_numeric() && typed_lower.basic_type != BasicType::Unknown
+            {
+                self.errors.push(SemanticError::TypeMismatch {
+                    expected: "numeric".to_string(),
+                    found: typed_lower.basic_type.to_string(),
+                    span: lower_expr.span,
+                });
+            }
+            // Try to evaluate as constant, but don't error if not possible
             match self.try_evaluate_const_expr(&typed_lower) {
                 Some(ConstValue::Integer(v)) => v,
                 Some(ConstValue::Float(v)) => v as i64,
-                _ => {
-                    self.errors.push(SemanticError::NonConstantExpression {
-                        span: lower_expr.span,
-                    });
-                    0
-                }
+                _ => 0, // Runtime bound - use 0 as placeholder
             }
         } else {
             self.symbols.option_base()
@@ -2495,15 +2509,19 @@ impl<'a> TypeChecker<'a> {
 
         // Evaluate upper bound (required)
         let typed_upper = self.check_expr(&dim.upper);
+        // Ensure the expression is numeric
+        if !typed_upper.basic_type.is_numeric() && typed_upper.basic_type != BasicType::Unknown {
+            self.errors.push(SemanticError::TypeMismatch {
+                expected: "numeric".to_string(),
+                found: typed_upper.basic_type.to_string(),
+                span: dim.upper.span,
+            });
+        }
+        // Try to evaluate as constant, but don't error if not possible
         let upper = match self.try_evaluate_const_expr(&typed_upper) {
             Some(ConstValue::Integer(v)) => v,
             Some(ConstValue::Float(v)) => v as i64,
-            _ => {
-                self.errors.push(SemanticError::NonConstantExpression {
-                    span: dim.upper.span,
-                });
-                10
-            }
+            _ => 10, // Runtime bound - use 10 as placeholder
         };
 
         TypedArrayDimension { lower, upper }

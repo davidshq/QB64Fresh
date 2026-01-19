@@ -184,6 +184,19 @@ pub enum TypedStatementKind {
         field_type: BasicType,
     },
 
+    /// MID$ assignment - substring replacement.
+    /// `MID$(str$, start [, length]) = value$`
+    MidAssignment {
+        /// Target string variable name.
+        target: String,
+        /// Start position (1-based).
+        start: TypedExpr,
+        /// Optional length to replace.
+        length: Option<TypedExpr>,
+        /// Replacement value.
+        value: TypedExpr,
+    },
+
     /// PRINT statement with typed items.
     Print {
         items: Vec<TypedPrintItem>,

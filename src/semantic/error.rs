@@ -91,10 +91,11 @@ pub enum SemanticError {
 
     // === Procedure/Function Errors ===
     /// Function called with wrong number of arguments.
-    #[error("function `{name}` called with {found} arguments, expected {expected}")]
+    #[error("function `{name}` called with {found} arguments, expected {expected_min}{}", if *.expected_min == *.expected_max { "".to_string() } else { format!(" to {}", .expected_max) })]
     ArgumentCountMismatch {
         name: String,
-        expected: usize,
+        expected_min: usize,
+        expected_max: usize,
         found: usize,
         span: Span,
     },

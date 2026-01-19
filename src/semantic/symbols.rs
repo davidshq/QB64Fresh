@@ -19,7 +19,7 @@
 
 use crate::ast::Span;
 use crate::semantic::types::{BasicType, strip_suffix};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Unique identifier for a scope.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -113,6 +113,13 @@ pub struct ProcedureEntry {
     pub is_static: bool,
 }
 
+impl ProcedureEntry {
+    /// Returns the number of required (non-optional) parameters.
+    pub fn required_param_count(&self) -> usize {
+        self.params.iter().filter(|p| !p.is_optional).count()
+    }
+}
+
 /// The kind of procedure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProcedureKind {
@@ -133,6 +140,9 @@ pub struct ParameterInfo {
     pub basic_type: BasicType,
     /// Whether this is a BYVAL parameter.
     pub by_val: bool,
+    /// Whether this parameter is optional (has a default value).
+    /// Used for built-in functions like MID$ (2 or 3 args) and RND (0 or 1 arg).
+    pub is_optional: bool,
 }
 
 /// A user-defined TYPE definition.
@@ -210,7 +220,13 @@ pub struct SymbolTable {
     procedures: HashMap<String, ProcedureEntry>,
 
     /// SHARED variables per scope: scope -> list of shared variable names.
+    /// These are variables explicitly marked SHARED inside a procedure.
     shared_vars: HashMap<ScopeId, Vec<String>>,
+
+    /// Variables declared with DIM SHARED at module level.
+    /// These are automatically visible from all procedures without needing
+    /// an explicit SHARED statement inside the procedure.
+    module_shared_vars: HashSet<String>,
 
     /// Default type by first letter (A-Z). Index 0 = 'A', etc.
     /// Default is SINGLE unless changed by DEFtype.
@@ -245,6 +261,7 @@ impl SymbolTable {
             next_scope_id: 1,
             procedures: HashMap::new(),
             shared_vars: HashMap::new(),
+            module_shared_vars: HashSet::new(),
             default_types: std::array::from_fn(|_| BasicType::Single),
             user_types: HashMap::new(),
             option_base: 0,
@@ -342,9 +359,16 @@ impl SymbolTable {
             return Some(sym);
         }
 
-        // If in a procedure scope, only SHARED variables are visible from global
+        // If in a procedure scope, SHARED variables are visible from global
         if matches!(scope.kind, ScopeKind::Sub | ScopeKind::Function) {
-            // Check if this variable is SHARED (strip suffix for comparison)
+            // Check if this variable was declared with DIM SHARED at module level
+            if self.module_shared_vars.contains(&name_upper)
+                && let Some(global) = self.scopes.get(&ScopeId::GLOBAL)
+            {
+                return global.symbols.get(&name_upper);
+            }
+
+            // Check if this variable is explicitly SHARED in this scope
             if let Some(shared_names) = self.shared_vars.get(&self.current_scope)
                 && shared_names
                     .iter()
@@ -433,6 +457,15 @@ impl SymbolTable {
     pub fn add_shared_var(&mut self, name: String) {
         let shared = self.shared_vars.entry(self.current_scope).or_default();
         shared.push(name);
+    }
+
+    /// Registers a module-shared variable (from DIM SHARED at module level).
+    ///
+    /// These variables are automatically visible from all procedures without
+    /// needing an explicit SHARED statement inside the procedure.
+    pub fn add_module_shared_var(&mut self, name: String) {
+        let name_upper = strip_suffix(&name).to_uppercase();
+        self.module_shared_vars.insert(name_upper);
     }
 
     /// Looks up a symbol specifically in the global scope.

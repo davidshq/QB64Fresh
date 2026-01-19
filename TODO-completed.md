@@ -434,7 +434,7 @@
 
 ---
 
-*Last updated: 2026-01-19 (Session 028 - QB4.5 event handling, input devices, legacy functions)*
+*Last updated: 2026-01-19 (Session 023 - QB4.5 compatibility fixes)*
 
 ---
 
@@ -488,3 +488,26 @@
 - [x] `SMOOTH` keyword - bilinear interpolation scaling mode for `_PUTIMAGE`
 - [x] `STRETCH` keyword - nearest-neighbor scaling mode for `_PUTIMAGE`
 - [x] `CUSTOMTYPE` modifier - TYPE declaration modifier for C-compatible (packed) memory layout using `#pragma pack`
+
+---
+
+## Phase 7: QB4.5 Compatibility Fixes ✅ (Session 023)
+
+### Built-in Functions
+- [x] `PEEK(address)` function - memory read (stub, returns 0 for safety)
+- [x] `MID$(string, start [, length])` - third parameter now optional
+- [x] `RND([seed])` - seed parameter now optional
+- [x] `INSTR([start,] string, substring)` - start position now optional
+- [x] `STRING$(n, char)` - accepts either integer ASCII code or single-character string
+
+### Parser Fixes
+- [x] `LINE INPUT "prompt", var$` - accepts comma OR semicolon after prompt
+- [x] `DATA` statement - unquoted strings with operators (e.g., PLAY music notation like `o3e-o2b-ge-`)
+- [x] `MID$(str$, pos, len) = value$` - MID$ as lvalue for in-place substring replacement
+
+### Semantic Analysis Fixes
+- [x] Variable array bounds - `DIM array(1 TO variable)` now allows runtime expressions
+- [x] `DIM SHARED` module-level visibility - variables declared with `DIM SHARED` at module level are now visible in SUB/FUNCTION procedures
+
+### Test Results Improvement
+- QB4.5 test case compatibility: 56 → 64 files passing (39% → 45%)

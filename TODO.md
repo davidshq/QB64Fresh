@@ -1,6 +1,6 @@
 # QB64Fresh TODO
 
-*Last updated: 2026-01-19 (Session 028)*
+*Last updated: 2026-01-19 (Session 023)*
 
 A prioritized roadmap for QB64Fresh development. For completed features, see [TODO-completed.md](TODO-completed.md).
 
@@ -9,7 +9,7 @@ A prioritized roadmap for QB64Fresh development. For completed features, see [TO
 ## Phase 1: Language Completeness - Remaining Items
 
 ### Missing Built-in Functions
-- [ ] `PEEK()` and `POKE` (memory access, may be limited/simulated)
+- [ ] `POKE` (memory write - may be limited/simulated for safety)
 
 ---
 
@@ -89,7 +89,7 @@ All Phase 2 items have been completed:
 ### Testing (See TESTING_INFRASTRUCTURE_PLAN.md for details)
 - [x] Achieve 80%+ line coverage (**81.63%** achieved!)
 - [ ] Compatibility tests against QB64 programs (16 fixture files, need more)
-- [ ] Port QB4.5 test cases from QB64pe (currently 41/141 = 29.1% passing)
+- [ ] Port QB4.5 test cases from QB64pe (currently 64/143 = 44.8% passing)
 
 ---
 
@@ -319,7 +319,8 @@ If raw OpenGL is needed, users can use `DECLARE LIBRARY` to call OpenGL function
 **Design Decisions Made:**
 - Graphics backend: Trait-based abstraction with SDL2 as default, mock for testing
 - Sound backend: Trait-based abstraction with rodio as default, mock for testing
+- PEEK returns 0 (safe stub) - actual memory access would be unsafe
 
 **Design Decisions Needed:**
-- How to handle `PEEK`/`POKE` in a safe manner
+- How to handle `POKE` in a safe manner (currently not implemented)
 - Memory model for `_MEM` operations

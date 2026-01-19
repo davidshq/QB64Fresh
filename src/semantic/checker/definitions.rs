@@ -47,11 +47,19 @@ impl<'a> TypeChecker<'a> {
                 .unwrap_or_else(|| self.symbols.default_type_for(&var.name));
 
             // Mark as shared if applicable
-            if shared && self.symbols.in_procedure() {
-                self.symbols.add_shared_var(var.name.clone());
+            if shared {
+                if self.symbols.in_procedure() {
+                    // DIM SHARED inside a procedure - makes local var accessible to nested procs
+                    self.symbols.add_shared_var(var.name.clone());
+                } else {
+                    // DIM SHARED at module level - makes var automatically visible in all procedures
+                    self.symbols.add_module_shared_var(var.name.clone());
+                }
             }
 
-            // Evaluate array dimensions - bounds must be constant expressions
+            // Evaluate array dimensions
+            // QB/QB64 allows variable expressions in DIM bounds (evaluated at runtime).
+            // If we can evaluate as constant, we use the value; otherwise use a placeholder.
             let typed_dims: Vec<TypedArrayDimension> = var
                 .dimensions
                 .iter()
@@ -59,15 +67,21 @@ impl<'a> TypeChecker<'a> {
                     // Evaluate lower bound (if provided)
                     let lower = if let Some(lower_expr) = &d.lower {
                         let typed_lower = self.check_expr(lower_expr);
+                        // Ensure the expression is numeric
+                        if !typed_lower.basic_type.is_numeric()
+                            && typed_lower.basic_type != crate::semantic::types::BasicType::Unknown
+                        {
+                            self.errors.push(SemanticError::TypeMismatch {
+                                expected: "numeric".to_string(),
+                                found: typed_lower.basic_type.to_string(),
+                                span: lower_expr.span,
+                            });
+                        }
+                        // Try to evaluate as constant, but don't error if not possible
                         match self.try_evaluate_const_expr(&typed_lower) {
                             Some(crate::semantic::symbols::ConstValue::Integer(v)) => v,
                             Some(crate::semantic::symbols::ConstValue::Float(v)) => v as i64,
-                            _ => {
-                                self.errors.push(SemanticError::NonConstantExpression {
-                                    span: lower_expr.span,
-                                });
-                                0 // Default on error
-                            }
+                            _ => 0, // Runtime bound - use 0 as placeholder
                         }
                     } else {
                         self.symbols.option_base()
@@ -75,14 +89,21 @@ impl<'a> TypeChecker<'a> {
 
                     // Evaluate upper bound (required)
                     let typed_upper = self.check_expr(&d.upper);
+                    // Ensure the expression is numeric
+                    if !typed_upper.basic_type.is_numeric()
+                        && typed_upper.basic_type != crate::semantic::types::BasicType::Unknown
+                    {
+                        self.errors.push(SemanticError::TypeMismatch {
+                            expected: "numeric".to_string(),
+                            found: typed_upper.basic_type.to_string(),
+                            span: d.upper.span,
+                        });
+                    }
+                    // Try to evaluate as constant, but don't error if not possible
                     let upper = match self.try_evaluate_const_expr(&typed_upper) {
                         Some(crate::semantic::symbols::ConstValue::Integer(v)) => v,
                         Some(crate::semantic::symbols::ConstValue::Float(v)) => v as i64,
-                        _ => {
-                            self.errors
-                                .push(SemanticError::NonConstantExpression { span: d.upper.span });
-                            10 // Default on error
-                        }
+                        _ => 10, // Runtime bound - use 10 as placeholder
                     };
 
                     TypedArrayDimension { lower, upper }

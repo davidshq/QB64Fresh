@@ -848,6 +848,51 @@ fn emit_string_manipulation(output: &mut String) {
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
+    // MID$ statement - in-place substring replacement
+    // MID$(str$, start [, length]) = value$
+    // Replaces up to 'length' characters starting at 'start' (1-based)
+    // If length is -1, replace up to min(remaining length, value length)
+    writeln!(
+        output,
+        "void qb_mid_assign(qb_string** target, int32_t start, int32_t length, qb_string* value) {{"
+    )
+    .unwrap();
+    writeln!(output, "    if (!target || !*target || !value) return;").unwrap();
+    writeln!(output, "    qb_string* s = *target;").unwrap();
+    writeln!(
+        output,
+        "    if (start < 1 || (size_t)start > s->len) return;"
+    )
+    .unwrap();
+    writeln!(output, "    size_t idx = (size_t)(start - 1);").unwrap();
+    writeln!(output, "    size_t max_len = s->len - idx;").unwrap();
+    writeln!(output, "    size_t replace_len;").unwrap();
+    writeln!(output, "    if (length < 0) {{").unwrap();
+    writeln!(
+        output,
+        "        replace_len = (value->len < max_len) ? value->len : max_len;"
+    )
+    .unwrap();
+    writeln!(output, "    }} else {{").unwrap();
+    writeln!(
+        output,
+        "        replace_len = ((size_t)length < max_len) ? (size_t)length : max_len;"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "        if (replace_len > value->len) replace_len = value->len;"
+    )
+    .unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(
+        output,
+        "    memcpy(s->data + idx, value->data, replace_len);"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
     // INSTR(start, s$, find$) - 1-based, returns 0 if not found
     writeln!(
         output,
@@ -2134,6 +2179,26 @@ fn emit_memory_functions(output: &mut String) {
     // qb_get_segment() - Get current segment value (for internal use)
     writeln!(output, "int32_t qb_get_segment(void) {{").unwrap();
     writeln!(output, "    return qb_current_segment;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // PEEK(address) - Read a byte from memory
+    // In classic QB, this reads from segment:offset. In QB64/QBFresh, we emulate
+    // this by treating segment:offset as a linear address into a simulated memory space.
+    // For legacy compatibility, we allow reading from the emulated memory area.
+    writeln!(output, "int qb_peek(int64_t address) {{").unwrap();
+    writeln!(
+        output,
+        "    // PEEK emulation: return 0 for addresses outside valid range"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    // This is a stub for compatibility - real memory access is sandboxed"
+    )
+    .unwrap();
+    writeln!(output, "    (void)address;").unwrap();
+    writeln!(output, "    return 0;").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 

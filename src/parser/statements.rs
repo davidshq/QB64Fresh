@@ -268,10 +268,56 @@ impl<'a> Parser<'a> {
 
     /// Parses an array element assignment: `array(i, j, ...) = value`
     /// or array field assignment: `array(i).field = value`
+    /// or MID$ statement: `MID$(str$, start, len) = value$`
     pub(super) fn parse_array_assignment(&mut self, start: usize) -> Result<Statement, ()> {
         let name_token = self.expect(&TokenKind::Identifier, "array name")?;
         let name = name_token.text.to_string();
+
+        // Check for MID$ statement: MID$(str$, start [, len]) = value$
+        if name.eq_ignore_ascii_case("MID$") {
+            return self.parse_mid_statement(start);
+        }
+
         self.parse_array_assignment_with_name(start, name)
+    }
+
+    /// Parses a MID$ statement: `MID$(str$, start [, len]) = value$`
+    /// This replaces a portion of the string with a new value.
+    fn parse_mid_statement(&mut self, start: usize) -> Result<Statement, ()> {
+        self.expect(&TokenKind::LeftParen, "(")?;
+
+        // Parse target string variable
+        let target_token = self.expect(&TokenKind::Identifier, "string variable")?;
+        let target = target_token.text.to_string();
+
+        self.expect(&TokenKind::Comma, ",")?;
+
+        // Parse start position
+        let start_pos = self.parse_expression()?;
+
+        // Optional length
+        let length = if self.match_token(&TokenKind::Comma) {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+
+        self.expect(&TokenKind::RightParen, ")")?;
+        self.expect(&TokenKind::Equals, "=")?;
+
+        // Parse replacement value
+        let value = self.parse_expression()?;
+        let span = self.span_from(start);
+
+        Ok(Statement::new(
+            StatementKind::MidAssignment {
+                target,
+                start: start_pos,
+                length,
+                value,
+            },
+            span,
+        ))
     }
 
     /// Parses array assignment when the name has already been consumed.
@@ -1105,18 +1151,38 @@ impl<'a> Parser<'a> {
                     let text = &str_token.text[1..str_token.text.len() - 1];
                     Ok(DataValue::String(text.to_string()))
                 }
-                // Unquoted strings in DATA - anything that's not a literal is treated as unquoted string
+                // Unquoted strings in DATA - collect all tokens until comma or end of line
+                // This handles cases like: DATA o3e-o2b-ge-  (PLAY strings)
                 TokenKind::Identifier => {
-                    if negative {
-                        let span: Span = token.span.clone().into();
-                        self.errors.push(ParseError::syntax(
-                            "unexpected `-` before identifier in DATA",
-                            span,
-                        ));
-                        return Err(());
+                    // Start with the leading minus if present
+                    let mut unquoted_value = if negative {
+                        "-".to_string()
+                    } else {
+                        String::new()
+                    };
+
+                    // Collect tokens until we hit comma or newline
+                    while let Some(tok) = self.peek() {
+                        match &tok.kind {
+                            TokenKind::Comma | TokenKind::Newline | TokenKind::Colon => break,
+                            TokenKind::Identifier
+                            | TokenKind::Minus
+                            | TokenKind::IntegerLiteral
+                            | TokenKind::FloatLiteral
+                            | TokenKind::Plus
+                            | TokenKind::Star
+                            | TokenKind::Slash
+                            | TokenKind::Hash
+                            | TokenKind::Dot
+                            | TokenKind::Ampersand => {
+                                let tok = self.advance().expect("token");
+                                unquoted_value.push_str(&tok.text);
+                            }
+                            _ => break,
+                        }
                     }
-                    let id_token = self.advance().expect("identifier");
-                    Ok(DataValue::String(id_token.text.to_string()))
+
+                    Ok(DataValue::String(unquoted_value.trim().to_string()))
                 }
                 _ => {
                     let span: Span = token.span.clone().into();
@@ -1645,7 +1711,11 @@ impl<'a> Parser<'a> {
         if self.check(&TokenKind::StringLiteral) {
             let token = self.advance().expect("prompt string");
             prompt = Some(token.text[1..token.text.len() - 1].to_string());
-            self.expect(&TokenKind::Semicolon, "`;` after LINE INPUT prompt")?;
+            // QB allows either semicolon or comma after the prompt
+            // LINE INPUT "prompt"; var$ OR LINE INPUT "prompt", var$
+            if !self.match_token(&TokenKind::Semicolon) {
+                self.expect(&TokenKind::Comma, "`;` or `,` after LINE INPUT prompt")?;
+            }
         }
 
         let var_token = self.expect(&TokenKind::Identifier, "string variable")?;

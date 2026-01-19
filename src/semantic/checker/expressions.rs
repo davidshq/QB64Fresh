@@ -361,11 +361,14 @@ impl<'a> TypeChecker<'a> {
             );
         }
 
-        // Check argument count
-        if args.len() != proc.params.len() {
+        // Check argument count (considering optional parameters)
+        let required_count = proc.required_param_count();
+        let max_count = proc.params.len();
+        if args.len() < required_count || args.len() > max_count {
             self.errors.push(SemanticError::ArgumentCountMismatch {
                 name: name.to_string(),
-                expected: proc.params.len(),
+                expected_min: required_count,
+                expected_max: max_count,
                 found: args.len(),
                 span,
             });

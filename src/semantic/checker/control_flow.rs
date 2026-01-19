@@ -439,11 +439,14 @@ impl<'a> TypeChecker<'a> {
         let typed_args: Vec<TypedExpr> = args.iter().map(|a| self.check_expr(a)).collect();
 
         if let Some(proc) = self.symbols.lookup_procedure(name) {
-            // Check argument count
-            if args.len() != proc.params.len() {
+            // Check argument count (considering optional parameters)
+            let required_count = proc.required_param_count();
+            let max_count = proc.params.len();
+            if args.len() < required_count || args.len() > max_count {
                 self.errors.push(SemanticError::ArgumentCountMismatch {
                     name: name.to_string(),
-                    expected: proc.params.len(),
+                    expected_min: required_count,
+                    expected_max: max_count,
                     found: args.len(),
                     span,
                 });

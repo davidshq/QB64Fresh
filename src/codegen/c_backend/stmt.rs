@@ -122,6 +122,34 @@ impl StmtEmitter {
                 )?;
             }
 
+            TypedStatementKind::MidAssignment {
+                target,
+                start,
+                length,
+                value,
+            } => {
+                let target_var = c_identifier(target);
+                let start_code = emit_expr(start)?;
+                let value_code = emit_expr(value)?;
+                if let Some(len_expr) = length {
+                    let len_code = emit_expr(len_expr)?;
+                    writeln!(
+                        output,
+                        "{}qb_mid_assign(&{}, {}, {}, {});",
+                        indent, target_var, start_code, len_code, value_code
+                    )
+                    .unwrap();
+                } else {
+                    // No length specified - use -1 to indicate "rest of string"
+                    writeln!(
+                        output,
+                        "{}qb_mid_assign(&{}, {}, -1, {});",
+                        indent, target_var, start_code, value_code
+                    )
+                    .unwrap();
+                }
+            }
+
             TypedStatementKind::Print { items, newline } => {
                 for item in items {
                     self.emit_print_item(item, output)?;
