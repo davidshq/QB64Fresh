@@ -783,9 +783,11 @@ impl<'a> TypeChecker<'a> {
                 file_num,
                 position,
                 variable,
+                index,
             } => {
                 let typed_file_num = self.check_expr(file_num);
                 let typed_position = position.as_ref().map(|e| self.check_expr(e));
+                let typed_index = index.as_ref().map(|e| self.check_expr(e));
 
                 // Look up variable type - auto-declare if not found (consistent with FileGet)
                 // In BASIC, variables don't need explicit declaration; PUT on an undefined
@@ -814,6 +816,7 @@ impl<'a> TypeChecker<'a> {
                         position: typed_position,
                         variable: variable.clone(),
                         var_type,
+                        index: typed_index,
                     },
                     stmt.span,
                 )
@@ -959,6 +962,18 @@ impl<'a> TypeChecker<'a> {
                 TypedStatement::new(
                     TypedStatementKind::DefSeg {
                         segment: typed_segment,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::Poke { address, value } => {
+                let typed_address = self.check_expr(address);
+                let typed_value = self.check_expr(value);
+                TypedStatement::new(
+                    TypedStatementKind::Poke {
+                        address: typed_address,
+                        value: typed_value,
                     },
                     stmt.span,
                 )
@@ -1125,8 +1140,8 @@ impl<'a> TypeChecker<'a> {
             }
 
             StatementKind::Locate { row, col } => {
-                let typed_row = self.check_expr(row);
-                let typed_col = self.check_expr(col);
+                let typed_row = row.as_ref().map(|e| self.check_expr(e));
+                let typed_col = col.as_ref().map(|e| self.check_expr(e));
                 TypedStatement::new(
                     TypedStatementKind::Locate {
                         row: typed_row,

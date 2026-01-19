@@ -9,8 +9,6 @@
 
 ## Executive Summary
 
-~~The current QB64Fresh codebase has **131 tests** with approximately **39% file coverage**.~~
-
 **UPDATE:** As of 2026-01-18, the testing infrastructure has been substantially implemented:
 - **163 unit tests** in source modules
 - **239 integration tests** (0 ignored)
@@ -221,25 +219,12 @@ Covered via integration tests that verify:
 
 #### 2.1 Statement-by-Statement Tests ✅
 Integration tests cover each statement type:
-- [x] `PRINT` variants (with/without semicolons)
-- [x] `IF/THEN/ELSE/ELSEIF/END IF`
-- [x] `FOR/NEXT` (including STEP, EXIT FOR)
-- [x] `WHILE/WEND`
-- [x] `DO/LOOP` (all variants)
-- [x] `SELECT CASE` (including CASE ELSE)
-- [x] `DIM` (all type variations)
-- [x] `SUB/FUNCTION` (parameters, BYVAL)
-- [x] `DATA/READ/RESTORE`
 - [ ] `OPEN/CLOSE/PRINT#/INPUT#/GET/PUT` (file I/O not yet implemented)
 - [ ] Graphics statements (runtime stubs only)
 - [ ] Sound statements (runtime stubs only)
 
 #### 2.2 Semantic Checker Tests ✅
 Covered via integration tests and error detection tests:
-- [x] Type inference
-- [x] Type mismatch detection
-- [x] Undefined procedure detection
-- [x] Scope resolution
 - [ ] Array bounds checking (runtime feature)
 
 ### Phase 3: Compatibility Testing ✅ STARTED
@@ -310,125 +295,23 @@ Not yet implemented. Fuzz targets would be:
 
 ---
 
-## CI/CD Integration
-
-### GitHub Actions Workflow
-Update `.github/workflows/ci.yml`:
-
-```yaml
-name: CI
-
-on: [push, pull_request]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-action@stable
-
-      - name: Run Tests
-        run: cargo nextest run --all-features
-
-      - name: Run Integration Tests
-        run: cargo test --test '*' -- --test-threads=1
-
-      - name: Check Coverage
-        uses: codecov/codecov-action@v3
-
-  snapshot:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Check Snapshots
-        run: cargo insta test --check
-```
-
-### Coverage Reporting
-Add `cargo-llvm-cov` for coverage:
-```bash
-cargo install cargo-llvm-cov
-cargo llvm-cov --html
-```
-
----
-
-## Test Naming Conventions
-
-### Unit Tests
-```rust
-#[test]
-fn test_<module>_<function>_<scenario>() {
-    // ...
-}
-
-// Examples:
-fn test_lexer_lex_handles_empty_input()
-fn test_parser_parse_if_statement_with_else()
-fn test_codegen_emit_for_loop_with_step()
-```
-
-### Integration Tests
-```rust
-// tests/compile_tests/run_tests.rs
-#[test]
-fn compile_<category>_<name>() {
-    // ...
-}
-
-// Examples:
-fn compile_output_hello_world()
-fn compile_error_type_mismatch()
-fn compile_compat_qb45_arrays()
-```
-
----
-
 ## Success Metrics
 
-### Phase 1 Goals ✅ COMPLETE
-- [x] Integration test framework operational
-- [x] Snapshot testing for codegen enabled
-- [x] At least 10 codegen unit tests (110 integration tests)
-
-### Phase 2 Goals ✅ MOSTLY COMPLETE
-- [x] All statement types have at least 1 test
-- [x] Semantic checker has tests for each error type
-- [x] 56.53% line coverage (measured 2026-01-18)
-
 ### Phase 3 Goals 🔄 IN PROGRESS
-- [x] 16 compatibility test fixtures
 - [ ] 50+ QB4.5 compatibility tests passing (blocked by unimplemented features)
 - [ ] Automated comparison with QB64PE output
 
 ### Phase 4 Goals ✅ BENCHMARKS + PROPTEST + FUZZING COMPLETE
-- [x] Criterion benchmarks operational (30 benchmarks)
-- [x] Property tests pass (19 proptest tests, thousands of iterations per test)
-- [x] Fuzzing verified (~4.6M inputs across 3 targets, 0 crashes)
 - [ ] 80%+ line coverage (currently 59.92%)
 
 ---
 
 ## Implementation Checklist
 
-### Immediate (This Sprint) ✅ COMPLETE
-- [x] Create `tests/` directory structure
-- [x] Write snapshot/golden tests for codegen (10 tests)
-- [x] Write integration compile tests (110 tests)
-- [x] Add compatibility test framework
-- [x] Add benchmark infrastructure (30 benchmarks)
-
 ### Short Term (Next 2 Weeks) ✅ MOSTLY COMPLETE
 - [ ] Port more QB4.5 test cases (as features are implemented)
-- [x] Set up CI coverage reporting with `cargo-llvm-cov`
-- [x] Measure and document current coverage percentage (56.53% line coverage)
 
 ### Medium Term (Next Month) 🔄 IN PROGRESS
-- [x] Add property-based testing with `proptest` (19 tests)
-- [x] Implement string functions (LEN, LEFT$, RIGHT$, MID$, UCASE$, LCASE$, CHR$, ASC, INSTR, SPACE$, STRING$)
-- [x] Implement RND/RANDOMIZE with xorshift64 RNG
 - [ ] Port 50+ compatibility tests
 
 ### Long Term (Next Quarter)

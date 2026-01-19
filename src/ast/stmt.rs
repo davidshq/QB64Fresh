@@ -473,6 +473,8 @@ pub enum StatementKind {
         position: Option<Expr>,
         /// Variable containing data to write.
         variable: String,
+        /// Optional array index (for `PUT #1, , arr(i)`).
+        index: Option<Expr>,
     },
 
     /// `SEEK [#]filenum, position`
@@ -557,6 +559,17 @@ pub enum StatementKind {
         segment: Option<Expr>,
     },
 
+    /// `POKE address, value` - Write a byte to memory at the specified address.
+    ///
+    /// Writes the low byte of `value` to the memory address within the
+    /// current segment (set by DEF SEG). The address is a 16-bit offset.
+    Poke {
+        /// Memory address (offset within current segment).
+        address: Expr,
+        /// Value to write (only low byte is used, 0-255).
+        value: Expr,
+    },
+
     // ==================== Variable/Scope Statements ====================
     /// `COMMON [SHARED] variable [, variable]...`
     ///
@@ -638,12 +651,14 @@ pub enum StatementKind {
         background: Option<Expr>,
     },
 
-    /// `LOCATE row, col` - Position cursor
+    /// `LOCATE [row][, col][, cursor][, start, stop]` - Position cursor
+    ///
+    /// All parameters are optional. If row/col omitted, they are unchanged.
     Locate {
-        /// Row (1-based)
-        row: Expr,
-        /// Column (1-based)
-        col: Expr,
+        /// Row (1-based, optional)
+        row: Option<Expr>,
+        /// Column (1-based, optional)
+        col: Option<Expr>,
     },
 
     /// `VIEW PRINT [top TO bottom]` - Set text viewport

@@ -355,6 +355,14 @@ pub enum TypedStatementKind {
         segment: Option<TypedExpr>,
     },
 
+    /// POKE statement - write a byte to memory address.
+    Poke {
+        /// Memory address (offset within current segment).
+        address: TypedExpr,
+        /// Value to write (only low byte is used, 0-255).
+        value: TypedExpr,
+    },
+
     /// Label definition.
     Label { name: String },
 
@@ -542,6 +550,8 @@ pub enum TypedStatementKind {
         variable: String,
         /// Variable type.
         var_type: BasicType,
+        /// Optional array index for `PUT #1, , arr(i)`.
+        index: Option<TypedExpr>,
     },
 
     /// SEEK statement (set file position).
@@ -659,10 +669,10 @@ pub enum TypedStatementKind {
 
     /// LOCATE statement - positions the cursor.
     Locate {
-        /// Row (1-based).
-        row: TypedExpr,
-        /// Column (1-based).
-        col: TypedExpr,
+        /// Row (1-based, optional).
+        row: Option<TypedExpr>,
+        /// Column (1-based, optional).
+        col: Option<TypedExpr>,
     },
 
     /// PSET statement - plots a point.

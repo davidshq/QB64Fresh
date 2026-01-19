@@ -5,60 +5,24 @@ A prioritized roadmap for QB64Fresh development. Items are ordered from most gra
 ---
 
 ## Phase 1: Language Completeness (Near-Term) ✅ COMPLETED
-
-### File I/O (Framework exists, needs code generation)
-- [x] Complete `OPEN` statement code generation (all modes: INPUT, OUTPUT, APPEND, BINARY, RANDOM)
-- [x] Implement `CLOSE` statement
-- [x] Implement `PRINT #` (file output)
-- [x] Implement `INPUT #` (file input)
-- [x] Implement `LINE INPUT #`
-- [x] Implement `WRITE #` statement
-- [x] Implement `GET` and `PUT` for binary/random access
-- [x] Implement `SEEK` statement
-- [x] Implement `LOF()` function (length of file)
-- [x] Implement `EOF()` function (end of file)
-- [x] Implement `LOC()` function (current position)
-- [x] Implement `FREEFILE` function
-- [x] Add file handle tracking to runtime
-
-### Keyboard Input
-- [x] Implement `INKEY$` function
-- [x] Implement `INPUT$()` function (read n characters)
-- [x] Implement `_KEYHIT` function (QB64 extension)
-- [x] Implement `_KEYDOWN` function (QB64 extension - stub, always returns 0)
-- [x] Implement `_KEYCLEAR` statement (QB64 extension)
+- File I/O (Framework exists, needs code generation)
+- Keyboard Input
 
 ### Error Handling
-- [x] Implement `ON ERROR GOTO` statement
-- [x] Implement `RESUME` statement (RESUME, RESUME NEXT, RESUME label)
-- [x] Implement `ERR` variable
-- [x] Implement `ERL` variable (error line)
-- [x] Implement `ERROR` statement (raise error)
 - [ ] Add error code constants (standard error codes are used)
 
 ### Computed Control Flow
-- [x] Implement `ON n GOTO` statement
-- [x] Implement `ON n GOSUB` statement
 
 ### Missing Built-in Functions
-- [x] `ENVIRON$()` - get environment variable
-- [x] `COMMAND$` - command line arguments
-- [x] `_OS$` - operating system identifier
-- [x] `_CWD$` - current working directory
-- [x] `_STARTDIR$` - program start directory
-- [x] `SWAP` statement (parser + semantic: requires exact type match)
 - [ ] `DEF SEG` statement (legacy, low priority)
 - [ ] `PEEK()` and `POKE` (memory access, may be limited/simulated)
 
 ### Variable/Scope Enhancements
-- [x] `COMMON` statement (shared variables between modules)
 - [ ] `SHARED` in module-level scope (partially supported via DIM SHARED)
 - [ ] `STATIC` arrays in procedures
-- [x] `REDIM` with `_PRESERVE`
 - [ ] Proper `OPTION BASE` support
 
 ### DEF FN Support
-- [x] Implement `DEF FN` single-line functions
 - [ ] Implement multi-line `DEF FN` (QB64 extension)
 
 ---
@@ -66,84 +30,28 @@ A prioritized roadmap for QB64Fresh development. Items are ordered from most gra
 ## Phase 2: Core Extensions (Medium-Term) ✅ COMPLETED
 
 ### Conditional Compilation
-- [x] `$IF` / `$ELSE` / `$ELSEIF` / `$END IF` directives
-- [x] `$LET` directive for compile-time variables
 - [ ] `$INCLUDE` - actually read and parse included files
-- [x] `$CHECKING` directive
 - [ ] Built-in constants: `WIN`, `LINUX`, `MAC`, `32BIT`, `64BIT`
 
-### Memory Operations
-- [x] `_MEM` type full support
-- [x] `_MEMNEW` function
-- [x] `_MEMFREE` statement
-- [x] `_MEMGET` / `_MEMPUT`
-- [x] `_MEMCOPY`
-- [x] `_MEMFILL`
-- [x] `_OFFSET` pointer arithmetic
-
-### String Enhancements
-- [x] `_INSTRREV` function
-- [x] `TRIM$` / `_TRIM$` functions (both map to same implementation)
-- [x] `STRING$()` function
-- [x] `MKI$`, `MKL$`, `MKS$`, `MKD$` (pack numbers to strings)
-- [x] `CVI`, `CVL`, `CVS`, `CVD` (unpack strings to numbers)
+- Memory Operations
+- String Enhancements
 
 ### Date/Time Enhancements
-- [x] `DATE$` (classic BASIC format: MM-DD-YYYY)
-- [x] `TIME$` (classic BASIC format: HH:MM:SS)
-- [x] `_DATE$` (QB64 format)
-- [x] `_TIME$` (QB64 format)
 - [ ] `_AUTODISPLAY` / `_DISPLAY` timing
 
 ---
 
 ## Phase 3: Graphics System (In Progress)
 
-### Graphics Architecture ✅
-- [x] Define `GraphicsBackend` trait for pluggable backends
-- [x] Implement SDL2Backend (full implementation with all drawing primitives)
-- [x] Implement MockBackend for testing (complete)
-- [x] Create C FFI layer (`graphics_ffi.rs` with all wrapper functions)
-- [x] Implement error handling and type system
-- [x] Design C FFI wrapper functions
-
-### Screen Setup
-- [x] `SCREEN` statement (text and graphics modes)
-- [x] `WIDTH` statement (parser, semantic, codegen, FFI)
-- [x] `CLS` statement (clear screen)
-- [x] `COLOR` statement
-- [x] `LOCATE` statement (cursor positioning)
-- [x] `VIEW` statement (viewport) - parser, semantic, codegen, FFI
-- [x] `WINDOW` statement (coordinate mapping) - parser, semantic, codegen, FFI
-
-### Basic Drawing
-- [x] `PSET` / `PRESET` (plot point)
-- [x] `LINE` statement (lines and boxes)
-- [x] `CIRCLE` statement
-- [x] `PAINT` statement (flood fill)
-- [x] `DRAW` statement (turtle graphics) - parser, semantic, codegen, FFI
-- [x] `POINT()` function (read pixel) - in runtime FFI
+- Graphics Architecture
+- Screen Setup
+- Basic Drawing
 
 ### QB64 Graphics Extensions
-- [x] `_NEWIMAGE` function - backend trait method
-- [x] `_LOADIMAGE` function - backend trait method
-- [x] `_FREEIMAGE` statement - full implementation
-- [x] `_PUTIMAGE` statement - full implementation with multiple variants
-- [x] `_SOURCE` / `_DEST` statements - full implementation
-- [x] `_COPYIMAGE` function - backend trait method
-- [x] `_SCREENIMAGE` function - backend trait method
-- [x] `_WIDTH` / `_HEIGHT` functions - backend trait methods
-- [x] `_PRINTSTRING` statement - full implementation
 - [ ] `_PRINTWIDTH` function
-- [x] `_RGB` / `_RGBA` functions (in runtime FFI)
-- [x] `_RGB32` / `_RGBA32` functions (in runtime FFI)
 - [ ] Alpha blending support (requires image buffer implementation)
-- [x] `_AUTODISPLAY` statement - full implementation
 
 ### Graphics Backend Integration
-- [x] Integrate SDL2 for window management
-- [x] Implement frame buffer (pixel_buffer for POINT())
-- [x] Implement `_DISPLAY` / `_AUTODISPLAY`
 - [ ] Hardware acceleration option
 
 ---
@@ -179,35 +87,12 @@ runtime/src/
 - Battle-tested (used by QB64-PE)
 
 ### Audio Backend Infrastructure ✅
-- [x] Define `AudioBackend` trait for pluggable backends
-- [x] Implement `AudioError` and `AudioErrorKind` types
-- [x] Implement `MockAudioBackend` for headless testing
 - [ ] Implement `MiniaudioBackend` (actual audio playback)
-- [x] Create C FFI layer (`audio_ffi.rs`)
 - [ ] Add feature flags to `runtime/Cargo.toml`
 
-### Classic BASIC Sound (Parser, Semantic, Codegen, FFI complete)
-- [x] `BEEP` statement - full compiler + FFI
-- [x] `SOUND` statement (frequency, duration) - full compiler + FFI
-- [x] `PLAY` statement - full compiler + FFI (MML parser in backend)
-
-### QB64 Sound Extensions (Parser, Semantic, Codegen, FFI complete)
-- [x] `_SNDOPEN` function (returns handle) - FFI
-- [x] `_SNDCLOSE` statement - full implementation
-- [x] `_SNDPLAY` / `_SNDSTOP` statements - full implementation
-- [x] `_SNDPAUSE` / `_SNDRESUME` statements - FFI (resume via sndresume)
-- [x] `_SNDLOOP` statement - full implementation
-- [x] `_SNDVOL` statement (0.0 - 1.0) - full implementation
-- [x] `_SNDBAL` statement (stereo balance) - full implementation
-- [x] `_SNDLEN` function (duration in seconds) - FFI
-- [x] `_SNDGETPOS` / `_SNDSETPOS` (playback position) - FFI
-- [x] `_SNDPLAYING` / `_SNDPAUSED` functions - FFI
-- [x] `_SNDRATE` function (get sample rate) - FFI
-
-### Raw Audio Synthesis (FFI complete, backend needs implementation)
-- [x] `_SNDOPENRAW` function (create raw audio stream) - FFI
-- [x] `_SNDRAW` statement (push sample frames) - full implementation
-- [x] `_SNDRAWLEN` function (queued samples remaining) - FFI
+- Classic BASIC Sound (Parser, Semantic, Codegen, FFI complete)
+- QB64 Sound Extensions (Parser, Semantic, Codegen, FFI complete)
+- Raw Audio Synthesis (FFI complete, backend needs implementation)
 
 ### Audio Format Support (Requires MiniaudioBackend)
 - [ ] WAV (PCM)
@@ -220,43 +105,19 @@ runtime/src/
 ## Phase 5: Advanced Features (Long-Term) - In Progress
 
 ### C Library Integration ✅ (Parser/Semantic/Codegen complete)
-- [x] `DECLARE LIBRARY` statement - extern C function declarations
-- [x] `DECLARE DYNAMIC LIBRARY` - parsed but runtime loading deferred
-- [x] BYVAL parameter passing for C calling convention
-- [x] ALIAS clause for name mapping
 - [ ] Automatic header parsing
 - [ ] Type marshalling for complex C types
 - [ ] Callback support
 
 ### Networking (QB64 Extensions) ✅ (Parser/Semantic/Codegen/Runtime complete)
-- [x] `_OPENHOST` function - TCP server on port
-- [x] `_OPENCONNECTION` function - accept incoming connection (non-blocking)
-- [x] `_OPENCLIENT` function - connect to TCP server
-- [x] `_CONNECTED` function - check connection status
 - [ ] Network stream I/O (PUT/GET with network handles)
 
 ### Input Devices ✅ (Parser/Semantic/Codegen complete - backend integration pending)
-- [x] Mouse support (`_MOUSEX`, `_MOUSEY`, `_MOUSEBUTTON`, etc.) - full pipeline
-- [x] `_MOUSEINPUT` - check for mouse events
-- [x] `_MOUSEMOVEMENTX` / `_MOUSEMOVEMENTY` - relative movement
-- [x] `_MOUSEWHEEL` - scroll wheel
-- [x] `_MOUSEHIDE` / `_MOUSESHOW` - cursor visibility
-- [x] `_MOUSEMOVE` - position cursor
 - [ ] Joystick/gamepad support
 - [ ] Touch input support
 
-### Clipboard ✅ (Parser/Semantic/Codegen complete - backend integration pending)
-- [x] `_CLIPBOARD$` function (get)
-- [x] `_CLIPBOARD$` statement (set)
-
-### System Integration ✅
-- [x] `SHELL` statement
-- [x] `_SHELLHIDE`
-- [x] `KILL` statement (delete file)
-- [x] `NAME` statement (rename file)
-- [x] `MKDIR` / `RMDIR` / `CHDIR`
-- [x] `_DIREXISTS` / `_FILEEXISTS`
-- [x] `_DIR$` function (directory listing)
+- Clipboard ✅ (Parser/Semantic/Codegen complete - backend integration pending)
+- System Integration ✅
 
 ### Multi-threading (QB64 Extension)
 - [ ] `_THREAD` support
@@ -294,12 +155,6 @@ runtime/src/
 - [ ] Example programs
 
 ### Testing (See TESTING_INFRASTRUCTURE_PLAN.md for details)
-- [x] Integration tests for compiled programs (239 tests)
-- [x] Golden/snapshot tests for codegen (10 tests)
-- [x] Property-based testing with proptest (19 tests)
-- [x] Fuzz testing infrastructure (3 targets: lexer, parser, full pipeline)
-- [x] Fuzz testing verified (~4.6M inputs, 0 crashes)
-- [x] Achieve 60%+ line coverage (currently 59.92%)
 - [ ] Expand test suite for all built-ins
 - [ ] Compatibility tests against QB64 programs
 - [ ] Port QB4.5 test cases from QB64pe
@@ -315,23 +170,13 @@ against the current QB64Fresh implementation. Organized by priority and category
 ### High Priority - QB4.5 Core Features
 
 #### Timing & Flow Control
-- [x] `SLEEP` statement - pause execution
-- [x] `TIMER` function - seconds since midnight (with millisecond precision)
-- [x] `RANDOMIZE` statement - seed random number generator
 - [ ] `RUN` statement - run program
 - [ ] `CHAIN` statement - run another program, optionally passing variables
-- [x] `SYSTEM` statement - exit program to operating system
 - [ ] `TROFF` / `TRON` statements - debug trace off/on
 
 #### Print Formatting
-- [x] `TAB(n)` function - move to column n in PRINT
-- [x] `SPC(n)` function - output n spaces in PRINT
-- [x] `USING` clause - formatted PRINT output (PRINT USING)
 - [ ] `LPRINT` statement - printer output
 - [ ] `LPOS(n)` function - printer position
-- [x] `POS(n)` function - current cursor column position
-- [x] `CSRLIN` function - current cursor row
-- [x] `?` - PRINT alias (question mark)
 
 #### Memory/Legacy
 - [ ] `BLOAD` / `BSAVE` statements - binary load/save to memory
@@ -348,8 +193,7 @@ against the current QB64Fresh implementation. Organized by priority and category
 - [ ] `FILEATTR()` function - file attributes
 - [ ] `RESET` statement - close all open files
 
-#### Arrays
-- [x] `ERASE` statement - clear/deallocate arrays
+- Arrays
 
 #### Type Conversion (Microsoft Binary Format)
 - [ ] `CVDMBF()` / `CVSMBF()` functions - convert MBF strings to numbers
@@ -402,71 +246,25 @@ against the current QB64Fresh implementation. Organized by priority and category
 
 ### Medium Priority - QB64 Extensions
 
-#### Keyboard Input (Important for games)
-- [x] `_KEYHIT` function - get key code without waiting
-- [x] `_KEYDOWN(code)` function - check if key pressed (stub - always 0)
-- [x] `_KEYCLEAR` statement - clear keyboard buffer
-- [x] `_CINP` function - raw console input
-- [x] `_CAPSLOCK` / `_NUMLOCK` / `_SCROLLLOCK` - lock key states
-
-#### Timing Functions
-- [x] `_DELAY(seconds)` statement - pause execution (float precision)
-- [x] `_LIMIT(fps)` statement - limit frame rate
-
-#### Math Functions
-- [x] `_CEIL(n)` function - ceiling
-- [x] `_ROUND(n)` function - round to nearest
-- [x] `_PI` constant - pi (3.14159...)
-- [x] `_MIN(a, b)` / `_MAX(a, b)` functions
-- [x] `_CLAMP(val, min, max)` function
-- [x] `_HYPOT(x, y)` function - hypotenuse
-
-#### Trigonometric (Extended)
-- [x] `_ACOS(n)` / `_ASIN(n)` functions - arc cosine/sine
-- [x] `_ATAN2(y, x)` function - arc tangent of y/x
-- [x] `_SINH(n)` / `_COSH(n)` / `_TANH(n)` - hyperbolic functions
-- [x] `_ASINH(n)` / `_ACOSH(n)` / `_ATANH(n)` - inverse hyperbolic functions
-- [x] `_SEC(n)` / `_CSC(n)` / `_COT(n)` - secant/cosecant/cotangent
-- [x] `_SECH(n)` / `_CSCH(n)` / `_COTH(n)` - hyperbolic sec/csc/cot
-- [x] `_ARCSEC(n)` / `_ARCCSC(n)` / `_ARCCOT(n)` - inverse sec/csc/cot
-- [x] `_ARCSECH(n)` / `_ARCCSCH(n)` / `_ARCCOTH(n)` - inverse hyperbolic sec/csc/cot
-- [x] `_D2R(degrees)` / `_R2D(radians)` - degree/radian conversion
-- [x] `_NEGATE(n)` - negate value
-- [x] `_D2G(degrees)` / `_G2D(gradians)` / `_G2R(gradians)` / `_R2G(radians)` - gradian conversions
-
-#### Bitwise Operations ✅
-- [x] `_SHL(value, bits)` function - shift left
-- [x] `_SHR(value, bits)` function - shift right
-- [x] `_ROL(value, bits)` function - rotate left
-- [x] `_ROR(value, bits)` function - rotate right
-- [x] `_READBIT(value, bit)` function - read bit
-- [x] `_SETBIT(value, bit)` function - set bit
-- [x] `_RESETBIT(value, bit)` function - clear bit
-- [x] `_TOGGLEBIT(value, bit)` function - toggle bit
+- Keyboard Input (Important for games)
+- Timing Functions
+- Math Functions
+- Trigonometric (Extended)
+- Bitwise Operations ✅
 
 #### String Functions
-- [x] `_STRCMP(a$, b$)` function - case-sensitive compare
-- [x] `_STRICMP(a$, b$)` function - case-insensitive compare
-- [x] `_TOSTR$(n)` function - number to string (no leading space)
-- [x] `_BIN$(n)` function - number to binary string
 - [ ] `_CV(type, string$)` function - generic convert string to type
 - [ ] `_MK$(type, value)` function - generic convert value to string
 
 #### Error Handling (Extended)
-- [x] `_ERRORLINE` variable - line number of error
-- [x] `_ERRORMESSAGE$` function - error message text
 - [ ] `_INCLERRORFILE$` / `_INCLERRORLINE` - include file error info
 - [ ] `_ASSERT` statement - assertions
 - [ ] `$ASSERTS` metacommand - enable assertions
 - [ ] `_EXIT` statement - exit program with code
 
 #### Utility Functions
-- [x] `_IIF(condition, true_val, false_val)` function - inline IF
-- [x] `_IIF$(condition, true_str$, false_str$)` function - inline IF for strings
 - [ ] `_CAST(type, value)` function - explicit type cast
 - [ ] `_DEFINE` statement - define default variable types by letter range
-- [x] `_COMMANDCOUNT` function - count of command line arguments
-- [x] `_ENVIRONCOUNT` function - count of environment variables
 - [ ] `_STATUSCODE` function - status code from last operation
 
 #### Networking (Extended)
@@ -477,17 +275,9 @@ against the current QB64Fresh implementation. Organized by priority and category
 ### Lower Priority - QB64 Advanced Extensions
 
 #### Desktop/Window Info
-- [x] `_DESKTOPHEIGHT` / `_DESKTOPWIDTH` functions - desktop dimensions
-- [x] `_SCREENX` / `_SCREENY` functions - window position
-- [x] `_TITLE$` function - get window title
-- [x] `_WINDOWHANDLE` / `_WINDOWHASFOCUS` functions - window state
-- [x] `_SCREENMOVE(x, y)` function - move window
 - [ ] `_SCREENEXISTS` function - check if window exists
-- [x] `_SCREENHIDE` / `_SCREENSHOW` functions - hide/show window
 - [ ] `_SCREENICON` function - check if window is minimized
 - [ ] `_SCREENPRINT` statement - print screen contents
-- [x] `_SCREENCLICK` function - bring window to front
-- [x] `_FULLSCREEN` function - get/toggle fullscreen mode
 - [ ] `_ALLOWFULLSCREEN` statement - allow/disallow fullscreen toggle
 - [ ] `_TITLE` / `_TITLE$` - set/get window title
 - [ ] `_ICON` statement - set window icon
@@ -497,10 +287,6 @@ against the current QB64Fresh implementation. Organized by priority and category
 - [ ] `_WINDOWHASFOCUS` function - check if window has focus
 
 #### Font Support
-- [x] `_LOADFONT(file$, size)` function - load font (stub)
-- [x] `_FONT(handle)` function - set current font, returns previous
-- [x] `_FREEFONT(handle)` function - release font
-- [x] `_FONTHEIGHT` / `_FONTWIDTH` functions - font dimensions (stubs)
 
 #### Unicode Font Support
 - [ ] `_UCHARPOS` function - Unicode character position
@@ -562,9 +348,6 @@ against the current QB64Fresh implementation. Organized by priority and category
 - [ ] `_CLIPBOARDIMAGE` function - get image from clipboard
 
 #### Dialog Boxes
-- [x] `_MESSAGEBOX` function - display message box
-- [x] `_INPUTBOX$` function - input dialog
-- [x] `_OPENFILEDIALOG$` / `_SAVEFILEDIALOG$` / `_SELECTFOLDERDIALOG$` - file dialogs (stubs)
 - [ ] `_COLORCHOOSERDIALOG` function - color picker
 - [ ] `_NOTIFYPOPUP` function - system notification
 
@@ -684,7 +467,6 @@ If raw OpenGL is needed, users can use `DECLARE LIBRARY` to call OpenGL function
 - [ ] Large array handling: Verify stack vs heap allocation
 - [ ] Unicode support: Currently ASCII-focused
 - [ ] Windows-specific path handling in file I/O
-- [x] Line number support for legacy BASIC (implemented: `100 PRINT`, `GOTO 100`, etc.)
 - [ ] **GOSUB uses GCC computed goto extension** - The GOSUB/RETURN implementation uses GCC's
       computed goto extension (`&&label` for label addresses, `goto *ptr` for indirect jumps).
       This works with GCC and Clang but NOT MSVC. For MSVC support, would need a switch-based

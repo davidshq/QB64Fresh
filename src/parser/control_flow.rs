@@ -62,6 +62,18 @@ impl<'a> Parser<'a> {
             // Parse THEN branch - multiple statements separated by colons until ELSE or end of line
             let mut then_branch = Vec::new();
             loop {
+                // Skip leading colons (e.g., `IF x THEN : PRINT y`)
+                while self.check(&TokenKind::Colon) {
+                    self.advance();
+                }
+                // Check if we've hit end of line or ELSE
+                if self.check(&TokenKind::Newline)
+                    || self.check(&TokenKind::Else)
+                    || self.check(&TokenKind::Comment)
+                    || self.is_at_end()
+                {
+                    break;
+                }
                 then_branch.push(self.parse_single_line_if_statement()?);
                 // Check if next is colon (more statements) or ELSE/end of line
                 if self.check(&TokenKind::Colon) {
@@ -90,6 +102,17 @@ impl<'a> Parser<'a> {
             let else_branch = if self.match_token(&TokenKind::Else) {
                 let mut else_stmts = Vec::new();
                 loop {
+                    // Skip leading colons after ELSE
+                    while self.check(&TokenKind::Colon) {
+                        self.advance();
+                    }
+                    // Check if we've hit end of line
+                    if self.check(&TokenKind::Newline)
+                        || self.check(&TokenKind::Comment)
+                        || self.is_at_end()
+                    {
+                        break;
+                    }
                     else_stmts.push(self.parse_single_line_if_statement()?);
                     if self.check(&TokenKind::Colon) {
                         // Check if this is a trailing colon (followed by newline/EOF)
@@ -401,8 +424,11 @@ impl<'a> Parser<'a> {
                 && tok.text.eq_ignore_ascii_case(&variable)
             {
                 if let Some(next) = self.peek_ahead(1) {
-                    // Match if followed by comma or newline (end of NEXT statement)
-                    if next.kind == TokenKind::Comma || next.kind == TokenKind::Newline {
+                    // Match if followed by comma, colon, or newline (end of NEXT statement)
+                    if next.kind == TokenKind::Comma
+                        || next.kind == TokenKind::Newline
+                        || next.kind == TokenKind::Colon
+                    {
                         break;
                     }
                 } else {

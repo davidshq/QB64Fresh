@@ -76,6 +76,7 @@ impl<'a> Parser<'a> {
             TokenKind::System => self.parse_system(),
             TokenKind::Sleep => self.parse_sleep(),
             TokenKind::Wait => self.parse_wait(),
+            TokenKind::Poke => self.parse_poke(),
             TokenKind::Delay => self.parse_delay(),
             TokenKind::Limit => self.parse_limit(),
             TokenKind::Erase => self.parse_erase(),
@@ -192,10 +193,21 @@ impl<'a> Parser<'a> {
         self.parse_assignment(start)
     }
 
-    /// Parses an assignment statement (variable = expression).
+    /// Parses an assignment statement (variable = expression) or array element assignment.
+    ///
+    /// Handles:
+    /// - `variable = expression`
+    /// - `array(index) = expression`
+    /// - `array(i, j).field = expression`
     pub(super) fn parse_assignment(&mut self, start: usize) -> Result<Statement, ()> {
         let name_token = self.expect(&TokenKind::Identifier, "variable name")?;
         let name = name_token.text.to_string();
+
+        // Check if this is an array element assignment
+        if self.check(&TokenKind::LeftParen) {
+            // Put the name back by using the start position and parsing as array assignment
+            return self.parse_array_assignment_with_name(start, name);
+        }
 
         self.expect(&TokenKind::Equals, "=")?;
 
@@ -210,7 +222,15 @@ impl<'a> Parser<'a> {
     pub(super) fn parse_array_assignment(&mut self, start: usize) -> Result<Statement, ()> {
         let name_token = self.expect(&TokenKind::Identifier, "array name")?;
         let name = name_token.text.to_string();
+        self.parse_array_assignment_with_name(start, name)
+    }
 
+    /// Parses array assignment when the name has already been consumed.
+    fn parse_array_assignment_with_name(
+        &mut self,
+        start: usize,
+        name: String,
+    ) -> Result<Statement, ()> {
         self.expect(&TokenKind::LeftParen, "(")?;
 
         // Parse index expressions
@@ -749,6 +769,22 @@ impl<'a> Parser<'a> {
             },
             span,
         ))
+    }
+
+    /// Parses a POKE statement.
+    /// Syntax: POKE address, value
+    ///
+    /// Writes a byte to memory at the specified address within the current
+    /// segment (set by DEF SEG).
+    pub(super) fn parse_poke(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("POKE keyword").span.start;
+
+        let address = self.parse_expression()?;
+        self.expect(&TokenKind::Comma, ",")?;
+        let value = self.parse_expression()?;
+
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::Poke { address, value }, span))
     }
 
     /// Parses a _DELAY statement (QB64).
@@ -1789,8 +1825,18 @@ impl<'a> Parser<'a> {
 
         self.expect(&TokenKind::Comma, "`,` before variable")?;
 
+        // Variable can be a simple name or an array element: var or arr(index)
         let var_token = self.expect(&TokenKind::Identifier, "variable name")?;
         let variable = var_token.text.to_string();
+
+        // Check for array index
+        let index = if self.match_token(&TokenKind::LeftParen) {
+            let idx = self.parse_expression()?;
+            self.expect(&TokenKind::RightParen, "`)` after array index")?;
+            Some(idx)
+        } else {
+            None
+        };
 
         let span = self.span_from(start);
         Ok(Statement::new(
@@ -1798,6 +1844,7 @@ impl<'a> Parser<'a> {
                 file_num,
                 position,
                 variable,
+                index,
             },
             span,
         ))
@@ -2367,12 +2414,60 @@ impl<'a> Parser<'a> {
 
     /// Parses LOCATE statement.
     ///
-    /// Syntax: `LOCATE row, col`
+    /// Syntax: `LOCATE [row][, col][, cursor][, start, stop]`
+    ///
+    /// All parameters are optional. A comma before an omitted parameter is still
+    /// required if you want to specify parameters after it.
+    /// Examples:
+    /// - `LOCATE 15` - set row to 15, keep column unchanged
+    /// - `LOCATE 15, 10` - set row 15, column 10
+    /// - `LOCATE , 10` - keep row unchanged, set column to 10
+    /// - `LOCATE 15:` - set row to 15, then continue with next statement
     pub(super) fn parse_locate(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("LOCATE keyword").span.start;
-        let row = self.parse_expression()?;
-        self.expect(&TokenKind::Comma, ",")?;
-        let col = self.parse_expression()?;
+
+        // Parse optional row (may be empty if we see comma first)
+        let row = if self.check(&TokenKind::Comma)
+            || self.check(&TokenKind::Colon)
+            || self.check(&TokenKind::Newline)
+            || self.check(&TokenKind::Comment)
+            || self.is_at_end()
+        {
+            None
+        } else {
+            Some(self.parse_expression()?)
+        };
+
+        // Parse optional column after comma
+        let col = if self.match_token(&TokenKind::Comma) {
+            // Column may also be empty (e.g., `LOCATE 15,,1` skips column)
+            if self.check(&TokenKind::Comma)
+                || self.check(&TokenKind::Colon)
+                || self.check(&TokenKind::Newline)
+                || self.check(&TokenKind::Comment)
+                || self.is_at_end()
+            {
+                None
+            } else {
+                Some(self.parse_expression()?)
+            }
+        } else {
+            None
+        };
+
+        // Skip remaining optional parameters (cursor, start, stop) - we don't support them yet
+        // but we should consume them for compatibility
+        while self.match_token(&TokenKind::Comma) {
+            if !self.check(&TokenKind::Comma)
+                && !self.check(&TokenKind::Colon)
+                && !self.check(&TokenKind::Newline)
+                && !self.check(&TokenKind::Comment)
+                && !self.is_at_end()
+            {
+                let _ = self.parse_expression()?; // consume and discard
+            }
+        }
+
         let span = self.span_from(start);
         Ok(Statement::new(StatementKind::Locate { row, col }, span))
     }

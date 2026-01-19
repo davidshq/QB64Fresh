@@ -440,6 +440,18 @@ impl StmtEmitter {
                 }
             }
 
+            TypedStatementKind::Poke { address, value } => {
+                // POKE writes a byte to memory within the current segment.
+                let addr_code = emit_expr(address)?;
+                let val_code = emit_expr(value)?;
+                writeln!(
+                    output,
+                    "{}qb_poke((int32_t){}, (uint8_t){});",
+                    indent, addr_code, val_code
+                )
+                .unwrap();
+            }
+
             TypedStatementKind::Label { name } => {
                 let c_label = c_identifier(name);
                 writeln!(output, "{}:", c_label).unwrap();
@@ -610,6 +622,7 @@ impl StmtEmitter {
                 position,
                 variable,
                 var_type,
+                index,
             } => {
                 self.emit_file_put(
                     &indent,
@@ -617,6 +630,7 @@ impl StmtEmitter {
                     position.as_ref(),
                     variable,
                     var_type,
+                    index.as_ref(),
                     output,
                 )?;
             }
@@ -767,8 +781,17 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::Locate { row, col } => {
-                let row_code = emit_expr(row)?;
-                let col_code = emit_expr(col)?;
+                // LOCATE with optional parameters - use -1 to indicate "unchanged"
+                let row_code = row
+                    .as_ref()
+                    .map(emit_expr)
+                    .transpose()?
+                    .unwrap_or("-1".to_string());
+                let col_code = col
+                    .as_ref()
+                    .map(emit_expr)
+                    .transpose()?
+                    .unwrap_or("-1".to_string());
                 writeln!(
                     output,
                     "{}qb_gfx_locate((int32_t){}, (int32_t){});",
@@ -2545,6 +2568,7 @@ impl StmtEmitter {
     }
 
     /// Emits a PUT statement.
+    #[allow(clippy::too_many_arguments)]
     fn emit_file_put(
         &self,
         indent: &str,
@@ -2552,6 +2576,7 @@ impl StmtEmitter {
         position: Option<&TypedExpr>,
         variable: &str,
         var_type: &BasicType,
+        index: Option<&TypedExpr>,
         output: &mut String,
     ) -> Result<(), CodeGenError> {
         let file_num_code = emit_expr(file_num)?;
@@ -2568,14 +2593,24 @@ impl StmtEmitter {
             .unwrap();
         }
 
-        // Write the data
+        // Write the data - handle array indexing if present
         let size = type_size(var_type);
-        writeln!(
-            output,
-            "{}qb_file_put({}, &{}, {});",
-            indent, file_num_code, c_var, size
-        )
-        .unwrap();
+        if let Some(idx) = index {
+            let idx_code = emit_expr(idx)?;
+            writeln!(
+                output,
+                "{}qb_file_put({}, &{}[{}], {});",
+                indent, file_num_code, c_var, idx_code, size
+            )
+            .unwrap();
+        } else {
+            writeln!(
+                output,
+                "{}qb_file_put({}, &{}, {});",
+                indent, file_num_code, c_var, size
+            )
+            .unwrap();
+        }
 
         Ok(())
     }

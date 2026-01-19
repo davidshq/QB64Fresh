@@ -212,6 +212,10 @@ pub enum TokenKind {
     #[token("SEG", ignore(ascii_case))]
     Seg,
 
+    /// POKE keyword - write byte to memory address
+    #[token("POKE", ignore(ascii_case))]
+    Poke,
+
     /// DEFINT keyword - set default type to INTEGER for letter range
     #[token("DEFINT", ignore(ascii_case))]
     DefInt,
