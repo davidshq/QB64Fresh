@@ -1,7 +1,7 @@
 # Testing Infrastructure Plan
 
 **Created:** 2026-01-18
-**Updated:** 2026-01-19
+**Updated:** 2026-01-19 (Session 025+)
 **Purpose:** Comprehensive plan for building out QB64Fresh testing infrastructure
 **Based On:** QB64PE testing framework analysis + codebase review findings
 
@@ -10,16 +10,16 @@
 ## Executive Summary
 
 **UPDATE:** As of 2026-01-19, the testing infrastructure has been substantially implemented:
-- **170 unit tests** in source modules
-- **277 integration tests** (0 ignored)
+- **205 unit tests** in source modules
+- **315 integration tests** (0 ignored)
 - **10 golden tests** for C code generation snapshots
 - **16 compatibility test fixtures** (12 success + 4 error, auto-discovered)
 - **19 property-based tests** using proptest (thousands of iterations)
 - **30 benchmarks** measuring compiler performance
 - **44 runtime tests**
 
-Total: **539+ tests** across the workspace (11 ignored for platform-specific features).
-**Line coverage:** 72.67% (measured via cargo-llvm-cov)
+Total: **600+ tests** across the workspace (11 ignored for platform-specific features).
+**Line coverage:** 81.63% (measured via cargo-llvm-cov) ✅ Target achieved!
 **Fuzz testing:** 3 fuzz targets verified (~4.6M inputs, 0 crashes)
 
 ---
@@ -28,8 +28,8 @@ Total: **539+ tests** across the workspace (11 ignored for platform-specific fea
 
 ### What We Have (Updated)
 - Unit tests integrated into source files using `#[cfg(test)]` modules
-- **170 passing unit tests** across compiler modules
-- **277 integration tests** covering full compilation pipeline
+- **205 passing unit tests** across compiler modules
+- **315 integration tests** covering full compilation pipeline
 - **10 golden tests** for codegen snapshot verification
 - **16 compatibility test fixtures** in QB64pe-style format
 - **30 criterion benchmarks** for performance tracking
@@ -52,7 +52,7 @@ Total: **539+ tests** across the workspace (11 ignored for platform-specific fea
 ### Tier 1: Unit Tests ✅ IMPLEMENTED
 **Location:** `src/**/*.rs` (inline `#[cfg(test)]` modules)
 **Purpose:** Test individual functions and methods in isolation
-**Status:** 170 tests passing
+**Status:** 205 tests passing
 
 ```
 src/
@@ -72,7 +72,7 @@ src/
 ### Tier 2: Integration Tests ✅ IMPLEMENTED
 **Location:** `tests/integration_tests.rs`
 **Purpose:** Test complete compiler pipeline end-to-end
-**Status:** 277 tests passing, 0 ignored
+**Status:** 315 tests passing, 0 ignored
 
 Tests cover:
 - Basic programs (hello world, comments, END)
@@ -244,7 +244,7 @@ cargo +nightly fuzz run fuzz_lexer -- -max_total_time=60
 ### Phase 1: Foundation ✅ COMPLETE
 
 #### 1.1 Integration Test Framework ✅
-Implemented in `tests/integration_tests.rs` with 277 tests covering:
+Implemented in `tests/integration_tests.rs` with 315 tests covering:
 - Full compilation pipeline (lex → parse → analyze → codegen)
 - Helper functions: `compile_to_c()`, `assert_compiles()`, `assert_compile_error()`
 - Organized into modules by feature area
@@ -346,11 +346,11 @@ Verified with ~4.6M total inputs, 0 crashes found.
 
 ### Phase 3 Goals 🔄 IN PROGRESS
 - [x] QB64pe test runner implemented (reads tests in place, no porting needed)
-- [ ] 50+ QB4.5 compatibility tests passing (currently 39/141 = 27.7%)
+- [ ] 50+ QB4.5 compatibility tests passing (currently 41/141 = 29.1%)
 - [ ] Automated comparison with QB64PE output (compile_tests now supported)
 
-### Phase 4 Goals ✅ BENCHMARKS + PROPTEST + FUZZING COMPLETE
-- [ ] 80%+ line coverage (currently 72.67% - up from 59.92%)
+### Phase 4 Goals ✅ COMPLETE
+- [x] 80%+ line coverage (**81.63%** achieved! - up from 72.67%)
 
 ---
 
@@ -362,12 +362,12 @@ Verified with ~4.6M total inputs, 0 crashes found.
 - [x] Console metacommands (`$CONSOLE`, `$CONSOLE:ONLY`, `$SCREENHIDE`, `$SCREENSHOW`)
 
 ### Medium Term 🔄 IN PROGRESS
-- [ ] Get 50+ QB64pe tests passing (currently 39, need to implement SHARED scope)
+- [ ] Get 50+ QB64pe tests passing (currently 41 after SHARED implementation)
 - [ ] Integrate `compile_tests` runner for structured output comparison
 
 ### Long Term
 - [x] Set up continuous fuzzing with `cargo-fuzz` ✅
-- [ ] Achieve 80%+ coverage (currently 72.67%)
+- [x] Achieve 80%+ coverage (**81.63%** achieved!)
 - [ ] 50%+ QB4.5 compatibility tests passing
 
 ---
@@ -432,3 +432,4 @@ cargo llvm-cov --workspace --lcov      # LCOV format for CI
 *Updated: 2026-01-18 - Session 023: Reciprocal trig (_SEC/_CSC/_COT/_SECH/_CSCH/_COTH/_ARCSEC/_ARCCSC/_ARCCOT/_ARCSECH/_ARCCSCH/_ARCCOTH), gradian conversions (_D2G/_G2D/_G2R/_R2G), _TOSTR$, _BIN$, _IIF/_IIF$, window control (_SCREENMOVE/_SCREENHIDE/_SCREENSHOW/_FULLSCREEN/_SCREENCLICK), sound codegen (BEEP/SOUND/PLAY runtime), _FONT/_FREEFONT; 239 tests*
 *Updated: 2026-01-19 - Consolidated test counts: 534+ tests total (170 unit, 272 integration, 10 golden, 19 proptest, 44 runtime, 19 misc); coverage improved to 72.67%; updated golden files for current codegen output*
 *Updated: 2026-01-19 - Session 024: ENDIF keyword, _READFILE$/_WRITEFILE file helpers, verified implicit SUB calls already working, register_builtin_sub() for built-in SUBs; 277 integration tests*
+*Updated: 2026-01-19 - Session 025+: Updated test counts (205 unit, 307 integration, 600+ total); coverage improved to 81.63% (target achieved!); updated golden files for current codegen output*

@@ -433,6 +433,15 @@ impl SymbolTable {
         shared.push(name);
     }
 
+    /// Looks up a symbol specifically in the global scope.
+    ///
+    /// This is used to validate SHARED statements - the variable must exist
+    /// at module level to be shared.
+    pub fn lookup_global_symbol(&self, name: &str) -> Option<&Symbol> {
+        let name_upper = strip_suffix(name).to_uppercase();
+        self.scopes.get(&ScopeId::GLOBAL)?.symbols.get(&name_upper)
+    }
+
     /// Gets the default type for a variable based on its first letter.
     ///
     /// By default, all variables are SINGLE. DEFtype statements change this.

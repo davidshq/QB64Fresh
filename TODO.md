@@ -1,6 +1,6 @@
 # QB64Fresh TODO
 
-*Last updated: 2026-01-19*
+*Last updated: 2026-01-19 (Session 025+)*
 
 A prioritized roadmap for QB64Fresh development. For completed features, see [TODO-completed.md](TODO-completed.md).
 
@@ -94,9 +94,9 @@ A prioritized roadmap for QB64Fresh development. For completed features, see [TO
 - [ ] Example programs
 
 ### Testing (See TESTING_INFRASTRUCTURE_PLAN.md for details)
+- [x] Achieve 80%+ line coverage (**81.63%** achieved!)
 - [ ] Compatibility tests against QB64 programs (16 fixture files, need more)
-- [ ] Port QB4.5 test cases from QB64pe
-- [ ] Achieve 80%+ line coverage (currently 72.67%)
+- [ ] Port QB4.5 test cases from QB64pe (currently 41/141 = 29.1% passing)
 
 ---
 

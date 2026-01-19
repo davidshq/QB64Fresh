@@ -1094,6 +1094,16 @@ qb_string* qb_time64(void) {
 
 /* QB64 Memory Operations */
 
+static int32_t qb_current_segment = -1;
+
+void qb_def_seg(int32_t segment) {
+    qb_current_segment = segment;
+}
+
+int32_t qb_get_segment(void) {
+    return qb_current_segment;
+}
+
 typedef struct qb_mem {
     void* offset;      /* Pointer to data */
     intptr_t size;     /* Size in bytes */

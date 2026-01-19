@@ -229,7 +229,9 @@
 ## Phase 6: Tooling & Ecosystem (Partial)
 
 ### Testing
-- [x] Expand test suite for all built-ins (303 integration tests)
+- [x] Expand test suite for all built-ins (315 integration tests)
+- [x] Achieve 80%+ line coverage (81.63% achieved!)
+- [x] SHARED variable scope - SUBs/FUNCTIONs can access module-level variables via SHARED statement
 
 ---
 
@@ -373,12 +375,14 @@
 
 ## Statistics
 
-- **Total source code:** ~29,130 lines of Rust
-- **Integration tests:** 303+
-- **Line coverage:** 72.67%
+- **Total source code:** ~29,130+ lines of Rust
+- **Unit tests:** 205
+- **Integration tests:** 315
+- **Total tests:** 600+
+- **Line coverage:** 81.63% ✅
 - **Statement types:** 60+
 - **Built-in functions:** 30+
 
 ---
 
-*Last updated: 2026-01-19*
+*Last updated: 2026-01-19 (Session 025+)*

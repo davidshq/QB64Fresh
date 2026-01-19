@@ -795,6 +795,149 @@ mod procedures {
 }
 
 // =============================================================================
+// SHARED Variable Tests
+// =============================================================================
+
+mod shared_variables {
+    use super::*;
+
+    #[test]
+    fn shared_variable_access() {
+        // Module-level variable accessed via SHARED statement in SUB
+        let source = r#"
+            DIM counter AS LONG
+            counter = 10
+            CALL IncrementCounter
+            PRINT counter
+            END
+
+            SUB IncrementCounter
+                SHARED counter
+                counter = counter + 1
+            END SUB
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn shared_multiple_variables() {
+        // Multiple variables shared in single SHARED statement
+        let source = r#"
+            DIM x AS LONG
+            DIM y AS LONG
+            x = 5
+            y = 10
+            CALL SwapValues
+            PRINT x; y
+            END
+
+            SUB SwapValues
+                SHARED x, y
+                DIM temp AS LONG
+                temp = x
+                x = y
+                y = temp
+            END SUB
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn shared_in_function() {
+        // SHARED works in FUNCTION too
+        let source = r#"
+            DIM total AS DOUBLE
+            total = 100.0
+            PRINT AddToTotal(25.0)
+            PRINT total
+            END
+
+            FUNCTION AddToTotal(amount AS DOUBLE) AS DOUBLE
+                SHARED total
+                total = total + amount
+                AddToTotal = total
+            END FUNCTION
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn shared_string_variable() {
+        // SHARED works with STRING type
+        let source = r#"
+            DIM message AS STRING
+            message = "Hello"
+            CALL AppendWorld
+            PRINT message
+            END
+
+            SUB AppendWorld
+                SHARED message
+                message = message + " World"
+            END SUB
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn shared_variable_undefined_error() {
+        // SHARED variable must exist at module level
+        let source = r#"
+            SUB Test
+                SHARED nonexistent
+                nonexistent = 1
+            END SUB
+        "#;
+        assert_compile_error(source, "SharedVariableNotFound");
+    }
+
+    #[test]
+    fn shared_outside_procedure_error() {
+        // SHARED statement must be inside SUB/FUNCTION
+        let source = r#"
+            DIM x AS LONG
+            SHARED x
+        "#;
+        assert_compile_error(source, "SharedOutsideProcedure");
+    }
+
+    #[test]
+    fn shared_array() {
+        // SHARED works with arrays
+        let source = r#"
+            DIM scores(10) AS LONG
+            scores(0) = 100
+            CALL UpdateScore(0, 200)
+            PRINT scores(0)
+            END
+
+            SUB UpdateScore(index AS LONG, value AS LONG)
+                SHARED scores()
+                scores(index) = value
+            END SUB
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn dim_shared_at_module_level() {
+        // DIM SHARED is valid at module level
+        let source = r#"
+            DIM SHARED globalVar AS LONG
+            globalVar = 42
+            CALL PrintGlobal
+            END
+
+            SUB PrintGlobal
+                SHARED globalVar
+                PRINT globalVar
+            END SUB
+        "#;
+        assert_compiles(source);
+    }
+}
+
+// =============================================================================
 // Array Tests
 // =============================================================================
 

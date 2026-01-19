@@ -1117,9 +1117,28 @@ impl<'a> TypeChecker<'a> {
             }
 
             StatementKind::SharedStmt { variables } => {
-                // SHARED statement inside SUB/FUNCTION declares access to module-level shared vars
-                // For now, we just pass through the variable names; the variables should already
-                // exist at module level with DIM SHARED
+                // SHARED statement inside SUB/FUNCTION declares access to module-level variables.
+                // This enables procedures to access variables declared at module scope.
+
+                // Must be inside a procedure
+                if !self.symbols.in_procedure() {
+                    self.errors
+                        .push(SemanticError::SharedOutsideProcedure { span: stmt.span });
+                } else {
+                    // For each variable, verify it exists at module level and register as shared
+                    for var_name in variables {
+                        if self.symbols.lookup_global_symbol(var_name).is_some() {
+                            // Register this variable as accessible in the current procedure scope
+                            self.symbols.add_shared_var(var_name.clone());
+                        } else {
+                            self.errors.push(SemanticError::SharedVariableNotFound {
+                                name: var_name.clone(),
+                                span: stmt.span,
+                            });
+                        }
+                    }
+                }
+
                 TypedStatement::new(
                     TypedStatementKind::SharedStmt {
                         variables: variables.clone(),
