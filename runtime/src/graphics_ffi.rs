@@ -593,6 +593,52 @@ pub unsafe extern "C" fn qb_gfx_draw(commands: *const c_char) -> c_int {
     }
 }
 
+/// Set a palette entry.
+///
+/// # Arguments
+/// - `index`: Palette index (0-255)
+/// - `color`: ARGB color value
+#[no_mangle]
+pub extern "C" fn qb_gfx_palette(index: i32, color: u32) -> c_int {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            match backend.set_palette(index, color) {
+                Ok(()) => 0,
+                Err(_) => 1,
+            }
+        } else {
+            1
+        }
+    }
+}
+
+/// Reset palette to default.
+#[no_mangle]
+pub extern "C" fn qb_gfx_palette_reset() -> c_int {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            match backend.reset_palette() {
+                Ok(()) => 0,
+                Err(_) => 1,
+            }
+        } else {
+            1
+        }
+    }
+}
+
+/// Get a palette entry.
+#[no_mangle]
+pub extern "C" fn qb_gfx_palette_get(index: i32) -> u32 {
+    unsafe {
+        if let Some(ref backend) = crate::graphics::GRAPHICS_BACKEND {
+            backend.get_palette(index)
+        } else {
+            0
+        }
+    }
+}
+
 // ============================================================================
 // QB64 Image Buffer FFI
 // ============================================================================

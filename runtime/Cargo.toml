@@ -17,12 +17,15 @@ libc = "0.2"
 # For graphics support
 sdl2 = { version = "0.37", optional = true }
 
+# For image loading (_LOADIMAGE support)
+image = { version = "0.25", optional = true, default-features = false, features = ["png", "jpeg", "bmp", "gif"] }
+
 # For audio support (pure Rust audio library)
 rodio = { version = "0.19", optional = true }
 
 [features]
 default = ["graphics-sdl2", "audio-rodio"]
-graphics-sdl2 = ["sdl2"]
+graphics-sdl2 = ["sdl2", "image"]
 graphics-mock = []  # For testing without display
 audio-rodio = ["rodio"]
 audio-mock = []  # For testing without audio

@@ -36,6 +36,7 @@
 //! ```
 
 mod error;
+pub mod font;
 pub mod mock;
 
 #[cfg(feature = "graphics-sdl2")]
@@ -281,6 +282,25 @@ pub trait GraphicsBackend {
     /// - `commands`: DRAW command string (e.g., "U10 R20 D10 L20")
     fn draw(&mut self, _commands: &str) -> Result<(), GraphicsError> {
         Ok(()) // Default: DRAW not supported
+    }
+
+    /// Set a palette entry.
+    ///
+    /// # Arguments
+    /// - `index`: Palette index (0-255)
+    /// - `color`: ARGB color value
+    fn set_palette(&mut self, _index: i32, _color: u32) -> Result<(), GraphicsError> {
+        Ok(()) // Default: palette not supported
+    }
+
+    /// Reset palette to default values.
+    fn reset_palette(&mut self) -> Result<(), GraphicsError> {
+        Ok(())
+    }
+
+    /// Get a palette entry.
+    fn get_palette(&self, _index: i32) -> u32 {
+        0 // Default: return black
     }
 
     // ============================================================================
