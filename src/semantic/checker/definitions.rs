@@ -242,6 +242,9 @@ impl<'a> TypeChecker<'a> {
         self.symbols.enter_scope(ScopeKind::Sub);
         self.in_sub = true;
 
+        // Collect labels from body for forward reference support (QB45 local GOSUB pattern)
+        self.collect_labels_from_body(body);
+
         // Define parameters in local scope
         let typed_params: Vec<TypedParameter> = params
             .iter()
@@ -313,6 +316,9 @@ impl<'a> TypeChecker<'a> {
         self.symbols.enter_scope(ScopeKind::Function);
         self.in_function = true;
         self.current_function_name = Some(name.to_string());
+
+        // Collect labels from body for forward reference support (QB45 local GOSUB pattern)
+        self.collect_labels_from_body(body);
 
         // Define function name as local variable for return value
         let return_var = Symbol {

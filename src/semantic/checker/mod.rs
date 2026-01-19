@@ -114,6 +114,64 @@ impl<'a> TypeChecker<'a> {
     pub(crate) fn lookup_type_field(&self, type_name: &str, field: &str) -> Option<BasicType> {
         self.symbols.lookup_type_member(type_name, field)
     }
+
+    /// Collects all label definitions from a procedure body into the current scope.
+    ///
+    /// This enables forward references to labels within SUB/FUNCTION bodies,
+    /// supporting the QB45 pattern of using GOSUB to local labels.
+    pub(crate) fn collect_labels_from_body(&mut self, statements: &[Statement]) {
+        use crate::ast::StatementKind;
+        use crate::semantic::error::SemanticError;
+
+        for stmt in statements {
+            match &stmt.kind {
+                StatementKind::Label { name } => {
+                    if let Err(existing) = self.symbols.define_label(name.clone(), stmt.span) {
+                        self.errors.push(SemanticError::DuplicateLabel {
+                            name: name.clone(),
+                            original_span: existing.span,
+                            duplicate_span: stmt.span,
+                        });
+                    }
+                }
+
+                // Recursively collect from nested blocks
+                StatementKind::If {
+                    then_branch,
+                    elseif_branches,
+                    else_branch,
+                    ..
+                } => {
+                    self.collect_labels_from_body(then_branch);
+                    for (_, branch) in elseif_branches {
+                        self.collect_labels_from_body(branch);
+                    }
+                    if let Some(eb) = else_branch {
+                        self.collect_labels_from_body(eb);
+                    }
+                }
+
+                StatementKind::For { body, .. }
+                | StatementKind::While { body, .. }
+                | StatementKind::DoLoop { body, .. } => {
+                    self.collect_labels_from_body(body);
+                }
+
+                StatementKind::SelectCase {
+                    cases, case_else, ..
+                } => {
+                    for case in cases {
+                        self.collect_labels_from_body(&case.body);
+                    }
+                    if let Some(ce) = case_else {
+                        self.collect_labels_from_body(ce);
+                    }
+                }
+
+                _ => {}
+            }
+        }
+    }
 }
 
 #[cfg(test)]
