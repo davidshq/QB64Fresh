@@ -946,10 +946,7 @@ impl<'a> Parser<'a> {
         let mut values: Vec<PrintItem> = Vec::new();
         let mut newline = true;
 
-        while !self.is_at_end()
-            && !self.check(&TokenKind::Newline)
-            && !self.check(&TokenKind::Colon)
-        {
+        while !self.is_at_end() && !self.is_print_terminator() {
             if self.check(&TokenKind::Semicolon) || self.check(&TokenKind::Comma) {
                 let sep = if self.match_token(&TokenKind::Semicolon) {
                     PrintSeparator::Semicolon
@@ -962,10 +959,7 @@ impl<'a> Parser<'a> {
                     last.separator = Some(sep);
                 }
 
-                if self.is_at_end()
-                    || self.check(&TokenKind::Newline)
-                    || self.check(&TokenKind::Colon)
-                {
+                if self.is_at_end() || self.is_print_terminator() {
                     newline = sep != PrintSeparator::Semicolon;
                     break;
                 }
@@ -989,6 +983,14 @@ impl<'a> Parser<'a> {
         ))
     }
 
+    /// Checks if current token terminates a PRINT statement.
+    /// This includes newlines, colons, and ELSE (for single-line IF...THEN...ELSE).
+    fn is_print_terminator(&self) -> bool {
+        self.check(&TokenKind::Newline)
+            || self.check(&TokenKind::Colon)
+            || self.check(&TokenKind::Else)
+    }
+
     /// Parses PRINT #filenum, items.
     fn parse_file_print(
         &mut self,
@@ -998,10 +1000,7 @@ impl<'a> Parser<'a> {
         let mut values: Vec<PrintItem> = Vec::new();
         let mut newline = true;
 
-        while !self.is_at_end()
-            && !self.check(&TokenKind::Newline)
-            && !self.check(&TokenKind::Colon)
-        {
+        while !self.is_at_end() && !self.is_print_terminator() {
             if self.check(&TokenKind::Semicolon) || self.check(&TokenKind::Comma) {
                 let sep = if self.match_token(&TokenKind::Semicolon) {
                     PrintSeparator::Semicolon
@@ -1014,10 +1013,7 @@ impl<'a> Parser<'a> {
                     last.separator = Some(sep);
                 }
 
-                if self.is_at_end()
-                    || self.check(&TokenKind::Newline)
-                    || self.check(&TokenKind::Colon)
-                {
+                if self.is_at_end() || self.is_print_terminator() {
                     newline = sep != PrintSeparator::Semicolon;
                     break;
                 }

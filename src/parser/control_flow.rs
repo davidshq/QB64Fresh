@@ -55,34 +55,23 @@ impl<'a> Parser<'a> {
 
         // Parse THEN branch
         while !self.is_at_end() {
-            if self.check(&TokenKind::ElseIf) || self.check(&TokenKind::Else) || self.check_end_if()
-            {
-                break;
-            }
-            self.skip_newlines();
+            // Skip statement separators (newlines and colons) between statements
+            self.skip_statement_separators();
             if self.check(&TokenKind::ElseIf) || self.check(&TokenKind::Else) || self.check_end_if()
             {
                 break;
             }
             then_branch.push(self.parse_statement()?);
-            self.skip_newlines();
         }
 
         // Parse ELSEIF branches
         while self.match_token(&TokenKind::ElseIf) {
             let elseif_condition = self.parse_expression()?;
             self.expect(&TokenKind::Then, "THEN")?;
-            self.skip_newlines();
 
             let mut elseif_body = Vec::new();
             while !self.is_at_end() {
-                if self.check(&TokenKind::ElseIf)
-                    || self.check(&TokenKind::Else)
-                    || self.check_end_if()
-                {
-                    break;
-                }
-                self.skip_newlines();
+                self.skip_statement_separators();
                 if self.check(&TokenKind::ElseIf)
                     || self.check(&TokenKind::Else)
                     || self.check_end_if()
@@ -90,22 +79,19 @@ impl<'a> Parser<'a> {
                     break;
                 }
                 elseif_body.push(self.parse_statement()?);
-                self.skip_newlines();
             }
             elseif_branches.push((elseif_condition, elseif_body));
         }
 
         // Parse ELSE branch
         if self.match_token(&TokenKind::Else) {
-            self.skip_newlines();
             let mut else_body = Vec::new();
-            while !self.is_at_end() && !self.check_end_if() {
-                self.skip_newlines();
+            while !self.is_at_end() {
+                self.skip_statement_separators();
                 if self.check_end_if() {
                     break;
                 }
                 else_body.push(self.parse_statement()?);
-                self.skip_newlines();
             }
             else_branch = Some(else_body);
         }
@@ -150,13 +136,12 @@ impl<'a> Parser<'a> {
         self.expect(&TokenKind::Case, "CASE")?;
 
         let test_expr = self.parse_expression()?;
-        self.skip_newlines();
 
         let mut cases = Vec::new();
         let mut case_else = None;
 
         while !self.is_at_end() {
-            self.skip_newlines();
+            self.skip_statement_separators();
 
             if self.check(&TokenKind::End) {
                 break;
@@ -169,13 +154,12 @@ impl<'a> Parser<'a> {
             // Check for CASE ELSE
             if self.match_token(&TokenKind::Else) {
                 let mut body = Vec::new();
-                self.skip_newlines();
-                while !self.is_at_end()
-                    && !self.check(&TokenKind::End)
-                    && !self.check(&TokenKind::Case)
-                {
+                while !self.is_at_end() {
+                    self.skip_statement_separators();
+                    if self.check(&TokenKind::End) || self.check(&TokenKind::Case) {
+                        break;
+                    }
                     body.push(self.parse_statement()?);
-                    self.skip_newlines();
                 }
                 case_else = Some(body);
                 break;
@@ -183,13 +167,14 @@ impl<'a> Parser<'a> {
 
             // Parse CASE matches
             let matches = self.parse_case_matches()?;
-            self.skip_newlines();
 
             let mut body = Vec::new();
-            while !self.is_at_end() && !self.check(&TokenKind::Case) && !self.check(&TokenKind::End)
-            {
+            while !self.is_at_end() {
+                self.skip_statement_separators();
+                if self.check(&TokenKind::Case) || self.check(&TokenKind::End) {
+                    break;
+                }
                 body.push(self.parse_statement()?);
-                self.skip_newlines();
             }
 
             cases.push(CaseClause { matches, body });
@@ -294,17 +279,14 @@ impl<'a> Parser<'a> {
             None
         };
 
-        self.skip_newlines();
-
         // Parse body until NEXT
         let mut body = Vec::new();
-        while !self.is_at_end() && !self.check(&TokenKind::Next) {
-            self.skip_newlines();
+        while !self.is_at_end() {
+            self.skip_statement_separators();
             if self.check(&TokenKind::Next) {
                 break;
             }
             body.push(self.parse_statement()?);
-            self.skip_newlines();
         }
 
         self.expect(&TokenKind::Next, "NEXT")?;
@@ -338,16 +320,14 @@ impl<'a> Parser<'a> {
         let start = self.advance().expect("WHILE keyword").span.start; // consume WHILE
 
         let condition = self.parse_expression()?;
-        self.skip_newlines();
 
         let mut body = Vec::new();
-        while !self.is_at_end() && !self.check(&TokenKind::Wend) {
-            self.skip_newlines();
+        while !self.is_at_end() {
+            self.skip_statement_separators();
             if self.check(&TokenKind::Wend) {
                 break;
             }
             body.push(self.parse_statement()?);
-            self.skip_newlines();
         }
 
         self.expect(&TokenKind::Wend, "WEND")?;
@@ -380,16 +360,13 @@ impl<'a> Parser<'a> {
             None
         };
 
-        self.skip_newlines();
-
         let mut body = Vec::new();
-        while !self.is_at_end() && !self.check(&TokenKind::Loop) {
-            self.skip_newlines();
+        while !self.is_at_end() {
+            self.skip_statement_separators();
             if self.check(&TokenKind::Loop) {
                 break;
             }
             body.push(self.parse_statement()?);
-            self.skip_newlines();
         }
 
         self.expect(&TokenKind::Loop, "LOOP")?;
