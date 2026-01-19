@@ -641,8 +641,13 @@ impl StmtEmitter {
                 writeln!(output, "{}qb_gfx_init((int32_t){});", indent, mode_code).unwrap();
             }
 
-            TypedStatementKind::Cls => {
-                writeln!(output, "{}qb_gfx_cls();", indent).unwrap();
+            TypedStatementKind::Cls { mode } => {
+                if let Some(mode_expr) = mode {
+                    let mode_code = emit_expr(mode_expr)?;
+                    writeln!(output, "{}qb_gfx_cls_mode((int32_t){});", indent, mode_code).unwrap();
+                } else {
+                    writeln!(output, "{}qb_gfx_cls();", indent).unwrap();
+                }
             }
 
             TypedStatementKind::Color {
@@ -1155,6 +1160,15 @@ impl StmtEmitter {
                 for decl in declarations {
                     self.emit_extern_declaration(&indent, decl, output);
                 }
+            }
+
+            // Forward declarations - no code generated, just comments for documentation
+            TypedStatementKind::DeclareSub { name } => {
+                writeln!(output, "{}/* DECLARE SUB {} */", indent, name).unwrap();
+            }
+
+            TypedStatementKind::DeclareFunction { name } => {
+                writeln!(output, "{}/* DECLARE FUNCTION {} */", indent, name).unwrap();
             }
         }
 

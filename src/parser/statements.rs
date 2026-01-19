@@ -7,7 +7,7 @@
 //! handled in their respective modules.
 
 use crate::ast::{
-    ArrayDimension, CommonVariable, ContinueType, DataValue, ExitType, Expr, ExprKind,
+    ArrayDimension, CommonVariable, ContinueType, DataValue, DeclareParam, ExitType, Expr,
     ExternalDeclaration, ExternalParam, FileAccess, FileLock, FileMode, PrintItem, PrintSeparator,
     ResumeTarget, Span, Statement, StatementKind, TypeSpec, ViewCoords,
 };
@@ -93,7 +93,7 @@ impl<'a> Parser<'a> {
             TokenKind::Def => self.parse_def_fn(),
 
             // C Library Integration
-            TokenKind::Declare => self.parse_declare_library(),
+            TokenKind::Declare => self.parse_declare(),
 
             // Preprocessor directives (delegated to directives.rs)
             TokenKind::IncludeDirective => self.parse_include_directive(),
@@ -278,25 +278,59 @@ impl<'a> Parser<'a> {
             }
         }
 
-        // Otherwise, parse as a procedure call or expression statement
-        let expr = self.parse_expression()?;
-        let span = self.span_from(start);
+        // Check if this looks like a procedure call without parentheses:
+        // identifier followed by expression (not = or :)
+        // e.g., "PALETTE p% - 1, b&" or "SOUND 440, 18"
+        let name_token = self.advance().expect("identifier");
+        let name = name_token.text.to_string();
 
-        // If it's a function call, convert to Call statement
-        if let ExprKind::FunctionCall { name, args } = expr.kind {
-            Ok(Statement::new(StatementKind::Call { name, args }, span))
-        } else if let ExprKind::Identifier(name) = expr.kind {
-            // Could be a call with no arguments
-            Ok(Statement::new(
-                StatementKind::Call {
-                    name,
-                    args: Vec::new(),
-                },
-                span,
-            ))
-        } else {
-            Ok(Statement::new(StatementKind::Expression(expr), span))
+        // If followed by something that starts an expression (not =, :, newline, or EOF),
+        // parse as a call with arguments
+        if !self.is_at_statement_end()
+            && !self.check(&TokenKind::Equals)
+            && !self.check(&TokenKind::LeftParen)
+        {
+            // Parse comma-separated arguments
+            let mut args = Vec::new();
+            loop {
+                let arg = self.parse_expression()?;
+                args.push(arg);
+
+                if !self.match_token(&TokenKind::Comma) {
+                    break;
+                }
+            }
+            let span = self.span_from(start);
+            return Ok(Statement::new(StatementKind::Call { name, args }, span));
         }
+
+        // If followed by LeftParen, parse as function call
+        if self.check(&TokenKind::LeftParen) {
+            self.advance(); // consume (
+            let mut args = Vec::new();
+            if !self.check(&TokenKind::RightParen) {
+                loop {
+                    let arg = self.parse_expression()?;
+                    args.push(arg);
+                    if !self.match_token(&TokenKind::Comma) {
+                        break;
+                    }
+                }
+            }
+            self.expect(&TokenKind::RightParen, ")")?;
+            let span = self.span_from(start);
+            return Ok(Statement::new(StatementKind::Call { name, args }, span));
+        }
+
+        // Otherwise it's a call with no arguments
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::Call {
+                name,
+                args: Vec::new(),
+            },
+            span,
+        ))
     }
 
     /// Checks if the current tokens form an array assignment pattern: id(...) =
@@ -706,6 +740,36 @@ impl<'a> Parser<'a> {
                         value = -value;
                     }
                     Ok(DataValue::Float(value))
+                }
+                TokenKind::HexLiteral => {
+                    let token = self.advance().expect("hex literal");
+                    // Remove &H prefix and parse
+                    let hex_str = token.text[2..].replace('_', "");
+                    let mut value = i64::from_str_radix(&hex_str, 16).unwrap_or(0);
+                    if negative {
+                        value = -value;
+                    }
+                    Ok(DataValue::Integer(value))
+                }
+                TokenKind::OctalLiteral => {
+                    let token = self.advance().expect("octal literal");
+                    // Remove &O prefix and parse
+                    let oct_str = token.text[2..].replace('_', "");
+                    let mut value = i64::from_str_radix(&oct_str, 8).unwrap_or(0);
+                    if negative {
+                        value = -value;
+                    }
+                    Ok(DataValue::Integer(value))
+                }
+                TokenKind::BinaryLiteral => {
+                    let token = self.advance().expect("binary literal");
+                    // Remove &B prefix and parse
+                    let bin_str = token.text[2..].replace('_', "");
+                    let mut value = i64::from_str_radix(&bin_str, 2).unwrap_or(0);
+                    if negative {
+                        value = -value;
+                    }
+                    Ok(DataValue::Integer(value))
                 }
                 TokenKind::StringLiteral => {
                     if negative {
@@ -1745,11 +1809,20 @@ impl<'a> Parser<'a> {
 
     /// Parses CLS statement.
     ///
-    /// Syntax: `CLS`
+    /// Syntax: `CLS [mode]`
+    /// mode: 0=clear graphics and text, 1=clear graphics only, 2=clear text only
     pub(super) fn parse_cls(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("CLS keyword").span.start;
+
+        // Check if there's an optional mode argument (not at end of statement)
+        let mode = if !self.is_at_statement_end() {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+
         let span = self.span_from(start);
-        Ok(Statement::new(StatementKind::Cls, span))
+        Ok(Statement::new(StatementKind::Cls { mode }, span))
     }
 
     /// Parses COLOR statement.
@@ -2585,20 +2658,117 @@ impl<'a> Parser<'a> {
         Ok(Statement::new(StatementKind::ClipboardSet { text }, span))
     }
 
-    // ==================== C Library Integration ====================
+    // ==================== DECLARE Statements ====================
 
-    /// Parses DECLARE LIBRARY block.
+    /// Parses DECLARE statements.
     ///
-    /// Syntax:
-    /// ```basic
-    /// DECLARE [DYNAMIC] LIBRARY ["library_name"]
-    ///     FUNCTION name[(params)] [ALIAS "c_name"]
-    ///     SUB name[(params)] [ALIAS "c_name"]
-    /// END DECLARE
-    /// ```
-    pub(super) fn parse_declare_library(&mut self) -> Result<Statement, ()> {
+    /// Handles three forms:
+    /// - `DECLARE SUB name(params)` - Forward declaration of SUB
+    /// - `DECLARE FUNCTION name(params)` - Forward declaration of FUNCTION
+    /// - `DECLARE [DYNAMIC] LIBRARY` - External C library binding
+    pub(super) fn parse_declare(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("DECLARE keyword").span.start;
 
+        // Check what follows DECLARE
+        if self.check(&TokenKind::Sub) {
+            return self.parse_declare_sub(start);
+        } else if self.check(&TokenKind::Function) {
+            return self.parse_declare_function(start);
+        }
+
+        // Must be DECLARE LIBRARY
+        self.parse_declare_library_body(start)
+    }
+
+    /// Parses DECLARE SUB - forward declaration of a subroutine.
+    /// In classic BASIC, these are used to declare SUB signatures before use.
+    /// We parse and store them but they're mainly for documentation/validation.
+    fn parse_declare_sub(&mut self, start: usize) -> Result<Statement, ()> {
+        self.advance(); // consume SUB
+
+        let name_token = self.expect(&TokenKind::Identifier, "subroutine name")?;
+        let name = name_token.text.to_string();
+
+        // Parse optional parameter list
+        let params = if self.match_token(&TokenKind::LeftParen) {
+            let params = self.parse_declare_params()?;
+            self.expect(&TokenKind::RightParen, ")")?;
+            params
+        } else {
+            Vec::new()
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::DeclareSub { name, params },
+            span,
+        ))
+    }
+
+    /// Parses DECLARE FUNCTION - forward declaration of a function.
+    fn parse_declare_function(&mut self, start: usize) -> Result<Statement, ()> {
+        self.advance(); // consume FUNCTION
+
+        let name_token = self.expect(&TokenKind::Identifier, "function name")?;
+        let name = name_token.text.to_string();
+
+        // Parse optional parameter list
+        let params = if self.match_token(&TokenKind::LeftParen) {
+            let params = self.parse_declare_params()?;
+            self.expect(&TokenKind::RightParen, ")")?;
+            params
+        } else {
+            Vec::new()
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::DeclareFunction { name, params },
+            span,
+        ))
+    }
+
+    /// Parses parameter list for DECLARE SUB/FUNCTION.
+    /// Parameters can have type suffixes or AS TYPE clauses.
+    ///
+    /// Uses `expect_name()` to allow keywords to be used as parameter names,
+    /// which is valid BASIC syntax (e.g., `DECLARE SUB Greet(name AS STRING)`).
+    fn parse_declare_params(&mut self) -> Result<Vec<DeclareParam>, ()> {
+        let mut params = Vec::new();
+
+        if self.check(&TokenKind::RightParen) {
+            return Ok(params);
+        }
+
+        loop {
+            let name_token = self.expect_name("parameter name")?;
+            let name = name_token.text.to_string();
+
+            // Check for AS TYPE
+            let param_type = if self.match_token(&TokenKind::As) {
+                match self.advance() {
+                    Some(type_token) => Some(type_token.text.to_string()),
+                    None => {
+                        self.errors.push(ParseError::eof("type name"));
+                        return Err(());
+                    }
+                }
+            } else {
+                None
+            };
+
+            params.push(DeclareParam { name, param_type });
+
+            if !self.match_token(&TokenKind::Comma) {
+                break;
+            }
+        }
+
+        Ok(params)
+    }
+
+    /// Parses DECLARE LIBRARY block body (after DECLARE keyword consumed).
+    fn parse_declare_library_body(&mut self, start: usize) -> Result<Statement, ()> {
         // Check for DYNAMIC keyword
         let is_dynamic = self.match_token(&TokenKind::Dynamic);
 
@@ -2736,6 +2906,8 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses external function parameter list.
+    ///
+    /// Uses `expect_name()` to allow keywords to be used as parameter names.
     fn parse_external_param_list(&mut self) -> Result<Vec<ExternalParam>, ()> {
         let mut params = Vec::new();
 
@@ -2748,7 +2920,7 @@ impl<'a> Parser<'a> {
             let is_byval = self.match_token(&TokenKind::ByVal);
 
             // Parse parameter name
-            let name_token = self.expect(&TokenKind::Identifier, "parameter name")?;
+            let name_token = self.expect_name("parameter name")?;
             let name = name_token.text.to_string();
 
             // Parse type (AS clause required for external functions)

@@ -916,7 +916,10 @@ impl<'a> TypeChecker<'a> {
                 TypedStatement::new(TypedStatementKind::Screen { mode: typed_mode }, stmt.span)
             }
 
-            StatementKind::Cls => TypedStatement::new(TypedStatementKind::Cls, stmt.span),
+            StatementKind::Cls { mode } => {
+                let typed_mode = mode.as_ref().map(|e| self.check_expr(e));
+                TypedStatement::new(TypedStatementKind::Cls { mode: typed_mode }, stmt.span)
+            }
 
             StatementKind::Color {
                 foreground,
@@ -1397,6 +1400,17 @@ impl<'a> TypeChecker<'a> {
                     stmt.span,
                 )
             }
+
+            // Forward declarations - parsed for compatibility but don't generate code
+            StatementKind::DeclareSub { name, params: _ } => TypedStatement::new(
+                TypedStatementKind::DeclareSub { name: name.clone() },
+                stmt.span,
+            ),
+
+            StatementKind::DeclareFunction { name, params: _ } => TypedStatement::new(
+                TypedStatementKind::DeclareFunction { name: name.clone() },
+                stmt.span,
+            ),
         }
     }
 

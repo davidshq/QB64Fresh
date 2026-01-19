@@ -832,9 +832,10 @@ pub enum TokenKind {
 
     // ==================== Identifiers ====================
     /// Identifier (variable, function, or label name)
-    /// Must start with letter, can contain letters, digits, and underscores
+    /// Must start with letter, can contain letters, digits, underscores, and dots.
+    /// Dots are allowed in classic BASIC for naming procedures (e.g., `player.move`)
     /// May end with type suffix ($, %, &, !, #)
-    #[regex(r"[A-Za-z_][A-Za-z0-9_]*[$%&!#]?")]
+    #[regex(r"[A-Za-z_][A-Za-z0-9_.]*[$%&!#]?")]
     Identifier,
 
     // ==================== Special Tokens ====================

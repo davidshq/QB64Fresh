@@ -36,12 +36,12 @@ impl<'a> Parser<'a> {
         // Parse body
         let mut body = Vec::new();
         while !self.is_at_end() && !self.check_end_sub() {
-            self.skip_newlines();
+            self.skip_statement_separators();
             if self.check_end_sub() {
                 break;
             }
             body.push(self.parse_statement()?);
-            self.skip_newlines();
+            self.skip_statement_separators();
         }
 
         self.expect(&TokenKind::End, "END")?;
@@ -100,12 +100,12 @@ impl<'a> Parser<'a> {
         // Parse body
         let mut body = Vec::new();
         while !self.is_at_end() && !self.check_end_function() {
-            self.skip_newlines();
+            self.skip_statement_separators();
             if self.check_end_function() {
                 break;
             }
             body.push(self.parse_statement()?);
-            self.skip_newlines();
+            self.skip_statement_separators();
         }
 
         self.expect(&TokenKind::End, "END")?;
@@ -214,6 +214,10 @@ impl<'a> Parser<'a> {
     // ==================== Parameter List ====================
 
     /// Parses a parameter list for SUB/FUNCTION.
+    ///
+    /// Uses `expect_name()` to allow keywords to be used as parameter names,
+    /// which is valid BASIC syntax (e.g., `SUB Greet(name AS STRING)` where
+    /// "name" is the NAME keyword).
     pub(super) fn parse_parameter_list(&mut self) -> Result<Vec<Parameter>, ()> {
         let mut params = Vec::new();
 
@@ -224,7 +228,7 @@ impl<'a> Parser<'a> {
         loop {
             let by_val = self.match_token(&TokenKind::ByVal);
 
-            let name_token = self.expect(&TokenKind::Identifier, "parameter name")?;
+            let name_token = self.expect_name("parameter name")?;
             let name = name_token.text.to_string();
 
             let type_spec = if self.match_token(&TokenKind::As) {

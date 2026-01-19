@@ -557,8 +557,12 @@ pub enum StatementKind {
         mode: Expr,
     },
 
-    /// `CLS` - Clear screen
-    Cls,
+    /// `CLS [mode]` - Clear screen
+    /// mode: 0=clear graphics and text, 1=clear graphics only, 2=clear text only
+    Cls {
+        /// Optional clear mode (0, 1, or 2)
+        mode: Option<Expr>,
+    },
 
     /// `COLOR foreground[, background]` - Set text/drawing colors
     Color {
@@ -881,6 +885,40 @@ pub enum StatementKind {
         /// External function/sub declarations within the block.
         declarations: Vec<ExternalDeclaration>,
     },
+
+    // ==================== Forward Declarations ====================
+    /// `DECLARE SUB name [(parameters)]`
+    ///
+    /// Forward declaration of a subroutine. In classic BASIC, these declare
+    /// SUB signatures before their definition. Used for documentation and
+    /// to allow calls before the SUB is defined.
+    ///
+    /// Example:
+    /// ```basic
+    /// DECLARE SUB PrintMessage (msg AS STRING)
+    /// ```
+    DeclareSub {
+        /// The name of the subroutine.
+        name: String,
+        /// Parameter declarations.
+        params: Vec<DeclareParam>,
+    },
+
+    /// `DECLARE FUNCTION name [(parameters)]`
+    ///
+    /// Forward declaration of a function. Similar to DECLARE SUB but for
+    /// functions that return values.
+    ///
+    /// Example:
+    /// ```basic
+    /// DECLARE FUNCTION AddNumbers% (a AS INTEGER, b AS INTEGER)
+    /// ```
+    DeclareFunction {
+        /// The name of the function.
+        name: String,
+        /// Parameter declarations.
+        params: Vec<DeclareParam>,
+    },
 }
 
 /// File mode for OPEN statement.
@@ -1080,6 +1118,18 @@ pub struct Parameter {
     pub type_spec: Option<TypeSpec>,
     /// Whether this is a BYVAL parameter.
     pub by_val: bool,
+}
+
+/// Parameter definition for DECLARE SUB/FUNCTION forward declarations.
+///
+/// Unlike `Parameter`, this uses a string for the type since forward
+/// declarations often specify types by name (e.g., `DECLARE SUB Foo(x AS INTEGER)`).
+#[derive(Debug, Clone)]
+pub struct DeclareParam {
+    /// Parameter name.
+    pub name: String,
+    /// Parameter type name (if specified with AS).
+    pub param_type: Option<String>,
 }
 
 /// Member definition for TYPE (user-defined type).

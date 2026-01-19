@@ -109,6 +109,11 @@ impl<'a> Parser<'a> {
             TokenKind::OpenClient => self.parse_builtin_function("_OPENCLIENT"),
             TokenKind::Connected => self.parse_builtin_function("_CONNECTED"),
 
+            // Keywords that can be used as variable names in expression context
+            // In BASIC, keywords like NAME, INPUT, OUTPUT can be used as variable names
+            // when context makes it unambiguous that an identifier is expected.
+            _ if self.is_name_token() => self.parse_identifier_or_call(),
+
             _ => {
                 let span = token.span.clone().into();
                 self.errors.push(ParseError::InvalidExpression {

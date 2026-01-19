@@ -599,7 +599,11 @@ pub enum TypedStatementKind {
     },
 
     /// CLS statement - clears the screen.
-    Cls,
+    /// mode: 0=clear graphics and text (default), 1=clear graphics only, 2=clear text only
+    Cls {
+        /// Optional clear mode (0, 1, or 2).
+        mode: Option<TypedExpr>,
+    },
 
     /// COLOR statement - sets foreground/background colors.
     Color {
@@ -909,6 +913,21 @@ pub enum TypedStatementKind {
         is_dynamic: bool,
         /// External function/sub declarations.
         declarations: Vec<TypedExternalDeclaration>,
+    },
+
+    // ==================== Forward Declarations ====================
+    /// Forward declaration of a subroutine (DECLARE SUB).
+    /// These are parsed for compatibility but don't generate code.
+    DeclareSub {
+        /// The name of the subroutine.
+        name: String,
+    },
+
+    /// Forward declaration of a function (DECLARE FUNCTION).
+    /// These are parsed for compatibility but don't generate code.
+    DeclareFunction {
+        /// The name of the function.
+        name: String,
     },
 }
 

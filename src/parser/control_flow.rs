@@ -26,10 +26,10 @@ impl<'a> Parser<'a> {
 
         // Check if this is single-line IF
         if !self.check(&TokenKind::Newline) && !self.is_at_end() {
-            // Single-line IF
-            let then_stmt = self.parse_statement()?;
+            // Single-line IF - handle line numbers as implicit GOTO
+            let then_stmt = self.parse_single_line_if_statement()?;
             let else_branch = if self.match_token(&TokenKind::Else) {
-                Some(vec![self.parse_statement()?])
+                Some(vec![self.parse_single_line_if_statement()?])
             } else {
                 None
             };
@@ -109,6 +109,23 @@ impl<'a> Parser<'a> {
             },
             span,
         ))
+    }
+
+    /// Parses a statement in a single-line IF context.
+    ///
+    /// In classic BASIC, a bare line number after THEN/ELSE is an implicit GOTO:
+    /// `IF x > 0 THEN 100` means `IF x > 0 THEN GOTO 100`
+    fn parse_single_line_if_statement(&mut self) -> Result<Statement, ()> {
+        // Check for line number (implicit GOTO)
+        if self.check(&TokenKind::IntegerLiteral) {
+            let token = self.advance().expect("line number");
+            let target = format!("_line_{}", token.text);
+            let span: Span = token.span.clone().into();
+            return Ok(Statement::new(StatementKind::Goto { target }, span));
+        }
+
+        // Otherwise parse a normal statement
+        self.parse_statement()
     }
 
     /// Checks for END IF (handles both "END IF" and "ENDIF").
@@ -279,24 +296,75 @@ impl<'a> Parser<'a> {
             None
         };
 
-        // Parse body until NEXT
+        // Parse body until NEXT or leftover NEXT variable (from multi-variable NEXT)
         let mut body = Vec::new();
         while !self.is_at_end() {
             self.skip_statement_separators();
             if self.check(&TokenKind::Next) {
                 break;
             }
+            // Check for leftover NEXT variable pattern: identifier followed by comma or end-of-statement
+            // This happens with "NEXT j%, i%" where inner loop consumed "NEXT j%, " leaving "i%"
+            if self.check(&TokenKind::Identifier) {
+                if let Some(next) = self.peek_ahead(1) {
+                    // If identifier is followed by comma or statement end, it's a NEXT variable
+                    if next.kind == TokenKind::Comma
+                        || next.kind == TokenKind::Newline
+                        || next.kind == TokenKind::Colon
+                    {
+                        break;
+                    }
+                } else {
+                    // Identifier at end of file - treat as NEXT variable
+                    break;
+                }
+            }
             body.push(self.parse_statement()?);
         }
 
-        self.expect(&TokenKind::Next, "NEXT")?;
+        // Check if we're at NEXT or at an identifier (leftover from multi-variable NEXT)
+        let next_variable = if self.check(&TokenKind::Next) {
+            self.advance(); // consume NEXT
 
-        // Optional variable name after NEXT (for validation in semantic analysis)
-        let next_variable = if self.check(&TokenKind::Identifier) {
+            // Optional variable name after NEXT (for validation in semantic analysis)
+            if self.check(&TokenKind::Identifier) {
+                let token = self.advance().expect("NEXT variable");
+                let var_name = token.text.to_string();
+
+                // If there's a comma, consume it - the remaining variables
+                // are for outer loops
+                if self.check(&TokenKind::Comma) {
+                    self.advance(); // consume the comma
+                }
+
+                Some(var_name)
+            } else {
+                None
+            }
+        } else if self.check(&TokenKind::Identifier) {
+            // This is a leftover variable from a multi-variable NEXT (e.g., "NEXT j%, i%")
+            // The inner loop consumed "NEXT j%, " and left "i%" for us
             let token = self.advance().expect("NEXT variable");
-            Some(token.text.to_string())
+            let var_name = token.text.to_string();
+
+            // If there's a comma, consume it for the next outer loop
+            if self.check(&TokenKind::Comma) {
+                self.advance();
+            }
+
+            Some(var_name)
         } else {
-            None
+            // No NEXT found - error
+            self.errors.push(super::ParseError::unexpected(
+                "NEXT",
+                self.peek()
+                    .map(|t| format!("{:?}", t.kind))
+                    .unwrap_or("EOF".to_string()),
+                self.peek()
+                    .map(|t| t.span.clone().into())
+                    .unwrap_or_else(|| crate::ast::Span { start: 0, end: 0 }),
+            ));
+            return Err(());
         };
 
         let span = self.span_from(start);
