@@ -115,6 +115,9 @@ impl<'a> Parser<'a> {
             TokenKind::ImageWidth => self.parse_builtin_function("_WIDTH"),
             TokenKind::ImageHeight => self.parse_builtin_function("_HEIGHT"),
 
+            // Text metrics function
+            TokenKind::PrintWidth => self.parse_builtin_function("_PRINTWIDTH"),
+
             // Keywords that can be used as variable names in expression context
             // In BASIC, keywords like NAME, INPUT, OUTPUT can be used as variable names
             // when context makes it unambiguous that an identifier is expected.

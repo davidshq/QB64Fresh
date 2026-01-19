@@ -42,6 +42,7 @@ pub mod codegen;
 pub mod lexer;
 pub mod lsp;
 pub mod parser;
+pub mod preprocessor;
 pub mod semantic;
 
 /// Re-export commonly used types for convenience
@@ -50,5 +51,6 @@ pub mod prelude {
     pub use crate::codegen::{CBackend, CodeGenError, CodeGenerator, GeneratedOutput, RuntimeMode};
     pub use crate::lexer::{Lexer, Token, TokenKind};
     pub use crate::parser::{ParseError, Parser};
+    pub use crate::preprocessor::{PreprocessorError, preprocess, preprocess_file};
     pub use crate::semantic::{BasicType, SemanticAnalyzer, SemanticError, TypedProgram};
 }

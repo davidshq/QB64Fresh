@@ -210,14 +210,22 @@ impl<'a> TypeChecker<'a> {
             typed_indices.push(typed_idx);
         }
 
-        // Resolve field type - for now just use Unknown (full UDT resolution is complex)
-        // TODO: Proper field type resolution through the UDT type definition
-        let field_type = BasicType::Unknown;
+        // Resolve field type by walking through the UDT definition
+        let field_type = self.resolve_field_chain_type(&element_type, fields);
 
         // Check the value
         let typed_value = self.check_expr(value);
 
-        // Type compatibility check would go here once we resolve field types
+        // Type compatibility check - now that we have proper field type resolution
+        if field_type != BasicType::Unknown
+            && !typed_value.basic_type.is_convertible_to(&field_type)
+        {
+            self.errors.push(SemanticError::TypeMismatch {
+                expected: field_type.to_string(),
+                found: typed_value.basic_type.to_string(),
+                span: value.span,
+            });
+        }
 
         TypedStatement::new(
             TypedStatementKind::ArrayFieldAssignment {
@@ -300,6 +308,43 @@ impl<'a> TypeChecker<'a> {
             },
             span,
         )
+    }
+
+    /// Resolves the type of a field chain (e.g., `.field1.field2`) starting from a base type.
+    ///
+    /// For example, given `UserDefined("Person")` and fields `["address", "city"]`:
+    /// 1. Look up `address` in the `Person` type definition
+    /// 2. If `address` is `UserDefined("Address")`, look up `city` in `Address`
+    /// 3. Return the final field's type
+    ///
+    /// Returns `Unknown` if the type chain cannot be resolved (e.g., base type is not a UDT,
+    /// or a field doesn't exist).
+    pub(super) fn resolve_field_chain_type(
+        &self,
+        base_type: &BasicType,
+        fields: &[String],
+    ) -> BasicType {
+        let mut current_type = base_type.clone();
+
+        for field in fields {
+            match &current_type {
+                BasicType::UserDefined(type_name) => {
+                    if let Some(field_type) = self.symbols.lookup_type_member(type_name, field) {
+                        current_type = field_type;
+                    } else {
+                        // Field not found in this UDT - return Unknown
+                        // (error reporting for undefined fields can be added later)
+                        return BasicType::Unknown;
+                    }
+                }
+                _ => {
+                    // Trying to access a field on a non-UDT type
+                    return BasicType::Unknown;
+                }
+            }
+        }
+
+        current_type
     }
 
     /// Type checks a LINE INPUT statement.

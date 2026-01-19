@@ -2826,6 +2826,16 @@ fn emit_graphics_stubs(output: &mut String) {
     .unwrap();
     writeln!(output, "int64_t qb_fontheight(void) {{ return 16; }}").unwrap();
     writeln!(output, "int64_t qb_fontwidth(void) {{ return 8; }}").unwrap();
+
+    // _PRINTWIDTH function - returns pixel width of a string
+    writeln!(output, "int64_t qb_printwidth(qb_string* text) {{").unwrap();
+    writeln!(
+        output,
+        "    if (text == NULL || text->data == NULL) return 0;"
+    )
+    .unwrap();
+    writeln!(output, "    return (int64_t)text->length * qb_fontwidth();").unwrap();
+    writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
     // Desktop/Window functions

@@ -684,6 +684,11 @@ impl SemanticAnalyzer {
         );
         self.register_builtin_function("_FONTHEIGHT", &[], BasicType::Long);
         self.register_builtin_function("_FONTWIDTH", &[], BasicType::Long);
+        self.register_builtin_function(
+            "_PRINTWIDTH",
+            &[("text", BasicType::String)],
+            BasicType::Long,
+        ); // Get pixel width of text
         self.register_builtin_function("_FONT", &[("handle", BasicType::Long)], BasicType::Long); // Sets current font, returns previous handle
         self.register_builtin_function(
             "_FREEFONT",

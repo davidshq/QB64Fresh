@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use qb64fresh::codegen::{CBackend, CodeGenerator, RuntimeMode};
 use qb64fresh::lexer::{TokenKind, lex};
 use qb64fresh::parser::Parser;
+use qb64fresh::preprocessor::preprocess;
 use qb64fresh::semantic::SemanticAnalyzer;
 
 /// QB64Fresh - A modern BASIC compiler
@@ -44,6 +45,10 @@ struct Args {
     #[arg(long, default_value = "inline")]
     runtime: String,
 
+    /// Skip $INCLUDE preprocessing
+    #[arg(long)]
+    no_preprocess: bool,
+
     /// Verbose output
     #[arg(short, long)]
     verbose: bool,
@@ -56,7 +61,7 @@ fn main() {
     let args = Args::parse();
 
     // Read source file
-    let source = match fs::read_to_string(&args.input) {
+    let raw_source = match fs::read_to_string(&args.input) {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Error reading '{}': {}", args.input.display(), e);
@@ -66,8 +71,31 @@ fn main() {
 
     if args.verbose {
         println!("Compiling: {}", args.input.display());
-        println!("Source length: {} bytes", source.len());
+        println!("Source length: {} bytes", raw_source.len());
     }
+
+    // Preprocessor phase (expand $INCLUDE directives)
+    let source = if args.no_preprocess {
+        raw_source
+    } else {
+        let base_path = args.input.parent().unwrap_or(std::path::Path::new("."));
+        match preprocess(&raw_source, base_path) {
+            Ok(s) => {
+                if args.verbose && s.len() != raw_source.len() {
+                    println!(
+                        "Preprocessor: expanded {} bytes -> {} bytes",
+                        raw_source.len(),
+                        s.len()
+                    );
+                }
+                s
+            }
+            Err(e) => {
+                eprintln!("Preprocessor error: {}", e);
+                std::process::exit(1);
+            }
+        }
+    };
 
     // Lexer phase
     let tokens = lex(&source);
@@ -192,6 +220,9 @@ fn main() {
     // Default: show pipeline status
     println!("QB64Fresh v{}", env!("CARGO_PKG_VERSION"));
     println!();
+    if !args.no_preprocess {
+        println!("Preprocessor: OK ($INCLUDE expansion)");
+    }
     println!("Lexer: OK ({} tokens)", tokens.len());
     println!("Parser: OK ({} statements)", program.statements.len());
     println!(
@@ -201,8 +232,9 @@ fn main() {
     println!("Code generation: Ready (use --emit-c to generate C code)");
     println!();
     println!("Options:");
-    println!("  --tokens     Show lexer output");
-    println!("  --ast        Show parsed AST");
-    println!("  --typed-ir   Show typed IR after semantic analysis");
-    println!("  --emit-c     Generate C code to .c file");
+    println!("  --tokens        Show lexer output");
+    println!("  --ast           Show parsed AST");
+    println!("  --typed-ir      Show typed IR after semantic analysis");
+    println!("  --emit-c        Generate C code to .c file");
+    println!("  --no-preprocess Skip $INCLUDE preprocessing");
 }

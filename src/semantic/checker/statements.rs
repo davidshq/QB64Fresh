@@ -481,12 +481,29 @@ impl<'a> TypeChecker<'a> {
                                 indices.iter().map(|e| self.check_expr(e)).collect();
 
                             // Look up array and get element type, then resolve field type
-                            let basic_type = if let Some(_symbol) = self.symbols.lookup_symbol(name)
+                            let basic_type = if let Some(symbol) = self.symbols.lookup_symbol(name)
                             {
-                                // TODO: Properly resolve field type from UDT
-                                // For now, use default type inference
-                                type_from_suffix(field)
-                                    .unwrap_or_else(|| self.symbols.default_type_for(field))
+                                // Get the element type of the array
+                                let element_type = match &symbol.basic_type {
+                                    BasicType::Array { element_type, .. } => {
+                                        (**element_type).clone()
+                                    }
+                                    other => other.clone(),
+                                };
+
+                                // Resolve the field type from the UDT
+                                let field_type = self.resolve_field_chain_type(
+                                    &element_type,
+                                    std::slice::from_ref(field),
+                                );
+
+                                if field_type == BasicType::Unknown {
+                                    // Fall back to suffix-based inference if UDT resolution fails
+                                    type_from_suffix(field)
+                                        .unwrap_or_else(|| self.symbols.default_type_for(field))
+                                } else {
+                                    field_type
+                                }
                             } else {
                                 // Array not declared - error
                                 self.errors.push(SemanticError::UndefinedVariable {

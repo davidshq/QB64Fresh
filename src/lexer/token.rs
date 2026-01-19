@@ -490,6 +490,10 @@ pub enum TokenKind {
     #[token("_PRINTSTRING", ignore(ascii_case))]
     PrintString,
 
+    /// _PRINTWIDTH function - get pixel width of text string
+    #[token("_PRINTWIDTH", ignore(ascii_case))]
+    PrintWidth,
+
     /// _AUTODISPLAY statement - control automatic display updates
     #[token("_AUTODISPLAY", ignore(ascii_case))]
     AutoDisplay,

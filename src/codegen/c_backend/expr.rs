@@ -445,6 +445,7 @@ pub(super) fn c_function_name(name: &str) -> String {
         "_LOADFONT" => "qb_loadfont".to_string(),
         "_FONTHEIGHT" => "qb_fontheight".to_string(),
         "_FONTWIDTH" => "qb_fontwidth".to_string(),
+        "_PRINTWIDTH" => "qb_printwidth".to_string(),
         "_FONT" => "qb_font".to_string(),
         "_FREEFONT" => "qb_freefont".to_string(),
 
