@@ -187,7 +187,7 @@ runtime/src/
 - [ ] Example programs
 
 ### Testing (See TESTING_INFRASTRUCTURE_PLAN.md for details)
-- [x] Expand test suite for all built-ins (277 integration tests) ✅
+- [x] Expand test suite for all built-ins (303 integration tests) ✅
 - [ ] Compatibility tests against QB64 programs (16 fixture files, need more)
 - [ ] Port QB4.5 test cases from QB64pe
 - [ ] Achieve 80%+ line coverage (currently 72.67%)
@@ -199,31 +199,35 @@ runtime/src/
 The following features were identified by comparing the QB64pe syntax highlighter keyword list
 against the current QB64Fresh implementation. Organized by priority and category.
 
+**Progress Update (2026-01-19):** Significant progress made on Phase 7 - 16 new statements implemented,
+26 new integration tests added (303 total). Parser, semantic analysis, and codegen complete for all
+implemented features.
+
 ### High Priority - QB4.5 Core Features
 
 #### Timing & Flow Control
-- [ ] `RUN` statement - run program
-- [ ] `CHAIN` statement - run another program, optionally passing variables
-- [ ] `TROFF` / `TRON` statements - debug trace off/on
+- [x] `RUN` statement - run program ✅
+- [x] `CHAIN` statement - run another program, optionally passing variables ✅
+- [x] `TROFF` / `TRON` statements - debug trace off/on ✅
 
 #### Print Formatting
-- [ ] `LPRINT` statement - printer output
+- [x] `LPRINT` statement - printer output ✅
 - [ ] `LPOS(n)` function - printer position
 
 #### Memory/Legacy
 - [ ] `BLOAD` / `BSAVE` statements - binary load/save to memory
-- [ ] `CLEAR` statement - clear memory/variables
+- [x] `CLEAR` statement - clear memory/variables ✅
 - [ ] `VARPTR()` / `VARPTR$()` / `VARSEG()` - memory address functions
 - [ ] `SADD()` function - string address
 - [ ] `SETMEM` statement - set available memory
 - [ ] `SEG` clause - segment for CALL ABSOLUTE
 
 #### File System
-- [ ] `FILES` statement - directory listing display
-- [ ] `FIELD` statement - define record fields for random access
-- [ ] `LSET` / `RSET` statements - left/right justify in field
+- [x] `FILES` statement - directory listing display ✅
+- [x] `FIELD` statement - define record fields for random access ✅
+- [x] `LSET` / `RSET` statements - left/right justify in field ✅
 - [ ] `FILEATTR()` function - file attributes
-- [ ] `RESET` statement - close all open files
+- [x] `RESET` statement - close all open files ✅
 
 - Arrays
 
@@ -237,15 +241,15 @@ against the current QB64Fresh implementation. Organized by priority and category
 - [ ] `CDECL` clause - C calling convention
 
 #### Event Handling
-- [ ] `KEY` statement - key event trapping (KEY ON/OFF/STOP)
+- [x] `KEY(n) ON/OFF/STOP` statement - key event trapping ✅
 - [ ] `KEY(n)` function - check key trap status
-- [ ] `ON KEY(n) GOSUB` - key event handler
+- [ ] `ON KEY(n) GOSUB` - key event handler (parser ready, needs ON statement integration)
 - [ ] `COM` statement - serial port event trapping
 - [ ] `ON COM(n) GOSUB` - serial port event handler
 - [ ] `PEN` statement - light pen event trapping
 - [ ] `ON PEN GOSUB` - light pen event handler
-- [ ] `STRIG` statement - joystick trigger event trapping
-- [ ] `ON STRIG(n) GOSUB` - joystick trigger handler
+- [x] `STRIG(n) ON/OFF/STOP` statement - joystick trigger event trapping ✅
+- [ ] `ON STRIG(n) GOSUB` - joystick trigger handler (parser ready, needs ON statement integration)
 - [ ] `UEVENT` - user-defined event
 - [ ] `ON UEVENT GOSUB` - user event handler
 - [ ] `SIGNAL` statement - signal handling
@@ -290,8 +294,8 @@ against the current QB64Fresh implementation. Organized by priority and category
 
 #### Error Handling (Extended)
 - [ ] `_INCLERRORFILE$` / `_INCLERRORLINE` - include file error info
-- [ ] `_ASSERT` statement - assertions
-- [ ] `$ASSERTS` metacommand - enable assertions
+- [x] `_ASSERT` statement - assertions ✅
+- [x] `$ASSERTS` metacommand - enable assertions (parser ready) ✅
 - [ ] `_EXIT` statement - exit program with code
 
 #### Utility Functions
@@ -308,12 +312,12 @@ against the current QB64Fresh implementation. Organized by priority and category
 
 #### Desktop/Window Info
 - [ ] `_SCREENEXISTS` function - check if window exists
-- [ ] `_SCREENICON` function - check if window is minimized
+- [x] `_SCREENICON` statement - minimize window ✅
 - [ ] `_SCREENPRINT` statement - print screen contents
-- [ ] `_ALLOWFULLSCREEN` statement - allow/disallow fullscreen toggle
+- [x] `_ALLOWFULLSCREEN` statement - allow/disallow fullscreen toggle ✅
 - [x] `_TITLE$` - get window title (codegen complete, backend pending) ✅
-- [ ] `_TITLE` statement - set window title
-- [ ] `_ICON` statement - set window icon
+- [ ] `_TITLE` statement - set window title (parser ready, dual-use with function)
+- [ ] `_ICON` statement - set window icon (parser ready, dual-use with function)
 - [ ] `_HIDE` / `_SHOW` statements - hide/show window (alias)
 - [ ] `_ONTOP` statement - set window always on top
 - [x] `_WINDOWHANDLE` function - get native window handle (codegen complete) ✅
@@ -417,8 +421,8 @@ against the current QB64Fresh implementation. Organized by priority and category
 
 #### Console Mode
 - [ ] `$CONSOLE` / `$CONSOLE:ONLY` metacommands
-- [ ] `_CONSOLE` statement - enable console
-- [ ] `_CONSOLETITLE` statement - set console title
+- [x] `_CONSOLE ON/OFF` statement - enable/disable console ✅
+- [x] `_CONSOLETITLE` statement - set console title ✅
 - [ ] `_CONSOLECURSOR` statement - console cursor control
 - [ ] `_CONSOLEFONT` statement - console font
 - [ ] `_CONSOLEINPUT` function - console input available

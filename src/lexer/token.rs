@@ -183,6 +183,58 @@ pub enum TokenKind {
     #[token("_CONTINUE", ignore(ascii_case))]
     Continue,
 
+    /// RUN keyword - restart program or run another program
+    #[token("RUN", ignore(ascii_case))]
+    Run,
+
+    /// CHAIN keyword - run another program, optionally passing variables
+    #[token("CHAIN", ignore(ascii_case))]
+    Chain,
+
+    /// TRON keyword - enable trace mode (debugging)
+    #[token("TRON", ignore(ascii_case))]
+    Tron,
+
+    /// TROFF keyword - disable trace mode (debugging)
+    #[token("TROFF", ignore(ascii_case))]
+    Troff,
+
+    /// LPRINT keyword - print to printer (LPT1)
+    #[token("LPRINT", ignore(ascii_case))]
+    Lprint,
+
+    /// FILES keyword - display directory listing
+    #[token("FILES", ignore(ascii_case))]
+    Files,
+
+    /// FIELD keyword - define fields for random access file buffer
+    #[token("FIELD", ignore(ascii_case))]
+    Field,
+
+    /// LSET keyword - left-align string in field buffer
+    #[token("LSET", ignore(ascii_case))]
+    Lset,
+
+    /// RSET keyword - right-align string in field buffer
+    #[token("RSET", ignore(ascii_case))]
+    Rset,
+
+    /// KEY keyword - for ON KEY and KEY statement
+    #[token("KEY", ignore(ascii_case))]
+    Key,
+
+    /// STRIG keyword - joystick trigger
+    #[token("STRIG", ignore(ascii_case))]
+    Strig,
+
+    /// CLEAR keyword - clear variables and set memory
+    #[token("CLEAR", ignore(ascii_case))]
+    Clear,
+
+    /// RESET keyword - close all files
+    #[token("RESET", ignore(ascii_case))]
+    Reset,
+
     // ==================== Declaration Keywords ====================
     /// DIM keyword - variable declaration
     #[token("DIM", ignore(ascii_case))]
@@ -662,6 +714,31 @@ pub enum TokenKind {
     /// _CLIPBOARD$ function/statement - clipboard access (QB64)
     #[token("_CLIPBOARD$", ignore(ascii_case))]
     Clipboard,
+
+    // ==================== Window/Desktop Keywords (QB64) ====================
+    // Note: Many QB64 window functions like _SCREENMOVE, _FULLSCREEN, etc. work
+    // both as statements AND as functions. To avoid breaking the expression parser,
+    // these are handled as identifiers and checked contextually in the parser.
+    // Only add statement-only keywords here.
+    /// _ALLOWFULLSCREEN statement - allow/disallow fullscreen (QB64)
+    #[token("_ALLOWFULLSCREEN", ignore(ascii_case))]
+    AllowFullScreen,
+
+    /// _SCREENICON statement - minimize window (QB64)
+    #[token("_SCREENICON", ignore(ascii_case))]
+    ScreenIcon,
+
+    /// _CONSOLETITLE statement - set console title (QB64)
+    #[token("_CONSOLETITLE", ignore(ascii_case))]
+    ConsoleTitle,
+
+    /// _CONSOLE statement - control console window (QB64)
+    #[token("_CONSOLE", ignore(ascii_case))]
+    Console,
+
+    /// _ASSERT statement - assertion (QB64)
+    #[token("_ASSERT", ignore(ascii_case))]
+    Assert,
 
     // ==================== Networking Keywords ====================
     /// _OPENHOST function - open TCP server on port (QB64)

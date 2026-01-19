@@ -12,8 +12,8 @@
 //! - **Ready for codegen**: No further analysis needed
 
 use crate::ast::{
-    BinaryOp, ContinueType, ExitType, FileAccess, FileLock, FileMode, PrintSeparator, ResumeTarget,
-    Span, UnaryOp,
+    AllowFullScreenMode, BinaryOp, ContinueType, EventControlMode, ExitType, FileAccess, FileLock,
+    FileMode, FullScreenMode, PrintSeparator, ResumeTarget, Span, UnaryOp,
 };
 use crate::semantic::types::BasicType;
 
@@ -1047,6 +1047,194 @@ pub enum TypedStatementKind {
         /// The name of the function.
         name: String,
     },
+
+    // ==================== Phase 7: Additional Statements ====================
+    /// RUN statement - restart program or run another program.
+    Run {
+        /// Optional target (filename or line number).
+        target: Option<TypedExpr>,
+    },
+
+    /// CHAIN statement - run another program.
+    Chain {
+        /// Filename of program to chain to.
+        filename: TypedExpr,
+    },
+
+    /// TRON statement - enable trace mode.
+    Tron,
+
+    /// TROFF statement - disable trace mode.
+    Troff,
+
+    /// LPRINT statement - print to printer.
+    Lprint {
+        /// Values to print.
+        values: Vec<TypedPrintItem>,
+        /// Whether to print newline.
+        newline: bool,
+    },
+
+    /// FILES statement - display directory listing.
+    FilesStmt {
+        /// Optional file specification.
+        filespec: Option<TypedExpr>,
+    },
+
+    /// FIELD statement - define random file fields.
+    FieldStmt {
+        /// File number.
+        file_num: TypedExpr,
+        /// Field specifications.
+        fields: Vec<TypedFieldSpec>,
+    },
+
+    /// LSET statement - left-align string in field.
+    Lset {
+        /// Target field variable.
+        variable: String,
+        /// Value to assign.
+        value: TypedExpr,
+    },
+
+    /// RSET statement - right-align string in field.
+    Rset {
+        /// Target field variable.
+        variable: String,
+        /// Value to assign.
+        value: TypedExpr,
+    },
+
+    /// ON KEY(n) GOSUB statement.
+    OnKey {
+        /// Key number.
+        key_num: TypedExpr,
+        /// Target label.
+        target: String,
+    },
+
+    /// KEY(n) ON|OFF|STOP statement.
+    KeyControl {
+        /// Key number.
+        key_num: TypedExpr,
+        /// Control mode.
+        mode: EventControlMode,
+    },
+
+    /// ON TIMER statement.
+    OnTimer {
+        /// Timer interval.
+        interval: TypedExpr,
+        /// Target label.
+        target: String,
+    },
+
+    /// TIMER ON|OFF|STOP statement.
+    TimerControl {
+        /// Control mode.
+        mode: EventControlMode,
+    },
+
+    /// STRIG(n) ON|OFF|STOP statement.
+    StrigControl {
+        /// Button number.
+        button_num: TypedExpr,
+        /// Control mode.
+        mode: EventControlMode,
+    },
+
+    /// ON STRIG statement.
+    OnStrig {
+        /// Button number.
+        button_num: TypedExpr,
+        /// Target label.
+        target: String,
+    },
+
+    /// CLEAR statement - clear variables.
+    ClearStmt {
+        /// Optional stack size.
+        stack_size: Option<TypedExpr>,
+    },
+
+    /// RESET statement - close all files.
+    ResetStmt,
+
+    // ==================== Window/Desktop Statements (QB64) ====================
+    /// _TITLE statement - set window title.
+    TitleStmt {
+        /// The title text.
+        title: TypedExpr,
+    },
+
+    /// _SCREENMOVE statement - move window.
+    ScreenMoveStmt {
+        /// X position (or None if centering).
+        x: Option<TypedExpr>,
+        /// Y position (or None if centering).
+        y: Option<TypedExpr>,
+        /// Whether to center the window.
+        center: bool,
+    },
+
+    /// _FULLSCREEN statement.
+    FullScreenStmt {
+        /// Fullscreen mode.
+        mode: FullScreenMode,
+    },
+
+    /// _ALLOWFULLSCREEN statement.
+    AllowFullScreenStmt {
+        /// Allowed mode.
+        mode: AllowFullScreenMode,
+    },
+
+    /// _SCREENICON statement - minimize window.
+    ScreenIconStmt,
+
+    /// _ICON statement - set window icon.
+    IconStmt {
+        /// Optional image handle.
+        handle: Option<TypedExpr>,
+    },
+
+    /// _SCREENHIDE statement.
+    ScreenHideStmt,
+
+    /// _SCREENSHOW statement.
+    ScreenShowStmt,
+
+    /// _CONSOLETITLE statement.
+    ConsoleTitleStmt {
+        /// The title text.
+        title: TypedExpr,
+    },
+
+    /// _CONSOLE ON|OFF statement.
+    ConsoleStmt {
+        /// Whether console should be visible.
+        visible: bool,
+    },
+
+    /// _ASSERT statement.
+    AssertStmt {
+        /// Condition to check.
+        condition: TypedExpr,
+        /// Optional error message.
+        message: Option<TypedExpr>,
+    },
+
+    /// $ASSERTS metacommand.
+    MetaAsserts,
+
+    /// $NOPREFIX metacommand.
+    MetaNoPrefix,
+
+    /// $COLOR metacommand.
+    MetaColor {
+        /// Color depth (0 for EGA, 32 for RGBA).
+        depth: Option<i64>,
+    },
 }
 
 /// Typed coordinates for VIEW and WINDOW statements.
@@ -1060,6 +1248,15 @@ pub struct TypedViewCoords {
     pub x2: TypedExpr,
     /// Y2 coordinate.
     pub y2: TypedExpr,
+}
+
+/// Typed field specification for FIELD statement.
+#[derive(Debug, Clone)]
+pub struct TypedFieldSpec {
+    /// Width of the field in bytes.
+    pub width: TypedExpr,
+    /// Variable name for this field.
+    pub variable: String,
 }
 
 /// A typed variable in a COMMON statement.

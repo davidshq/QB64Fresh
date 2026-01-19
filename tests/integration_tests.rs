@@ -2905,3 +2905,237 @@ mod font_functions {
         assert!(code.contains("qb_freefont("));
     }
 }
+
+// ==================== Phase 7: Additional Statements ====================
+
+/// Tests for RUN statement
+mod run_statement {
+    use super::*;
+
+    #[test]
+    fn run_no_args() {
+        let code = compile_to_c("RUN").unwrap();
+        assert!(code.contains("qb_run(NULL)"));
+    }
+
+    #[test]
+    fn run_with_filename() {
+        let code = compile_to_c(r#"RUN "program.exe""#).unwrap();
+        assert!(code.contains("qb_run("));
+    }
+}
+
+/// Tests for CHAIN statement
+mod chain_statement {
+    use super::*;
+
+    #[test]
+    fn chain_with_filename() {
+        let code = compile_to_c(r#"CHAIN "other.bas""#).unwrap();
+        assert!(code.contains("qb_chain("));
+    }
+}
+
+/// Tests for TRON/TROFF statements
+mod trace_statements {
+    use super::*;
+
+    #[test]
+    fn tron_statement() {
+        let code = compile_to_c("TRON").unwrap();
+        assert!(code.contains("qb_trace_on = 1"));
+    }
+
+    #[test]
+    fn troff_statement() {
+        let code = compile_to_c("TROFF").unwrap();
+        assert!(code.contains("qb_trace_on = 0"));
+    }
+}
+
+/// Tests for LPRINT statement
+mod lprint_statement {
+    use super::*;
+
+    #[test]
+    fn lprint_simple() {
+        let code = compile_to_c(r#"LPRINT "Hello""#).unwrap();
+        assert!(code.contains("qb_lprint("));
+    }
+
+    #[test]
+    fn lprint_with_values() {
+        let code = compile_to_c("DIM x&\nx& = 42\nLPRINT x&").unwrap();
+        assert!(code.contains("qb_lprint("));
+    }
+}
+
+/// Tests for FILES statement
+mod files_statement {
+    use super::*;
+
+    #[test]
+    fn files_no_args() {
+        let code = compile_to_c("FILES").unwrap();
+        assert!(code.contains("qb_files(NULL)"));
+    }
+
+    #[test]
+    fn files_with_pattern() {
+        let code = compile_to_c(r#"FILES "*.bas""#).unwrap();
+        assert!(code.contains("qb_files("));
+    }
+}
+
+/// Tests for FIELD statement
+mod field_statement {
+    use super::*;
+
+    #[test]
+    fn field_statement() {
+        let code = compile_to_c("DIM f1$ AS STRING\nFIELD #1, 20 AS f1$").unwrap();
+        assert!(code.contains("qb_field_start("));
+        assert!(code.contains("qb_field_add("));
+    }
+}
+
+/// Tests for LSET/RSET statements
+mod lset_rset_statements {
+    use super::*;
+
+    #[test]
+    fn lset_statement() {
+        let code = compile_to_c("DIM f$ AS STRING\nLSET f$ = \"test\"").unwrap();
+        assert!(code.contains("qb_lset("));
+    }
+
+    #[test]
+    fn rset_statement() {
+        let code = compile_to_c("DIM f$ AS STRING\nRSET f$ = \"test\"").unwrap();
+        assert!(code.contains("qb_rset("));
+    }
+}
+
+/// Tests for KEY statement
+mod key_statement {
+    use super::*;
+
+    #[test]
+    fn key_on() {
+        let code = compile_to_c("KEY(1) ON").unwrap();
+        assert!(code.contains("qb_key_control("));
+    }
+
+    #[test]
+    fn key_off() {
+        let code = compile_to_c("KEY(1) OFF").unwrap();
+        assert!(code.contains("qb_key_control("));
+    }
+
+    #[test]
+    fn key_stop() {
+        let code = compile_to_c("KEY(1) STOP").unwrap();
+        assert!(code.contains("qb_key_control("));
+    }
+}
+
+/// Tests for CLEAR statement
+mod clear_statement {
+    use super::*;
+
+    #[test]
+    fn clear_no_args() {
+        let code = compile_to_c("CLEAR").unwrap();
+        assert!(code.contains("qb_clear(0)"));
+    }
+
+    #[test]
+    fn clear_with_stack_size() {
+        let code = compile_to_c("CLEAR 4096").unwrap();
+        assert!(code.contains("qb_clear("));
+    }
+}
+
+/// Tests for RESET statement
+mod reset_statement {
+    use super::*;
+
+    #[test]
+    fn reset_statement() {
+        let code = compile_to_c("RESET").unwrap();
+        assert!(code.contains("qb_reset()"));
+    }
+}
+
+/// Tests for _ALLOWFULLSCREEN statement
+mod allowfullscreen_statement {
+    use super::*;
+
+    #[test]
+    fn allowfullscreen_all() {
+        let code = compile_to_c("_ALLOWFULLSCREEN _ALL").unwrap();
+        assert!(code.contains("qb_allowfullscreen("));
+    }
+
+    #[test]
+    fn allowfullscreen_off() {
+        let code = compile_to_c("_ALLOWFULLSCREEN _OFF").unwrap();
+        assert!(code.contains("qb_allowfullscreen("));
+    }
+}
+
+/// Tests for _SCREENICON statement
+mod screenicon_statement {
+    use super::*;
+
+    #[test]
+    fn screenicon_statement() {
+        let code = compile_to_c("_SCREENICON").unwrap();
+        assert!(code.contains("qb_screenicon()"));
+    }
+}
+
+/// Tests for _CONSOLETITLE statement
+mod consoletitle_statement {
+    use super::*;
+
+    #[test]
+    fn consoletitle_statement() {
+        let code = compile_to_c(r#"_CONSOLETITLE "My App""#).unwrap();
+        assert!(code.contains("qb_consoletitle("));
+    }
+}
+
+/// Tests for _CONSOLE statement
+mod console_statement {
+    use super::*;
+
+    #[test]
+    fn console_on() {
+        let code = compile_to_c("_CONSOLE ON").unwrap();
+        assert!(code.contains("qb_console(1)"));
+    }
+
+    #[test]
+    fn console_off() {
+        let code = compile_to_c("_CONSOLE OFF").unwrap();
+        assert!(code.contains("qb_console(0)"));
+    }
+}
+
+/// Tests for _ASSERT statement
+mod assert_statement {
+    use super::*;
+
+    #[test]
+    fn assert_simple() {
+        let code = compile_to_c("_ASSERT 1 = 1").unwrap();
+        assert!(code.contains("qb_assert("));
+    }
+
+    #[test]
+    fn assert_with_message() {
+        let code = compile_to_c(r#"_ASSERT 1 = 1, "should be true""#).unwrap();
+        assert!(code.contains("qb_assert("));
+    }
+}

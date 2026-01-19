@@ -7,9 +7,10 @@
 //! handled in their respective modules.
 
 use crate::ast::{
-    ArrayDimension, CommonVariable, ContinueType, DataValue, DeclareParam, DefTypeKind, ExitType,
-    Expr, ExternalDeclaration, ExternalParam, FileAccess, FileLock, FileMode, PrintItem,
-    PrintSeparator, ResumeTarget, Span, Statement, StatementKind, TypeSpec, ViewCoords,
+    AllowFullScreenMode, ArrayDimension, CommonVariable, ContinueType, DataValue, DeclareParam,
+    DefTypeKind, EventControlMode, ExitType, Expr, ExternalDeclaration, ExternalParam, FieldSpec,
+    FileAccess, FileLock, FileMode, FullScreenMode, PrintItem, PrintSeparator, ResumeTarget, Span,
+    Statement, StatementKind, TypeSpec, ViewCoords,
 };
 use crate::lexer::TokenKind;
 
@@ -166,6 +167,29 @@ impl<'a> Parser<'a> {
 
             // Clipboard statement (assignment form)
             TokenKind::Clipboard => self.parse_clipboard_set(),
+
+            // Phase 7: Additional statements
+            TokenKind::Run => self.parse_run(),
+            TokenKind::Chain => self.parse_chain(),
+            TokenKind::Tron => self.parse_tron(),
+            TokenKind::Troff => self.parse_troff(),
+            TokenKind::Lprint => self.parse_lprint(),
+            TokenKind::Files => self.parse_files(),
+            TokenKind::Field => self.parse_field(),
+            TokenKind::Lset => self.parse_lset(),
+            TokenKind::Rset => self.parse_rset(),
+            TokenKind::Key => self.parse_key_statement(),
+            TokenKind::Clear => self.parse_clear(),
+            TokenKind::Reset => self.parse_reset(),
+
+            // Window/Desktop statements (QB64)
+            // Note: _TITLE, _SCREENMOVE, _FULLSCREEN, _ICON, _SCREENHIDE, _SCREENSHOW
+            // are handled in parse_identifier_statement since they can also be functions
+            TokenKind::AllowFullScreen => self.parse_allowfullscreen(),
+            TokenKind::ScreenIcon => self.parse_screenicon(),
+            TokenKind::ConsoleTitle => self.parse_consoletitle(),
+            TokenKind::Console => self.parse_console(),
+            TokenKind::Assert => self.parse_assert(),
 
             // Other
             TokenKind::Comment => self.parse_comment(),
@@ -3680,5 +3704,437 @@ impl<'a> Parser<'a> {
         } else {
             None
         }
+    }
+
+    // ==================== Phase 7: Additional Statements ====================
+
+    /// Parses `RUN [target]` - restart program or run another program.
+    pub(super) fn parse_run(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("RUN keyword").span.start;
+
+        // Optional target (filename or line number)
+        let target = if !self.is_at_statement_end() {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::Run { target }, span))
+    }
+
+    /// Parses `CHAIN filename$` - run another program.
+    pub(super) fn parse_chain(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("CHAIN keyword").span.start;
+        let filename = self.parse_expression()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::Chain { filename }, span))
+    }
+
+    /// Parses `TRON` - enable trace mode.
+    pub(super) fn parse_tron(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("TRON keyword").span.start;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::Tron, span))
+    }
+
+    /// Parses `TROFF` - disable trace mode.
+    pub(super) fn parse_troff(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("TROFF keyword").span.start;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::Troff, span))
+    }
+
+    /// Parses `LPRINT [expr {;|,} expr...]` - print to printer.
+    pub(super) fn parse_lprint(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("LPRINT keyword").span.start;
+
+        let mut values = Vec::new();
+        let mut newline = true;
+
+        // Parse print items (similar to PRINT)
+        while !self.is_at_statement_end() {
+            let expr = self.parse_expression()?;
+
+            let separator = if self.match_token(&TokenKind::Semicolon) {
+                Some(PrintSeparator::Semicolon)
+            } else if self.match_token(&TokenKind::Comma) {
+                Some(PrintSeparator::Comma)
+            } else {
+                None
+            };
+
+            // Trailing separator suppresses newline
+            if separator.is_some() && self.is_at_statement_end() {
+                newline = false;
+            }
+
+            values.push(PrintItem { expr, separator });
+
+            if separator.is_none() {
+                break;
+            }
+        }
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::Lprint { values, newline },
+            span,
+        ))
+    }
+
+    /// Parses `FILES [filespec$]` - display directory listing.
+    pub(super) fn parse_files(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("FILES keyword").span.start;
+
+        let filespec = if !self.is_at_statement_end() {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::FilesStmt { filespec }, span))
+    }
+
+    /// Parses `FIELD [#]filenum, width AS var$ [, width AS var$]...`.
+    pub(super) fn parse_field(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("FIELD keyword").span.start;
+
+        // Optional # before file number
+        self.match_token(&TokenKind::Hash);
+        let file_num = self.parse_expression()?;
+        self.expect(&TokenKind::Comma, ",")?;
+
+        let mut fields = Vec::new();
+        loop {
+            let width = self.parse_expression()?;
+            self.expect(&TokenKind::As, "AS")?;
+            let var_token = self.expect(&TokenKind::Identifier, "field variable")?;
+            let variable = var_token.text.to_string();
+
+            fields.push(FieldSpec { width, variable });
+
+            if !self.match_token(&TokenKind::Comma) {
+                break;
+            }
+        }
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::FieldStmt { file_num, fields },
+            span,
+        ))
+    }
+
+    /// Parses `LSET var$ = string$` - left-align string in field.
+    pub(super) fn parse_lset(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("LSET keyword").span.start;
+        let var_token = self.expect(&TokenKind::Identifier, "variable name")?;
+        let variable = var_token.text.to_string();
+        self.expect(&TokenKind::Equals, "=")?;
+        let value = self.parse_expression()?;
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::Lset { variable, value },
+            span,
+        ))
+    }
+
+    /// Parses `RSET var$ = string$` - right-align string in field.
+    pub(super) fn parse_rset(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("RSET keyword").span.start;
+        let var_token = self.expect(&TokenKind::Identifier, "variable name")?;
+        let variable = var_token.text.to_string();
+        self.expect(&TokenKind::Equals, "=")?;
+        let value = self.parse_expression()?;
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::Rset { variable, value },
+            span,
+        ))
+    }
+
+    /// Parses KEY statement: `KEY(n) ON|OFF|STOP` or `KEY n, string$`.
+    pub(super) fn parse_key_statement(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("KEY keyword").span.start;
+
+        // Check for KEY(n) ON|OFF|STOP form
+        if self.match_token(&TokenKind::LeftParen) {
+            let key_num = self.parse_expression()?;
+            self.expect(&TokenKind::RightParen, ")")?;
+
+            let mode = self.parse_event_control_mode()?;
+            let span = self.span_from(start);
+            return Ok(Statement::new(
+                StatementKind::KeyControl { key_num, mode },
+                span,
+            ));
+        }
+
+        // Otherwise it's KEY n, string$ (key assignment - less common, treat as call)
+        let key_num = self.parse_expression()?;
+        if self.match_token(&TokenKind::Comma) {
+            let key_string = self.parse_expression()?;
+            let span = self.span_from(start);
+            // Store as a generic call for now
+            return Ok(Statement::new(
+                StatementKind::Call {
+                    name: "KEY".to_string(),
+                    args: vec![key_num, key_string],
+                },
+                span,
+            ));
+        }
+
+        let span = self.span_from(start);
+        self.error_at_span_msg(span, "expected '(' or key number");
+        Err(())
+    }
+
+    /// Parses event control mode: ON, OFF, or STOP.
+    fn parse_event_control_mode(&mut self) -> Result<EventControlMode, ()> {
+        if self.check(&TokenKind::On) {
+            self.advance();
+            Ok(EventControlMode::On)
+        } else if self.check_identifier_text("OFF") {
+            self.advance();
+            Ok(EventControlMode::Off)
+        } else if self.check(&TokenKind::Stop) {
+            self.advance();
+            Ok(EventControlMode::Stop)
+        } else {
+            let span = self.current_span();
+            self.error_at_span_msg(span, "expected ON, OFF, or STOP");
+            Err(())
+        }
+    }
+
+    /// Parses `CLEAR [stack_size]` - clear all variables.
+    pub(super) fn parse_clear(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("CLEAR keyword").span.start;
+
+        let stack_size = if !self.is_at_statement_end() {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::ClearStmt { stack_size },
+            span,
+        ))
+    }
+
+    /// Parses `RESET` - close all files.
+    pub(super) fn parse_reset(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("RESET keyword").span.start;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::ResetStmt, span))
+    }
+
+    // ==================== Window/Desktop Statements (QB64) ====================
+    // Note: Some of these are currently unused as the corresponding keywords are
+    // handled as identifiers (for dual statement/function usage). They're kept
+    // for future use when we add explicit statement-form parsing.
+
+    /// Parses `_TITLE text$` - set window title.
+    #[allow(dead_code)]
+    pub(super) fn parse_title(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_TITLE keyword").span.start;
+        let title = self.parse_expression()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::TitleStmt { title }, span))
+    }
+
+    /// Parses `_SCREENMOVE x, y` or `_SCREENMOVE _MIDDLE`.
+    #[allow(dead_code)]
+    pub(super) fn parse_screenmove(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_SCREENMOVE keyword").span.start;
+
+        // Check for _MIDDLE keyword (identifier)
+        if self.check_identifier_text("_MIDDLE") {
+            self.advance();
+            let span = self.span_from(start);
+            return Ok(Statement::new(
+                StatementKind::ScreenMoveStmt {
+                    x: None,
+                    y: None,
+                    center: true,
+                },
+                span,
+            ));
+        }
+
+        let x = self.parse_expression()?;
+        self.expect(&TokenKind::Comma, ",")?;
+        let y = self.parse_expression()?;
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::ScreenMoveStmt {
+                x: Some(x),
+                y: Some(y),
+                center: false,
+            },
+            span,
+        ))
+    }
+
+    /// Parses `_FULLSCREEN [mode]`.
+    #[allow(dead_code)]
+    pub(super) fn parse_fullscreen(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_FULLSCREEN keyword").span.start;
+
+        let mode = if self.check_identifier_text("_SQUAREPIXELS") {
+            self.advance();
+            FullScreenMode::SquarePixels
+        } else if self.check_identifier_text("_STRETCH") {
+            self.advance();
+            FullScreenMode::Stretch
+        } else if self.check_identifier_text("_OFF") {
+            self.advance();
+            FullScreenMode::Off
+        } else {
+            // Default to stretch for just _FULLSCREEN
+            FullScreenMode::Stretch
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::FullScreenStmt { mode }, span))
+    }
+
+    /// Parses `_ALLOWFULLSCREEN [mode]`.
+    pub(super) fn parse_allowfullscreen(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_ALLOWFULLSCREEN keyword").span.start;
+
+        let mode = if self.check_identifier_text("_SQUAREPIXELS") {
+            self.advance();
+            AllowFullScreenMode::SquarePixels
+        } else if self.check_identifier_text("_STRETCH") {
+            self.advance();
+            AllowFullScreenMode::Stretch
+        } else if self.check_identifier_text("_ALL") {
+            self.advance();
+            AllowFullScreenMode::All
+        } else if self.check_identifier_text("_OFF") {
+            self.advance();
+            AllowFullScreenMode::Off
+        } else {
+            // Default to All
+            AllowFullScreenMode::All
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::AllowFullScreenStmt { mode },
+            span,
+        ))
+    }
+
+    /// Parses `_SCREENICON` - minimize window.
+    pub(super) fn parse_screenicon(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_SCREENICON keyword").span.start;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::ScreenIconStmt, span))
+    }
+
+    /// Parses `_ICON [handle&]` - set window icon.
+    #[allow(dead_code)]
+    pub(super) fn parse_icon(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_ICON keyword").span.start;
+
+        let handle = if !self.is_at_statement_end() {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::IconStmt { handle }, span))
+    }
+
+    /// Parses `_SCREENHIDE` - hide graphics window.
+    #[allow(dead_code)]
+    pub(super) fn parse_screenhide(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_SCREENHIDE keyword").span.start;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::ScreenHideStmt, span))
+    }
+
+    /// Parses `_SCREENSHOW` - show graphics window.
+    #[allow(dead_code)]
+    pub(super) fn parse_screenshow(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_SCREENSHOW keyword").span.start;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::ScreenShowStmt, span))
+    }
+
+    /// Parses `_CONSOLETITLE text$` - set console title.
+    pub(super) fn parse_consoletitle(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_CONSOLETITLE keyword").span.start;
+        let title = self.parse_expression()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::ConsoleTitleStmt { title },
+            span,
+        ))
+    }
+
+    /// Parses `_CONSOLE ON|OFF` - show/hide console window.
+    pub(super) fn parse_console(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_CONSOLE keyword").span.start;
+
+        let visible = if self.check(&TokenKind::On) {
+            self.advance();
+            true
+        } else if self.check_identifier_text("OFF") {
+            self.advance();
+            false
+        } else {
+            // Default to ON if just _CONSOLE
+            true
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::ConsoleStmt { visible }, span))
+    }
+
+    /// Parses `_ASSERT condition [, message$]` - debug assertion.
+    pub(super) fn parse_assert(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_ASSERT keyword").span.start;
+        let condition = self.parse_expression()?;
+
+        let message = if self.match_token(&TokenKind::Comma) {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::AssertStmt { condition, message },
+            span,
+        ))
+    }
+
+    /// Helper to check if current token is identifier with specific text (case-insensitive).
+    fn check_identifier_text(&self, text: &str) -> bool {
+        if let Some(token) = self.peek() {
+            token.kind == TokenKind::Identifier && token.text.eq_ignore_ascii_case(text)
+        } else {
+            false
+        }
+    }
+
+    /// Helper to record error.
+    fn error_at_span_msg(&mut self, span: Span, message: &str) {
+        self.errors.push(ParseError::InvalidStatement {
+            span,
+            message: message.to_string(),
+        });
     }
 }

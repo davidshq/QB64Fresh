@@ -1726,6 +1726,263 @@ impl<'a> TypeChecker<'a> {
                 TypedStatementKind::DeclareFunction { name: name.clone() },
                 stmt.span,
             ),
+
+            // ==================== Phase 7: Additional Statements ====================
+            StatementKind::Run { target } => {
+                let typed_target = target.as_ref().map(|t| self.check_expr(t));
+                TypedStatement::new(
+                    TypedStatementKind::Run {
+                        target: typed_target,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::Chain { filename } => {
+                let typed_filename = self.check_expr(filename);
+                if typed_filename.basic_type != BasicType::String {
+                    self.errors.push(SemanticError::type_mismatch(
+                        "String",
+                        format!("{:?}", typed_filename.basic_type),
+                        stmt.span,
+                    ));
+                }
+                TypedStatement::new(
+                    TypedStatementKind::Chain {
+                        filename: typed_filename,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::Tron => TypedStatement::new(TypedStatementKind::Tron, stmt.span),
+
+            StatementKind::Troff => TypedStatement::new(TypedStatementKind::Troff, stmt.span),
+
+            StatementKind::Lprint { values, newline } => {
+                let typed_values = self.check_print_items(values);
+                TypedStatement::new(
+                    TypedStatementKind::Lprint {
+                        values: typed_values,
+                        newline: *newline,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::FilesStmt { filespec } => {
+                let typed_filespec = filespec.as_ref().map(|f| self.check_expr(f));
+                TypedStatement::new(
+                    TypedStatementKind::FilesStmt {
+                        filespec: typed_filespec,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::FieldStmt { file_num, fields } => {
+                let typed_file_num = self.check_expr(file_num);
+                let typed_fields: Vec<_> = fields
+                    .iter()
+                    .map(|f| TypedFieldSpec {
+                        width: self.check_expr(&f.width),
+                        variable: f.variable.clone(),
+                    })
+                    .collect();
+                TypedStatement::new(
+                    TypedStatementKind::FieldStmt {
+                        file_num: typed_file_num,
+                        fields: typed_fields,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::Lset { variable, value } => {
+                let typed_value = self.check_expr(value);
+                TypedStatement::new(
+                    TypedStatementKind::Lset {
+                        variable: variable.clone(),
+                        value: typed_value,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::Rset { variable, value } => {
+                let typed_value = self.check_expr(value);
+                TypedStatement::new(
+                    TypedStatementKind::Rset {
+                        variable: variable.clone(),
+                        value: typed_value,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::OnKey { key_num, target } => {
+                let typed_key_num = self.check_expr(key_num);
+                TypedStatement::new(
+                    TypedStatementKind::OnKey {
+                        key_num: typed_key_num,
+                        target: target.clone(),
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::KeyControl { key_num, mode } => {
+                let typed_key_num = self.check_expr(key_num);
+                TypedStatement::new(
+                    TypedStatementKind::KeyControl {
+                        key_num: typed_key_num,
+                        mode: *mode,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::OnTimer { interval, target } => {
+                let typed_interval = self.check_expr(interval);
+                TypedStatement::new(
+                    TypedStatementKind::OnTimer {
+                        interval: typed_interval,
+                        target: target.clone(),
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::TimerControl { mode } => {
+                TypedStatement::new(TypedStatementKind::TimerControl { mode: *mode }, stmt.span)
+            }
+
+            StatementKind::StrigControl { button_num, mode } => {
+                let typed_button_num = self.check_expr(button_num);
+                TypedStatement::new(
+                    TypedStatementKind::StrigControl {
+                        button_num: typed_button_num,
+                        mode: *mode,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::OnStrig { button_num, target } => {
+                let typed_button_num = self.check_expr(button_num);
+                TypedStatement::new(
+                    TypedStatementKind::OnStrig {
+                        button_num: typed_button_num,
+                        target: target.clone(),
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::ClearStmt { stack_size } => {
+                let typed_stack_size = stack_size.as_ref().map(|s| self.check_expr(s));
+                TypedStatement::new(
+                    TypedStatementKind::ClearStmt {
+                        stack_size: typed_stack_size,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::ResetStmt => {
+                TypedStatement::new(TypedStatementKind::ResetStmt, stmt.span)
+            }
+
+            // Window/Desktop statements (QB64)
+            StatementKind::TitleStmt { title } => {
+                let typed_title = self.check_expr(title);
+                TypedStatement::new(
+                    TypedStatementKind::TitleStmt { title: typed_title },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::ScreenMoveStmt { x, y, center } => {
+                let typed_x = x.as_ref().map(|e| self.check_expr(e));
+                let typed_y = y.as_ref().map(|e| self.check_expr(e));
+                TypedStatement::new(
+                    TypedStatementKind::ScreenMoveStmt {
+                        x: typed_x,
+                        y: typed_y,
+                        center: *center,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::FullScreenStmt { mode } => TypedStatement::new(
+                TypedStatementKind::FullScreenStmt { mode: *mode },
+                stmt.span,
+            ),
+
+            StatementKind::AllowFullScreenStmt { mode } => TypedStatement::new(
+                TypedStatementKind::AllowFullScreenStmt { mode: *mode },
+                stmt.span,
+            ),
+
+            StatementKind::ScreenIconStmt => {
+                TypedStatement::new(TypedStatementKind::ScreenIconStmt, stmt.span)
+            }
+
+            StatementKind::IconStmt { handle } => {
+                let typed_handle = handle.as_ref().map(|h| self.check_expr(h));
+                TypedStatement::new(
+                    TypedStatementKind::IconStmt {
+                        handle: typed_handle,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::ScreenHideStmt => {
+                TypedStatement::new(TypedStatementKind::ScreenHideStmt, stmt.span)
+            }
+
+            StatementKind::ScreenShowStmt => {
+                TypedStatement::new(TypedStatementKind::ScreenShowStmt, stmt.span)
+            }
+
+            StatementKind::ConsoleTitleStmt { title } => {
+                let typed_title = self.check_expr(title);
+                TypedStatement::new(
+                    TypedStatementKind::ConsoleTitleStmt { title: typed_title },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::ConsoleStmt { visible } => TypedStatement::new(
+                TypedStatementKind::ConsoleStmt { visible: *visible },
+                stmt.span,
+            ),
+
+            StatementKind::AssertStmt { condition, message } => {
+                let typed_condition = self.check_expr(condition);
+                let typed_message = message.as_ref().map(|m| self.check_expr(m));
+                TypedStatement::new(
+                    TypedStatementKind::AssertStmt {
+                        condition: typed_condition,
+                        message: typed_message,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::MetaAsserts => {
+                TypedStatement::new(TypedStatementKind::MetaAsserts, stmt.span)
+            }
+
+            StatementKind::MetaNoPrefix => {
+                TypedStatement::new(TypedStatementKind::MetaNoPrefix, stmt.span)
+            }
+
+            StatementKind::MetaColor { depth } => {
+                TypedStatement::new(TypedStatementKind::MetaColor { depth: *depth }, stmt.span)
+            }
         }
     }
 

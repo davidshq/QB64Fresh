@@ -11,7 +11,10 @@
 use std::collections::HashMap;
 use std::fmt::Write;
 
-use crate::ast::{ExitType, FileAccess, FileLock, FileMode, PrintSeparator};
+use crate::ast::{
+    AllowFullScreenMode, EventControlMode, ExitType, FileAccess, FileLock, FileMode,
+    FullScreenMode, PrintSeparator,
+};
 use crate::codegen::error::CodeGenError;
 use crate::semantic::typed_ir::{
     TypedArrayDimension, TypedCaseCompareOp, TypedCaseMatch, TypedDoCondition, TypedExpr,
@@ -1444,6 +1447,272 @@ impl StmtEmitter {
 
             TypedStatementKind::DeclareFunction { name } => {
                 writeln!(output, "{}/* DECLARE FUNCTION {} */", indent, name).unwrap();
+            }
+
+            // ==================== Phase 7: Additional Statements ====================
+            TypedStatementKind::Run { target } => {
+                // RUN restarts the program or runs another - stub implementation
+                if let Some(t) = target {
+                    let target_code = emit_expr(t)?;
+                    writeln!(output, "{}qb_run({});", indent, target_code).unwrap();
+                } else {
+                    writeln!(output, "{}qb_run(NULL);", indent).unwrap();
+                }
+            }
+
+            TypedStatementKind::Chain { filename } => {
+                let filename_code = emit_expr(filename)?;
+                writeln!(output, "{}qb_chain({});", indent, filename_code).unwrap();
+            }
+
+            TypedStatementKind::Tron => {
+                writeln!(output, "{}qb_trace_on = 1;", indent).unwrap();
+            }
+
+            TypedStatementKind::Troff => {
+                writeln!(output, "{}qb_trace_on = 0;", indent).unwrap();
+            }
+
+            TypedStatementKind::Lprint { values, newline } => {
+                // Print to printer (LPT1) - similar to PRINT but to a different stream
+                for item in values {
+                    let expr_code = emit_expr(&item.expr)?;
+                    writeln!(output, "{}qb_lprint({});", indent, expr_code).unwrap();
+                    if item.separator == Some(PrintSeparator::Comma) {
+                        writeln!(output, "{}qb_lprint_tab();", indent).unwrap();
+                    }
+                }
+                if *newline {
+                    writeln!(output, "{}qb_lprint_newline();", indent).unwrap();
+                }
+            }
+
+            TypedStatementKind::FilesStmt { filespec } => {
+                if let Some(spec) = filespec {
+                    let spec_code = emit_expr(spec)?;
+                    writeln!(output, "{}qb_files({});", indent, spec_code).unwrap();
+                } else {
+                    writeln!(output, "{}qb_files(NULL);", indent).unwrap();
+                }
+            }
+
+            TypedStatementKind::FieldStmt { file_num, fields } => {
+                let file_num_code = emit_expr(file_num)?;
+                writeln!(
+                    output,
+                    "{}qb_field_start((int32_t)({}));",
+                    indent, file_num_code
+                )
+                .unwrap();
+                for field in fields {
+                    let width_code = emit_expr(&field.width)?;
+                    writeln!(
+                        output,
+                        "{}qb_field_add((int32_t)({}), &{});",
+                        indent, width_code, field.variable
+                    )
+                    .unwrap();
+                }
+            }
+
+            TypedStatementKind::Lset { variable, value } => {
+                let value_code = emit_expr(value)?;
+                writeln!(output, "{}qb_lset(&{}, {});", indent, variable, value_code).unwrap();
+            }
+
+            TypedStatementKind::Rset { variable, value } => {
+                let value_code = emit_expr(value)?;
+                writeln!(output, "{}qb_rset(&{}, {});", indent, variable, value_code).unwrap();
+            }
+
+            TypedStatementKind::OnKey { key_num, target } => {
+                let key_code = emit_expr(key_num)?;
+                writeln!(
+                    output,
+                    "{}qb_on_key((int32_t)({}), &&{});",
+                    indent, key_code, target
+                )
+                .unwrap();
+            }
+
+            TypedStatementKind::KeyControl { key_num, mode } => {
+                let key_code = emit_expr(key_num)?;
+                let mode_code = match mode {
+                    EventControlMode::On => "1",
+                    EventControlMode::Off => "0",
+                    EventControlMode::Stop => "2",
+                };
+                writeln!(
+                    output,
+                    "{}qb_key_control((int32_t)({}), {});",
+                    indent, key_code, mode_code
+                )
+                .unwrap();
+            }
+
+            TypedStatementKind::OnTimer { interval, target } => {
+                let interval_code = emit_expr(interval)?;
+                writeln!(
+                    output,
+                    "{}qb_on_timer({}, &&{});",
+                    indent, interval_code, target
+                )
+                .unwrap();
+            }
+
+            TypedStatementKind::TimerControl { mode } => {
+                let mode_code = match mode {
+                    EventControlMode::On => "1",
+                    EventControlMode::Off => "0",
+                    EventControlMode::Stop => "2",
+                };
+                writeln!(output, "{}qb_timer_control({});", indent, mode_code).unwrap();
+            }
+
+            TypedStatementKind::StrigControl { button_num, mode } => {
+                let btn_code = emit_expr(button_num)?;
+                let mode_code = match mode {
+                    EventControlMode::On => "1",
+                    EventControlMode::Off => "0",
+                    EventControlMode::Stop => "2",
+                };
+                writeln!(
+                    output,
+                    "{}qb_strig_control((int32_t)({}), {});",
+                    indent, btn_code, mode_code
+                )
+                .unwrap();
+            }
+
+            TypedStatementKind::OnStrig { button_num, target } => {
+                let btn_code = emit_expr(button_num)?;
+                writeln!(
+                    output,
+                    "{}qb_on_strig((int32_t)({}), &&{});",
+                    indent, btn_code, target
+                )
+                .unwrap();
+            }
+
+            TypedStatementKind::ClearStmt { stack_size } => {
+                if let Some(size) = stack_size {
+                    let size_code = emit_expr(size)?;
+                    writeln!(output, "{}qb_clear((int32_t)({}));", indent, size_code).unwrap();
+                } else {
+                    writeln!(output, "{}qb_clear(0);", indent).unwrap();
+                }
+            }
+
+            TypedStatementKind::ResetStmt => {
+                writeln!(output, "{}qb_reset();", indent).unwrap();
+            }
+
+            // Window/Desktop statements (QB64)
+            TypedStatementKind::TitleStmt { title } => {
+                let title_code = emit_expr(title)?;
+                writeln!(output, "{}qb_title({});", indent, title_code).unwrap();
+            }
+
+            TypedStatementKind::ScreenMoveStmt { x, y, center } => {
+                if *center {
+                    writeln!(output, "{}qb_screenmove_center();", indent).unwrap();
+                } else {
+                    let x_code = match x {
+                        Some(e) => emit_expr(e)?,
+                        None => "0".to_string(),
+                    };
+                    let y_code = match y {
+                        Some(e) => emit_expr(e)?,
+                        None => "0".to_string(),
+                    };
+                    writeln!(
+                        output,
+                        "{}qb_screenmove((int32_t)({}), (int32_t)({}));",
+                        indent, x_code, y_code
+                    )
+                    .unwrap();
+                }
+            }
+
+            TypedStatementKind::FullScreenStmt { mode } => {
+                let mode_code = match mode {
+                    FullScreenMode::Stretch => "0",
+                    FullScreenMode::SquarePixels => "1",
+                    FullScreenMode::Off => "2",
+                };
+                writeln!(output, "{}qb_fullscreen({});", indent, mode_code).unwrap();
+            }
+
+            TypedStatementKind::AllowFullScreenStmt { mode } => {
+                let mode_code = match mode {
+                    AllowFullScreenMode::Stretch => "0",
+                    AllowFullScreenMode::SquarePixels => "1",
+                    AllowFullScreenMode::All => "2",
+                    AllowFullScreenMode::Off => "3",
+                };
+                writeln!(output, "{}qb_allowfullscreen({});", indent, mode_code).unwrap();
+            }
+
+            TypedStatementKind::ScreenIconStmt => {
+                writeln!(output, "{}qb_screenicon();", indent).unwrap();
+            }
+
+            TypedStatementKind::IconStmt { handle } => {
+                if let Some(h) = handle {
+                    let handle_code = emit_expr(h)?;
+                    writeln!(output, "{}qb_icon((int32_t)({}));", indent, handle_code).unwrap();
+                } else {
+                    writeln!(output, "{}qb_icon(0);", indent).unwrap();
+                }
+            }
+
+            TypedStatementKind::ScreenHideStmt => {
+                writeln!(output, "{}qb_screenhide();", indent).unwrap();
+            }
+
+            TypedStatementKind::ScreenShowStmt => {
+                writeln!(output, "{}qb_screenshow();", indent).unwrap();
+            }
+
+            TypedStatementKind::ConsoleTitleStmt { title } => {
+                let title_code = emit_expr(title)?;
+                writeln!(output, "{}qb_consoletitle({});", indent, title_code).unwrap();
+            }
+
+            TypedStatementKind::ConsoleStmt { visible } => {
+                writeln!(
+                    output,
+                    "{}qb_console({});",
+                    indent,
+                    if *visible { "1" } else { "0" }
+                )
+                .unwrap();
+            }
+
+            TypedStatementKind::AssertStmt { condition, message } => {
+                let cond_code = emit_expr(condition)?;
+                if let Some(msg) = message {
+                    let msg_code = emit_expr(msg)?;
+                    writeln!(output, "{}qb_assert({}, {});", indent, cond_code, msg_code).unwrap();
+                } else {
+                    writeln!(output, "{}qb_assert({}, NULL);", indent, cond_code).unwrap();
+                }
+            }
+
+            TypedStatementKind::MetaAsserts => {
+                writeln!(output, "{}/* $ASSERTS */", indent).unwrap();
+            }
+
+            TypedStatementKind::MetaNoPrefix => {
+                writeln!(output, "{}/* $NOPREFIX */", indent).unwrap();
+            }
+
+            TypedStatementKind::MetaColor { depth } => {
+                if let Some(d) = depth {
+                    writeln!(output, "{}/* $COLOR:{} */", indent, d).unwrap();
+                } else {
+                    writeln!(output, "{}/* $COLOR:0 */", indent).unwrap();
+                }
             }
         }
 

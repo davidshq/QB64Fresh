@@ -1089,6 +1089,223 @@ pub enum StatementKind {
         /// Parameter declarations.
         params: Vec<DeclareParam>,
     },
+
+    // ==================== Phase 7: Additional QB4.5/QB64 Statements ====================
+    /// `RUN [filename$]` or `RUN [linenumber]` - Restart program or run another program
+    ///
+    /// Without arguments, restarts the current program from the beginning.
+    /// With a filename, runs that program. With a line number, restarts at that line.
+    Run {
+        /// Optional target: filename string or line number/label
+        target: Option<Expr>,
+    },
+
+    /// `CHAIN filename$` - Run another program, optionally passing COMMON variables
+    ///
+    /// Runs another BASIC program. Variables declared with COMMON can be passed
+    /// to the chained program.
+    Chain {
+        /// The filename of the program to chain to
+        filename: Expr,
+    },
+
+    /// `TRON` - Enable trace mode for debugging
+    ///
+    /// When trace mode is enabled, line numbers are printed as they execute.
+    Tron,
+
+    /// `TROFF` - Disable trace mode
+    Troff,
+
+    /// `LPRINT [expression [{;|,} expression]...]` - Print to printer (LPT1)
+    ///
+    /// Similar to PRINT but sends output to the printer instead of screen.
+    Lprint {
+        /// Values to print
+        values: Vec<PrintItem>,
+        /// Whether to print a newline at the end
+        newline: bool,
+    },
+
+    /// `FILES [filespec$]` - Display directory listing
+    ///
+    /// Displays files matching the filespec (supports wildcards).
+    /// Without arguments, displays files in the current directory.
+    FilesStmt {
+        /// Optional file specification (e.g., "*.BAS")
+        filespec: Option<Expr>,
+    },
+
+    /// `FIELD [#]filenum, width AS var$ [, width AS var$]...` - Define random file fields
+    ///
+    /// Allocates space in a random access file buffer for field variables.
+    FieldStmt {
+        /// File number
+        file_num: Expr,
+        /// List of (width, variable_name) pairs
+        fields: Vec<FieldSpec>,
+    },
+
+    /// `LSET var$ = string$` - Left-align string in field buffer
+    ///
+    /// Assigns a string value left-aligned within a field variable, padding with spaces.
+    Lset {
+        /// Target field variable
+        variable: String,
+        /// Value to assign
+        value: Expr,
+    },
+
+    /// `RSET var$ = string$` - Right-align string in field buffer
+    ///
+    /// Assigns a string value right-aligned within a field variable, padding with spaces.
+    Rset {
+        /// Target field variable
+        variable: String,
+        /// Value to assign
+        value: Expr,
+    },
+
+    /// `ON KEY(n) GOSUB label` - Set up key event handler
+    ///
+    /// Defines a subroutine to call when a specific key is pressed.
+    OnKey {
+        /// Key number (1-14 for function keys, 15-25 for user keys)
+        key_num: Expr,
+        /// Label to GOSUB when key is pressed
+        target: String,
+    },
+
+    /// `KEY(n) ON|OFF|STOP` - Enable/disable/suspend key event trapping
+    KeyControl {
+        /// Key number
+        key_num: Expr,
+        /// Control mode
+        mode: EventControlMode,
+    },
+
+    /// `ON TIMER(seconds) GOSUB label` - Set up timer event handler
+    ///
+    /// Defines a subroutine to call after the specified interval.
+    OnTimer {
+        /// Timer interval in seconds
+        interval: Expr,
+        /// Label to GOSUB when timer fires
+        target: String,
+    },
+
+    /// `TIMER ON|OFF|STOP` - Enable/disable/suspend timer event trapping
+    TimerControl {
+        /// Control mode
+        mode: EventControlMode,
+    },
+
+    /// `STRIG(n) ON|OFF|STOP` - Enable/disable joystick trigger events
+    StrigControl {
+        /// Button number
+        button_num: Expr,
+        /// Control mode
+        mode: EventControlMode,
+    },
+
+    /// `ON STRIG(n) GOSUB label` - Set up joystick trigger event handler
+    OnStrig {
+        /// Button number
+        button_num: Expr,
+        /// Label to GOSUB
+        target: String,
+    },
+
+    /// `CLEAR [stack_size]` - Clear all variables and optionally set stack size
+    ///
+    /// Resets all variables to their default values.
+    ClearStmt {
+        /// Optional stack size in bytes
+        stack_size: Option<Expr>,
+    },
+
+    /// `RESET` - Close all open files
+    ///
+    /// Equivalent to CLOSE with no arguments.
+    ResetStmt,
+
+    // ==================== Window/Desktop Statements (QB64) ====================
+    /// `_TITLE text$` - Set window title (QB64)
+    TitleStmt {
+        /// The title text
+        title: Expr,
+    },
+
+    /// `_SCREENMOVE x%, y%` or `_SCREENMOVE _MIDDLE` - Move window (QB64)
+    ScreenMoveStmt {
+        /// X position (or _MIDDLE for centering)
+        x: Option<Expr>,
+        /// Y position
+        y: Option<Expr>,
+        /// Whether to center the window
+        center: bool,
+    },
+
+    /// `_FULLSCREEN [_SQUAREPIXELS|_STRETCH|_OFF]` - Control fullscreen mode (QB64)
+    FullScreenStmt {
+        /// Fullscreen mode
+        mode: FullScreenMode,
+    },
+
+    /// `_ALLOWFULLSCREEN [_SQUAREPIXELS|_STRETCH|_ALL|_OFF]` - Set allowed fullscreen modes (QB64)
+    AllowFullScreenStmt {
+        /// Allowed mode
+        mode: AllowFullScreenMode,
+    },
+
+    /// `_SCREENICON` - Minimize window to taskbar (QB64)
+    ScreenIconStmt,
+
+    /// `_ICON [handle&]` - Set window icon from image handle (QB64)
+    IconStmt {
+        /// Optional image handle (uses embedded icon if not specified)
+        handle: Option<Expr>,
+    },
+
+    /// `_SCREENHIDE` - Hide graphics window (QB64)
+    ScreenHideStmt,
+
+    /// `_SCREENSHOW` - Show graphics window (QB64)
+    ScreenShowStmt,
+
+    /// `_CONSOLETITLE text$` - Set console window title (QB64)
+    ConsoleTitleStmt {
+        /// The title text
+        title: Expr,
+    },
+
+    /// `_CONSOLE ON|OFF` - Show/hide console window (QB64)
+    ConsoleStmt {
+        /// Whether console should be visible
+        visible: bool,
+    },
+
+    /// `_ASSERT condition [, message$]` - Debug assertion (QB64)
+    ///
+    /// Checks a condition and triggers an error if false (when $ASSERTS is enabled).
+    AssertStmt {
+        /// Condition to check
+        condition: Expr,
+        /// Optional error message
+        message: Option<Expr>,
+    },
+
+    /// `$ASSERTS` - Enable assertion checking
+    MetaAsserts,
+
+    /// `$NOPREFIX` - Allow QB64 keywords without underscore prefix
+    MetaNoPrefix,
+
+    /// `$COLOR` - Include named color constants
+    MetaColor {
+        /// Color depth mode (0 for EGA, 32 for RGBA)
+        depth: Option<i64>,
+    },
 }
 
 /// File mode for OPEN statement.
@@ -1128,6 +1345,50 @@ pub enum FileLock {
     LockWrite,
     /// LOCK READ WRITE - exclusive access
     LockReadWrite,
+}
+
+/// Field specification for FIELD statement.
+#[derive(Debug, Clone)]
+pub struct FieldSpec {
+    /// Width of the field in bytes.
+    pub width: Expr,
+    /// Variable name for this field.
+    pub variable: String,
+}
+
+/// Event control mode for KEY(n), TIMER, STRIG, etc.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EventControlMode {
+    /// Enable event trapping
+    On,
+    /// Disable event trapping
+    Off,
+    /// Suspend event trapping (events are remembered)
+    Stop,
+}
+
+/// Fullscreen mode for _FULLSCREEN statement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FullScreenMode {
+    /// Stretch to fill screen (may distort aspect ratio)
+    Stretch,
+    /// Maintain square pixels (letterbox if needed)
+    SquarePixels,
+    /// Exit fullscreen mode
+    Off,
+}
+
+/// Allowed fullscreen modes for _ALLOWFULLSCREEN statement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AllowFullScreenMode {
+    /// Allow stretch mode only
+    Stretch,
+    /// Allow square pixels mode only
+    SquarePixels,
+    /// Allow all fullscreen modes
+    All,
+    /// Disallow fullscreen
+    Off,
 }
 
 /// Resume target for RESUME statement.
