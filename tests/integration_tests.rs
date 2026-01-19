@@ -3333,3 +3333,300 @@ mod assert_statement {
         assert!(code.contains("qb_assert("));
     }
 }
+
+// =============================================================================
+// Conditional Compilation Tests ($IF/$ELSEIF/$ELSE/$END IF)
+// =============================================================================
+
+/// Tests for platform conditional compilation
+mod conditional_compilation {
+    use super::*;
+
+    #[test]
+    fn if_linux_on_linux() {
+        // On Linux, the LINUX branch should be selected
+        let source = r#"
+$IF LINUX THEN
+    PRINT "Linux"
+$ELSE
+    PRINT "Other"
+$END IF
+"#;
+        let code = compile_to_c(source).unwrap();
+
+        // On Linux, should include "Linux" and NOT include "Other"
+        #[cfg(target_os = "linux")]
+        {
+            assert!(
+                code.contains(r#"qb_print_string(qb_string_new("Linux")"#),
+                "Linux branch should be selected on Linux"
+            );
+            assert!(
+                !code.contains(r#"qb_print_string(qb_string_new("Other")"#),
+                "Other branch should NOT be included on Linux"
+            );
+        }
+
+        // On non-Linux, should include "Other" and NOT include "Linux"
+        #[cfg(not(target_os = "linux"))]
+        {
+            assert!(
+                code.contains(r#"qb_print_string(qb_string_new("Other")"#),
+                "Other branch should be selected on non-Linux"
+            );
+            assert!(
+                !code.contains(r#"qb_print_string(qb_string_new("Linux")"#),
+                "Linux branch should NOT be included on non-Linux"
+            );
+        }
+    }
+
+    #[test]
+    fn if_win_on_platform() {
+        let source = r#"
+$IF WIN THEN
+    PRINT "Windows"
+$ELSE
+    PRINT "Not Windows"
+$END IF
+"#;
+        let code = compile_to_c(source).unwrap();
+
+        #[cfg(target_os = "windows")]
+        {
+            assert!(code.contains(r#"qb_print_string(qb_string_new("Windows")"#));
+            assert!(!code.contains(r#"qb_print_string(qb_string_new("Not Windows")"#));
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            assert!(code.contains(r#"qb_print_string(qb_string_new("Not Windows")"#));
+            assert!(!code.contains(r#"qb_print_string(qb_string_new("Windows")"#));
+        }
+    }
+
+    #[test]
+    fn if_64bit_architecture() {
+        let source = r#"
+$IF 64BIT THEN
+    PRINT "64-bit"
+$ELSEIF 32BIT THEN
+    PRINT "32-bit"
+$END IF
+"#;
+        let code = compile_to_c(source).unwrap();
+
+        #[cfg(target_pointer_width = "64")]
+        {
+            assert!(code.contains(r#"qb_print_string(qb_string_new("64-bit")"#));
+            assert!(!code.contains(r#"qb_print_string(qb_string_new("32-bit")"#));
+        }
+
+        #[cfg(target_pointer_width = "32")]
+        {
+            assert!(code.contains(r#"qb_print_string(qb_string_new("32-bit")"#));
+            assert!(!code.contains(r#"qb_print_string(qb_string_new("64-bit")"#));
+        }
+    }
+
+    #[test]
+    fn if_not_operator() {
+        let source = r#"
+$IF NOT WIN THEN
+    PRINT "Not Windows"
+$END IF
+"#;
+        let code = compile_to_c(source).unwrap();
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            assert!(code.contains(r#"qb_print_string(qb_string_new("Not Windows")"#));
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            assert!(!code.contains(r#"qb_print_string(qb_string_new("Not Windows")"#));
+        }
+    }
+
+    #[test]
+    fn if_and_operator() {
+        let source = r#"
+$IF LINUX AND 64BIT THEN
+    PRINT "64-bit Linux"
+$END IF
+"#;
+        let code = compile_to_c(source).unwrap();
+
+        #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
+        {
+            assert!(code.contains(r#"qb_print_string(qb_string_new("64-bit Linux")"#));
+        }
+
+        #[cfg(not(all(target_os = "linux", target_pointer_width = "64")))]
+        {
+            assert!(!code.contains(r#"qb_print_string(qb_string_new("64-bit Linux")"#));
+        }
+    }
+
+    #[test]
+    fn if_or_operator() {
+        let source = r#"
+$IF WIN OR LINUX OR MAC THEN
+    PRINT "Desktop OS"
+$END IF
+"#;
+        let code = compile_to_c(source).unwrap();
+
+        // This should always be true on any desktop platform
+        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+        {
+            assert!(code.contains(r#"qb_print_string(qb_string_new("Desktop OS")"#));
+        }
+    }
+
+    #[test]
+    fn if_comparison_operator() {
+        let source = r#"
+$IF LINUX = -1 THEN
+    PRINT "Linux is TRUE"
+$END IF
+"#;
+        let code = compile_to_c(source).unwrap();
+
+        #[cfg(target_os = "linux")]
+        {
+            assert!(code.contains(r#"qb_print_string(qb_string_new("Linux is TRUE")"#));
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            assert!(!code.contains(r#"qb_print_string(qb_string_new("Linux is TRUE")"#));
+        }
+    }
+
+    #[test]
+    fn if_with_parentheses() {
+        let source = r#"
+$IF (WIN OR MAC) AND 64BIT THEN
+    PRINT "64-bit Windows or Mac"
+$END IF
+"#;
+        let code = compile_to_c(source).unwrap();
+
+        #[cfg(all(
+            any(target_os = "windows", target_os = "macos"),
+            target_pointer_width = "64"
+        ))]
+        {
+            assert!(code.contains(r#"qb_print_string(qb_string_new("64-bit Windows or Mac")"#));
+        }
+
+        #[cfg(not(all(
+            any(target_os = "windows", target_os = "macos"),
+            target_pointer_width = "64"
+        )))]
+        {
+            assert!(!code.contains(r#"qb_print_string(qb_string_new("64-bit Windows or Mac")"#));
+        }
+    }
+
+    #[test]
+    fn elseif_chain() {
+        let source = r#"
+$IF WIN THEN
+    PRINT "Windows"
+$ELSEIF MAC THEN
+    PRINT "macOS"
+$ELSEIF LINUX THEN
+    PRINT "Linux"
+$ELSE
+    PRINT "Unknown"
+$END IF
+"#;
+        let code = compile_to_c(source).unwrap();
+
+        // Only one branch should be included
+        let branches = [
+            code.contains(r#"qb_print_string(qb_string_new("Windows")"#),
+            code.contains(r#"qb_print_string(qb_string_new("macOS")"#),
+            code.contains(r#"qb_print_string(qb_string_new("Linux")"#),
+            code.contains(r#"qb_print_string(qb_string_new("Unknown")"#),
+        ];
+        let count = branches.iter().filter(|&&b| b).count();
+        assert_eq!(
+            count, 1,
+            "Exactly one branch should be selected, found {}",
+            count
+        );
+    }
+
+    #[test]
+    fn conditional_with_multiple_statements() {
+        let source = r#"
+DIM x AS INTEGER
+$IF LINUX THEN
+    x = 1
+    PRINT "Linux"
+    x = x + 1
+$ELSE
+    x = 9999
+    PRINT "Other"
+$END IF
+"#;
+        let code = compile_to_c(source).unwrap();
+
+        #[cfg(target_os = "linux")]
+        {
+            assert!(code.contains(r#"qb_print_string(qb_string_new("Linux")"#));
+            // Should NOT contain the Other branch code
+            assert!(
+                !code.contains("9999"),
+                "Linux build should not contain value 9999 from $ELSE branch"
+            );
+            assert!(
+                !code.contains(r#"qb_string_new("Other")"#),
+                "Linux build should not contain 'Other' string from $ELSE branch"
+            );
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            assert!(code.contains("9999"));
+            assert!(code.contains(r#"qb_print_string(qb_string_new("Other")"#));
+        }
+    }
+
+    #[test]
+    fn false_condition_empty_output() {
+        // When no condition matches and there's no $ELSE, nothing should be emitted
+        let source = r#"
+$IF _FALSE THEN
+    PRINT "Never printed"
+$END IF
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(!code.contains(r#"qb_print_string(qb_string_new("Never printed")"#));
+    }
+
+    #[test]
+    fn windows_alias() {
+        // WINDOWS should be an alias for WIN
+        let source = r#"
+$IF WINDOWS THEN
+    PRINT "Windows"
+$END IF
+"#;
+        let code = compile_to_c(source).unwrap();
+
+        #[cfg(target_os = "windows")]
+        {
+            assert!(code.contains(r#"qb_print_string(qb_string_new("Windows")"#));
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            assert!(!code.contains(r#"qb_print_string(qb_string_new("Windows")"#));
+        }
+    }
+}

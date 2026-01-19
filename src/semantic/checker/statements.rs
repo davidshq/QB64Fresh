@@ -253,28 +253,61 @@ impl<'a> TypeChecker<'a> {
                 elseif_branches,
                 else_branch,
             } => {
-                // Type check statements in all branches
-                let typed_then = then_branch
-                    .iter()
-                    .map(|s| self.check_statement(s))
-                    .collect();
-                let typed_elseif = elseif_branches
-                    .iter()
-                    .map(|(cond, body)| {
-                        let typed_body = body.iter().map(|s| self.check_statement(s)).collect();
-                        (cond.clone(), typed_body)
-                    })
-                    .collect();
-                let typed_else = else_branch
-                    .as_ref()
-                    .map(|body| body.iter().map(|s| self.check_statement(s)).collect());
+                // Evaluate the condition at compile time and only include the selected branch.
+                // This is true conditional compilation - excluded code is not type-checked
+                // or included in the output.
 
+                // Check the main $IF condition
+                if self.evaluate_meta_condition(condition) {
+                    // Main condition is true - include then_branch statements
+                    let typed_stmts: Vec<TypedStatement> = then_branch
+                        .iter()
+                        .map(|s| self.check_statement(s))
+                        .collect();
+                    return TypedStatement::new(
+                        TypedStatementKind::ConditionalBlockResolved {
+                            original_condition: condition.clone(),
+                            statements: typed_stmts,
+                        },
+                        stmt.span,
+                    );
+                }
+
+                // Check $ELSEIF conditions
+                for (elseif_cond, elseif_body) in elseif_branches {
+                    if self.evaluate_meta_condition(elseif_cond) {
+                        let typed_stmts: Vec<TypedStatement> = elseif_body
+                            .iter()
+                            .map(|s| self.check_statement(s))
+                            .collect();
+                        return TypedStatement::new(
+                            TypedStatementKind::ConditionalBlockResolved {
+                                original_condition: elseif_cond.clone(),
+                                statements: typed_stmts,
+                            },
+                            stmt.span,
+                        );
+                    }
+                }
+
+                // No conditions matched - use $ELSE branch if present
+                if let Some(else_body) = else_branch {
+                    let typed_stmts: Vec<TypedStatement> =
+                        else_body.iter().map(|s| self.check_statement(s)).collect();
+                    return TypedStatement::new(
+                        TypedStatementKind::ConditionalBlockResolved {
+                            original_condition: "$ELSE".to_string(),
+                            statements: typed_stmts,
+                        },
+                        stmt.span,
+                    );
+                }
+
+                // No branch selected - emit empty block
                 TypedStatement::new(
-                    TypedStatementKind::ConditionalBlock {
-                        condition: condition.clone(),
-                        then_branch: typed_then,
-                        elseif_branches: typed_elseif,
-                        else_branch: typed_else,
+                    TypedStatementKind::ConditionalBlockResolved {
+                        original_condition: condition.clone(),
+                        statements: Vec::new(),
                     },
                     stmt.span,
                 )

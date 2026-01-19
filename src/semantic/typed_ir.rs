@@ -383,7 +383,8 @@ pub enum TypedStatementKind {
         path: String,
     },
 
-    /// $IF conditional compilation block.
+    /// $IF conditional compilation block (unevaluated - all branches preserved).
+    /// This variant is used when conditions cannot be evaluated at compile time.
     ConditionalBlock {
         /// The compile-time condition.
         condition: String,
@@ -393,6 +394,16 @@ pub enum TypedStatementKind {
         elseif_branches: Vec<(String, Vec<TypedStatement>)>,
         /// $ELSE block.
         else_branch: Option<Vec<TypedStatement>>,
+    },
+
+    /// $IF conditional compilation block (evaluated - only selected branch).
+    /// This variant is used when the condition was evaluated at compile time
+    /// and only the matching branch's statements are included.
+    ConditionalBlockResolved {
+        /// The original condition that was true (for debug comments).
+        original_condition: String,
+        /// Only the statements from the selected branch.
+        statements: Vec<TypedStatement>,
     },
 
     /// Other meta-command directive.

@@ -488,6 +488,8 @@ impl StmtEmitter {
                 elseif_branches,
                 else_branch,
             } => {
+                // Unevaluated conditional block - emit all branches as comments
+                // (This case should be rare now that conditions are evaluated)
                 writeln!(output, "{}/* $IF {} */", indent, condition).unwrap();
                 for s in then_branch {
                     self.emit_stmt(s, output)?;
@@ -505,6 +507,26 @@ impl StmtEmitter {
                     }
                 }
                 writeln!(output, "{}/* $END IF */", indent).unwrap();
+            }
+
+            TypedStatementKind::ConditionalBlockResolved {
+                original_condition,
+                statements,
+            } => {
+                // Evaluated conditional block - only emit the selected branch
+                if !statements.is_empty() {
+                    writeln!(
+                        output,
+                        "{}/* Conditional compilation: {} */",
+                        indent, original_condition
+                    )
+                    .unwrap();
+                    for s in statements {
+                        self.emit_stmt(s, output)?;
+                    }
+                }
+                // If statements is empty, no code is emitted (condition was false
+                // and there was no matching branch)
             }
 
             TypedStatementKind::MetaCommand { command, args } => {

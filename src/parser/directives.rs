@@ -246,6 +246,10 @@ impl<'a> Parser<'a> {
         let mut args = String::new();
 
         while !self.is_at_end() && !self.check(&TokenKind::Newline) {
+            // Stop before THEN keyword for $IF conditions
+            if self.check(&TokenKind::Then) {
+                break;
+            }
             if let Some(token) = self.advance() {
                 if !args.is_empty() {
                     args.push(' ');

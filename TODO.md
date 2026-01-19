@@ -1,6 +1,6 @@
 # QB64Fresh TODO
 
-*Last updated: 2026-01-19 (Session 025+)*
+*Last updated: 2026-01-19 (Session 026)*
 
 A prioritized roadmap for QB64Fresh development. For completed features, see [TODO-completed.md](TODO-completed.md).
 
@@ -13,13 +13,11 @@ A prioritized roadmap for QB64Fresh development. For completed features, see [TO
 
 ---
 
-## Phase 2: Core Extensions - Remaining Items
+## Phase 2: Core Extensions - COMPLETE ✓
 
-### Conditional Compilation
-- [ ] Built-in constants: `WIN`, `LINUX`, `MAC`, `32BIT`, `64BIT`
-
-### Date/Time Enhancements
-- [ ] `_AUTODISPLAY` / `_DISPLAY` timing
+All Phase 2 items have been completed:
+- [x] Built-in constants: `WIN`, `LINUX`, `MAC`, `WINDOWS`, `32BIT`, `64BIT` (for `$IF` conditional compilation)
+- [x] `_AUTODISPLAY` / `_DISPLAY` timing
 
 ---
 

@@ -73,6 +73,11 @@
 - [x] `$LET` directive for compile-time variables
 - [x] `$CHECKING` directive
 - [x] `$INCLUDE` - read and parse included files (implemented in preprocessor.rs)
+- [x] Built-in platform constants: `WIN`, `WINDOWS`, `LINUX`, `MAC`, `32BIT`, `64BIT`
+  - Evaluated at compile time for `$IF` conditional compilation
+  - Uses BASIC convention: -1 for TRUE, 0 for FALSE
+  - Supports boolean operators: `AND`, `OR`, `NOT`, `XOR`
+  - Supports comparisons: `=`, `<>`, `<`, `>`, `<=`, `>=`
 
 ### Memory Operations
 - [x] `_MEM` type full support
@@ -385,4 +390,4 @@
 
 ---
 
-*Last updated: 2026-01-19 (Session 025+)*
+*Last updated: 2026-01-19 (Session 026 - Phase 2 complete with platform constants)*

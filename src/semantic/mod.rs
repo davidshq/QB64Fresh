@@ -883,6 +883,10 @@ impl SemanticAnalyzer {
         };
         let _ = self.symbols.define_symbol(false_symbol);
 
+        // Register platform/architecture constants for conditional compilation
+        // These follow BASIC convention: -1 for true, 0 for false
+        self.register_platform_constants();
+
         // Register standard QB error code constants
         // These match the ERR values returned by the ERR function
         self.register_error_constants();
@@ -974,6 +978,47 @@ impl SemanticAnalyzer {
         define_error("_ERR_RENAME_ACROSS_DISKS", 74);
         define_error("_ERR_PATH_FILE_ACCESS_ERROR", 75);
         define_error("_ERR_PATH_NOT_FOUND", 76);
+    }
+
+    /// Registers platform and architecture constants for conditional compilation.
+    ///
+    /// These constants allow BASIC code to use `$IF WIN THEN` style conditional
+    /// compilation. Values follow BASIC convention: -1 for true, 0 for false.
+    ///
+    /// Constants registered:
+    /// - `WIN` / `WINDOWS` - True on Windows
+    /// - `LINUX` - True on Linux
+    /// - `MAC` - True on macOS
+    /// - `32BIT` - True on 32-bit architecture
+    /// - `64BIT` - True on 64-bit architecture
+    fn register_platform_constants(&mut self) {
+        use symbols::{ConstValue, Symbol, SymbolKind};
+
+        // Helper to create a platform constant (-1 for true, 0 for false)
+        let mut define_platform = |name: &str, is_true: bool| {
+            let symbol = Symbol {
+                name: name.to_string(),
+                kind: SymbolKind::Constant {
+                    value: ConstValue::Integer(if is_true { -1 } else { 0 }),
+                },
+                basic_type: BasicType::Long,
+                span: crate::ast::Span::new(0, 0),
+                is_mutable: false,
+            };
+            let _ = self.symbols.define_symbol(symbol);
+        };
+
+        // Operating system constants
+        // These are determined at compile time based on the host platform
+        define_platform("WIN", cfg!(target_os = "windows"));
+        define_platform("WINDOWS", cfg!(target_os = "windows"));
+        define_platform("LINUX", cfg!(target_os = "linux"));
+        define_platform("MAC", cfg!(target_os = "macos"));
+
+        // Architecture constants
+        // 32-bit vs 64-bit based on pointer width
+        define_platform("32BIT", cfg!(target_pointer_width = "32"));
+        define_platform("64BIT", cfg!(target_pointer_width = "64"));
     }
 }
 
