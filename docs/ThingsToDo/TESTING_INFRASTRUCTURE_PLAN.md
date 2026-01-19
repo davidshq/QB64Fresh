@@ -11,14 +11,14 @@
 
 **UPDATE:** As of 2026-01-19, the testing infrastructure has been substantially implemented:
 - **170 unit tests** in source modules
-- **272 integration tests** (0 ignored)
+- **277 integration tests** (0 ignored)
 - **10 golden tests** for C code generation snapshots
 - **16 compatibility test fixtures** (12 success + 4 error, auto-discovered)
 - **19 property-based tests** using proptest (thousands of iterations)
 - **30 benchmarks** measuring compiler performance
 - **44 runtime tests**
 
-Total: **534+ tests** across the workspace (11 ignored for platform-specific features).
+Total: **539+ tests** across the workspace (11 ignored for platform-specific features).
 **Line coverage:** 72.67% (measured via cargo-llvm-cov)
 **Fuzz testing:** 3 fuzz targets verified (~4.6M inputs, 0 crashes)
 
@@ -29,7 +29,7 @@ Total: **534+ tests** across the workspace (11 ignored for platform-specific fea
 ### What We Have (Updated)
 - Unit tests integrated into source files using `#[cfg(test)]` modules
 - **170 passing unit tests** across compiler modules
-- **272 integration tests** covering full compilation pipeline
+- **277 integration tests** covering full compilation pipeline
 - **10 golden tests** for codegen snapshot verification
 - **16 compatibility test fixtures** in QB64pe-style format
 - **30 criterion benchmarks** for performance tracking
@@ -72,7 +72,7 @@ src/
 ### Tier 2: Integration Tests ✅ IMPLEMENTED
 **Location:** `tests/integration_tests.rs`
 **Purpose:** Test complete compiler pipeline end-to-end
-**Status:** 272 tests passing, 0 ignored
+**Status:** 277 tests passing, 0 ignored
 
 Tests cover:
 - Basic programs (hello world, comments, END)
@@ -198,7 +198,7 @@ cargo +nightly fuzz run fuzz_lexer -- -max_total_time=60
 ### Phase 1: Foundation ✅ COMPLETE
 
 #### 1.1 Integration Test Framework ✅
-Implemented in `tests/integration_tests.rs` with 272 tests covering:
+Implemented in `tests/integration_tests.rs` with 277 tests covering:
 - Full compilation pipeline (lex → parse → analyze → codegen)
 - Helper functions: `compile_to_c()`, `assert_compiles()`, `assert_compile_error()`
 - Organized into modules by feature area
@@ -322,7 +322,7 @@ Verified with ~4.6M total inputs, 0 crashes found.
 cargo test --workspace
 
 # Run specific test suites
-cargo test --test integration_tests    # 272 integration tests
+cargo test --test integration_tests    # 277 integration tests
 cargo test --test golden_tests         # 10 golden tests
 cargo test --test compatibility        # 16 fixture tests
 cargo test --test proptest_tests       # 19 property-based tests
@@ -367,3 +367,4 @@ cargo llvm-cov --workspace --lcov      # LCOV format for CI
 *Updated: 2026-01-18 - Session 022: Hyperbolic trig (_SINH/_COSH/_TANH/_ASINH/_ACOSH/_ATANH), angle conversion (_D2R/_R2D), _NEGATE, string compare (_STRCMP/_STRICMP), error extensions (_ERRORLINE/_ERRORMESSAGE$), utility funcs (_COMMANDCOUNT/_ENVIRONCOUNT), font stubs, desktop/window funcs, dialog boxes, RodioBackend for audio; 207 tests*
 *Updated: 2026-01-18 - Session 023: Reciprocal trig (_SEC/_CSC/_COT/_SECH/_CSCH/_COTH/_ARCSEC/_ARCCSC/_ARCCOT/_ARCSECH/_ARCCSCH/_ARCCOTH), gradian conversions (_D2G/_G2D/_G2R/_R2G), _TOSTR$, _BIN$, _IIF/_IIF$, window control (_SCREENMOVE/_SCREENHIDE/_SCREENSHOW/_FULLSCREEN/_SCREENCLICK), sound codegen (BEEP/SOUND/PLAY runtime), _FONT/_FREEFONT; 239 tests*
 *Updated: 2026-01-19 - Consolidated test counts: 534+ tests total (170 unit, 272 integration, 10 golden, 19 proptest, 44 runtime, 19 misc); coverage improved to 72.67%; updated golden files for current codegen output*
+*Updated: 2026-01-19 - Session 024: ENDIF keyword, _READFILE$/_WRITEFILE file helpers, verified implicit SUB calls already working, register_builtin_sub() for built-in SUBs; 277 integration tests*

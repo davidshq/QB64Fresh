@@ -71,6 +71,10 @@ pub enum TokenKind {
     #[token("END", ignore(ascii_case))]
     End,
 
+    /// ENDIF keyword - alternative syntax for END IF (no space)
+    #[token("ENDIF", ignore(ascii_case))]
+    EndIf,
+
     /// FOR keyword - begins FOR loop
     #[token("FOR", ignore(ascii_case))]
     For,

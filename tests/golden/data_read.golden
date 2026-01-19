@@ -1431,6 +1431,31 @@ void qb_mouse_move(int32_t x, int32_t y) { (void)x; (void)y; }
 qb_string* qb_clipboard_get(void) { return qb_string_new(""); }
 void qb_clipboard_set(const char* text) { (void)text; }
 
+/* File Content Helpers */
+
+qb_string* qb_readfile(qb_string* path) {
+    FILE* f = fopen(path->data, "rb");
+    if (!f) return qb_string_new("");
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    char* buf = (char*)malloc(size + 1);
+    if (!buf) { fclose(f); return qb_string_new(""); }
+    fread(buf, 1, size, f);
+    buf[size] = '\0';
+    fclose(f);
+    qb_string* result = qb_string_new(buf);
+    free(buf);
+    return result;
+}
+
+void qb_writefile(qb_string* path, qb_string* content) {
+    FILE* f = fopen(path->data, "wb");
+    if (!f) return;
+    fwrite(content->data, 1, content->len, f);
+    fclose(f);
+}
+
 /* Utility Functions */
 
 int64_t qb_commandcount(void) { return _qb_argc - 1; }

@@ -231,6 +231,11 @@ impl<'a> Parser<'a> {
 
     /// Checks for END IF (handles both "END IF" and "ENDIF").
     pub(super) fn check_end_if(&self) -> bool {
+        // Check for ENDIF (single token)
+        if self.check(&TokenKind::EndIf) {
+            return true;
+        }
+        // Check for END IF (two tokens)
         if self.check(&TokenKind::End)
             && let Some(next) = self.peek_ahead(1)
         {
@@ -249,8 +254,13 @@ impl<'a> Parser<'a> {
         false
     }
 
-    /// Expects END IF.
+    /// Expects END IF (handles both "END IF" and "ENDIF").
     fn expect_end_if(&mut self) -> Result<(), ()> {
+        // Check for ENDIF (single token)
+        if self.match_token(&TokenKind::EndIf) {
+            return Ok(());
+        }
+        // Otherwise expect END IF (two tokens)
         self.expect(&TokenKind::End, "END")?;
         self.expect(&TokenKind::If, "IF")?;
         Ok(())

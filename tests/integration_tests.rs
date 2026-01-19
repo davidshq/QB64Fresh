@@ -440,6 +440,34 @@ mod control_flow {
     }
 
     #[test]
+    fn endif_syntax() {
+        // ENDIF (no space) is an alternative to END IF
+        let source = r#"
+            DIM x AS LONG
+            x = 10
+            IF x > 5 THEN
+                PRINT "Greater"
+            ENDIF
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn endif_nested() {
+        // ENDIF can be mixed with END IF
+        let source = r#"
+            DIM x AS LONG
+            x = 10
+            IF x > 5 THEN
+                IF x < 20 THEN
+                    PRINT "In range"
+                ENDIF
+            END IF
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
     fn for_next_loop() {
         let source = r#"
             FOR i = 1 TO 10
@@ -1200,6 +1228,37 @@ mod file_io {
             OPEN "test.txt" FOR OUTPUT AS #1
             WRITE #1, "name", 42, 3.14
             CLOSE #1
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn readfile_function() {
+        // _READFILE$ reads entire file into string
+        let source = r#"
+            DIM content AS STRING
+            content = _READFILE$("test.txt")
+            PRINT content
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn writefile_statement() {
+        // _WRITEFILE writes string to file
+        let source = r#"
+            _WRITEFILE "test.txt", "Hello World"
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn readfile_writefile_combined() {
+        // Read a file, modify, write back
+        let source = r#"
+            DIM content AS STRING
+            content = _READFILE$("input.txt")
+            _WRITEFILE "output.txt", content + " (modified)"
         "#;
         assert_compiles(source);
     }

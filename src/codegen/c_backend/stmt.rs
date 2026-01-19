@@ -375,7 +375,12 @@ impl StmtEmitter {
             TypedStatementKind::Call { name, args } => {
                 let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
                 let args_str = args_code?.join(", ");
-                let c_name = format!("qb_sub_{}", c_identifier(name).to_lowercase());
+                // Check for built-in SUBs with special C function names
+                let c_name = match name.to_uppercase().as_str() {
+                    "_WRITEFILE" => "qb_writefile".to_string(),
+                    // Default: user-defined SUBs use qb_sub_ prefix
+                    _ => format!("qb_sub_{}", c_identifier(name).to_lowercase()),
+                };
                 writeln!(output, "{}{}({});", indent, c_name, args_str).unwrap();
             }
 

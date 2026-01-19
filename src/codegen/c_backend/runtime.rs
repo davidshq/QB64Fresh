@@ -2789,6 +2789,45 @@ fn emit_graphics_stubs(output: &mut String) {
     .unwrap();
     writeln!(output).unwrap();
 
+    // File content helpers
+    writeln!(output, "/* File Content Helpers */").unwrap();
+    writeln!(output).unwrap();
+
+    // _READFILE$ - read entire file into string
+    writeln!(output, "qb_string* qb_readfile(qb_string* path) {{").unwrap();
+    writeln!(output, "    FILE* f = fopen(path->data, \"rb\");").unwrap();
+    writeln!(output, "    if (!f) return qb_string_new(\"\");").unwrap();
+    writeln!(output, "    fseek(f, 0, SEEK_END);").unwrap();
+    writeln!(output, "    long size = ftell(f);").unwrap();
+    writeln!(output, "    fseek(f, 0, SEEK_SET);").unwrap();
+    writeln!(output, "    char* buf = (char*)malloc(size + 1);").unwrap();
+    writeln!(
+        output,
+        "    if (!buf) {{ fclose(f); return qb_string_new(\"\"); }}"
+    )
+    .unwrap();
+    writeln!(output, "    fread(buf, 1, size, f);").unwrap();
+    writeln!(output, "    buf[size] = '\\0';").unwrap();
+    writeln!(output, "    fclose(f);").unwrap();
+    writeln!(output, "    qb_string* result = qb_string_new(buf);").unwrap();
+    writeln!(output, "    free(buf);").unwrap();
+    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _WRITEFILE - write string to file
+    writeln!(
+        output,
+        "void qb_writefile(qb_string* path, qb_string* content) {{"
+    )
+    .unwrap();
+    writeln!(output, "    FILE* f = fopen(path->data, \"wb\");").unwrap();
+    writeln!(output, "    if (!f) return;").unwrap();
+    writeln!(output, "    fwrite(content->data, 1, content->len, f);").unwrap();
+    writeln!(output, "    fclose(f);").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
     // Utility functions
     writeln!(output, "/* Utility Functions */").unwrap();
     writeln!(output).unwrap();

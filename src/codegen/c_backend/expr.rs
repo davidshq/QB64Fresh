@@ -428,6 +428,7 @@ pub(super) fn c_function_name(name: &str) -> String {
         "_FILEEXISTS" => "qb_file_exists".to_string(),
         "_DIREXISTS" => "qb_dir_exists".to_string(),
         "_DIR$" => "qb_dir".to_string(),
+        "_READFILE$" => "qb_readfile".to_string(),
 
         // Phase 5: Mouse Input
         "_MOUSEX" => "qb_mouse_x".to_string(),

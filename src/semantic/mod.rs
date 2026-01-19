@@ -662,6 +662,16 @@ impl SemanticAnalyzer {
             BasicType::Integer,
         );
         self.register_builtin_function("_DIR$", &[("spec", BasicType::String)], BasicType::String);
+        // File content helpers
+        self.register_builtin_function(
+            "_READFILE$",
+            &[("path", BasicType::String)],
+            BasicType::String,
+        );
+        self.register_builtin_sub(
+            "_WRITEFILE",
+            &[("path", BasicType::String), ("content", BasicType::String)],
+        );
 
         // Phase 5: Mouse Input
         self.register_builtin_function("_MOUSEX", &[], BasicType::Integer);
@@ -816,6 +826,26 @@ impl SemanticAnalyzer {
                 })
                 .collect(),
             return_type: Some(return_type),
+            span: crate::ast::Span::new(0, 0),
+            is_static: false,
+        };
+        let _ = self.symbols.define_procedure(entry);
+    }
+
+    /// Registers a built-in SUB (procedure with no return value).
+    fn register_builtin_sub(&mut self, name: &str, params: &[(&str, BasicType)]) {
+        let entry = ProcedureEntry {
+            name: name.to_string(),
+            kind: ProcedureKind::BuiltIn,
+            params: params
+                .iter()
+                .map(|(n, t)| ParameterInfo {
+                    name: (*n).to_string(),
+                    basic_type: t.clone(),
+                    by_val: true,
+                })
+                .collect(),
+            return_type: None, // SUBs have no return type
             span: crate::ast::Span::new(0, 0),
             is_static: false,
         };

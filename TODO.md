@@ -187,7 +187,7 @@ runtime/src/
 - [ ] Example programs
 
 ### Testing (See TESTING_INFRASTRUCTURE_PLAN.md for details)
-- [x] Expand test suite for all built-ins (272 integration tests) ✅
+- [x] Expand test suite for all built-ins (277 integration tests) ✅
 - [ ] Compatibility tests against QB64 programs (16 fixture files, need more)
 - [ ] Port QB4.5 test cases from QB64pe
 - [ ] Achieve 80%+ line coverage (currently 72.67%)
@@ -274,7 +274,7 @@ against the current QB64Fresh implementation. Organized by priority and category
 - [ ] `SMOOTH` keyword - graphics smooth mode
 - [ ] `STRETCH` keyword - graphics stretch mode
 - [ ] `CUSTOMTYPE` - TYPE declaration modifier
-- [ ] `ENDIF` - alternative END IF syntax (no space)
+- [x] `ENDIF` - alternative END IF syntax (no space) ✅
 
 ### Medium Priority - QB64 Extensions
 
@@ -437,8 +437,8 @@ against the current QB64Fresh implementation. Organized by priority and category
 - [ ] `_SCALEDHEIGHT` / `_SCALEDWIDTH` functions - scaled dimensions
 
 #### File I/O (Extended)
-- [ ] `_READFILE$(file$)` function - read entire file
-- [ ] `_WRITEFILE(file$, content$)` statement - write entire file
+- [x] `_READFILE$(file$)` function - read entire file ✅
+- [x] `_WRITEFILE(file$, content$)` statement - write entire file ✅
 - [ ] `_EMBEDDED$(name$)` function - get embedded file data
 - [ ] `$EMBED:'filename'` metacommand - embed file in executable
 - [ ] `_FULLPATH$(path$)` function - get full path
@@ -500,8 +500,8 @@ If raw OpenGL is needed, users can use `DECLARE LIBRARY` to call OpenGL function
 - [ ] Large array handling: Verify stack vs heap allocation
 - [ ] Unicode support: Currently ASCII-focused
 - [ ] Windows-specific path handling in file I/O
-- [ ] **Implicit SUB calls without parentheses** - `Greet "World"` doesn't parse; must use
-      `CALL Greet("World")` instead. This is a parser limitation (discovered session 021).
+- [x] **Implicit SUB calls without parentheses** - `Greet "World"` works correctly ✅
+      (Verified 2026-01-19: was already implemented, session 021 issue was keyword-as-identifier)
 - [ ] **GOSUB uses GCC computed goto extension** - The GOSUB/RETURN implementation uses GCC's
       computed goto extension (`&&label` for label addresses, `goto *ptr` for indirect jumps).
       This works with GCC and Clang but NOT MSVC. For MSVC support, would need a switch-based
