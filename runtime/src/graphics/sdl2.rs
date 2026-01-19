@@ -15,6 +15,11 @@ use sdl2::EventPump;
 use sdl2::Sdl;
 use std::collections::HashMap;
 
+#[cfg(feature = "graphics-sdl2-ttf")]
+use sdl2::ttf::Sdl2TtfContext;
+#[cfg(feature = "graphics-sdl2-ttf")]
+use std::path::Path;
+
 /// Image buffer for _NEWIMAGE/_LOADIMAGE
 #[derive(Debug)]
 struct ImageBuffer {
@@ -151,6 +156,24 @@ impl Default for TurtleState {
     }
 }
 
+/// Loaded TrueType font information
+#[cfg(feature = "graphics-sdl2-ttf")]
+struct LoadedFont {
+    /// File path of the font
+    #[allow(dead_code)]
+    path: String,
+    /// Point size
+    #[allow(dead_code)]
+    size: u16,
+    /// Character width (fixed for monospace, average for proportional)
+    char_width: u32,
+    /// Character height
+    char_height: u32,
+    /// Pre-rendered ASCII characters (32-126) as ARGB pixel buffers
+    /// Each entry is (width, height, pixels)
+    glyph_cache: HashMap<char, (u32, u32, Vec<u32>)>,
+}
+
 /// SDL2-based graphics backend.
 pub struct SDL2Backend {
     sdl_context: Option<Sdl>,
@@ -191,6 +214,19 @@ pub struct SDL2Backend {
     mouse_move_y: i32,
     mouse_wheel: i32,
     mouse_input_available: bool,
+    // Font state (TTF support)
+    #[cfg(feature = "graphics-sdl2-ttf")]
+    /// TTF context (must outlive all fonts)
+    ttf_context: Option<Sdl2TtfContext>,
+    #[cfg(feature = "graphics-sdl2-ttf")]
+    /// Loaded fonts (handle -> font info)
+    fonts: HashMap<i64, LoadedFont>,
+    #[cfg(feature = "graphics-sdl2-ttf")]
+    /// Next available font handle
+    next_font_handle: i64,
+    #[cfg(feature = "graphics-sdl2-ttf")]
+    /// Current font handle (0 = built-in 8x8)
+    current_font: i64,
 }
 
 impl std::fmt::Debug for SDL2Backend {
@@ -236,6 +272,14 @@ impl SDL2Backend {
             mouse_move_y: 0,
             mouse_wheel: 0,
             mouse_input_available: false,
+            #[cfg(feature = "graphics-sdl2-ttf")]
+            ttf_context: None,
+            #[cfg(feature = "graphics-sdl2-ttf")]
+            fonts: HashMap::new(),
+            #[cfg(feature = "graphics-sdl2-ttf")]
+            next_font_handle: 1, // 0 = built-in bitmap font
+            #[cfg(feature = "graphics-sdl2-ttf")]
+            current_font: 0,
         }
     }
 
@@ -888,6 +932,201 @@ impl SDL2Backend {
 
         Ok(())
     }
+
+    // ========== TrueType Font Support (requires graphics-sdl2-ttf feature) ==========
+
+    #[cfg(feature = "graphics-sdl2-ttf")]
+    /// Load a TrueType font from a file.
+    ///
+    /// Returns a font handle on success, or 0 on failure.
+    pub fn load_font(&mut self, path: &str, size: u16) -> i64 {
+        let ttf_ctx = match self.ttf_context.as_ref() {
+            Some(ctx) => ctx,
+            None => return 0, // TTF not initialized
+        };
+
+        // Try to load the font
+        let font = match ttf_ctx.load_font(Path::new(path), size) {
+            Ok(f) => f,
+            Err(_) => return 0, // Font load failed
+        };
+
+        // Calculate character dimensions
+        // Use 'M' as reference for monospace width estimation
+        let (char_width, char_height) = {
+            let metrics = font.find_glyph_metrics('M');
+            let advance = metrics.map(|m| m.advance).unwrap_or(size as i32);
+            (advance.max(1) as u32, font.height().max(1) as u32)
+        };
+
+        // Pre-render and cache common ASCII characters (32-126)
+        let mut glyph_cache = HashMap::new();
+        for c in 32u8..=126 {
+            let ch = c as char;
+            if let Ok(surface) = font
+                .render_char(ch)
+                .blended(Color::RGBA(255, 255, 255, 255))
+            {
+                let width = surface.width();
+                let height = surface.height();
+                let pixels = surface
+                    .without_lock()
+                    .map(|data| {
+                        // Convert SDL2 surface pixels to ARGB
+                        let pitch = surface.pitch() as usize;
+                        let bpp = surface.pixel_format_enum().byte_size_per_pixel();
+                        let mut argb_pixels = Vec::with_capacity((width * height) as usize);
+
+                        for y in 0..height {
+                            for x in 0..width {
+                                let offset = y as usize * pitch + x as usize * bpp;
+                                if offset + 3 < data.len() {
+                                    // Assuming RGBA format
+                                    let r = data[offset];
+                                    let g = data[offset + 1];
+                                    let b = data[offset + 2];
+                                    let a = if bpp > 3 { data[offset + 3] } else { 255 };
+                                    argb_pixels.push(
+                                        ((a as u32) << 24)
+                                            | ((r as u32) << 16)
+                                            | ((g as u32) << 8)
+                                            | (b as u32),
+                                    );
+                                } else {
+                                    argb_pixels.push(0);
+                                }
+                            }
+                        }
+                        argb_pixels
+                    })
+                    .unwrap_or_default();
+
+                if !pixels.is_empty() {
+                    glyph_cache.insert(ch, (width, height, pixels));
+                }
+            }
+        }
+
+        let handle = self.next_font_handle;
+        self.next_font_handle += 1;
+
+        self.fonts.insert(
+            handle,
+            LoadedFont {
+                path: path.to_string(),
+                size,
+                char_width,
+                char_height,
+                glyph_cache,
+            },
+        );
+
+        handle
+    }
+
+    #[cfg(not(feature = "graphics-sdl2-ttf"))]
+    /// Load a TrueType font (stub - TTF support not enabled).
+    pub fn load_font(&mut self, _path: &str, _size: u16) -> i64 {
+        0 // TTF not supported
+    }
+
+    #[cfg(feature = "graphics-sdl2-ttf")]
+    /// Set the current font for text rendering.
+    ///
+    /// Returns the previous font handle.
+    pub fn set_font(&mut self, handle: i64) -> i64 {
+        let prev = self.current_font;
+        if handle == 0 || self.fonts.contains_key(&handle) {
+            self.current_font = handle;
+        }
+        prev
+    }
+
+    #[cfg(not(feature = "graphics-sdl2-ttf"))]
+    /// Set the current font (stub - TTF support not enabled).
+    pub fn set_font(&mut self, _handle: i64) -> i64 {
+        0
+    }
+
+    #[cfg(feature = "graphics-sdl2-ttf")]
+    /// Free a loaded font.
+    pub fn free_font(&mut self, handle: i64) {
+        if handle > 0 {
+            self.fonts.remove(&handle);
+            if self.current_font == handle {
+                self.current_font = 0;
+            }
+        }
+    }
+
+    #[cfg(not(feature = "graphics-sdl2-ttf"))]
+    /// Free a loaded font (stub - TTF support not enabled).
+    pub fn free_font(&mut self, _handle: i64) {}
+
+    #[cfg(feature = "graphics-sdl2-ttf")]
+    /// Get the height of the current font.
+    pub fn get_font_height(&self) -> u32 {
+        if self.current_font == 0 {
+            FONT_HEIGHT
+        } else if let Some(font) = self.fonts.get(&self.current_font) {
+            font.char_height
+        } else {
+            FONT_HEIGHT
+        }
+    }
+
+    #[cfg(not(feature = "graphics-sdl2-ttf"))]
+    /// Get the height of the current font.
+    pub fn get_font_height(&self) -> u32 {
+        FONT_HEIGHT
+    }
+
+    #[cfg(feature = "graphics-sdl2-ttf")]
+    /// Get the width of the current font (for monospace) or average width.
+    pub fn get_font_width(&self) -> u32 {
+        if self.current_font == 0 {
+            FONT_WIDTH
+        } else if let Some(font) = self.fonts.get(&self.current_font) {
+            font.char_width
+        } else {
+            FONT_WIDTH
+        }
+    }
+
+    #[cfg(not(feature = "graphics-sdl2-ttf"))]
+    /// Get the width of the current font.
+    pub fn get_font_width(&self) -> u32 {
+        FONT_WIDTH
+    }
+
+    #[cfg(feature = "graphics-sdl2-ttf")]
+    /// Get the pixel width of a string with the current font.
+    pub fn get_print_width(&self, text: &str) -> i64 {
+        if self.current_font == 0 {
+            // Built-in 8x8 font: simple calculation
+            (text.len() as i64) * (FONT_WIDTH as i64)
+        } else if let Some(font) = self.fonts.get(&self.current_font) {
+            // TTF font: sum individual character widths from cache
+            let mut width = 0i64;
+            for ch in text.chars() {
+                if let Some((w, _, _)) = font.glyph_cache.get(&ch) {
+                    width += *w as i64;
+                } else {
+                    // Use average width for uncached characters
+                    width += font.char_width as i64;
+                }
+            }
+            width
+        } else {
+            (text.len() as i64) * (FONT_WIDTH as i64)
+        }
+    }
+
+    #[cfg(not(feature = "graphics-sdl2-ttf"))]
+    /// Get the pixel width of a string with the current font.
+    pub fn get_print_width(&self, text: &str) -> i64 {
+        (text.len() as i64) * (FONT_WIDTH as i64)
+    }
 }
 
 impl Default for SDL2Backend {
@@ -943,6 +1182,18 @@ impl GraphicsBackend for SDL2Backend {
 
         let pixel_buffer = vec![self.bg_color; (width * height) as usize];
 
+        // Initialize TTF subsystem for TrueType font support (if enabled)
+        #[cfg(feature = "graphics-sdl2-ttf")]
+        {
+            let ttf_context = sdl2::ttf::init().map_err(|e| {
+                GraphicsError::new(
+                    GraphicsErrorKind::BackendError,
+                    format!("SDL2_ttf init failed: {}", e),
+                )
+            })?;
+            self.ttf_context = Some(ttf_context);
+        }
+
         self.sdl_context = Some(sdl_context);
         self.canvas = Some(canvas);
         self.event_pump = Some(event_pump);
@@ -964,6 +1215,14 @@ impl GraphicsBackend for SDL2Backend {
     fn shutdown(&mut self) -> Result<(), GraphicsError> {
         if !self.initialized {
             return Ok(());
+        }
+
+        // Clear fonts before TTF context (if TTF enabled)
+        #[cfg(feature = "graphics-sdl2-ttf")]
+        {
+            self.fonts.clear();
+            self.current_font = 0;
+            self.ttf_context = None;
         }
 
         self.event_pump = None;

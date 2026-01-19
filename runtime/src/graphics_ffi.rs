@@ -1086,6 +1086,126 @@ pub unsafe extern "C" fn qb_clipboard_set(text: *const std::os::raw::c_char) {
     }
 }
 
+// ============================================================================
+// Font Functions (TrueType Support)
+// ============================================================================
+
+/// _LOADFONT - Load a TrueType font from a file.
+///
+/// Returns a font handle on success, or 0 on failure.
+///
+/// # Safety
+/// - `path` must be a valid null-terminated C string
+#[no_mangle]
+pub unsafe extern "C" fn qb_loadfont(path: *const c_char, size: i64) -> i64 {
+    if path.is_null() {
+        return 0;
+    }
+
+    let path_str = match CStr::from_ptr(path).to_str() {
+        Ok(s) => s,
+        Err(_) => return 0,
+    };
+
+    #[cfg(feature = "graphics-sdl2")]
+    {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            return backend.load_font(path_str, size.max(1).min(65535) as u16);
+        }
+    }
+
+    0
+}
+
+/// _FONT - Set the current font for text rendering.
+///
+/// Returns the previous font handle.
+#[no_mangle]
+pub extern "C" fn qb_font(handle: i64) -> i64 {
+    #[cfg(feature = "graphics-sdl2")]
+    {
+        unsafe {
+            if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+                return backend.set_font(handle);
+            }
+        }
+    }
+
+    0
+}
+
+/// _FREEFONT - Free a loaded font.
+#[no_mangle]
+pub extern "C" fn qb_freefont(handle: i64) -> i64 {
+    #[cfg(feature = "graphics-sdl2")]
+    {
+        unsafe {
+            if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+                backend.free_font(handle);
+                return 0;
+            }
+        }
+    }
+
+    0
+}
+
+/// _FONTHEIGHT - Get the height of the current font.
+#[no_mangle]
+pub extern "C" fn qb_fontheight() -> i64 {
+    #[cfg(feature = "graphics-sdl2")]
+    {
+        unsafe {
+            if let Some(ref backend) = crate::graphics::GRAPHICS_BACKEND {
+                return backend.get_font_height() as i64;
+            }
+        }
+    }
+
+    16 // Default height
+}
+
+/// _FONTWIDTH - Get the width of the current font.
+#[no_mangle]
+pub extern "C" fn qb_fontwidth() -> i64 {
+    #[cfg(feature = "graphics-sdl2")]
+    {
+        unsafe {
+            if let Some(ref backend) = crate::graphics::GRAPHICS_BACKEND {
+                return backend.get_font_width() as i64;
+            }
+        }
+    }
+
+    8 // Default width
+}
+
+/// _PRINTWIDTH - Get the pixel width of a string with the current font.
+///
+/// # Safety
+/// - `text` must be a valid null-terminated C string
+#[no_mangle]
+pub unsafe extern "C" fn qb_printwidth(text: *const c_char) -> i64 {
+    if text.is_null() {
+        return 0;
+    }
+
+    let text_str = match CStr::from_ptr(text).to_str() {
+        Ok(s) => s,
+        Err(_) => return 0,
+    };
+
+    #[cfg(feature = "graphics-sdl2")]
+    {
+        if let Some(ref backend) = crate::graphics::GRAPHICS_BACKEND {
+            return backend.get_print_width(text_str);
+        }
+    }
+
+    // Fallback: 8 pixels per character
+    (text_str.len() as i64) * 8
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

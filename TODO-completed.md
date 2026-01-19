@@ -151,6 +151,20 @@
 - [x] Implement frame buffer (pixel_buffer for POINT())
 - [x] Implement `_DISPLAY` / `_AUTODISPLAY`
 
+### Text & Font Support
+- [x] Text rendering - 8x8 bitmap font (CP437 character set)
+- [x] `_PRINTWIDTH` function - calculate pixel width of text
+- [x] `_FONTHEIGHT` / `_FONTWIDTH` functions - font metrics
+- [x] `_LOADFONT` function - TrueType support (optional `graphics-sdl2-ttf` feature)
+- [x] `_FONT` function - set/get current font
+- [x] `_FREEFONT` function - release loaded font
+- [x] VIEW PRINT statement - text viewport (`qb_view_print`, `qb_view_print_reset`)
+
+### Sprite Operations
+- [x] GET statement (graphics) - capture screen region to array (runtime stubs)
+- [x] PUT statement (graphics) - display array to screen (runtime stubs)
+- [x] PUT action modes: XOR, PSET, PRESET, AND, OR
+
 ### Mouse Input
 - [x] `_MOUSEX`, `_MOUSEY`, `_MOUSEBUTTON` - full pipeline
 - [x] `_MOUSEINPUT` - check for mouse events
@@ -380,14 +394,14 @@
 
 ## Statistics
 
-- **Total source code:** ~29,130+ lines of Rust
+- **Total source code:** ~29,500+ lines of Rust
 - **Unit tests:** 205
-- **Integration tests:** 315
-- **Total tests:** 600+
+- **Integration tests:** 340
+- **Total tests:** 620+
 - **Line coverage:** 81.63% ✅
 - **Statement types:** 60+
-- **Built-in functions:** 30+
+- **Built-in functions:** 35+
 
 ---
 
-*Last updated: 2026-01-19 (Session 026 - Phase 2 complete with platform constants)*
+*Last updated: 2026-01-19 (Session 027 - Phase 3 graphics completion: fonts, GET/PUT, VIEW PRINT)*

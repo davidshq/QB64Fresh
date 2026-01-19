@@ -1422,6 +1422,39 @@ int qb_gfx_autodisplay(int enabled) { (void)enabled; return 0; }
 int32_t qb_gfx_image_width(int32_t h) { (void)h; return 0; }
 int32_t qb_gfx_image_height(int32_t h) { (void)h; return 0; }
 
+static int32_t _qb_view_print_top = 1;
+static int32_t _qb_view_print_bottom = 25;
+void qb_view_print(int32_t top, int32_t bottom) { _qb_view_print_top = top; _qb_view_print_bottom = bottom; }
+void qb_view_print_reset(void) { _qb_view_print_top = 1; _qb_view_print_bottom = 25; }
+
+#define QB_PUT_XOR 0
+#define QB_PUT_PSET 1
+#define QB_PUT_PRESET 2
+#define QB_PUT_AND 3
+#define QB_PUT_OR 4
+
+void qb_gfx_get(int32_t x1, int32_t y1, int32_t x2, int32_t y2, void* arr) {
+    (void)x1; (void)y1; (void)x2; (void)y2; (void)arr;
+    _qb_gfx_warn();
+    /* Stub: GET graphics to array not yet implemented */
+}
+
+void qb_gfx_get_step(int32_t x1, int32_t y1, int32_t w, int32_t h, void* arr) {
+    /* STEP variant: w,h are relative offsets */
+    qb_gfx_get(x1, y1, x1 + w, y1 + h, arr);
+}
+
+void qb_gfx_put(int32_t x, int32_t y, void* arr, int action, int clip, int32_t trans_color) {
+    (void)x; (void)y; (void)arr; (void)action; (void)clip; (void)trans_color;
+    _qb_gfx_warn();
+    /* Stub: PUT graphics from array not yet implemented */
+}
+
+void qb_gfx_put_step(int32_t x, int32_t y, void* arr, int action, int clip, int32_t trans_color) {
+    /* STEP variant: x,y are relative to last graphics position */
+    qb_gfx_put(x, y, arr, action, clip, trans_color);
+}
+
 uint32_t qb_rgb(uint32_t r, uint32_t g, uint32_t b) { return 0xFF000000 | ((r & 255) << 16) | ((g & 255) << 8) | (b & 255); }
 uint32_t qb_rgba(uint32_t r, uint32_t g, uint32_t b, uint32_t a) { return ((a & 255) << 24) | ((r & 255) << 16) | ((g & 255) << 8) | (b & 255); }
 uint32_t qb_rgb32(uint32_t r, uint32_t g, uint32_t b) { return qb_rgb(r, g, b); }

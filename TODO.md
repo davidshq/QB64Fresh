@@ -1,6 +1,6 @@
 # QB64Fresh TODO
 
-*Last updated: 2026-01-19 (Session 026)*
+*Last updated: 2026-01-19 (Session 027)*
 
 A prioritized roadmap for QB64Fresh development. For completed features, see [TODO-completed.md](TODO-completed.md).
 
@@ -23,16 +23,11 @@ All Phase 2 items have been completed:
 
 ## Phase 3: Graphics System - Remaining Items
 
-### Partially Implemented
-- [ ] Text rendering - currently 8x8 bitmap font (needs SDL2_ttf for TrueType)
-- [ ] `_PRINTWIDTH` function
-- [ ] GET/PUT graphics arrays - structure exists, needs testing
-- [ ] VIEW PRINT - text viewport (structure exists, needs testing)
-
 ### Not Yet Implemented
 - [ ] Alpha blending support
 - [ ] Hardware acceleration option
 - [ ] Multiple screen pages
+- [ ] GET/PUT full pixel copying implementation (stubs exist, need actual pixel operations)
 
 ---
 

@@ -2762,6 +2762,90 @@ fn emit_graphics_stubs(output: &mut String) {
     .unwrap();
     writeln!(output).unwrap();
 
+    // VIEW PRINT - text viewport
+    writeln!(output, "static int32_t _qb_view_print_top = 1;").unwrap();
+    writeln!(output, "static int32_t _qb_view_print_bottom = 25;").unwrap();
+    writeln!(
+        output,
+        "void qb_view_print(int32_t top, int32_t bottom) {{ _qb_view_print_top = top; _qb_view_print_bottom = bottom; }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "void qb_view_print_reset(void) {{ _qb_view_print_top = 1; _qb_view_print_bottom = 25; }}"
+    )
+    .unwrap();
+    writeln!(output).unwrap();
+
+    // GET/PUT graphics arrays - action constants
+    writeln!(output, "#define QB_PUT_XOR 0").unwrap();
+    writeln!(output, "#define QB_PUT_PSET 1").unwrap();
+    writeln!(output, "#define QB_PUT_PRESET 2").unwrap();
+    writeln!(output, "#define QB_PUT_AND 3").unwrap();
+    writeln!(output, "#define QB_PUT_OR 4").unwrap();
+    writeln!(output).unwrap();
+
+    // GET - capture screen region to array
+    // Array format: first 4 bytes = width (16-bit) + height (16-bit), rest = pixel data
+    writeln!(
+        output,
+        "void qb_gfx_get(int32_t x1, int32_t y1, int32_t x2, int32_t y2, void* arr) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    (void)x1; (void)y1; (void)x2; (void)y2; (void)arr;"
+    )
+    .unwrap();
+    writeln!(output, "    _qb_gfx_warn();").unwrap();
+    writeln!(
+        output,
+        "    /* Stub: GET graphics to array not yet implemented */"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(
+        output,
+        "void qb_gfx_get_step(int32_t x1, int32_t y1, int32_t w, int32_t h, void* arr) {{"
+    )
+    .unwrap();
+    writeln!(output, "    /* STEP variant: w,h are relative offsets */").unwrap();
+    writeln!(output, "    qb_gfx_get(x1, y1, x1 + w, y1 + h, arr);").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // PUT - draw array contents to screen
+    writeln!(output, "void qb_gfx_put(int32_t x, int32_t y, void* arr, int action, int clip, int32_t trans_color) {{").unwrap();
+    writeln!(
+        output,
+        "    (void)x; (void)y; (void)arr; (void)action; (void)clip; (void)trans_color;"
+    )
+    .unwrap();
+    writeln!(output, "    _qb_gfx_warn();").unwrap();
+    writeln!(
+        output,
+        "    /* Stub: PUT graphics from array not yet implemented */"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "void qb_gfx_put_step(int32_t x, int32_t y, void* arr, int action, int clip, int32_t trans_color) {{").unwrap();
+    writeln!(
+        output,
+        "    /* STEP variant: x,y are relative to last graphics position */"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    qb_gfx_put(x, y, arr, action, clip, trans_color);"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
     // Color helpers
     writeln!(output, "uint32_t qb_rgb(uint32_t r, uint32_t g, uint32_t b) {{ return 0xFF000000 | ((r & 255) << 16) | ((g & 255) << 8) | (b & 255); }}").unwrap();
     writeln!(output, "uint32_t qb_rgba(uint32_t r, uint32_t g, uint32_t b, uint32_t a) {{ return ((a & 255) << 24) | ((r & 255) << 16) | ((g & 255) << 8) | (b & 255); }}").unwrap();

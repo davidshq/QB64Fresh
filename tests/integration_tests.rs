@@ -2586,6 +2586,174 @@ mod extended_graphics {
         assert!(code.contains("qb_gfx_newimage("));
         assert!(code.contains("qb_gfx_putimage"));
     }
+
+    // ==================== GET/PUT Graphics Array Tests ====================
+
+    #[test]
+    fn graphics_get_basic() {
+        let code = compile_to_c(
+            r#"
+            DIM sprite(100) AS INTEGER
+            GET (0, 0)-(10, 10), sprite
+        "#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_gfx_get("));
+        assert!(code.contains("(int32_t)0"));
+        assert!(code.contains("(int32_t)10"));
+    }
+
+    #[test]
+    fn graphics_get_with_step() {
+        let code = compile_to_c(
+            r#"
+            DIM sprite(100) AS INTEGER
+            GET (50, 50)-STEP(20, 20), sprite
+        "#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_gfx_get_step("));
+    }
+
+    #[test]
+    fn graphics_get_with_array_index() {
+        let code = compile_to_c(
+            r#"
+            DIM images(500) AS INTEGER
+            GET (0, 0)-(10, 10), images(0)
+            GET (0, 0)-(10, 10), images(100)
+        "#,
+        )
+        .unwrap();
+        assert!(code.contains("&images["));
+    }
+
+    #[test]
+    fn graphics_put_basic() {
+        let code = compile_to_c(
+            r#"
+            DIM sprite(100) AS INTEGER
+            PUT (50, 50), sprite
+        "#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_gfx_put("));
+        assert!(code.contains("QB_PUT_XOR")); // Default action is XOR
+    }
+
+    #[test]
+    fn graphics_put_with_pset() {
+        let code = compile_to_c(
+            r#"
+            DIM sprite(100) AS INTEGER
+            PUT (50, 50), sprite, PSET
+        "#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_gfx_put("));
+        assert!(code.contains("QB_PUT_PSET"));
+    }
+
+    #[test]
+    fn graphics_put_with_preset() {
+        let code = compile_to_c(
+            r#"
+            DIM sprite(100) AS INTEGER
+            PUT (50, 50), sprite, PRESET
+        "#,
+        )
+        .unwrap();
+        assert!(code.contains("QB_PUT_PRESET"));
+    }
+
+    #[test]
+    fn graphics_put_with_and() {
+        let code = compile_to_c(
+            r#"
+            DIM sprite(100) AS INTEGER
+            PUT (50, 50), sprite, AND
+        "#,
+        )
+        .unwrap();
+        assert!(code.contains("QB_PUT_AND"));
+    }
+
+    #[test]
+    fn graphics_put_with_or() {
+        let code = compile_to_c(
+            r#"
+            DIM sprite(100) AS INTEGER
+            PUT (50, 50), sprite, OR
+        "#,
+        )
+        .unwrap();
+        assert!(code.contains("QB_PUT_OR"));
+    }
+
+    #[test]
+    fn graphics_put_with_xor() {
+        let code = compile_to_c(
+            r#"
+            DIM sprite(100) AS INTEGER
+            PUT (50, 50), sprite, XOR
+        "#,
+        )
+        .unwrap();
+        assert!(code.contains("QB_PUT_XOR"));
+    }
+
+    #[test]
+    fn graphics_put_with_step() {
+        let code = compile_to_c(
+            r#"
+            DIM sprite(100) AS INTEGER
+            PUT STEP(10, 10), sprite, PSET
+        "#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_gfx_put_step("));
+    }
+
+    #[test]
+    fn graphics_get_put_roundtrip() {
+        // Test typical sprite capture and display pattern
+        let code = compile_to_c(
+            r#"
+            DIM sprite(200) AS INTEGER
+            ' Capture a region
+            GET (100, 100)-(120, 120), sprite
+            ' Draw it elsewhere with different actions
+            PUT (200, 200), sprite, PSET
+            PUT (300, 300), sprite, XOR
+        "#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_gfx_get("));
+        assert!(code.contains("qb_gfx_put("));
+        assert!(code.contains("QB_PUT_PSET"));
+        assert!(code.contains("QB_PUT_XOR"));
+    }
+
+    // ==================== _PRINTWIDTH Function Tests ====================
+
+    #[test]
+    fn printwidth_basic() {
+        let code = compile_to_c(r#"PRINT _PRINTWIDTH("Hello")"#).unwrap();
+        assert!(code.contains("qb_printwidth("));
+    }
+
+    #[test]
+    fn printwidth_with_variable() {
+        let code = compile_to_c(
+            r#"
+            DIM text AS STRING, w AS LONG
+            text = "Test string"
+            w = _PRINTWIDTH(text)
+        "#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_printwidth("));
+    }
 }
 
 /// Tests for hyperbolic trig functions

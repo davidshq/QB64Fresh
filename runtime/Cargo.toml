@@ -15,6 +15,7 @@ crate-type = ["lib", "staticlib"]
 libc = "0.2"
 
 # For graphics support
+# Note: "ttf" feature requires SDL2_ttf library installed on the system
 sdl2 = { version = "0.37", optional = true }
 
 # For image loading (_LOADIMAGE support)
@@ -26,6 +27,7 @@ rodio = { version = "0.19", optional = true }
 [features]
 default = ["graphics-sdl2", "audio-rodio"]
 graphics-sdl2 = ["sdl2", "image"]
+graphics-sdl2-ttf = ["sdl2/ttf"]  # Requires SDL2_ttf library
 graphics-mock = []  # For testing without display
 audio-rodio = ["rodio"]
 audio-mock = []  # For testing without audio

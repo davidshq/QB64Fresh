@@ -1,7 +1,7 @@
 # Testing Infrastructure Plan
 
 **Created:** 2026-01-18
-**Updated:** 2026-01-19 (Session 025+)
+**Updated:** 2026-01-19 (Session 027)
 **Purpose:** Comprehensive plan for building out QB64Fresh testing infrastructure
 **Based On:** QB64PE testing framework analysis + codebase review findings
 
@@ -9,16 +9,16 @@
 
 ## Executive Summary
 
-**UPDATE:** As of 2026-01-19, the testing infrastructure has been substantially implemented:
+**UPDATE:** As of 2026-01-19 (Session 027), the testing infrastructure has been substantially implemented:
 - **205 unit tests** in source modules
-- **315 integration tests** (0 ignored)
+- **340 integration tests** (0 ignored) - *+25 new graphics tests*
 - **10 golden tests** for C code generation snapshots
 - **16 compatibility test fixtures** (12 success + 4 error, auto-discovered)
 - **19 property-based tests** using proptest (thousands of iterations)
 - **30 benchmarks** measuring compiler performance
 - **44 runtime tests**
 
-Total: **600+ tests** across the workspace (11 ignored for platform-specific features).
+Total: **620+ tests** across the workspace (11 ignored for platform-specific features).
 **Line coverage:** 81.63% (measured via cargo-llvm-cov) ✅ Target achieved!
 **Fuzz testing:** 3 fuzz targets verified (~4.6M inputs, 0 crashes)
 
@@ -29,7 +29,7 @@ Total: **600+ tests** across the workspace (11 ignored for platform-specific fea
 ### What We Have (Updated)
 - Unit tests integrated into source files using `#[cfg(test)]` modules
 - **205 passing unit tests** across compiler modules
-- **315 integration tests** covering full compilation pipeline
+- **340 integration tests** covering full compilation pipeline
 - **10 golden tests** for codegen snapshot verification
 - **16 compatibility test fixtures** in QB64pe-style format
 - **30 criterion benchmarks** for performance tracking
@@ -72,7 +72,7 @@ src/
 ### Tier 2: Integration Tests ✅ IMPLEMENTED
 **Location:** `tests/integration_tests.rs`
 **Purpose:** Test complete compiler pipeline end-to-end
-**Status:** 315 tests passing, 0 ignored
+**Status:** 340 tests passing, 0 ignored
 
 Tests cover:
 - Basic programs (hello world, comments, END)
@@ -88,6 +88,7 @@ Tests cover:
 - RND/RANDOMIZE (random number generation)
 - Error detection (type mismatch, undefined procedures)
 - File compilation (example .bas files)
+- Graphics (GET/PUT arrays, VIEW PRINT, _PRINTWIDTH) - *Session 027*
 
 ### Tier 3: Golden Tests ✅ IMPLEMENTED
 **Location:** `tests/golden_tests.rs` + `tests/golden/*.golden`
@@ -433,3 +434,4 @@ cargo llvm-cov --workspace --lcov      # LCOV format for CI
 *Updated: 2026-01-19 - Consolidated test counts: 534+ tests total (170 unit, 272 integration, 10 golden, 19 proptest, 44 runtime, 19 misc); coverage improved to 72.67%; updated golden files for current codegen output*
 *Updated: 2026-01-19 - Session 024: ENDIF keyword, _READFILE$/_WRITEFILE file helpers, verified implicit SUB calls already working, register_builtin_sub() for built-in SUBs; 277 integration tests*
 *Updated: 2026-01-19 - Session 025+: Updated test counts (205 unit, 307 integration, 600+ total); coverage improved to 81.63% (target achieved!); updated golden files for current codegen output*
+*Updated: 2026-01-19 - Session 027: Phase 3 graphics completion - text rendering, _PRINTWIDTH, GET/PUT arrays, VIEW PRINT; 340 integration tests (+25 graphics tests); 620+ total tests*

@@ -489,6 +489,42 @@ pub trait GraphicsBackend {
 
     /// Set text to the system clipboard.
     fn set_clipboard(&mut self, _text: &str) {}
+
+    // ============================================================================
+    // Font Support (TrueType)
+    // ============================================================================
+
+    /// Load a TrueType font from a file.
+    ///
+    /// Returns a font handle on success, or 0 on failure.
+    fn load_font(&mut self, _path: &str, _size: u16) -> i64 {
+        0 // Default: fonts not supported
+    }
+
+    /// Set the current font for text rendering.
+    ///
+    /// Returns the previous font handle.
+    fn set_font(&mut self, _handle: i64) -> i64 {
+        0 // Default: only built-in font
+    }
+
+    /// Free a loaded font.
+    fn free_font(&mut self, _handle: i64) {}
+
+    /// Get the height of the current font in pixels.
+    fn get_font_height(&self) -> u32 {
+        16 // Default: 16 pixels for built-in font (8x8 doubled for readability)
+    }
+
+    /// Get the width of the current font in pixels.
+    fn get_font_width(&self) -> u32 {
+        8 // Default: 8 pixels for built-in font
+    }
+
+    /// Get the pixel width of a string with the current font.
+    fn get_print_width(&self, text: &str) -> i64 {
+        (text.len() as i64) * 8 // Default: 8 pixels per character
+    }
 }
 
 /// Global graphics backend instance.
