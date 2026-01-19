@@ -43,16 +43,40 @@ A prioritized roadmap for QB64Fresh development. Items are ordered from most gra
 
 ## Phase 3: Graphics System (In Progress)
 
-- Graphics Architecture
-- Screen Setup
-- Basic Drawing
+### Graphics Architecture ✅
+```
+runtime/src/
+├── graphics/
+│   ├── mod.rs      # GraphicsBackend trait + global instance ✅
+│   ├── error.rs    # GraphicsError, GraphicsErrorKind ✅
+│   ├── mock.rs     # MockGraphicsBackend for testing ✅
+│   └── sdl2.rs     # SDL2Backend (actual rendering) ✅
+├── graphics_ffi.rs # C FFI layer (qb_gfx_*, qb_mouse_*, etc.) ✅
+```
 
-### QB64 Graphics Extensions
+### Core Graphics ✅
+- [x] PSET, POINT - pixel plotting and reading
+- [x] LINE - line drawing with STEP support
+- [x] BOX - rectangle outline and filled (via LINE B/BF)
+- [x] CIRCLE - circle outline and filled (midpoint algorithm)
+- [x] PAINT - flood fill (scanline algorithm)
+- [x] CLS, COLOR, LOCATE - screen/color management
+- [x] _DISPLAY - double-buffered rendering
+- [x] SDL2 backend with pixel buffer for fast POINT()
+- [x] Mouse input (_MOUSEX, _MOUSEY, _MOUSEBUTTON, _MOUSEINPUT, _MOUSEWHEEL, etc.)
+
+### Partially Implemented ⚠️
+- [ ] Text rendering - currently placeholder 8x8 blocks (needs SDL2_ttf)
+- [ ] VIEW - viewport clipping (trait defined, not implemented)
+- [ ] WINDOW - world coordinates (trait defined, not implemented)
+- [ ] DRAW - turtle graphics command interpreter
+
+### Not Yet Implemented
+- [ ] Image buffers (_NEWIMAGE, _LOADIMAGE, _PUTIMAGE, _FREEIMAGE)
 - [ ] `_PRINTWIDTH` function
-- [ ] Alpha blending support (requires image buffer implementation)
-
-### Graphics Backend Integration
+- [ ] Alpha blending support
 - [ ] Hardware acceleration option
+- [ ] Multiple screen pages
 
 ---
 
@@ -67,38 +91,38 @@ same pattern as the graphics system.
 ```
 runtime/src/
 ├── audio/
-│   ├── mod.rs          # AudioBackend trait + global instance ✅
-│   ├── error.rs        # AudioError, AudioErrorKind ✅
-│   ├── mock.rs         # MockAudioBackend for testing ✅
-│   └── miniaudio.rs    # MiniaudioBackend (TODO - actual audio output)
-├── audio_ffi.rs        # C FFI layer (qb_snd_*, qb_beep, etc.) ✅
+│   ├── mod.rs           # AudioBackend trait + global instance ✅
+│   ├── error.rs         # AudioError, AudioErrorKind ✅
+│   ├── mock.rs          # MockAudioBackend for testing ✅
+│   └── rodio_backend.rs # RodioBackend (actual audio output) ✅
+├── audio_ffi.rs         # C FFI layer (qb_snd_*, qb_beep, etc.) ✅
 ```
 
 **Backend Selection (Cargo.toml features):**
-- `audio-miniaudio` - Default. Single-header C library, zero dependencies, cross-platform
+- `audio-rodio` - Default. Pure Rust audio library via cpal
 - `audio-mock` - For headless testing (no actual audio output)
-- Future: `audio-sdl2`, `audio-rodio`, `audio-webaudio`
 
-**Why miniaudio?**
-- Single-header C library (easy to integrate with generated C code)
-- Zero external dependencies (no SDL2, no system libs)
-- Cross-platform (auto-selects ALSA/PulseAudio/WASAPI/CoreAudio)
-- Public domain / MIT-0 license
-- Battle-tested (used by QB64-PE)
+**Why rodio (chosen over miniaudio)?**
+- Pure Rust (no C dependencies, better safety)
+- Cross-platform (ALSA/PulseAudio/WASAPI/CoreAudio via cpal)
+- Good format support (WAV, MP3, OGG, FLAC)
+- Simple API, well-maintained
+- Note: miniaudio was considered (used by QB64-PE) but rodio integrates better with Rust
 
 ### Audio Backend Infrastructure ✅
-- [ ] Implement `MiniaudioBackend` (actual audio playback)
-- [ ] Add feature flags to `runtime/Cargo.toml`
+- [x] Implement `RodioBackend` (actual audio playback) - pure Rust, cross-platform
+- [x] Add feature flags to `runtime/Cargo.toml` (`audio-rodio`, `audio-mock`)
+- Note: miniaudio backend not needed - rodio provides equivalent functionality
 
 - Classic BASIC Sound (Parser, Semantic, Codegen, FFI complete)
 - QB64 Sound Extensions (Parser, Semantic, Codegen, FFI complete)
 - Raw Audio Synthesis (FFI complete, backend needs implementation)
 
-### Audio Format Support (Requires MiniaudioBackend)
-- [ ] WAV (PCM)
-- [ ] MP3
-- [ ] OGG Vorbis
-- [ ] FLAC (nice to have)
+### Audio Format Support ✅ (via rodio)
+- [x] WAV (PCM)
+- [x] MP3
+- [x] OGG Vorbis
+- [x] FLAC
 
 ---
 
@@ -476,13 +500,14 @@ If raw OpenGL is needed, users can use `DECLARE LIBRARY` to call OpenGL function
 
 ## Notes
 
-**Dependencies Available (Not Yet Integrated):**
-- SDL2 crate is in Cargo.toml (for graphics/sound)
-- Runtime library has foundations for file I/O
+**Dependencies Integrated:**
+- SDL2 crate for graphics (feature: `graphics-sdl2`)
+- rodio crate for audio (feature: `audio-rodio`)
+- Runtime library provides file I/O, graphics, and audio
 
 **Design Decisions Made:**
 - Graphics backend: Trait-based abstraction with SDL2 as default, mock for testing
-- Sound backend: Trait-based abstraction with miniaudio as default (see Phase 4)
+- Sound backend: Trait-based abstraction with rodio as default, mock for testing
 
 **Design Decisions Needed:**
 - How to handle `PEEK`/`POKE` in a safe manner

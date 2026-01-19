@@ -5,6 +5,7 @@
 
 use super::{GraphicsBackend, GraphicsError, GraphicsErrorKind};
 use sdl2::event::Event;
+use sdl2::mouse::MouseButton;
 use sdl2::pixels::Color;
 use sdl2::rect::{Point, Rect};
 use sdl2::render::Canvas;
@@ -44,6 +45,21 @@ pub struct SDL2Backend {
     /// Pixel buffer for POINT() function - stores pixel colors
     /// SDL2's read_pixels is slow, so we maintain our own buffer
     pixel_buffer: Vec<u32>,
+    // Mouse state
+    /// Current mouse X position
+    mouse_x: i32,
+    /// Current mouse Y position
+    mouse_y: i32,
+    /// Mouse button states (left, right, middle)
+    mouse_buttons: [bool; 3],
+    /// Mouse X movement since last poll
+    mouse_move_x: i32,
+    /// Mouse Y movement since last poll
+    mouse_move_y: i32,
+    /// Mouse wheel delta since last poll
+    mouse_wheel: i32,
+    /// Whether there was new mouse input since last poll
+    mouse_input_available: bool,
 }
 
 impl std::fmt::Debug for SDL2Backend {
@@ -73,6 +89,13 @@ impl SDL2Backend {
             cursor_row: 1,
             cursor_col: 1,
             pixel_buffer: Vec::new(),
+            mouse_x: 0,
+            mouse_y: 0,
+            mouse_buttons: [false; 3],
+            mouse_move_x: 0,
+            mouse_move_y: 0,
+            mouse_wheel: 0,
+            mouse_input_available: false,
         }
     }
 
@@ -622,6 +645,49 @@ impl GraphicsBackend for SDL2Backend {
                         keycode: Some(sdl2::keyboard::Keycode::Escape),
                         ..
                     } => return Ok(false),
+                    // Mouse motion events
+                    Event::MouseMotion {
+                        x, y, xrel, yrel, ..
+                    } => {
+                        self.mouse_x = x;
+                        self.mouse_y = y;
+                        self.mouse_move_x += xrel;
+                        self.mouse_move_y += yrel;
+                        self.mouse_input_available = true;
+                    }
+                    // Mouse button press
+                    Event::MouseButtonDown {
+                        mouse_btn, x, y, ..
+                    } => {
+                        self.mouse_x = x;
+                        self.mouse_y = y;
+                        match mouse_btn {
+                            MouseButton::Left => self.mouse_buttons[0] = true,
+                            MouseButton::Right => self.mouse_buttons[1] = true,
+                            MouseButton::Middle => self.mouse_buttons[2] = true,
+                            _ => {}
+                        }
+                        self.mouse_input_available = true;
+                    }
+                    // Mouse button release
+                    Event::MouseButtonUp {
+                        mouse_btn, x, y, ..
+                    } => {
+                        self.mouse_x = x;
+                        self.mouse_y = y;
+                        match mouse_btn {
+                            MouseButton::Left => self.mouse_buttons[0] = false,
+                            MouseButton::Right => self.mouse_buttons[1] = false,
+                            MouseButton::Middle => self.mouse_buttons[2] = false,
+                            _ => {}
+                        }
+                        self.mouse_input_available = true;
+                    }
+                    // Mouse wheel
+                    Event::MouseWheel { y, .. } => {
+                        self.mouse_wheel += y;
+                        self.mouse_input_available = true;
+                    }
                     _ => {}
                 }
             }
@@ -632,6 +698,80 @@ impl GraphicsBackend for SDL2Backend {
 
     fn get_screen_size(&self) -> (u32, u32) {
         (self.width, self.height)
+    }
+
+    // ========================================================================
+    // Mouse Input Implementation
+    // ========================================================================
+
+    fn get_mouse_x(&self) -> i32 {
+        self.mouse_x
+    }
+
+    fn get_mouse_y(&self) -> i32 {
+        self.mouse_y
+    }
+
+    fn get_mouse_button(&self, button: u32) -> bool {
+        match button {
+            1 => self.mouse_buttons[0], // Left
+            2 => self.mouse_buttons[1], // Right
+            3 => self.mouse_buttons[2], // Middle
+            _ => false,
+        }
+    }
+
+    fn poll_mouse_input(&mut self) -> bool {
+        // poll_events already processes mouse events, so we just check the flag
+        // and reset the movement/wheel accumulators
+        let had_input = self.mouse_input_available;
+        self.mouse_input_available = false;
+        self.mouse_move_x = 0;
+        self.mouse_move_y = 0;
+        self.mouse_wheel = 0;
+        had_input
+    }
+
+    fn get_mouse_movement_x(&self) -> i32 {
+        self.mouse_move_x
+    }
+
+    fn get_mouse_movement_y(&self) -> i32 {
+        self.mouse_move_y
+    }
+
+    fn get_mouse_wheel(&self) -> i32 {
+        self.mouse_wheel
+    }
+
+    fn hide_mouse(&mut self) {
+        if self.initialized {
+            self.sdl_context
+                .as_ref()
+                .map(|ctx| ctx.mouse().show_cursor(false));
+        }
+    }
+
+    fn show_mouse(&mut self) {
+        if self.initialized {
+            self.sdl_context
+                .as_ref()
+                .map(|ctx| ctx.mouse().show_cursor(true));
+        }
+    }
+
+    fn move_mouse(&mut self, x: i32, y: i32) {
+        if self.initialized {
+            if let Some(ctx) = self.sdl_context.as_ref() {
+                ctx.mouse().warp_mouse_in_window(
+                    self.canvas.as_ref().map(|c| c.window()).unwrap(),
+                    x,
+                    y,
+                );
+            }
+            self.mouse_x = x;
+            self.mouse_y = y;
+        }
     }
 }
 
@@ -686,5 +826,19 @@ mod tests {
             assert!(result.is_err());
             let _ = backend.shutdown();
         }
+    }
+
+    #[test]
+    fn test_mouse_state_initial() {
+        let backend = SDL2Backend::new();
+        // Initial mouse state should be zeroed
+        assert_eq!(backend.get_mouse_x(), 0);
+        assert_eq!(backend.get_mouse_y(), 0);
+        assert!(!backend.get_mouse_button(1)); // Left
+        assert!(!backend.get_mouse_button(2)); // Right
+        assert!(!backend.get_mouse_button(3)); // Middle
+        assert_eq!(backend.get_mouse_movement_x(), 0);
+        assert_eq!(backend.get_mouse_movement_y(), 0);
+        assert_eq!(backend.get_mouse_wheel(), 0);
     }
 }
