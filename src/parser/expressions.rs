@@ -109,6 +109,12 @@ impl<'a> Parser<'a> {
             TokenKind::OpenClient => self.parse_builtin_function("_OPENCLIENT"),
             TokenKind::Connected => self.parse_builtin_function("_CONNECTED"),
 
+            // Image buffer functions
+            TokenKind::NewImage => self.parse_builtin_function("_NEWIMAGE"),
+            TokenKind::LoadImage => self.parse_builtin_function("_LOADIMAGE"),
+            TokenKind::ImageWidth => self.parse_builtin_function("_WIDTH"),
+            TokenKind::ImageHeight => self.parse_builtin_function("_HEIGHT"),
+
             // Keywords that can be used as variable names in expression context
             // In BASIC, keywords like NAME, INPUT, OUTPUT can be used as variable names
             // when context makes it unambiguous that an identifier is expected.

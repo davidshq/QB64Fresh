@@ -65,15 +65,21 @@ runtime/src/
 - [x] SDL2 backend with pixel buffer for fast POINT()
 - [x] Mouse input (_MOUSEX, _MOUSEY, _MOUSEBUTTON, _MOUSEINPUT, _MOUSEWHEEL, etc.)
 
+### Extended Graphics ✅
+- [x] VIEW - viewport clipping with fill/border colors
+- [x] WINDOW - world coordinate system (Cartesian and screen modes)
+- [x] DRAW - turtle graphics (U/D/L/R/E/F/G/H/M/B/N/A/T/C/S/P commands)
+- [x] Image buffers (_NEWIMAGE, _LOADIMAGE, _PUTIMAGE, _FREEIMAGE)
+- [x] _SOURCE, _DEST - image handle selection
+- [x] _COPYIMAGE, _SCREENIMAGE - image copying
+
 ### Partially Implemented ⚠️
-- [ ] Text rendering - currently placeholder 8x8 blocks (needs SDL2_ttf)
-- [ ] VIEW - viewport clipping (trait defined, not implemented)
-- [ ] WINDOW - world coordinates (trait defined, not implemented)
-- [ ] DRAW - turtle graphics command interpreter
+- [ ] Text rendering - currently 8x8 bitmap font (needs SDL2_ttf for TrueType)
+- [ ] `_PRINTWIDTH` function
+- [ ] GET/PUT graphics arrays - structure exists, needs testing
+- [ ] VIEW PRINT - text viewport (structure exists, needs testing)
 
 ### Not Yet Implemented
-- [ ] Image buffers (_NEWIMAGE, _LOADIMAGE, _PUTIMAGE, _FREEIMAGE)
-- [ ] `_PRINTWIDTH` function
 - [ ] Alpha blending support
 - [ ] Hardware acceleration option
 - [ ] Multiple screen pages

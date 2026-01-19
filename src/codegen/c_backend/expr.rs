@@ -487,6 +487,12 @@ pub(super) fn c_function_name(name: &str) -> String {
         "_OPENCLIENT" => "qb_net_openclient".to_string(),
         "_CONNECTED" => "qb_net_connected".to_string(),
 
+        // Image buffer functions
+        "_NEWIMAGE" => "qb_gfx_newimage".to_string(),
+        "_LOADIMAGE" => "qb_gfx_loadimage".to_string(),
+        "_WIDTH" => "qb_gfx_image_width".to_string(),
+        "_HEIGHT" => "qb_gfx_image_height".to_string(),
+
         // Default: prefix with qb_ for user functions
         _ => format!("qb_{}", c_identifier(name).to_lowercase()),
     }

@@ -2079,6 +2079,262 @@ mod graphics_stubs {
     }
 }
 
+/// Tests for VIEW, WINDOW, DRAW, and image buffer statements
+mod extended_graphics {
+    use super::*;
+
+    // ==================== VIEW Statement Tests ====================
+
+    #[test]
+    fn view_with_coordinates() {
+        let code = compile_to_c("VIEW (10, 10)-(300, 200)").unwrap();
+        assert!(code.contains("qb_gfx_view("));
+        assert!(code.contains("10"));
+        assert!(code.contains("300"));
+        assert!(code.contains("200"));
+    }
+
+    #[test]
+    fn view_with_screen_keyword() {
+        let code = compile_to_c("VIEW SCREEN (0, 0)-(639, 479)").unwrap();
+        assert!(code.contains("qb_gfx_view(1,")); // screen = 1
+    }
+
+    #[test]
+    fn view_with_fill_color() {
+        let code = compile_to_c("VIEW (10, 10)-(300, 200), 1").unwrap();
+        assert!(code.contains("qb_gfx_view("));
+    }
+
+    #[test]
+    fn view_with_fill_and_border() {
+        let code = compile_to_c("VIEW (10, 10)-(300, 200), 0, 15").unwrap();
+        assert!(code.contains("qb_gfx_view("));
+    }
+
+    #[test]
+    fn view_reset() {
+        let code = compile_to_c("VIEW").unwrap();
+        assert!(code.contains("qb_gfx_view_reset()"));
+    }
+
+    #[test]
+    fn view_print_with_range() {
+        let code = compile_to_c("VIEW PRINT 5 TO 20").unwrap();
+        assert!(code.contains("qb_view_print("));
+    }
+
+    #[test]
+    fn view_print_reset() {
+        let code = compile_to_c("VIEW PRINT").unwrap();
+        assert!(code.contains("qb_view_print_reset()"));
+    }
+
+    // ==================== WINDOW Statement Tests ====================
+
+    #[test]
+    fn window_with_coordinates() {
+        let code = compile_to_c("WINDOW (-1, -1)-(1, 1)").unwrap();
+        assert!(code.contains("qb_gfx_window("));
+    }
+
+    #[test]
+    fn window_screen_mode() {
+        // WINDOW SCREEN - Y increases downward
+        let code = compile_to_c("WINDOW SCREEN (0, 0)-(100, 100)").unwrap();
+        assert!(code.contains("qb_gfx_window(1,")); // screen = 1
+    }
+
+    #[test]
+    fn window_cartesian_mode() {
+        // WINDOW without SCREEN - Y increases upward (Cartesian)
+        let code = compile_to_c("WINDOW (-10, -10)-(10, 10)").unwrap();
+        assert!(code.contains("qb_gfx_window(0,")); // screen = 0
+    }
+
+    #[test]
+    fn window_reset() {
+        let code = compile_to_c("WINDOW").unwrap();
+        assert!(code.contains("qb_gfx_window_reset()"));
+    }
+
+    #[test]
+    fn window_with_float_coordinates() {
+        let code = compile_to_c("WINDOW (-3.14, -3.14)-(3.14, 3.14)").unwrap();
+        assert!(code.contains("qb_gfx_window("));
+        assert!(code.contains("3.14"));
+    }
+
+    // ==================== DRAW Statement Tests ====================
+
+    #[test]
+    fn draw_simple_commands() {
+        let code = compile_to_c(r#"DRAW "U10 R10 D10 L10""#).unwrap();
+        assert!(code.contains("qb_gfx_draw("));
+    }
+
+    #[test]
+    fn draw_diagonal_commands() {
+        let code = compile_to_c(r#"DRAW "E10 F10 G10 H10""#).unwrap();
+        assert!(code.contains("qb_gfx_draw("));
+    }
+
+    #[test]
+    fn draw_move_command() {
+        let code = compile_to_c(r#"DRAW "M100,100""#).unwrap();
+        assert!(code.contains("qb_gfx_draw("));
+    }
+
+    #[test]
+    fn draw_relative_move() {
+        let code = compile_to_c(r#"DRAW "M+50,+50""#).unwrap();
+        assert!(code.contains("qb_gfx_draw("));
+    }
+
+    #[test]
+    fn draw_color_and_scale() {
+        let code = compile_to_c(r#"DRAW "C14 S8 U10""#).unwrap();
+        assert!(code.contains("qb_gfx_draw("));
+    }
+
+    #[test]
+    fn draw_angle_commands() {
+        let code = compile_to_c(r#"DRAW "A2 U10 TA90 U10""#).unwrap();
+        assert!(code.contains("qb_gfx_draw("));
+    }
+
+    #[test]
+    fn draw_blank_move() {
+        // B prefix - move without drawing
+        let code = compile_to_c(r#"DRAW "BU10 U10""#).unwrap();
+        assert!(code.contains("qb_gfx_draw("));
+    }
+
+    #[test]
+    fn draw_paint_command() {
+        let code = compile_to_c(r#"DRAW "P15,1""#).unwrap();
+        assert!(code.contains("qb_gfx_draw("));
+    }
+
+    #[test]
+    fn draw_with_variable() {
+        let code = compile_to_c("DIM cmd AS STRING\ncmd = \"U10R10\"\nDRAW cmd").unwrap();
+        assert!(code.contains("qb_gfx_draw("));
+    }
+
+    // ==================== Image Buffer Tests ====================
+
+    #[test]
+    fn newimage_function() {
+        let code = compile_to_c("DIM img AS LONG\nimg = _NEWIMAGE(640, 480, 32)").unwrap();
+        assert!(code.contains("qb_gfx_newimage("));
+    }
+
+    #[test]
+    fn loadimage_function() {
+        let code = compile_to_c(r#"DIM img AS LONG: img = _LOADIMAGE("test.png", 32)"#).unwrap();
+        assert!(code.contains("qb_gfx_loadimage("));
+    }
+
+    #[test]
+    fn freeimage_statement() {
+        let code =
+            compile_to_c("DIM img AS LONG\nimg = _NEWIMAGE(100, 100, 32)\n_FREEIMAGE img").unwrap();
+        assert!(code.contains("qb_gfx_freeimage("));
+    }
+
+    #[test]
+    fn putimage_simple() {
+        let code =
+            compile_to_c("DIM img AS LONG\nimg = _NEWIMAGE(100, 100, 32)\n_PUTIMAGE , img, 0")
+                .unwrap();
+        assert!(code.contains("qb_gfx_putimage"));
+    }
+
+    #[test]
+    fn putimage_with_dest_coords() {
+        let code = compile_to_c(
+            "DIM img AS LONG\nimg = _NEWIMAGE(100, 100, 32)\n_PUTIMAGE (0, 0)-(100, 100), img, 0",
+        )
+        .unwrap();
+        assert!(code.contains("qb_gfx_putimage("));
+    }
+
+    #[test]
+    fn putimage_full_coords() {
+        let code = compile_to_c("DIM img AS LONG\nimg = _NEWIMAGE(100, 100, 32)\n_PUTIMAGE (0, 0)-(200, 200), img, 0, (0, 0)-(100, 100)").unwrap();
+        assert!(code.contains("qb_gfx_putimage_full("));
+    }
+
+    #[test]
+    fn source_statement() {
+        let code =
+            compile_to_c("DIM img AS LONG\nimg = _NEWIMAGE(100, 100, 32)\n_SOURCE img").unwrap();
+        assert!(code.contains("qb_gfx_source("));
+    }
+
+    #[test]
+    fn dest_statement() {
+        let code =
+            compile_to_c("DIM img AS LONG\nimg = _NEWIMAGE(100, 100, 32)\n_DEST img").unwrap();
+        assert!(code.contains("qb_gfx_dest("));
+    }
+
+    #[test]
+    fn width_and_height_functions() {
+        let code = compile_to_c("DIM img AS LONG, w AS LONG, h AS LONG\nimg = _NEWIMAGE(640, 480, 32)\nw = _WIDTH(img)\nh = _HEIGHT(img)").unwrap();
+        assert!(code.contains("qb_gfx_image_width("));
+        assert!(code.contains("qb_gfx_image_height("));
+    }
+
+    // ==================== Combined Usage Tests ====================
+
+    #[test]
+    fn view_window_combination() {
+        // Test VIEW and WINDOW working together
+        let code = compile_to_c(
+            r#"
+            VIEW (50, 50)-(550, 350)
+            WINDOW (-1, -1)-(1, 1)
+            PSET (0, 0), 15
+        "#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_gfx_view("));
+        assert!(code.contains("qb_gfx_window("));
+        assert!(code.contains("qb_gfx_pset("));
+    }
+
+    #[test]
+    fn draw_in_viewport() {
+        let code = compile_to_c(
+            r#"
+            VIEW (100, 100)-(500, 400)
+            DRAW "U50 R50 D50 L50"
+        "#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_gfx_view("));
+        assert!(code.contains("qb_gfx_draw("));
+    }
+
+    #[test]
+    fn image_copy_and_display() {
+        // _PUTIMAGE syntax requires coordinate range: (x1,y1)-(x2,y2)
+        let code = compile_to_c(
+            r#"
+            DIM src AS LONG, dst AS LONG
+            src = _NEWIMAGE(100, 100, 32)
+            dst = 0
+            _PUTIMAGE (0, 0)-(100, 100), src, dst
+        "#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_gfx_newimage("));
+        assert!(code.contains("qb_gfx_putimage"));
+    }
+}
+
 /// Tests for hyperbolic trig functions
 mod hyperbolic_functions {
     use super::*;

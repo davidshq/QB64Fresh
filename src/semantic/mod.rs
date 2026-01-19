@@ -755,6 +755,25 @@ impl SemanticAnalyzer {
             &[("handle", BasicType::Long)],
             BasicType::Integer,
         );
+
+        // Image buffer functions
+        self.register_builtin_function(
+            "_NEWIMAGE",
+            &[
+                ("width", BasicType::Long),
+                ("height", BasicType::Long),
+                ("mode", BasicType::Long),
+            ],
+            BasicType::Long,
+        );
+        self.register_builtin_function(
+            "_LOADIMAGE",
+            &[("filename", BasicType::String), ("mode", BasicType::Long)],
+            BasicType::Long,
+        );
+        // Image dimension functions (take handle, return dimension)
+        self.register_builtin_function("_WIDTH", &[("handle", BasicType::Long)], BasicType::Long);
+        self.register_builtin_function("_HEIGHT", &[("handle", BasicType::Long)], BasicType::Long);
     }
 
     /// Registers a single built-in function.

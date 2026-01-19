@@ -494,6 +494,14 @@ pub enum TokenKind {
     #[token("_AUTODISPLAY", ignore(ascii_case))]
     AutoDisplay,
 
+    /// _WIDTH function - get image width (with handle argument)
+    #[token("_WIDTH", ignore(ascii_case))]
+    ImageWidth,
+
+    /// _HEIGHT function - get image height (with handle argument)
+    #[token("_HEIGHT", ignore(ascii_case))]
+    ImageHeight,
+
     // ==================== Audio Keywords ====================
     /// BEEP statement - simple beep sound
     #[token("BEEP", ignore(ascii_case))]

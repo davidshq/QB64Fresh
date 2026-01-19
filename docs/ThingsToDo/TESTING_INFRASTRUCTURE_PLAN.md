@@ -9,16 +9,16 @@
 
 ## Executive Summary
 
-**UPDATE:** As of 2026-01-18, the testing infrastructure has been substantially implemented:
+**UPDATE:** As of 2026-01-19, the testing infrastructure has been substantially implemented:
 - **163 unit tests** in source modules
-- **239 integration tests** (0 ignored)
+- **272 integration tests** (0 ignored)
 - **10 golden tests** for C code generation snapshots
 - **16 compatibility test fixtures** (auto-discovered)
 - **19 property-based tests** using proptest (thousands of iterations)
 - **30 benchmarks** measuring compiler performance
-- **37 runtime tests**
+- **44 runtime tests**
 
-Total: **461+ tests** across the workspace.
+Total: **494+ tests** across the workspace.
 **Line coverage:** 59.92% (measured via cargo-llvm-cov)
 **Fuzz testing:** 3 fuzz targets verified (~4.6M inputs, 0 crashes)
 
