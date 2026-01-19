@@ -9,6 +9,8 @@ pub enum AudioErrorKind {
     NotInitialized,
     /// Audio system already initialized.
     AlreadyInitialized,
+    /// Audio system failed to initialize.
+    InitializationFailed,
     /// Invalid sound handle.
     InvalidHandle,
     /// File not found or could not be opened.
@@ -17,6 +19,8 @@ pub enum AudioErrorKind {
     UnsupportedFormat,
     /// Audio backend error (library-specific).
     BackendError,
+    /// Playback failed.
+    PlaybackFailed,
     /// Invalid argument provided.
     InvalidArgument,
     /// Operation not supported by this backend.

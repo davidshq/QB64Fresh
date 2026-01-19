@@ -633,6 +633,59 @@ fn emit_math_functions(output: &mut String) {
     writeln!(output, "    return value ^ ((int64_t)1 << (bit & 63));").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
+
+    // Angle conversions
+    writeln!(output, "double qb_d2r(double degrees) {{").unwrap();
+    writeln!(
+        output,
+        "    return degrees * 3.14159265358979323846 / 180.0;"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "double qb_r2d(double radians) {{").unwrap();
+    writeln!(
+        output,
+        "    return radians * 180.0 / 3.14159265358979323846;"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _NEGATE - negate value
+    writeln!(output, "double qb_negate(double n) {{").unwrap();
+    writeln!(output, "    return -n;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // String comparison functions
+    writeln!(output, "int64_t qb_strcmp(qb_string* a, qb_string* b) {{").unwrap();
+    writeln!(output, "    if (!a && !b) return 0;").unwrap();
+    writeln!(output, "    if (!a) return -1;").unwrap();
+    writeln!(output, "    if (!b) return 1;").unwrap();
+    writeln!(output, "    return strcmp(a->data, b->data);").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // Case-insensitive string compare
+    writeln!(output, "#ifdef _WIN32").unwrap();
+    writeln!(output, "int64_t qb_stricmp(qb_string* a, qb_string* b) {{").unwrap();
+    writeln!(output, "    if (!a && !b) return 0;").unwrap();
+    writeln!(output, "    if (!a) return -1;").unwrap();
+    writeln!(output, "    if (!b) return 1;").unwrap();
+    writeln!(output, "    return _stricmp(a->data, b->data);").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output, "#else").unwrap();
+    writeln!(output, "#include <strings.h>").unwrap();
+    writeln!(output, "int64_t qb_stricmp(qb_string* a, qb_string* b) {{").unwrap();
+    writeln!(output, "    if (!a && !b) return 0;").unwrap();
+    writeln!(output, "    if (!a) return -1;").unwrap();
+    writeln!(output, "    if (!b) return 1;").unwrap();
+    writeln!(output, "    return strcasecmp(a->data, b->data);").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output, "#endif").unwrap();
+    writeln!(output).unwrap();
 }
 
 /// Emits string manipulation functions (LEFT$, RIGHT$, MID$, etc.).
@@ -1290,6 +1343,57 @@ fn emit_error_handling(output: &mut String) {
 
     // ERL function
     writeln!(output, "int32_t qb_err_line(void) {{ return _qb_erl; }}").unwrap();
+    writeln!(output).unwrap();
+
+    // _ERRORLINE - returns line number where error occurred
+    writeln!(output, "int64_t qb_errorline(void) {{ return _qb_erl; }}").unwrap();
+    writeln!(output).unwrap();
+
+    // _ERRORMESSAGE$ - returns error message for current or specified error
+    writeln!(output, "static const char* _qb_error_messages[] = {{").unwrap();
+    writeln!(output, "    \"No error\",").unwrap();
+    writeln!(output, "    \"NEXT without FOR\",").unwrap();
+    writeln!(output, "    \"Syntax error\",").unwrap();
+    writeln!(output, "    \"RETURN without GOSUB\",").unwrap();
+    writeln!(output, "    \"Out of DATA\",").unwrap();
+    writeln!(output, "    \"Illegal function call\",").unwrap();
+    writeln!(output, "    \"Overflow\",").unwrap();
+    writeln!(output, "    \"Out of memory\",").unwrap();
+    writeln!(output, "    \"Label not defined\",").unwrap();
+    writeln!(output, "    \"Subscript out of range\",").unwrap();
+    writeln!(output, "    \"Duplicate definition\",").unwrap();
+    writeln!(output, "    \"Division by zero\",").unwrap();
+    writeln!(output, "    \"Type mismatch\",").unwrap();
+    writeln!(output, "    \"Out of string space\",").unwrap();
+    writeln!(output, "    \"String too long\",").unwrap();
+    writeln!(output, "    \"String formula too complex\",").unwrap();
+    writeln!(output, "}};").unwrap();
+    writeln!(
+        output,
+        "#define QB_NUM_ERROR_MESSAGES (sizeof(_qb_error_messages)/sizeof(_qb_error_messages[0]))"
+    )
+    .unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "qb_string* qb_errormessage(void) {{").unwrap();
+    writeln!(
+        output,
+        "    if (_qb_err >= 0 && (size_t)_qb_err < QB_NUM_ERROR_MESSAGES)"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "        return qb_string_new(_qb_error_messages[_qb_err]);"
+    )
+    .unwrap();
+    writeln!(output, "    char buf[64];").unwrap();
+    writeln!(
+        output,
+        "    snprintf(buf, sizeof(buf), \"Error %d\", _qb_err);"
+    )
+    .unwrap();
+    writeln!(output, "    return qb_string_new(buf);").unwrap();
+    writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 }
 
@@ -2330,5 +2434,198 @@ fn emit_graphics_stubs(output: &mut String) {
         "void qb_clipboard_set(const char* text) {{ (void)text; }}"
     )
     .unwrap();
+    writeln!(output).unwrap();
+
+    // Utility functions
+    writeln!(output, "/* Utility Functions */").unwrap();
+    writeln!(output).unwrap();
+
+    // _COMMANDCOUNT - returns number of command line arguments
+    // Uses the stored argc from main
+    writeln!(output, "static int _qb_argc = 0;").unwrap();
+    writeln!(output, "static char** _qb_argv = NULL;").unwrap();
+    writeln!(
+        output,
+        "void qb_set_args(int argc, char** argv) {{ _qb_argc = argc; _qb_argv = argv; }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "int64_t qb_commandcount(void) {{ return _qb_argc - 1; }}"
+    )
+    .unwrap();
+    writeln!(output).unwrap();
+
+    // _ENVIRONCOUNT - returns number of environment variables
+    writeln!(output, "#ifdef _WIN32").unwrap();
+    writeln!(output, "int64_t qb_environcount(void) {{").unwrap();
+    writeln!(output, "    int count = 0;").unwrap();
+    writeln!(output, "    char* env = GetEnvironmentStringsA();").unwrap();
+    writeln!(output, "    if (env) {{").unwrap();
+    writeln!(output, "        char* p = env;").unwrap();
+    writeln!(
+        output,
+        "        while (*p) {{ count++; p += strlen(p) + 1; }}"
+    )
+    .unwrap();
+    writeln!(output, "        FreeEnvironmentStringsA(env);").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    return count;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output, "#else").unwrap();
+    writeln!(output, "extern char** environ;").unwrap();
+    writeln!(output, "int64_t qb_environcount(void) {{").unwrap();
+    writeln!(output, "    int count = 0;").unwrap();
+    writeln!(output, "    if (environ) {{").unwrap();
+    writeln!(output, "        while (environ[count]) count++;").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    return count;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output, "#endif").unwrap();
+    writeln!(output).unwrap();
+
+    // Font stubs
+    writeln!(output, "/* Font Stubs */").unwrap();
+    writeln!(output, "int64_t qb_loadfont(qb_string* file, int64_t size) {{ _qb_gfx_warn(); (void)file; (void)size; return 0; }}").unwrap();
+    writeln!(output, "void qb_font(int64_t handle) {{ (void)handle; }}").unwrap();
+    writeln!(
+        output,
+        "void qb_freefont(int64_t handle) {{ (void)handle; }}"
+    )
+    .unwrap();
+    writeln!(output, "int64_t qb_fontheight(void) {{ return 16; }}").unwrap();
+    writeln!(output, "int64_t qb_fontwidth(void) {{ return 8; }}").unwrap();
+    writeln!(output).unwrap();
+
+    // Desktop/Window functions
+    writeln!(output, "/* Desktop/Window Functions */").unwrap();
+    writeln!(output, "#ifdef _WIN32").unwrap();
+    writeln!(
+        output,
+        "int64_t qb_desktopwidth(void) {{ return GetSystemMetrics(SM_CXSCREEN); }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "int64_t qb_desktopheight(void) {{ return GetSystemMetrics(SM_CYSCREEN); }}"
+    )
+    .unwrap();
+    writeln!(output, "#else").unwrap();
+    writeln!(
+        output,
+        "int64_t qb_desktopwidth(void) {{ return 1920; }}  /* Stub - requires X11/Wayland */"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "int64_t qb_desktopheight(void) {{ return 1080; }} /* Stub - requires X11/Wayland */"
+    )
+    .unwrap();
+    writeln!(output, "#endif").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "int64_t qb_screenx(void) {{ return 0; }}").unwrap();
+    writeln!(output, "int64_t qb_screeny(void) {{ return 0; }}").unwrap();
+    writeln!(output, "static char _qb_window_title[256] = \"QB64Fresh\";").unwrap();
+    writeln!(
+        output,
+        "qb_string* qb_title_get(void) {{ return qb_string_new(_qb_window_title); }}"
+    )
+    .unwrap();
+    writeln!(output, "void qb_title_set(qb_string* title) {{ if (title && title->data) strncpy(_qb_window_title, title->data, 255); }}").unwrap();
+    writeln!(output, "int64_t qb_windowhandle(void) {{ return 0; }}").unwrap();
+    writeln!(output, "int64_t qb_windowhasfocus(void) {{ return -1; }}").unwrap();
+    writeln!(output).unwrap();
+
+    // Dialog boxes
+    writeln!(output, "/* Dialog Box Stubs */").unwrap();
+    writeln!(
+        output,
+        "/* Full implementations require platform-specific GUI libraries */"
+    )
+    .unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "#ifdef _WIN32").unwrap();
+    writeln!(
+        output,
+        "int64_t qb_messagebox(qb_string* title, qb_string* msg) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    return MessageBoxA(NULL, msg ? msg->data : \"\", title ? title->data : \"\", MB_OK);"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output, "#else").unwrap();
+    writeln!(
+        output,
+        "int64_t qb_messagebox(qb_string* title, qb_string* msg) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    printf(\"[%s] %s\\n\", title ? title->data : \"\", msg ? msg->data : \"\");"
+    )
+    .unwrap();
+    writeln!(output, "    return 1;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output, "#endif").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(
+        output,
+        "qb_string* qb_inputbox(qb_string* prompt, qb_string* title) {{"
+    )
+    .unwrap();
+    writeln!(output, "    (void)title;").unwrap();
+    writeln!(output, "    char buf[1024];").unwrap();
+    writeln!(output, "    printf(\"%s \", prompt ? prompt->data : \"\");").unwrap();
+    writeln!(output, "    if (fgets(buf, sizeof(buf), stdin)) {{").unwrap();
+    writeln!(output, "        size_t len = strlen(buf);").unwrap();
+    writeln!(
+        output,
+        "        if (len > 0 && buf[len-1] == '\\n') buf[len-1] = '\\0';"
+    )
+    .unwrap();
+    writeln!(output, "        return qb_string_new(buf);").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    return qb_string_new(\"\");").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // File dialogs return empty string (no GUI support in console mode)
+    writeln!(
+        output,
+        "qb_string* qb_openfiledialog(qb_string* title, qb_string* filter) {{"
+    )
+    .unwrap();
+    writeln!(output, "    (void)title; (void)filter;").unwrap();
+    writeln!(output, "    fprintf(stderr, \"Note: _OPENFILEDIALOG$ requires external runtime for GUI support\\n\");").unwrap();
+    writeln!(output, "    return qb_string_new(\"\");").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(
+        output,
+        "qb_string* qb_savefiledialog(qb_string* title, qb_string* filter) {{"
+    )
+    .unwrap();
+    writeln!(output, "    (void)title; (void)filter;").unwrap();
+    writeln!(output, "    fprintf(stderr, \"Note: _SAVEFILEDIALOG$ requires external runtime for GUI support\\n\");").unwrap();
+    writeln!(output, "    return qb_string_new(\"\");").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(
+        output,
+        "qb_string* qb_selectfolderdialog(qb_string* title) {{"
+    )
+    .unwrap();
+    writeln!(output, "    (void)title;").unwrap();
+    writeln!(output, "    fprintf(stderr, \"Note: _SELECTFOLDERDIALOG$ requires external runtime for GUI support\\n\");").unwrap();
+    writeln!(output, "    return qb_string_new(\"\");").unwrap();
+    writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 }

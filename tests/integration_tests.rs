@@ -2078,3 +2078,282 @@ mod graphics_stubs {
         assert!(code.contains("qb_gfx_locate("));
     }
 }
+
+/// Tests for hyperbolic trig functions
+mod hyperbolic_functions {
+    use super::*;
+
+    #[test]
+    fn sinh_function() {
+        let code = compile_to_c("DIM x AS DOUBLE\nx = _SINH(1.0)").unwrap();
+        assert!(code.contains("sinh("));
+    }
+
+    #[test]
+    fn cosh_function() {
+        let code = compile_to_c("DIM x AS DOUBLE\nx = _COSH(1.0)").unwrap();
+        assert!(code.contains("cosh("));
+    }
+
+    #[test]
+    fn tanh_function() {
+        let code = compile_to_c("DIM x AS DOUBLE\nx = _TANH(1.0)").unwrap();
+        assert!(code.contains("tanh("));
+    }
+
+    #[test]
+    fn asinh_function() {
+        let code = compile_to_c("DIM x AS DOUBLE\nx = _ASINH(1.0)").unwrap();
+        assert!(code.contains("asinh("));
+    }
+
+    #[test]
+    fn acosh_function() {
+        let code = compile_to_c("DIM x AS DOUBLE\nx = _ACOSH(2.0)").unwrap();
+        assert!(code.contains("acosh("));
+    }
+
+    #[test]
+    fn atanh_function() {
+        let code = compile_to_c("DIM x AS DOUBLE\nx = _ATANH(0.5)").unwrap();
+        assert!(code.contains("atanh("));
+    }
+}
+
+/// Tests for angle conversion functions
+mod angle_conversions {
+    use super::*;
+
+    #[test]
+    fn degrees_to_radians() {
+        let code = compile_to_c("DIM r AS DOUBLE\nr = _D2R(180)").unwrap();
+        assert!(code.contains("qb_d2r("));
+    }
+
+    #[test]
+    fn radians_to_degrees() {
+        let code = compile_to_c("DIM d AS DOUBLE\nd = _R2D(3.14159)").unwrap();
+        assert!(code.contains("qb_r2d("));
+    }
+}
+
+/// Tests for string comparison functions
+mod string_comparison {
+    use super::*;
+
+    #[test]
+    fn strcmp_function() {
+        let code = compile_to_c(
+            r#"
+DIM result AS LONG
+result = _STRCMP("abc", "def")
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_strcmp("));
+    }
+
+    #[test]
+    fn stricmp_function() {
+        let code = compile_to_c(
+            r#"
+DIM result AS LONG
+result = _STRICMP("ABC", "abc")
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_stricmp("));
+    }
+}
+
+/// Tests for _NEGATE function
+mod negate_function {
+    use super::*;
+
+    #[test]
+    fn negate_positive() {
+        let code = compile_to_c("DIM x AS DOUBLE\nx = _NEGATE(5.0)").unwrap();
+        assert!(code.contains("qb_negate("));
+    }
+
+    #[test]
+    fn negate_expression() {
+        let code = compile_to_c("DIM x AS DOUBLE\nx = _NEGATE(2.5 + 3.5)").unwrap();
+        assert!(code.contains("qb_negate("));
+    }
+}
+
+/// Tests for error handling extensions
+mod error_extensions {
+    use super::*;
+
+    #[test]
+    fn errorline_function() {
+        let code = compile_to_c("DIM ln AS LONG\nln = _ERRORLINE").unwrap();
+        assert!(code.contains("qb_errorline("));
+    }
+
+    #[test]
+    fn errormessage_function() {
+        let code = compile_to_c("DIM msg AS STRING\nmsg = _ERRORMESSAGE$").unwrap();
+        assert!(code.contains("qb_errormessage("));
+    }
+}
+
+/// Tests for utility functions
+mod utility_functions {
+    use super::*;
+
+    #[test]
+    fn commandcount_function() {
+        let code = compile_to_c("DIM argc AS LONG\nargc = _COMMANDCOUNT").unwrap();
+        assert!(code.contains("qb_commandcount("));
+    }
+
+    #[test]
+    fn environcount_function() {
+        let code = compile_to_c("DIM envc AS LONG\nenvc = _ENVIRONCOUNT").unwrap();
+        assert!(code.contains("qb_environcount("));
+    }
+}
+
+/// Tests for font stubs
+mod font_stubs {
+    use super::*;
+
+    #[test]
+    fn loadfont_function() {
+        let code = compile_to_c(
+            r#"
+DIM f AS LONG
+f = _LOADFONT("arial.ttf", 16)
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_loadfont("));
+    }
+
+    #[test]
+    fn fontheight_function() {
+        let code = compile_to_c("DIM h AS LONG\nh = _FONTHEIGHT").unwrap();
+        assert!(code.contains("qb_fontheight("));
+    }
+
+    #[test]
+    fn fontwidth_function() {
+        let code = compile_to_c("DIM w AS LONG\nw = _FONTWIDTH").unwrap();
+        assert!(code.contains("qb_fontwidth("));
+    }
+}
+
+/// Tests for desktop/window functions
+mod desktop_functions {
+    use super::*;
+
+    #[test]
+    fn desktopwidth_function() {
+        let code = compile_to_c("DIM w AS LONG\nw = _DESKTOPWIDTH").unwrap();
+        assert!(code.contains("qb_desktopwidth("));
+    }
+
+    #[test]
+    fn desktopheight_function() {
+        let code = compile_to_c("DIM h AS LONG\nh = _DESKTOPHEIGHT").unwrap();
+        assert!(code.contains("qb_desktopheight("));
+    }
+
+    #[test]
+    fn screenx_function() {
+        let code = compile_to_c("DIM x AS LONG\nx = _SCREENX").unwrap();
+        assert!(code.contains("qb_screenx("));
+    }
+
+    #[test]
+    fn screeny_function() {
+        let code = compile_to_c("DIM y AS LONG\ny = _SCREENY").unwrap();
+        assert!(code.contains("qb_screeny("));
+    }
+
+    #[test]
+    fn title_get_function() {
+        let code = compile_to_c("DIM t AS STRING\nt = _TITLE$").unwrap();
+        assert!(code.contains("qb_title_get("));
+    }
+
+    #[test]
+    fn windowhandle_function() {
+        let code = compile_to_c("DIM h AS LONG\nh = _WINDOWHANDLE").unwrap();
+        assert!(code.contains("qb_windowhandle("));
+    }
+
+    #[test]
+    fn windowhasfocus_function() {
+        let code = compile_to_c("DIM f AS LONG\nf = _WINDOWHASFOCUS").unwrap();
+        assert!(code.contains("qb_windowhasfocus("));
+    }
+}
+
+/// Tests for dialog box functions
+mod dialog_functions {
+    use super::*;
+
+    #[test]
+    fn messagebox_function() {
+        let code = compile_to_c(
+            r#"
+DIM r AS LONG
+r = _MESSAGEBOX("Title", "Message")
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_messagebox("));
+    }
+
+    #[test]
+    fn inputbox_function() {
+        let code = compile_to_c(
+            r#"
+DIM response AS STRING
+response = _INPUTBOX$("Enter name:", "Input")
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_inputbox("));
+    }
+
+    #[test]
+    fn openfiledialog_function() {
+        let code = compile_to_c(
+            r#"
+DIM filename AS STRING
+filename = _OPENFILEDIALOG$("Open File", "*.txt")
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_openfiledialog("));
+    }
+
+    #[test]
+    fn savefiledialog_function() {
+        let code = compile_to_c(
+            r#"
+DIM filename AS STRING
+filename = _SAVEFILEDIALOG$("Save File", "*.txt")
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_savefiledialog("));
+    }
+
+    #[test]
+    fn selectfolderdialog_function() {
+        let code = compile_to_c(
+            r#"
+DIM folder AS STRING
+folder = _SELECTFOLDERDIALOG$("Select Folder")
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_selectfolderdialog("));
+    }
+}

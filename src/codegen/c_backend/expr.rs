@@ -274,6 +274,25 @@ pub(super) fn c_function_name(name: &str) -> String {
         "_MAX" => "fmax".to_string(),
         "_CLAMP" => "qb_clamp".to_string(),
 
+        // Hyperbolic functions
+        "_SINH" => "sinh".to_string(),
+        "_COSH" => "cosh".to_string(),
+        "_TANH" => "tanh".to_string(),
+        "_ASINH" => "asinh".to_string(),
+        "_ACOSH" => "acosh".to_string(),
+        "_ATANH" => "atanh".to_string(),
+
+        // Angle conversions
+        "_D2R" => "qb_d2r".to_string(),
+        "_R2D" => "qb_r2d".to_string(),
+
+        // Negate
+        "_NEGATE" => "qb_negate".to_string(),
+
+        // String comparison
+        "_STRCMP" => "qb_strcmp".to_string(),
+        "_STRICMP" => "qb_stricmp".to_string(),
+
         // Bitwise operations
         "_SHL" => "qb_shl".to_string(),
         "_SHR" => "qb_shr".to_string(),
@@ -314,6 +333,12 @@ pub(super) fn c_function_name(name: &str) -> String {
         // Error handling functions
         "ERR" => "qb_err_code".to_string(),
         "ERL" => "qb_err_line".to_string(),
+        "_ERRORLINE" => "qb_errorline".to_string(),
+        "_ERRORMESSAGE$" => "qb_errormessage".to_string(),
+
+        // Utility functions
+        "_COMMANDCOUNT" => "qb_commandcount".to_string(),
+        "_ENVIRONCOUNT" => "qb_environcount".to_string(),
 
         // Environment functions
         "ENVIRON$" => "qb_environ".to_string(),
@@ -389,6 +414,27 @@ pub(super) fn c_function_name(name: &str) -> String {
 
         // Phase 5: Clipboard
         "_CLIPBOARD$" => "qb_clipboard_get".to_string(),
+
+        // Font support
+        "_LOADFONT" => "qb_loadfont".to_string(),
+        "_FONTHEIGHT" => "qb_fontheight".to_string(),
+        "_FONTWIDTH" => "qb_fontwidth".to_string(),
+
+        // Desktop/Window functions
+        "_DESKTOPWIDTH" => "qb_desktopwidth".to_string(),
+        "_DESKTOPHEIGHT" => "qb_desktopheight".to_string(),
+        "_SCREENX" => "qb_screenx".to_string(),
+        "_SCREENY" => "qb_screeny".to_string(),
+        "_TITLE$" => "qb_title_get".to_string(),
+        "_WINDOWHANDLE" => "qb_windowhandle".to_string(),
+        "_WINDOWHASFOCUS" => "qb_windowhasfocus".to_string(),
+
+        // Dialog boxes
+        "_MESSAGEBOX" => "qb_messagebox".to_string(),
+        "_INPUTBOX$" => "qb_inputbox".to_string(),
+        "_OPENFILEDIALOG$" => "qb_openfiledialog".to_string(),
+        "_SAVEFILEDIALOG$" => "qb_savefiledialog".to_string(),
+        "_SELECTFOLDERDIALOG$" => "qb_selectfolderdialog".to_string(),
 
         // Phase 5: Networking
         "_OPENHOST" => "qb_net_openhost".to_string(),

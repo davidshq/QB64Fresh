@@ -67,6 +67,133 @@ void qb_print_tab(void) {
     printf("\t");
 }
 
+static int qb_cursor_col = 1;
+static int qb_cursor_row = 1;
+
+qb_string* qb_tab(int64_t n) {
+    if (n < 1) n = 1;
+    int spaces_needed = (int)(n - qb_cursor_col);
+    if (spaces_needed < 0) spaces_needed = 0;
+    char* buf = (char*)malloc(spaces_needed + 1);
+    memset(buf, ' ', spaces_needed);
+    buf[spaces_needed] = '\0';
+    qb_cursor_col = (int)n;
+    qb_string* result = qb_string_new(buf);
+    free(buf);
+    return result;
+}
+
+qb_string* qb_spc(int64_t n) {
+    if (n < 0) n = 0;
+    char* buf = (char*)malloc((size_t)n + 1);
+    memset(buf, ' ', (size_t)n);
+    buf[n] = '\0';
+    qb_cursor_col += (int)n;
+    qb_string* result = qb_string_new(buf);
+    free(buf);
+    return result;
+}
+
+int qb_pos(int64_t n) {
+    (void)n; // unused, for compatibility
+    return qb_cursor_col;
+}
+
+int qb_csrlin(void) {
+    return qb_cursor_row;
+}
+
+#define QB_TYPE_STRING 0
+#define QB_TYPE_INT 1
+#define QB_TYPE_DOUBLE 2
+
+typedef struct {
+    int type;
+    union {
+        qb_string* str_val;
+        int64_t int_val;
+        double dbl_val;
+    };
+} QbPrintValue;
+
+void qb_print_using(qb_string* fmt, QbPrintValue* values, int num_values) {
+    if (!fmt || !fmt->data) return;
+    const char* f = fmt->data;
+    int val_idx = 0;
+    while (*f) {
+        // Check for format specifiers
+        if (*f == '#' || *f == '+' || *f == '-' || *f == '$' || *f == '*' || *f == '^') {
+            // Numeric format - count consecutive format chars
+            int width = 0, decimals = 0, has_decimal = 0, has_sign = 0;
+            int has_dollar = 0, has_asterisk = 0, has_exp = 0, exp_digits = 0;
+            const char* start = f;
+            if (*f == '+' || *f == '-') { has_sign = 1; f++; width++; }
+            if (*f == '$' && *(f+1) == '$') { has_dollar = 1; f += 2; width += 2; }
+            else if (*f == '*' && *(f+1) == '*') { has_asterisk = 1; f += 2; width += 2; }
+            while (*f == '#') { width++; f++; }
+            if (*f == '.') { has_decimal = 1; f++; width++; while (*f == '#') { decimals++; width++; f++; } }
+            while (*f == '^') { has_exp = 1; exp_digits++; f++; width++; }
+            // Now format the value
+            if (val_idx < num_values && width > 0) {
+                double val = 0;
+                if (values[val_idx].type == QB_TYPE_INT) val = (double)values[val_idx].int_val;
+                else if (values[val_idx].type == QB_TYPE_DOUBLE) val = values[val_idx].dbl_val;
+                char buf[64];
+                if (has_exp) {
+                    snprintf(buf, sizeof(buf), "%*.*e", width, decimals, val);
+                } else if (has_decimal) {
+                    snprintf(buf, sizeof(buf), "%*.*f", width, decimals, val);
+                } else {
+                    snprintf(buf, sizeof(buf), "%*lld", width, (long long)val);
+                }
+                // Handle asterisk fill
+                if (has_asterisk) {
+                    for (int i = 0; buf[i] == ' '; i++) buf[i] = '*';
+                }
+                printf("%s", buf);
+                val_idx++;
+            }
+        } else if (*f == '&') {
+            // String - print full string
+            f++;
+            if (val_idx < num_values && values[val_idx].type == QB_TYPE_STRING) {
+                if (values[val_idx].str_val && values[val_idx].str_val->data) {
+                    printf("%s", values[val_idx].str_val->data);
+                }
+                val_idx++;
+            }
+        } else if (*f == '!') {
+            // String - print first character only
+            f++;
+            if (val_idx < num_values && values[val_idx].type == QB_TYPE_STRING) {
+                if (values[val_idx].str_val && values[val_idx].str_val->data && values[val_idx].str_val->data[0]) {
+                    printf("%c", values[val_idx].str_val->data[0]);
+                }
+                val_idx++;
+            }
+        } else if (*f == '\\') {
+            // Fixed-width string - count spaces between backslashes
+            f++;
+            int str_width = 2; // includes both backslashes
+            while (*f && *f != '\\') { str_width++; f++; }
+            if (*f == '\\') f++;
+            if (val_idx < num_values && values[val_idx].type == QB_TYPE_STRING) {
+                const char* s = values[val_idx].str_val ? values[val_idx].str_val->data : "";
+                printf("%-*.*s", str_width, str_width, s ? s : "");
+                val_idx++;
+            }
+        } else if (*f == '_') {
+            // Literal next character
+            f++;
+            if (*f) { printf("%c", *f); f++; }
+        } else {
+            // Literal character
+            printf("%c", *f);
+            f++;
+        }
+    }
+}
+
 void qb_input_string(const char* prompt, qb_string** var) {
     char buffer[1024];
     if (prompt) printf("%s", prompt);
@@ -155,6 +282,78 @@ float qb_rnd(float n) {
     }
     return (float)((double)qb_rng_state / (double)UINT64_MAX);
 }
+
+int64_t qb_shl(int64_t value, int64_t bits) {
+    return (int64_t)((uint64_t)value << (bits & 63));
+}
+
+int64_t qb_shr(int64_t value, int64_t bits) {
+    return value >> (bits & 63);
+}
+
+int64_t qb_rol(int64_t value, int64_t bits) {
+    uint64_t v = (uint64_t)value;
+    int n = (int)(bits & 63);
+    return (int64_t)((v << n) | (v >> (64 - n)));
+}
+
+int64_t qb_ror(int64_t value, int64_t bits) {
+    uint64_t v = (uint64_t)value;
+    int n = (int)(bits & 63);
+    return (int64_t)((v >> n) | (v << (64 - n)));
+}
+
+int64_t qb_readbit(int64_t value, int64_t bit) {
+    return (value >> (bit & 63)) & 1;
+}
+
+int64_t qb_setbit(int64_t value, int64_t bit) {
+    return value | ((int64_t)1 << (bit & 63));
+}
+
+int64_t qb_resetbit(int64_t value, int64_t bit) {
+    return value & ~((int64_t)1 << (bit & 63));
+}
+
+int64_t qb_togglebit(int64_t value, int64_t bit) {
+    return value ^ ((int64_t)1 << (bit & 63));
+}
+
+double qb_d2r(double degrees) {
+    return degrees * 3.14159265358979323846 / 180.0;
+}
+
+double qb_r2d(double radians) {
+    return radians * 180.0 / 3.14159265358979323846;
+}
+
+double qb_negate(double n) {
+    return -n;
+}
+
+int64_t qb_strcmp(qb_string* a, qb_string* b) {
+    if (!a && !b) return 0;
+    if (!a) return -1;
+    if (!b) return 1;
+    return strcmp(a->data, b->data);
+}
+
+#ifdef _WIN32
+int64_t qb_stricmp(qb_string* a, qb_string* b) {
+    if (!a && !b) return 0;
+    if (!a) return -1;
+    if (!b) return 1;
+    return _stricmp(a->data, b->data);
+}
+#else
+#include <strings.h>
+int64_t qb_stricmp(qb_string* a, qb_string* b) {
+    if (!a && !b) return 0;
+    if (!a) return -1;
+    if (!b) return 1;
+    return strcasecmp(a->data, b->data);
+}
+#endif
 
 qb_string* qb_left(qb_string* s, int32_t n) {
     if (!s || n <= 0) return qb_string_new("");
@@ -452,6 +651,36 @@ int32_t qb_err_code(void) { return _qb_err; }
 
 int32_t qb_err_line(void) { return _qb_erl; }
 
+int64_t qb_errorline(void) { return _qb_erl; }
+
+static const char* _qb_error_messages[] = {
+    "No error",
+    "NEXT without FOR",
+    "Syntax error",
+    "RETURN without GOSUB",
+    "Out of DATA",
+    "Illegal function call",
+    "Overflow",
+    "Out of memory",
+    "Label not defined",
+    "Subscript out of range",
+    "Duplicate definition",
+    "Division by zero",
+    "Type mismatch",
+    "Out of string space",
+    "String too long",
+    "String formula too complex",
+};
+#define QB_NUM_ERROR_MESSAGES (sizeof(_qb_error_messages)/sizeof(_qb_error_messages[0]))
+
+qb_string* qb_errormessage(void) {
+    if (_qb_err >= 0 && (size_t)_qb_err < QB_NUM_ERROR_MESSAGES)
+        return qb_string_new(_qb_error_messages[_qb_err]);
+    char buf[64];
+    snprintf(buf, sizeof(buf), "Error %d", _qb_err);
+    return qb_string_new(buf);
+}
+
 /* Keyboard Input Functions */
 
 #ifdef _WIN32
@@ -511,6 +740,96 @@ qb_string* qb_input_chars_file(int32_t n, int32_t fnum) {
     free(buf);
     return result;
 }
+
+/* QB64 Keyboard Extensions */
+
+static int64_t _qb_keybuf[256];
+static int _qb_keybuf_head = 0;
+static int _qb_keybuf_tail = 0;
+
+#ifdef _WIN32
+int64_t qb_keyhit(void) {
+    if (!_kbhit()) return 0;
+    int ch = _getch();
+    if (ch == 0 || ch == 224) {
+        int ext = _getch();
+        return -(ext + 256); // Extended keys as negative
+    }
+    return ch;
+}
+#else
+int64_t qb_keyhit(void) {
+    struct termios oldt, newt;
+    tcgetattr(STDIN_FILENO, &oldt);
+    newt = oldt;
+    newt.c_lflag &= ~(ICANON | ECHO);
+    newt.c_cc[VMIN] = 0;
+    newt.c_cc[VTIME] = 0;
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+    int ch = getchar();
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+    if (ch == EOF) return 0;
+    if (ch == 27) { // Escape sequence
+        tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+        int next = getchar();
+        tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+        if (next != EOF) return -(next + 256);
+    }
+    return ch;
+}
+#endif
+
+int64_t qb_keydown(int64_t code) {
+    // Simplified implementation - always returns 0
+    // Full implementation requires platform-specific key state checking
+    (void)code;
+    return 0;
+}
+
+#ifdef _WIN32
+void qb_keyclear(void) {
+    while (_kbhit()) _getch();
+}
+#else
+void qb_keyclear(void) {
+    tcflush(STDIN_FILENO, TCIFLUSH);
+}
+#endif
+
+#ifdef _WIN32
+int64_t qb_cinp(void) {
+    return _getch();
+}
+#else
+int64_t qb_cinp(void) {
+    struct termios oldt, newt;
+    tcgetattr(STDIN_FILENO, &oldt);
+    newt = oldt;
+    newt.c_lflag &= ~(ICANON | ECHO);
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+    int ch = getchar();
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+    return (ch == EOF) ? 0 : ch;
+}
+#endif
+
+#ifdef _WIN32
+int64_t qb_capslock(void) {
+    return (GetKeyState(VK_CAPITAL) & 1) ? -1 : 0;
+}
+int64_t qb_numlock(void) {
+    return (GetKeyState(VK_NUMLOCK) & 1) ? -1 : 0;
+}
+int64_t qb_scrolllock(void) {
+    return (GetKeyState(VK_SCROLL) & 1) ? -1 : 0;
+}
+#else
+// On Linux/macOS, lock key states require X11 or reading /sys files
+// Simplified stub implementation
+int64_t qb_capslock(void) { return 0; }
+int64_t qb_numlock(void) { return 0; }
+int64_t qb_scrolllock(void) { return 0; }
+#endif
 
 /* Environment Functions */
 
@@ -781,6 +1100,253 @@ qb_mem qb_mem_of(void* ptr, intptr_t size) {
     m.image = 0;
     m.sound = 0;
     return m;
+}
+
+/* Timing Functions */
+
+static double qb_last_frame_time = 0.0;
+
+#ifdef _WIN32
+static double qb_get_time_seconds(void) {
+    LARGE_INTEGER freq, count;
+    QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&count);
+    return (double)count.QuadPart / (double)freq.QuadPart;
+}
+#else
+static double qb_get_time_seconds(void) {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (double)tv.tv_sec + (double)tv.tv_usec / 1000000.0;
+}
+#endif
+
+#ifdef _WIN32
+void qb_sleep(int seconds) {
+    Sleep(seconds * 1000);
+}
+#else
+void qb_sleep(int seconds) {
+    sleep(seconds);
+}
+#endif
+
+#ifdef _WIN32
+void qb_sleep_keypress(void) {
+    _getch();
+}
+#else
+void qb_sleep_keypress(void) {
+    struct termios oldt, newt;
+    tcgetattr(STDIN_FILENO, &oldt);
+    newt = oldt;
+    newt.c_lflag &= ~(ICANON | ECHO);
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+    getchar();
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+}
+#endif
+
+#ifdef _WIN32
+void qb_delay(double seconds) {
+    Sleep((DWORD)(seconds * 1000.0));
+}
+#else
+void qb_delay(double seconds) {
+    usleep((useconds_t)(seconds * 1000000.0));
+}
+#endif
+
+void qb_limit(int fps) {
+    if (fps <= 0) return;
+    double target_frame_time = 1.0 / (double)fps;
+    double current_time = qb_get_time_seconds();
+    if (qb_last_frame_time > 0.0) {
+        double elapsed = current_time - qb_last_frame_time;
+        double wait_time = target_frame_time - elapsed;
+        if (wait_time > 0.0) {
+#ifdef _WIN32
+            Sleep((DWORD)(wait_time * 1000.0));
+#else
+            usleep((useconds_t)(wait_time * 1000000.0));
+#endif
+        }
+    }
+    qb_last_frame_time = qb_get_time_seconds();
+}
+
+/* Array Functions */
+
+void qb_array_erase(void* arr) {
+    // Arrays are allocated on stack, so we just zero them
+    // For dynamic arrays, this would free and reallocate
+    // Currently a no-op as our arrays are fixed-size
+}
+
+/* Graphics Stubs (Inline Runtime) */
+/* For full graphics support, use --runtime external and link with libqb64fresh_rt */
+
+static int _qb_gfx_warned = 0;
+static void _qb_gfx_warn(void) {
+    if (!_qb_gfx_warned) {
+        fprintf(stderr, "Warning: Graphics functions require external runtime. Use --runtime external\n");
+        _qb_gfx_warned = 1;
+    }
+}
+
+int qb_gfx_init(int32_t mode) { _qb_gfx_warn(); (void)mode; return 0; }
+int qb_gfx_shutdown(void) { return 0; }
+
+int qb_gfx_cls(void) { return 0; }
+int qb_gfx_color(uint32_t fg, uint32_t bg) { (void)fg; (void)bg; return 0; }
+int qb_gfx_locate(int32_t row, int32_t col) { (void)row; (void)col; return 0; }
+
+int qb_gfx_pset(int32_t x, int32_t y, uint32_t color) { (void)x; (void)y; (void)color; return 0; }
+uint32_t qb_gfx_point(int32_t x, int32_t y) { (void)x; (void)y; return 0; }
+int qb_gfx_line(int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color) { (void)x1; (void)y1; (void)x2; (void)y2; (void)color; return 0; }
+int qb_gfx_box(int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color, int filled) { (void)x1; (void)y1; (void)x2; (void)y2; (void)color; (void)filled; return 0; }
+int qb_gfx_circle(int32_t x, int32_t y, int32_t radius, uint32_t color, int filled) { (void)x; (void)y; (void)radius; (void)color; (void)filled; return 0; }
+int qb_gfx_paint(int32_t x, int32_t y, uint32_t color, uint32_t boundary) { (void)x; (void)y; (void)color; (void)boundary; return 0; }
+
+int qb_gfx_display(void) { return 0; }
+int qb_gfx_poll_events(void) { return 1; }
+uint32_t qb_gfx_width(void) { return 80; }
+uint32_t qb_gfx_height(void) { return 25; }
+
+int qb_gfx_set_width(uint32_t cols, uint32_t rows) { (void)cols; (void)rows; return 0; }
+int qb_gfx_view(int screen, int32_t x1, int32_t y1, int32_t x2, int32_t y2, int32_t fill, int32_t border) { (void)screen; (void)x1; (void)y1; (void)x2; (void)y2; (void)fill; (void)border; return 0; }
+int qb_gfx_view_reset(void) { return 0; }
+int qb_gfx_window(int screen, double x1, double y1, double x2, double y2) { (void)screen; (void)x1; (void)y1; (void)x2; (void)y2; return 0; }
+int qb_gfx_window_reset(void) { return 0; }
+int qb_gfx_draw(const char* cmd) { (void)cmd; return 0; }
+
+int32_t qb_gfx_newimage(int32_t w, int32_t h, int32_t mode) { (void)w; (void)h; (void)mode; return -1; }
+int32_t qb_gfx_loadimage(const char* fn, int32_t mode) { (void)fn; (void)mode; return -1; }
+int qb_gfx_freeimage(int32_t h) { (void)h; return 0; }
+int qb_gfx_putimage_simple(int32_t src, int32_t dst) { (void)src; (void)dst; return 0; }
+int qb_gfx_putimage(int32_t dx1, int32_t dy1, int32_t dx2, int32_t dy2, int32_t src, int32_t dst) { (void)dx1; (void)dy1; (void)dx2; (void)dy2; (void)src; (void)dst; return 0; }
+int qb_gfx_putimage_full(int32_t dx1, int32_t dy1, int32_t dx2, int32_t dy2, int32_t src, int32_t dst, int32_t sx1, int32_t sy1, int32_t sx2, int32_t sy2) { (void)dx1; (void)dy1; (void)dx2; (void)dy2; (void)src; (void)dst; (void)sx1; (void)sy1; (void)sx2; (void)sy2; return 0; }
+int qb_gfx_source(int32_t h) { (void)h; return 0; }
+int qb_gfx_dest(int32_t h) { (void)h; return 0; }
+int qb_gfx_printstring(int32_t x, int32_t y, const char* text) { (void)x; (void)y; (void)text; return 0; }
+int qb_gfx_autodisplay(int enabled) { (void)enabled; return 0; }
+int32_t qb_gfx_image_width(int32_t h) { (void)h; return 0; }
+int32_t qb_gfx_image_height(int32_t h) { (void)h; return 0; }
+
+uint32_t qb_rgb(uint32_t r, uint32_t g, uint32_t b) { return 0xFF000000 | ((r & 255) << 16) | ((g & 255) << 8) | (b & 255); }
+uint32_t qb_rgba(uint32_t r, uint32_t g, uint32_t b, uint32_t a) { return ((a & 255) << 24) | ((r & 255) << 16) | ((g & 255) << 8) | (b & 255); }
+uint32_t qb_rgb32(uint32_t r, uint32_t g, uint32_t b) { return qb_rgb(r, g, b); }
+uint32_t qb_rgba32(uint32_t r, uint32_t g, uint32_t b, uint32_t a) { return qb_rgba(r, g, b, a); }
+
+int32_t qb_mouse_x(void) { return 0; }
+int32_t qb_mouse_y(void) { return 0; }
+int32_t qb_mouse_button(int32_t b) { (void)b; return 0; }
+int32_t qb_mouse_input(void) { return 0; }
+int32_t qb_mouse_movement_x(void) { return 0; }
+int32_t qb_mouse_movement_y(void) { return 0; }
+int32_t qb_mouse_wheel(void) { return 0; }
+void qb_mouse_hide(void) { }
+void qb_mouse_show(void) { }
+void qb_mouse_move(int32_t x, int32_t y) { (void)x; (void)y; }
+
+qb_string* qb_clipboard_get(void) { return qb_string_new(""); }
+void qb_clipboard_set(const char* text) { (void)text; }
+
+/* Utility Functions */
+
+static int _qb_argc = 0;
+static char** _qb_argv = NULL;
+void qb_set_args(int argc, char** argv) { _qb_argc = argc; _qb_argv = argv; }
+int64_t qb_commandcount(void) { return _qb_argc - 1; }
+
+#ifdef _WIN32
+int64_t qb_environcount(void) {
+    int count = 0;
+    char* env = GetEnvironmentStringsA();
+    if (env) {
+        char* p = env;
+        while (*p) { count++; p += strlen(p) + 1; }
+        FreeEnvironmentStringsA(env);
+    }
+    return count;
+}
+#else
+extern char** environ;
+int64_t qb_environcount(void) {
+    int count = 0;
+    if (environ) {
+        while (environ[count]) count++;
+    }
+    return count;
+}
+#endif
+
+/* Font Stubs */
+int64_t qb_loadfont(qb_string* file, int64_t size) { _qb_gfx_warn(); (void)file; (void)size; return 0; }
+void qb_font(int64_t handle) { (void)handle; }
+void qb_freefont(int64_t handle) { (void)handle; }
+int64_t qb_fontheight(void) { return 16; }
+int64_t qb_fontwidth(void) { return 8; }
+
+/* Desktop/Window Functions */
+#ifdef _WIN32
+int64_t qb_desktopwidth(void) { return GetSystemMetrics(SM_CXSCREEN); }
+int64_t qb_desktopheight(void) { return GetSystemMetrics(SM_CYSCREEN); }
+#else
+int64_t qb_desktopwidth(void) { return 1920; }  /* Stub - requires X11/Wayland */
+int64_t qb_desktopheight(void) { return 1080; } /* Stub - requires X11/Wayland */
+#endif
+
+int64_t qb_screenx(void) { return 0; }
+int64_t qb_screeny(void) { return 0; }
+static char _qb_window_title[256] = "QB64Fresh";
+qb_string* qb_title_get(void) { return qb_string_new(_qb_window_title); }
+void qb_title_set(qb_string* title) { if (title && title->data) strncpy(_qb_window_title, title->data, 255); }
+int64_t qb_windowhandle(void) { return 0; }
+int64_t qb_windowhasfocus(void) { return -1; }
+
+/* Dialog Box Stubs */
+/* Full implementations require platform-specific GUI libraries */
+
+#ifdef _WIN32
+int64_t qb_messagebox(qb_string* title, qb_string* msg) {
+    return MessageBoxA(NULL, msg ? msg->data : "", title ? title->data : "", MB_OK);
+}
+#else
+int64_t qb_messagebox(qb_string* title, qb_string* msg) {
+    printf("[%s] %s\n", title ? title->data : "", msg ? msg->data : "");
+    return 1;
+}
+#endif
+
+qb_string* qb_inputbox(qb_string* prompt, qb_string* title) {
+    (void)title;
+    char buf[1024];
+    printf("%s ", prompt ? prompt->data : "");
+    if (fgets(buf, sizeof(buf), stdin)) {
+        size_t len = strlen(buf);
+        if (len > 0 && buf[len-1] == '\n') buf[len-1] = '\0';
+        return qb_string_new(buf);
+    }
+    return qb_string_new("");
+}
+
+qb_string* qb_openfiledialog(qb_string* title, qb_string* filter) {
+    (void)title; (void)filter;
+    fprintf(stderr, "Note: _OPENFILEDIALOG$ requires external runtime for GUI support\n");
+    return qb_string_new("");
+}
+
+qb_string* qb_savefiledialog(qb_string* title, qb_string* filter) {
+    (void)title; (void)filter;
+    fprintf(stderr, "Note: _SAVEFILEDIALOG$ requires external runtime for GUI support\n");
+    return qb_string_new("");
+}
+
+qb_string* qb_selectfolderdialog(qb_string* title) {
+    (void)title;
+    fprintf(stderr, "Note: _SELECTFOLDERDIALOG$ requires external runtime for GUI support\n");
+    return qb_string_new("");
 }
 
 /* Global Variables */

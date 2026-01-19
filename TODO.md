@@ -294,7 +294,7 @@ runtime/src/
 - [ ] Example programs
 
 ### Testing (See TESTING_INFRASTRUCTURE_PLAN.md for details)
-- [x] Integration tests for compiled programs (176 tests)
+- [x] Integration tests for compiled programs (207 tests)
 - [x] Golden/snapshot tests for codegen (10 tests)
 - [x] Property-based testing with proptest (19 tests)
 - [x] Fuzz testing infrastructure (3 targets: lexer, parser, full pipeline)
@@ -420,17 +420,17 @@ against the current QB64Fresh implementation. Organized by priority and category
 - [x] `_MIN(a, b)` / `_MAX(a, b)` functions
 - [x] `_CLAMP(val, min, max)` function
 - [x] `_HYPOT(x, y)` function - hypotenuse
-- [ ] `_NEGATE(n)` function - negate value
 
 #### Trigonometric (Extended)
-- [ ] `_ACOS(n)` / `_ASIN(n)` functions - arc cosine/sine
-- [ ] `_ATAN2(y, x)` function - arc tangent of y/x
-- [ ] `_SINH(n)` / `_COSH(n)` / `_TANH(n)` - hyperbolic functions
-- [ ] `_ASINH(n)` / `_ACOSH(n)` / `_ATANH(n)` - inverse hyperbolic
+- [x] `_ACOS(n)` / `_ASIN(n)` functions - arc cosine/sine
+- [x] `_ATAN2(y, x)` function - arc tangent of y/x
+- [x] `_SINH(n)` / `_COSH(n)` / `_TANH(n)` - hyperbolic functions
+- [x] `_ASINH(n)` / `_ACOSH(n)` / `_ATANH(n)` - inverse hyperbolic functions
 - [ ] `_SEC(n)` / `_CSC(n)` / `_COT(n)` - secant/cosecant/cotangent
 - [ ] `_SECH(n)` / `_CSCH(n)` / `_COTH(n)` - hyperbolic sec/csc/cot
 - [ ] `_ARCSEC(n)` / `_ARCCSC(n)` / `_ARCCOT(n)` - inverse sec/csc/cot
-- [ ] `_D2R(degrees)` / `_R2D(radians)` - degree/radian conversion
+- [x] `_D2R(degrees)` / `_R2D(radians)` - degree/radian conversion
+- [x] `_NEGATE(n)` - negate value
 - [ ] `_D2G(degrees)` / `_G2D(gradians)` / `_G2R(gradians)` / `_R2G(radians)` - gradian conversions
 
 #### Bitwise Operations ✅
@@ -444,16 +444,16 @@ against the current QB64Fresh implementation. Organized by priority and category
 - [x] `_TOGGLEBIT(value, bit)` function - toggle bit
 
 #### String Functions
-- [ ] `_STRCMP(a$, b$)` function - case-sensitive compare
-- [ ] `_STRICMP(a$, b$)` function - case-insensitive compare
+- [x] `_STRCMP(a$, b$)` function - case-sensitive compare
+- [x] `_STRICMP(a$, b$)` function - case-insensitive compare
 - [ ] `_TOSTR$(n)` function - number to string (no leading space)
 - [ ] `_BIN$(n)` function - number to binary string
 - [ ] `_CV(type, string$)` function - generic convert string to type
 - [ ] `_MK$(type, value)` function - generic convert value to string
 
 #### Error Handling (Extended)
-- [ ] `_ERRORLINE` variable - line number of error
-- [ ] `_ERRORMESSAGE$` function - error message text
+- [x] `_ERRORLINE` variable - line number of error
+- [x] `_ERRORMESSAGE$` function - error message text
 - [ ] `_INCLERRORFILE$` / `_INCLERRORLINE` - include file error info
 - [ ] `_ASSERT` statement - assertions
 - [ ] `$ASSERTS` metacommand - enable assertions
@@ -463,8 +463,8 @@ against the current QB64Fresh implementation. Organized by priority and category
 - [ ] `_IIF(condition, true_val, false_val)` function - inline IF
 - [ ] `_CAST(type, value)` function - explicit type cast
 - [ ] `_DEFINE` statement - define default variable types by letter range
-- [ ] `_COMMANDCOUNT` function - count of command line arguments
-- [ ] `_ENVIRONCOUNT` function - count of environment variables
+- [x] `_COMMANDCOUNT` function - count of command line arguments
+- [x] `_ENVIRONCOUNT` function - count of environment variables
 - [ ] `_STATUSCODE` function - status code from last operation
 
 #### Networking (Extended)
@@ -475,8 +475,10 @@ against the current QB64Fresh implementation. Organized by priority and category
 ### Lower Priority - QB64 Advanced Extensions
 
 #### Desktop/Window Info
-- [ ] `_DESKTOPHEIGHT` / `_DESKTOPWIDTH` functions - desktop dimensions
-- [ ] `_SCREENX` / `_SCREENY` functions - window position
+- [x] `_DESKTOPHEIGHT` / `_DESKTOPWIDTH` functions - desktop dimensions
+- [x] `_SCREENX` / `_SCREENY` functions - window position
+- [x] `_TITLE$` function - get window title
+- [x] `_WINDOWHANDLE` / `_WINDOWHASFOCUS` functions - window state
 - [ ] `_SCREENMOVE x, y` statement - move window
 - [ ] `_SCREENEXISTS` function - check if window exists
 - [ ] `_SCREENHIDE` / `_SCREENSHOW` statements - hide/show window
@@ -493,10 +495,10 @@ against the current QB64Fresh implementation. Organized by priority and category
 - [ ] `_WINDOWHASFOCUS` function - check if window has focus
 
 #### Font Support
-- [ ] `_LOADFONT(file$, size)` function - load font
+- [x] `_LOADFONT(file$, size)` function - load font (stub)
 - [ ] `_FONT` statement - set current font
 - [ ] `_FREEFONT(handle)` statement - release font
-- [ ] `_FONTHEIGHT` / `_FONTWIDTH` functions - font dimensions
+- [x] `_FONTHEIGHT` / `_FONTWIDTH` functions - font dimensions (stubs)
 
 #### Unicode Font Support
 - [ ] `_UCHARPOS` function - Unicode character position
@@ -558,11 +560,9 @@ against the current QB64Fresh implementation. Organized by priority and category
 - [ ] `_CLIPBOARDIMAGE` function - get image from clipboard
 
 #### Dialog Boxes
-- [ ] `_MESSAGEBOX` function - display message box
-- [ ] `_INPUTBOX$` function - input dialog
-- [ ] `_OPENFILEDIALOG$` function - file open dialog
-- [ ] `_SAVEFILEDIALOG$` function - file save dialog
-- [ ] `_SELECTFOLDERDIALOG$` function - folder select dialog
+- [x] `_MESSAGEBOX` function - display message box
+- [x] `_INPUTBOX$` function - input dialog
+- [x] `_OPENFILEDIALOG$` / `_SAVEFILEDIALOG$` / `_SELECTFOLDERDIALOG$` - file dialogs (stubs)
 - [ ] `_COLORCHOOSERDIALOG` function - color picker
 - [ ] `_NOTIFYPOPUP` function - system notification
 

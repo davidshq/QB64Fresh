@@ -13,14 +13,14 @@
 
 **UPDATE:** As of 2026-01-18, the testing infrastructure has been substantially implemented:
 - **163 unit tests** in source modules
-- **176 integration tests** (0 ignored)
+- **207 integration tests** (0 ignored)
 - **10 golden tests** for C code generation snapshots
 - **16 compatibility test fixtures** (auto-discovered)
 - **19 property-based tests** using proptest (thousands of iterations)
 - **30 benchmarks** measuring compiler performance
 - **37 runtime tests**
 
-Total: **398+ tests** across the workspace.
+Total: **429+ tests** across the workspace.
 **Line coverage:** 59.92% (measured via cargo-llvm-cov)
 **Fuzz testing:** 3 fuzz targets verified (~4.6M inputs, 0 crashes)
 
@@ -74,7 +74,7 @@ src/
 ### Tier 2: Integration Tests ✅ IMPLEMENTED
 **Location:** `tests/integration_tests.rs`
 **Purpose:** Test complete compiler pipeline end-to-end
-**Status:** 176 tests passing, 0 ignored
+**Status:** 207 tests passing, 0 ignored
 
 Tests cover:
 - Basic programs (hello world, comments, END)
@@ -445,7 +445,7 @@ fn compile_compat_qb45_arrays()
 cargo test --workspace
 
 # Run specific test suites
-cargo test --test integration_tests    # 176 integration tests
+cargo test --test integration_tests    # 207 integration tests
 cargo test --test golden_tests         # 10 golden tests
 cargo test --test compatibility        # 16 fixture tests
 cargo test --test proptest_tests       # 19 property-based tests
@@ -487,3 +487,4 @@ cargo llvm-cov --workspace --lcov      # LCOV format for CI
 *Updated: 2026-01-18 - Session 019: SYSTEM, labeled DATA, File I/O tests, console INPUT tests, built-in functions (TIMER, DATE$, TIME$, TRIM$), fuzz infrastructure (128 tests, 0 ignored, 59.92% coverage)*
 *Updated: 2026-01-18 - Session 020: SLEEP, _DELAY, _LIMIT, ERASE, TAB, SPC, POS, CSRLIN, _KEYHIT, _KEYDOWN, _KEYCLEAR; fuzz testing verified (~4.6M inputs, 0 crashes); 148 tests*
 *Updated: 2026-01-18 - Session 021: PRINT USING, ? as PRINT alias, bitwise ops (_SHL/_SHR/_ROL/_ROR/_READBIT/_SETBIT/_RESETBIT/_TOGGLEBIT), keyboard (_CINP, lock keys), graphics stubs, _CLAMP/_HYPOT tests; 176 tests*
+*Updated: 2026-01-18 - Session 022: Hyperbolic trig (_SINH/_COSH/_TANH/_ASINH/_ACOSH/_ATANH), angle conversion (_D2R/_R2D), _NEGATE, string compare (_STRCMP/_STRICMP), error extensions (_ERRORLINE/_ERRORMESSAGE$), utility funcs (_COMMANDCOUNT/_ENVIRONCOUNT), font stubs, desktop/window funcs, dialog boxes, RodioBackend for audio; 207 tests*

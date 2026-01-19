@@ -17,10 +17,15 @@ libc = "0.2"
 # For graphics support
 sdl2 = { version = "0.37", optional = true }
 
+# For audio support (pure Rust audio library)
+rodio = { version = "0.19", optional = true }
+
 [features]
-default = ["graphics-sdl2"]
+default = ["graphics-sdl2", "audio-rodio"]
 graphics-sdl2 = ["sdl2"]
 graphics-mock = []  # For testing without display
+audio-rodio = ["rodio"]
+audio-mock = []  # For testing without audio
 
 [dev-dependencies]
 # For testing

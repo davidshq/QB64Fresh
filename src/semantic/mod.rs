@@ -369,6 +369,41 @@ impl SemanticAnalyzer {
             BasicType::Double,
         );
 
+        // Hyperbolic functions
+        self.register_builtin_function("_SINH", &[("n", BasicType::Double)], BasicType::Double);
+        self.register_builtin_function("_COSH", &[("n", BasicType::Double)], BasicType::Double);
+        self.register_builtin_function("_TANH", &[("n", BasicType::Double)], BasicType::Double);
+        self.register_builtin_function("_ASINH", &[("n", BasicType::Double)], BasicType::Double);
+        self.register_builtin_function("_ACOSH", &[("n", BasicType::Double)], BasicType::Double);
+        self.register_builtin_function("_ATANH", &[("n", BasicType::Double)], BasicType::Double);
+
+        // Angle conversions
+        self.register_builtin_function(
+            "_D2R",
+            &[("degrees", BasicType::Double)],
+            BasicType::Double,
+        );
+        self.register_builtin_function(
+            "_R2D",
+            &[("radians", BasicType::Double)],
+            BasicType::Double,
+        );
+
+        // Negate
+        self.register_builtin_function("_NEGATE", &[("n", BasicType::Double)], BasicType::Double);
+
+        // String comparison
+        self.register_builtin_function(
+            "_STRCMP",
+            &[("a", BasicType::String), ("b", BasicType::String)],
+            BasicType::Long,
+        );
+        self.register_builtin_function(
+            "_STRICMP",
+            &[("a", BasicType::String), ("b", BasicType::String)],
+            BasicType::Long,
+        );
+
         // Bitwise operations
         self.register_builtin_function(
             "_SHL",
@@ -455,6 +490,13 @@ impl SemanticAnalyzer {
         // Error handling functions
         self.register_builtin_function("ERR", &[], BasicType::Integer);
         self.register_builtin_function("ERL", &[], BasicType::Integer);
+        // QB64 error handling extensions
+        self.register_builtin_function("_ERRORLINE", &[], BasicType::Long);
+        self.register_builtin_function("_ERRORMESSAGE$", &[], BasicType::String);
+
+        // Utility functions
+        self.register_builtin_function("_COMMANDCOUNT", &[], BasicType::Long);
+        self.register_builtin_function("_ENVIRONCOUNT", &[], BasicType::Long);
 
         // Environment functions
         self.register_builtin_function(
@@ -569,6 +611,51 @@ impl SemanticAnalyzer {
 
         // Phase 5: Clipboard
         self.register_builtin_function("_CLIPBOARD$", &[], BasicType::String);
+
+        // Font support
+        self.register_builtin_function(
+            "_LOADFONT",
+            &[("file", BasicType::String), ("size", BasicType::Long)],
+            BasicType::Long,
+        );
+        self.register_builtin_function("_FONTHEIGHT", &[], BasicType::Long);
+        self.register_builtin_function("_FONTWIDTH", &[], BasicType::Long);
+
+        // Desktop/Window functions
+        self.register_builtin_function("_DESKTOPWIDTH", &[], BasicType::Long);
+        self.register_builtin_function("_DESKTOPHEIGHT", &[], BasicType::Long);
+        self.register_builtin_function("_SCREENX", &[], BasicType::Long);
+        self.register_builtin_function("_SCREENY", &[], BasicType::Long);
+        self.register_builtin_function("_TITLE$", &[], BasicType::String);
+        self.register_builtin_function("_WINDOWHANDLE", &[], BasicType::Long);
+        self.register_builtin_function("_WINDOWHASFOCUS", &[], BasicType::Long);
+
+        // Dialog boxes
+        self.register_builtin_function(
+            "_MESSAGEBOX",
+            &[("title", BasicType::String), ("message", BasicType::String)],
+            BasicType::Long,
+        );
+        self.register_builtin_function(
+            "_INPUTBOX$",
+            &[("prompt", BasicType::String), ("title", BasicType::String)],
+            BasicType::String,
+        );
+        self.register_builtin_function(
+            "_OPENFILEDIALOG$",
+            &[("title", BasicType::String), ("filter", BasicType::String)],
+            BasicType::String,
+        );
+        self.register_builtin_function(
+            "_SAVEFILEDIALOG$",
+            &[("title", BasicType::String), ("filter", BasicType::String)],
+            BasicType::String,
+        );
+        self.register_builtin_function(
+            "_SELECTFOLDERDIALOG$",
+            &[("title", BasicType::String)],
+            BasicType::String,
+        );
 
         // Phase 5: Networking
         self.register_builtin_function("_OPENHOST", &[("port", BasicType::Long)], BasicType::Long);

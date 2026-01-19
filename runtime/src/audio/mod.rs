@@ -26,7 +26,13 @@
 mod error;
 pub mod mock;
 
+#[cfg(feature = "audio-rodio")]
+pub mod rodio_backend;
+
 pub use error::{AudioError, AudioErrorKind};
+
+#[cfg(feature = "audio-rodio")]
+pub use rodio_backend::RodioBackend;
 
 /// Trait for audio playback backends.
 ///
@@ -174,12 +180,28 @@ pub trait AudioBackend {
 pub static mut AUDIO_BACKEND: Option<Box<dyn AudioBackend>> = None;
 
 /// Initialize the global audio backend.
+///
+/// Uses RodioBackend when the `audio-rodio` feature is enabled,
+/// otherwise falls back to MockAudioBackend.
 pub fn init_audio() -> Result<(), AudioError> {
-    let mut backend = Box::new(mock::MockAudioBackend::new());
-    backend.initialize()?;
-    unsafe {
-        AUDIO_BACKEND = Some(backend);
+    #[cfg(feature = "audio-rodio")]
+    {
+        let mut backend = Box::new(RodioBackend::new());
+        backend.initialize()?;
+        unsafe {
+            AUDIO_BACKEND = Some(backend);
+        }
     }
+
+    #[cfg(not(feature = "audio-rodio"))]
+    {
+        let mut backend = Box::new(mock::MockAudioBackend::new());
+        backend.initialize()?;
+        unsafe {
+            AUDIO_BACKEND = Some(backend);
+        }
+    }
+
     Ok(())
 }
 
