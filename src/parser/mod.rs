@@ -39,12 +39,16 @@
 //! multiple errors at once. This provides better feedback to users than stopping
 //! at the first error.
 
+mod audio;
 mod control_flow;
 mod directives;
 mod error;
 mod expressions;
+mod file_io;
+mod graphics;
 mod procedures;
 mod statements;
+mod system;
 mod tokens;
 
 pub use error::ParseError;

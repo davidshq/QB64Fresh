@@ -216,12 +216,13 @@ pub trait CodeGenerator {
 
 ## Key Files Reference
 
-### Current Implementation (as of 2026-01-18)
+### Current Implementation (as of 2026-01-19)
 
 | File | Purpose | Status |
 |------|---------|--------|
 | `src/lib.rs` | Library root, module exports, prelude | ✓ Complete |
 | `src/main.rs` | CLI entry point (--tokens, --ast, --typed-ir, --emit-c) | ✓ Complete |
+| `src/preprocessor.rs` | $INCLUDE directive processing | ✓ Complete |
 | `src/lexer/mod.rs` | Lexer wrapper with iterator interface | ✓ Complete |
 | `src/lexer/token.rs` | Token definitions using logos macros | ✓ Complete |
 | `src/ast/mod.rs` | AST root: Span, Program types | ✓ Complete |
@@ -326,13 +327,28 @@ QB64Fresh/                    # Main compiler workspace
 │   ├── lsp/                  # ✓ Language Server Protocol
 │   │   ├── mod.rs            # LSP server implementation
 │   │   └── main.rs           # qb64fresh-lsp binary entry
+│   ├── preprocessor.rs       # ✓ $INCLUDE directive handling
 │   ├── lib.rs                # Library crate root
 │   └── main.rs               # qb64fresh binary entry
 ├── runtime/                  # ✓ Runtime library (workspace member)
 │   ├── src/
+│   │   ├── lib.rs            # Crate root
 │   │   ├── string.rs         # Reference-counted strings
 │   │   ├── io.rs             # PRINT, INPUT, console
-│   │   └── math.rs           # Math functions
+│   │   ├── math.rs           # Math functions
+│   │   ├── graphics_ffi.rs   # Graphics FFI bindings
+│   │   ├── audio_ffi.rs      # Audio FFI bindings
+│   │   ├── graphics/         # Graphics backend system
+│   │   │   ├── mod.rs        # GraphicsBackend trait
+│   │   │   ├── sdl2.rs       # SDL2 implementation
+│   │   │   ├── mock.rs       # Mock for testing
+│   │   │   ├── font.rs       # Font rendering
+│   │   │   └── error.rs      # Graphics errors
+│   │   └── audio/            # Audio backend system
+│   │       ├── mod.rs        # AudioBackend trait
+│   │       ├── rodio_backend.rs  # Rodio implementation
+│   │       ├── mock.rs       # Mock for testing
+│   │       └── error.rs      # Audio errors
 │   └── include/
 │       └── qb64fresh_rt.h    # C header for FFI
 └── examples/                 # Test BASIC files

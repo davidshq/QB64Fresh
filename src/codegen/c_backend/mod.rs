@@ -11,7 +11,7 @@
 //! - [`types`] - BASIC-to-C type mapping utilities
 //! - [`runtime`] - Inline runtime library code generation
 //! - [`expr`] - Expression emission
-//! - [`stmt`] - Statement emission
+//! - [`stmt`] - Statement emission (main dispatcher + helper methods)
 //! - [`analysis`] - Program analysis (globals, DATA collection)
 //!
 //! # Generated Code Structure

@@ -1632,6 +1632,184 @@ qb_string* qb_selectfolderdialog(qb_string* title) {
     return qb_string_new("");
 }
 
+/* Legacy BASIC Functions */
+
+int qb_lpos(int64_t n) {
+    (void)n;  // Printer number (ignored)
+    return 1; // Always return column 1 (stub)
+}
+
+int32_t qb_varptr(void* ptr) {
+    return (int32_t)(intptr_t)ptr;
+}
+
+qb_string* qb_varptr_str(void* ptr) {
+    qb_string* result = malloc(sizeof(qb_string));
+    result->len = sizeof(void*);
+    result->capacity = result->len + 1;
+    result->data = malloc(result->capacity);
+    memcpy(result->data, &ptr, sizeof(void*));
+    result->data[result->len] = '\0';
+    return result;
+}
+
+int32_t qb_varseg(void* ptr) {
+    (void)ptr;
+    return 0; // Flat memory model, no segments
+}
+
+int32_t qb_sadd(qb_string* s) {
+    if (!s || !s->data) return 0;
+    return (int32_t)(intptr_t)(s->data);
+}
+
+int qb_fileattr(int filenum, int attribute) {
+    (void)filenum; (void)attribute;
+    // Stub: would need to track file modes in file table
+    return 0;
+}
+
+float qb_cvsmbf(qb_string* s) {
+    if (!s || s->len < 4) return 0.0f;
+    unsigned char* mbf = (unsigned char*)s->data;
+    // MBF format: mantissa(3 bytes) + exponent(1 byte)
+    // IEEE format: sign(1) + exponent(8) + mantissa(23)
+    if (mbf[3] == 0) return 0.0f; // Zero value
+    uint32_t ieee;
+    int sign = mbf[2] & 0x80;
+    int exp = mbf[3] - 2; // MBF to IEEE exponent adjustment
+    uint32_t mantissa = ((mbf[2] & 0x7F) << 16) | (mbf[1] << 8) | mbf[0];
+    ieee = (sign << 24) | ((exp & 0xFF) << 23) | (mantissa >> 1);
+    float result;
+    memcpy(&result, &ieee, 4);
+    return result;
+}
+
+double qb_cvdmbf(qb_string* s) {
+    if (!s || s->len < 8) return 0.0;
+    unsigned char* mbf = (unsigned char*)s->data;
+    // MBF double: mantissa(7 bytes) + exponent(1 byte)
+    if (mbf[7] == 0) return 0.0; // Zero value
+    uint64_t ieee;
+    int sign = mbf[6] & 0x80;
+    int exp = mbf[7] - 2 + 1023 - 128; // MBF to IEEE exponent
+    uint64_t mantissa = ((uint64_t)(mbf[6] & 0x7F) << 48) |
+                        ((uint64_t)mbf[5] << 40) |
+                        ((uint64_t)mbf[4] << 32) |
+                        ((uint64_t)mbf[3] << 24) |
+                        ((uint64_t)mbf[2] << 16) |
+                        ((uint64_t)mbf[1] << 8) |
+                        (uint64_t)mbf[0];
+    ieee = ((uint64_t)sign << 56) | ((uint64_t)(exp & 0x7FF) << 52) | (mantissa >> 4);
+    double result;
+    memcpy(&result, &ieee, 8);
+    return result;
+}
+
+qb_string* qb_mksmbf(float n) {
+    qb_string* result = malloc(sizeof(qb_string));
+    result->len = 4;
+    result->capacity = 5;
+    result->data = malloc(5);
+    if (n == 0.0f) {
+        memset(result->data, 0, 4);
+    } else {
+        uint32_t ieee;
+        memcpy(&ieee, &n, 4);
+        int sign = (ieee >> 31) & 1;
+        int exp = ((ieee >> 23) & 0xFF) + 2; // IEEE to MBF exponent
+        uint32_t mantissa = (ieee & 0x7FFFFF) << 1;
+        result->data[0] = mantissa & 0xFF;
+        result->data[1] = (mantissa >> 8) & 0xFF;
+        result->data[2] = ((mantissa >> 16) & 0x7F) | (sign << 7);
+        result->data[3] = exp & 0xFF;
+    }
+    result->data[4] = '\0';
+    return result;
+}
+
+qb_string* qb_mkdmbf(double n) {
+    qb_string* result = malloc(sizeof(qb_string));
+    result->len = 8;
+    result->capacity = 9;
+    result->data = malloc(9);
+    if (n == 0.0) {
+        memset(result->data, 0, 8);
+    } else {
+        uint64_t ieee;
+        memcpy(&ieee, &n, 8);
+        int sign = (ieee >> 63) & 1;
+        int exp = ((ieee >> 52) & 0x7FF) - 1023 + 128 + 2; // IEEE to MBF
+        uint64_t mantissa = (ieee & 0xFFFFFFFFFFFFFULL) << 4;
+        result->data[0] = mantissa & 0xFF;
+        result->data[1] = (mantissa >> 8) & 0xFF;
+        result->data[2] = (mantissa >> 16) & 0xFF;
+        result->data[3] = (mantissa >> 24) & 0xFF;
+        result->data[4] = (mantissa >> 32) & 0xFF;
+        result->data[5] = (mantissa >> 40) & 0xFF;
+        result->data[6] = ((mantissa >> 48) & 0x7F) | (sign << 7);
+        result->data[7] = exp & 0xFF;
+    }
+    result->data[8] = '\0';
+    return result;
+}
+
+void qb_bload(const char* filename, void* address) {
+    FILE* f = fopen(filename, "rb");
+    if (!f) return;
+    
+    // Read BSAVE header (7 bytes)
+    unsigned char header[7];
+    if (fread(header, 1, 7, f) != 7) {
+        fclose(f);
+        return;
+    }
+    
+    // Check magic byte (0xFD for BSAVE files)
+    if (header[0] != 0xFD) {
+        // Not a BSAVE file, load as raw binary
+        fseek(f, 0, SEEK_END);
+        long size = ftell(f);
+        fseek(f, 0, SEEK_SET);
+        if (address) {
+            fread(address, 1, (size_t)size, f);
+        }
+        fclose(f);
+        return;
+    }
+    
+    // Parse BSAVE header: magic(1) + segment(2) + offset(2) + length(2)
+    uint16_t length = header[5] | (header[6] << 8);
+    
+    // If no address provided, we'd use the segment:offset from header
+    // In flat model, this is not directly applicable, so we require address
+    if (address) {
+        fread(address, 1, length, f);
+    }
+    fclose(f);
+}
+
+void qb_bsave(const char* filename, void* address, size_t length) {
+    FILE* f = fopen(filename, "wb");
+    if (!f) return;
+    
+    // Write BSAVE header (7 bytes)
+    unsigned char header[7];
+    header[0] = 0xFD;  // Magic byte
+    header[1] = 0;     // Segment low (not used in flat model)
+    header[2] = 0;     // Segment high
+    header[3] = 0;     // Offset low (not used)
+    header[4] = 0;     // Offset high
+    header[5] = length & 0xFF;         // Length low
+    header[6] = (length >> 8) & 0xFF;  // Length high
+    
+    fwrite(header, 1, 7, f);
+    if (address) {
+        fwrite(address, 1, length, f);
+    }
+    fclose(f);
+}
+
 /* GOSUB Return Stack */
 #define GOSUB_STACK_SIZE 256
 static void* _gosub_stack[GOSUB_STACK_SIZE];
