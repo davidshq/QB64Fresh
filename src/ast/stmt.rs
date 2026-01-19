@@ -560,6 +560,19 @@ pub enum StatementKind {
         body: Expr,
     },
 
+    /// `DEF FNname[(parameters)] ... END DEF` (multi-line, QB64 extension)
+    ///
+    /// Multi-line user-defined function. The return value is set by assigning
+    /// to the function name within the body (e.g., `FNname = value`).
+    DefFnMultiLine {
+        /// Function name (without FN prefix).
+        name: String,
+        /// Optional parameters.
+        params: Vec<Parameter>,
+        /// The function body statements.
+        body: Vec<Statement>,
+    },
+
     /// `DEF SEG [= segment]` - Set memory segment for PEEK/POKE/BLOAD/BSAVE.
     ///
     /// Without an argument, resets to the default data segment.
@@ -598,6 +611,15 @@ pub enum StatementKind {
     SharedStmt {
         /// Names of shared variables to access.
         variables: Vec<String>,
+    },
+
+    /// `STATIC var1[, var2, ...] [AS type]` inside SUB/FUNCTION
+    ///
+    /// Declares static local variables that persist between procedure calls.
+    /// Unlike regular local variables, static variables retain their values.
+    StaticStmt {
+        /// Variables to declare as static
+        variables: Vec<DimVariable>,
     },
 
     /// `REDIM [_PRESERVE] array1(dims) [AS type], array2(dims) [AS type], ...`

@@ -2118,6 +2118,24 @@ fn emit_memory_functions(output: &mut String) {
     writeln!(output, "/* QB64 Memory Operations */").unwrap();
     writeln!(output).unwrap();
 
+    // DEF SEG support - global segment for PEEK/POKE
+    // In modern QB64, this is largely a no-op, but we track it for compatibility.
+    // Segment value of -1 means default segment (no offset).
+    writeln!(output, "static int32_t qb_current_segment = -1;").unwrap();
+    writeln!(output).unwrap();
+
+    // DEF SEG [= segment] - Set memory segment for PEEK/POKE/BLOAD/BSAVE
+    writeln!(output, "void qb_def_seg(int32_t segment) {{").unwrap();
+    writeln!(output, "    qb_current_segment = segment;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // qb_get_segment() - Get current segment value (for internal use)
+    writeln!(output, "int32_t qb_get_segment(void) {{").unwrap();
+    writeln!(output, "    return qb_current_segment;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
     // _MEM type definition - QB64 memory block descriptor
     writeln!(output, "typedef struct qb_mem {{").unwrap();
     writeln!(output, "    void* offset;      /* Pointer to data */").unwrap();

@@ -707,6 +707,15 @@ impl StmtEmitter {
                 self.emit_def_fn(name, params, return_type, body, output)?;
             }
 
+            TypedStatementKind::DefFnMultiLine {
+                name,
+                params,
+                return_type,
+                body,
+            } => {
+                self.emit_def_fn_multiline(name, params, return_type, body, output)?;
+            }
+
             // ==================== Variable/Scope Statements ====================
             TypedStatementKind::CommonStmt { shared, variables } => {
                 // COMMON is handled at program level, emit a comment here
@@ -730,6 +739,36 @@ impl StmtEmitter {
                     indent
                 )
                 .unwrap();
+            }
+
+            TypedStatementKind::StaticStmt { variables } => {
+                // STATIC inside SUB/FUNCTION declares static local variables
+                // In C, these are declared with the `static` keyword
+                for var in variables {
+                    let c_name = c_identifier(&var.name);
+                    let c_ty = c_type(&var.basic_type);
+
+                    if var.dimensions.is_empty() {
+                        // Simple static variable
+                        let init = default_init(&var.basic_type);
+                        writeln!(output, "{}static {} {} = {};", indent, c_ty, c_name, init)
+                            .unwrap();
+                    } else {
+                        // Static array
+                        let sizes: Vec<String> = var
+                            .dimensions
+                            .iter()
+                            .map(|d| format!("{}", d.upper - d.lower + 1))
+                            .collect();
+                        let array_dims = sizes.join("][");
+                        writeln!(
+                            output,
+                            "{}static {} {}[{}] = {{0}};",
+                            indent, c_ty, c_name, array_dims
+                        )
+                        .unwrap();
+                    }
+                }
             }
 
             TypedStatementKind::Redim {
@@ -3122,6 +3161,61 @@ impl StmtEmitter {
             c_return_type, fn_name, param_list, body_code
         )
         .unwrap();
+
+        Ok(())
+    }
+
+    /// Emits multi-line DEF FN as a static function.
+    ///
+    /// In multi-line DEF FN, the return value is set by assigning to the
+    /// function name (e.g., `FNSquare = x * x`). We emit a local variable
+    /// for the return value and return it at the end.
+    fn emit_def_fn_multiline(
+        &mut self,
+        name: &str,
+        params: &[TypedParameter],
+        return_type: &BasicType,
+        body: &[TypedStatement],
+        output: &mut String,
+    ) -> Result<(), CodeGenError> {
+        let fn_name = format!("_fn_{}", c_identifier(name));
+        let c_return_type = c_type(return_type);
+
+        // Parameter list
+        let param_list = if params.is_empty() {
+            "void".to_string()
+        } else {
+            params
+                .iter()
+                .map(|p| format!("{} {}", c_type(&p.basic_type), c_identifier(&p.name)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+
+        // Function header
+        writeln!(
+            output,
+            "static {} {}({}) {{",
+            c_return_type, fn_name, param_list
+        )
+        .unwrap();
+
+        // Return value variable (initialized to default)
+        let return_var = format!("_fn_{}", c_identifier(name));
+        let init = default_init(return_type);
+        writeln!(output, "    {} {} = {};", c_return_type, return_var, init).unwrap();
+
+        // Emit body statements
+        let old_indent = self.indent;
+        self.indent = 1;
+        for stmt in body {
+            self.emit_stmt(stmt, output)?;
+        }
+        self.indent = old_indent;
+
+        // Return the result
+        writeln!(output, "    return {};", return_var).unwrap();
+        writeln!(output, "}}").unwrap();
 
         Ok(())
     }

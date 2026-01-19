@@ -630,6 +630,18 @@ pub enum TypedStatementKind {
         body: TypedExpr,
     },
 
+    /// Multi-line DEF FN statement (QB64 extension).
+    DefFnMultiLine {
+        /// Function name (without FN prefix).
+        name: String,
+        /// Parameters.
+        params: Vec<TypedParameter>,
+        /// Return type.
+        return_type: BasicType,
+        /// Function body statements.
+        body: Vec<TypedStatement>,
+    },
+
     // ==================== Variable/Scope Statements ====================
     /// COMMON statement.
     CommonStmt {
@@ -643,6 +655,12 @@ pub enum TypedStatementKind {
     SharedStmt {
         /// Names of shared variables to access.
         variables: Vec<String>,
+    },
+
+    /// STATIC statement inside SUB/FUNCTION - declares static local variables.
+    StaticStmt {
+        /// Variables to declare as static (persist between calls).
+        variables: Vec<TypedDimVariable>,
     },
 
     /// REDIM statement.

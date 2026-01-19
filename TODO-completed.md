@@ -50,9 +50,19 @@
 ### Variable/Scope Enhancements
 - [x] `COMMON` statement (shared variables between modules)
 - [x] `REDIM` with `_PRESERVE`
+- [x] Proper `OPTION BASE` support - full implementation
+- [x] `DIM SHARED` at module level - fixed semantic check to allow shared variable declarations
+- [x] `STATIC` arrays/variables in procedures - full implementation with parser, semantic, and codegen
 
 ### DEF FN Support
 - [x] Implement `DEF FN` single-line functions
+- [x] Implement multi-line `DEF FN` (QB64 extension) - `DEF FN ... END DEF` block syntax
+
+### Memory Segment Support
+- [x] `DEF SEG` statement - runtime implementation for segment tracking
+
+### Error Handling (Extended)
+- [x] Add error code constants (standard error codes are used) - added 42 `_ERR_*` constants
 
 ---
 
@@ -62,6 +72,7 @@
 - [x] `$IF` / `$ELSE` / `$ELSEIF` / `$END IF` directives
 - [x] `$LET` directive for compile-time variables
 - [x] `$CHECKING` directive
+- [x] `$INCLUDE` - read and parse included files (implemented in preprocessor.rs)
 
 ### Memory Operations
 - [x] `_MEM` type full support

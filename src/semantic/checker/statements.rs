@@ -988,6 +988,59 @@ impl<'a> TypeChecker<'a> {
                 )
             }
 
+            StatementKind::DefFnMultiLine { name, params, body } => {
+                // Enter a new scope for the function
+                self.symbols.enter_scope(ScopeKind::Function);
+
+                // Define parameters in the scope
+                let typed_params: Vec<TypedParameter> = params
+                    .iter()
+                    .map(|p| {
+                        let param_type = p
+                            .type_spec
+                            .as_ref()
+                            .map(from_type_spec)
+                            .or_else(|| type_from_suffix(&p.name))
+                            .unwrap_or_else(|| self.symbols.default_type_for(&p.name));
+
+                        // Define parameter as a local variable
+                        let symbol = Symbol {
+                            name: p.name.clone(),
+                            kind: SymbolKind::Parameter { by_val: p.by_val },
+                            basic_type: param_type.clone(),
+                            span: stmt.span,
+                            is_mutable: true,
+                        };
+                        let _ = self.symbols.define_symbol(symbol);
+
+                        TypedParameter {
+                            name: p.name.clone(),
+                            basic_type: param_type,
+                            by_val: p.by_val,
+                        }
+                    })
+                    .collect();
+
+                // Check the body statements
+                let typed_body: Vec<TypedStatement> =
+                    body.iter().map(|s| self.check_statement(s)).collect();
+
+                // Return type is inferred from the function name suffix or defaults to SINGLE
+                let return_type = type_from_suffix(name).unwrap_or(BasicType::Single);
+
+                self.symbols.exit_scope();
+
+                TypedStatement::new(
+                    TypedStatementKind::DefFnMultiLine {
+                        name: name.clone(),
+                        params: typed_params,
+                        return_type,
+                        body: typed_body,
+                    },
+                    stmt.span,
+                )
+            }
+
             StatementKind::DefSeg { segment } => {
                 let typed_segment = segment.as_ref().map(|e| self.check_expr(e));
                 TypedStatement::new(
@@ -1070,6 +1123,112 @@ impl<'a> TypeChecker<'a> {
                 TypedStatement::new(
                     TypedStatementKind::SharedStmt {
                         variables: variables.clone(),
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::StaticStmt { variables } => {
+                // STATIC statement inside SUB/FUNCTION declares static local variables.
+                // These persist between calls (in C, they become `static` locals).
+                let mut typed_vars = Vec::new();
+
+                for var in variables {
+                    // Determine type
+                    let basic_type = var
+                        .type_spec
+                        .as_ref()
+                        .map(from_type_spec)
+                        .or_else(|| type_from_suffix(&var.name))
+                        .unwrap_or_else(|| self.symbols.default_type_for(&var.name));
+
+                    // Evaluate array dimensions
+                    let typed_dims: Vec<TypedArrayDimension> = var
+                        .dimensions
+                        .iter()
+                        .map(|d| {
+                            let lower = if let Some(lower_expr) = &d.lower {
+                                let typed_lower = self.check_expr(lower_expr);
+                                match self.try_evaluate_const_expr(&typed_lower) {
+                                    Some(crate::semantic::symbols::ConstValue::Integer(v)) => v,
+                                    Some(crate::semantic::symbols::ConstValue::Float(v)) => {
+                                        v as i64
+                                    }
+                                    _ => {
+                                        self.errors.push(SemanticError::NonConstantExpression {
+                                            span: lower_expr.span,
+                                        });
+                                        0
+                                    }
+                                }
+                            } else {
+                                self.symbols.option_base()
+                            };
+
+                            let typed_upper = self.check_expr(&d.upper);
+                            let upper = match self.try_evaluate_const_expr(&typed_upper) {
+                                Some(crate::semantic::symbols::ConstValue::Integer(v)) => v,
+                                Some(crate::semantic::symbols::ConstValue::Float(v)) => v as i64,
+                                _ => {
+                                    self.errors.push(SemanticError::NonConstantExpression {
+                                        span: d.upper.span,
+                                    });
+                                    10
+                                }
+                            };
+
+                            TypedArrayDimension { lower, upper }
+                        })
+                        .collect();
+
+                    // Define symbol in current scope (it's a local, but static)
+                    let symbol_kind = if var.dimensions.is_empty() {
+                        SymbolKind::Variable
+                    } else {
+                        SymbolKind::ArrayVariable {
+                            dimensions: typed_dims
+                                .iter()
+                                .map(|d| crate::semantic::symbols::ArrayDimInfo {
+                                    lower_bound: d.lower,
+                                    upper_bound: d.upper,
+                                })
+                                .collect(),
+                        }
+                    };
+
+                    let symbol = Symbol {
+                        name: var.name.clone(),
+                        kind: symbol_kind,
+                        basic_type: if typed_dims.is_empty() {
+                            basic_type.clone()
+                        } else {
+                            BasicType::Array {
+                                element_type: Box::new(basic_type.clone()),
+                                dimensions: typed_dims.len(),
+                            }
+                        },
+                        span: stmt.span,
+                        is_mutable: true,
+                    };
+
+                    if let Err(existing) = self.symbols.define_symbol(symbol) {
+                        self.errors.push(SemanticError::DuplicateVariable {
+                            name: var.name.clone(),
+                            original_span: existing.0.span,
+                            duplicate_span: stmt.span,
+                        });
+                    }
+
+                    typed_vars.push(TypedDimVariable {
+                        name: var.name.clone(),
+                        basic_type,
+                        dimensions: typed_dims,
+                    });
+                }
+
+                TypedStatement::new(
+                    TypedStatementKind::StaticStmt {
+                        variables: typed_vars,
                     },
                     stmt.span,
                 )

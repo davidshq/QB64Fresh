@@ -30,11 +30,10 @@ impl<'a> TypeChecker<'a> {
     ) -> TypedStatement {
         use crate::semantic::typed_ir::TypedDimVariable;
 
-        // Handle SHARED
-        if shared && !self.symbols.in_procedure() {
-            self.errors
-                .push(SemanticError::SharedOutsideProcedure { span });
-        }
+        // DIM SHARED at module level is valid - it declares a shared variable that procedures
+        // can access via the SHARED statement inside the procedure.
+        // DIM SHARED inside a procedure makes that variable accessible to inner procedures
+        // (though this is less common).
 
         let mut typed_variables = Vec::new();
 

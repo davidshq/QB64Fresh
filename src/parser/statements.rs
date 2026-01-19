@@ -53,6 +53,7 @@ impl<'a> Parser<'a> {
             TokenKind::Swap => self.parse_swap(),
             TokenKind::Common => self.parse_common(),
             TokenKind::Shared => self.parse_shared_stmt(),
+            TokenKind::Static => self.parse_static_stmt(),
 
             // Default type declarations
             TokenKind::DefInt => self.parse_deftype(),
@@ -2224,16 +2225,38 @@ impl<'a> Parser<'a> {
             Vec::new()
         };
 
-        // Expect = and expression
-        self.expect(&TokenKind::Equals, "=")?;
+        // Check for single-line (with =) or multi-line (without =)
+        if self.match_token(&TokenKind::Equals) {
+            // Single-line: DEF FNname = expression
+            let body = self.parse_expression()?;
 
-        let body = self.parse_expression()?;
+            let span = self.span_from(start);
+            Ok(Statement::new(
+                StatementKind::DefFn { name, params, body },
+                span,
+            ))
+        } else {
+            // Multi-line: DEF FNname ... END DEF
+            self.skip_newlines();
 
-        let span = self.span_from(start);
-        Ok(Statement::new(
-            StatementKind::DefFn { name, params, body },
-            span,
-        ))
+            // Parse body until END DEF
+            let mut body = Vec::new();
+            while !self.check(&TokenKind::End) && !self.is_at_end() {
+                let stmt = self.parse_statement()?;
+                body.push(stmt);
+                self.skip_newlines();
+            }
+
+            // Expect END DEF
+            self.expect(&TokenKind::End, "END")?;
+            self.expect(&TokenKind::Def, "DEF")?;
+
+            let span = self.span_from(start);
+            Ok(Statement::new(
+                StatementKind::DefFnMultiLine { name, params, body },
+                span,
+            ))
+        }
     }
 
     /// Parses DEF SEG statement.
@@ -2288,6 +2311,58 @@ impl<'a> Parser<'a> {
         let span = self.span_from(start);
         Ok(Statement::new(
             StatementKind::SharedStmt { variables },
+            span,
+        ))
+    }
+
+    /// Parses a STATIC statement inside SUB/FUNCTION.
+    ///
+    /// Syntax: `STATIC var1[(dims)] [AS type] [, var2[(dims)] [AS type], ...]`
+    ///
+    /// Declares static local variables that persist between procedure calls.
+    /// Unlike regular local variables, static variables retain their values
+    /// between calls to the procedure.
+    pub(super) fn parse_static_stmt(&mut self) -> Result<Statement, ()> {
+        use crate::ast::DimVariable;
+
+        let start = self.advance().expect("STATIC keyword").span.start;
+
+        let mut variables = Vec::new();
+
+        loop {
+            let name_token = self.expect(&TokenKind::Identifier, "variable name")?;
+            let name = name_token.text.to_string();
+
+            // Optional array dimensions
+            let dimensions = if self.match_token(&TokenKind::LeftParen) {
+                let dims = self.parse_array_dimensions()?;
+                self.expect(&TokenKind::RightParen, ")")?;
+                dims
+            } else {
+                Vec::new()
+            };
+
+            // Optional AS type
+            let type_spec = if self.match_token(&TokenKind::As) {
+                Some(self.parse_type_spec()?)
+            } else {
+                None
+            };
+
+            variables.push(DimVariable {
+                name,
+                dimensions,
+                type_spec,
+            });
+
+            if !self.match_token(&TokenKind::Comma) {
+                break;
+            }
+        }
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::StaticStmt { variables },
             span,
         ))
     }
