@@ -494,6 +494,9 @@ pub(super) fn c_function_name(name: &str) -> String {
         "_WIDTH" => "qb_gfx_image_width".to_string(),
         "_HEIGHT" => "qb_gfx_image_height".to_string(),
 
+        // Coordinate mapping
+        "PMAP" => "qb_gfx_pmap".to_string(),
+
         // Default: prefix with qb_ for user functions
         _ => format!("qb_{}", c_identifier(name).to_lowercase()),
     }

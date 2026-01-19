@@ -121,6 +121,8 @@ impl<'a> Parser<'a> {
             TokenKind::Preset => self.parse_preset(),
             TokenKind::Circle => self.parse_circle(),
             TokenKind::Paint => self.parse_paint(),
+            TokenKind::Palette => self.parse_palette(),
+            TokenKind::Pcopy => self.parse_pcopy(),
             TokenKind::Display => self.parse_display(),
             TokenKind::Width => self.parse_width(),
             TokenKind::View => self.parse_view(),
@@ -2704,6 +2706,48 @@ impl<'a> Parser<'a> {
         let start = self.advance().expect("_DISPLAY keyword").span.start;
         let span = self.span_from(start);
         Ok(Statement::new(StatementKind::GfxDisplay, span))
+    }
+
+    /// Parses PALETTE statement.
+    ///
+    /// Syntax: `PALETTE [attribute, color]`
+    /// - `PALETTE` alone resets all palette entries to defaults
+    /// - `PALETTE attr, color` sets a single palette entry
+    pub(super) fn parse_palette(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("PALETTE keyword").span.start;
+
+        // Check if there are arguments (attribute and color)
+        let (attribute, color) = if self.is_at_end_of_statement() {
+            // PALETTE alone - reset to defaults
+            (None, None)
+        } else {
+            // PALETTE attr, color
+            let attr = self.parse_expression()?;
+            self.expect(&TokenKind::Comma, ",")?;
+            let col = self.parse_expression()?;
+            (Some(attr), Some(col))
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::Palette { attribute, color },
+            span,
+        ))
+    }
+
+    /// Parses PCOPY statement.
+    ///
+    /// Syntax: `PCOPY source%, dest%`
+    /// Copies one video page to another.
+    pub(super) fn parse_pcopy(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("PCOPY keyword").span.start;
+
+        let source = self.parse_expression()?;
+        self.expect(&TokenKind::Comma, ",")?;
+        let dest = self.parse_expression()?;
+
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::Pcopy { source, dest }, span))
     }
 
     // ==================== Additional Graphics Statements ====================

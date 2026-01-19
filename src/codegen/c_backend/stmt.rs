@@ -939,6 +939,36 @@ impl StmtEmitter {
                 writeln!(output, "{}qb_gfx_display();", indent).unwrap();
             }
 
+            TypedStatementKind::Palette { attribute, color } => {
+                match (attribute, color) {
+                    (Some(attr), Some(col)) => {
+                        let attr_code = emit_expr(attr)?;
+                        let col_code = emit_expr(col)?;
+                        writeln!(
+                            output,
+                            "{}qb_gfx_palette((int32_t){}, (uint32_t){});",
+                            indent, attr_code, col_code
+                        )
+                        .unwrap();
+                    }
+                    _ => {
+                        // PALETTE without arguments - reset all palette entries
+                        writeln!(output, "{}qb_gfx_palette_reset();", indent).unwrap();
+                    }
+                }
+            }
+
+            TypedStatementKind::Pcopy { source, dest } => {
+                let src_code = emit_expr(source)?;
+                let dst_code = emit_expr(dest)?;
+                writeln!(
+                    output,
+                    "{}qb_gfx_pcopy((int32_t){}, (int32_t){});",
+                    indent, src_code, dst_code
+                )
+                .unwrap();
+            }
+
             // ==================== Additional Graphics Statements ====================
             TypedStatementKind::Width { columns, rows } => {
                 let cols_code = emit_expr(columns)?;

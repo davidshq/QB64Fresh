@@ -267,6 +267,9 @@ impl SemanticAnalyzer {
 
     /// Registers all built-in functions.
     fn register_builtins(&mut self) {
+        // Register built-in constants first
+        self.register_builtin_constants();
+
         // String functions
         // Note: Using Long for integer parameters since integer literals default to Long in QB64
         self.register_builtin_function("LEN", &[("s", BasicType::String)], BasicType::Long);
@@ -779,6 +782,19 @@ impl SemanticAnalyzer {
         // Image dimension functions (take handle, return dimension)
         self.register_builtin_function("_WIDTH", &[("handle", BasicType::Long)], BasicType::Long);
         self.register_builtin_function("_HEIGHT", &[("handle", BasicType::Long)], BasicType::Long);
+
+        // Coordinate mapping function
+        // PMAP(coordinate, function_code)
+        // function_code: 0 = world X to screen X, 1 = world Y to screen Y,
+        //                2 = screen X to world X, 3 = screen Y to world Y
+        self.register_builtin_function(
+            "PMAP",
+            &[
+                ("coordinate", BasicType::Double),
+                ("function_code", BasicType::Long),
+            ],
+            BasicType::Double,
+        );
     }
 
     /// Registers a single built-in function.
@@ -804,6 +820,38 @@ impl SemanticAnalyzer {
             is_static: false,
         };
         let _ = self.symbols.define_procedure(entry);
+    }
+
+    /// Registers built-in constants (_TRUE, _FALSE, etc.).
+    ///
+    /// In QB64, _TRUE is -1 and _FALSE is 0 (following BASIC tradition where
+    /// boolean true is all bits set, i.e., -1 in two's complement).
+    fn register_builtin_constants(&mut self) {
+        use symbols::{ConstValue, Symbol, SymbolKind};
+
+        // _TRUE = -1 (all bits set, standard BASIC convention)
+        let true_symbol = Symbol {
+            name: "_TRUE".to_string(),
+            kind: SymbolKind::Constant {
+                value: ConstValue::Integer(-1),
+            },
+            basic_type: BasicType::Long,
+            span: crate::ast::Span::new(0, 0),
+            is_mutable: false,
+        };
+        let _ = self.symbols.define_symbol(true_symbol);
+
+        // _FALSE = 0
+        let false_symbol = Symbol {
+            name: "_FALSE".to_string(),
+            kind: SymbolKind::Constant {
+                value: ConstValue::Integer(0),
+            },
+            basic_type: BasicType::Long,
+            span: crate::ast::Span::new(0, 0),
+            is_mutable: false,
+        };
+        let _ = self.symbols.define_symbol(false_symbol);
     }
 }
 
@@ -872,6 +920,49 @@ mod tests {
         assert!(analyzer.symbols.lookup_procedure("CHR$").is_some());
         assert!(analyzer.symbols.lookup_procedure("SIN").is_some());
         assert!(analyzer.symbols.lookup_procedure("TIMER").is_some());
+    }
+
+    #[test]
+    fn test_builtin_constants_exist() {
+        use symbols::{ConstValue, SymbolKind};
+
+        let analyzer = SemanticAnalyzer::new();
+
+        // Check _TRUE constant exists and has correct value (-1)
+        let true_sym = analyzer.symbols.lookup_symbol("_TRUE");
+        assert!(
+            true_sym.is_some(),
+            "_TRUE should exist as built-in constant"
+        );
+        let true_sym = true_sym.unwrap();
+        assert!(!true_sym.is_mutable, "_TRUE should be immutable");
+        match &true_sym.kind {
+            SymbolKind::Constant { value } => match value {
+                ConstValue::Integer(v) => assert_eq!(*v, -1, "_TRUE should be -1"),
+                _ => panic!("_TRUE should be an integer constant"),
+            },
+            _ => panic!("_TRUE should be a constant"),
+        }
+
+        // Check _FALSE constant exists and has correct value (0)
+        let false_sym = analyzer.symbols.lookup_symbol("_FALSE");
+        assert!(
+            false_sym.is_some(),
+            "_FALSE should exist as built-in constant"
+        );
+        let false_sym = false_sym.unwrap();
+        assert!(!false_sym.is_mutable, "_FALSE should be immutable");
+        match &false_sym.kind {
+            SymbolKind::Constant { value } => match value {
+                ConstValue::Integer(v) => assert_eq!(*v, 0, "_FALSE should be 0"),
+                _ => panic!("_FALSE should be an integer constant"),
+            },
+            _ => panic!("_FALSE should be a constant"),
+        }
+
+        // Case-insensitive lookup should work
+        assert!(analyzer.symbols.lookup_symbol("_true").is_some());
+        assert!(analyzer.symbols.lookup_symbol("_false").is_some());
     }
 
     #[test]

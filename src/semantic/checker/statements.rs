@@ -1270,6 +1270,30 @@ impl<'a> TypeChecker<'a> {
                 TypedStatement::new(TypedStatementKind::GfxDisplay, stmt.span)
             }
 
+            StatementKind::Palette { attribute, color } => {
+                let typed_attr = attribute.as_ref().map(|e| self.check_expr(e));
+                let typed_color = color.as_ref().map(|e| self.check_expr(e));
+                TypedStatement::new(
+                    TypedStatementKind::Palette {
+                        attribute: typed_attr,
+                        color: typed_color,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::Pcopy { source, dest } => {
+                let typed_source = self.check_expr(source);
+                let typed_dest = self.check_expr(dest);
+                TypedStatement::new(
+                    TypedStatementKind::Pcopy {
+                        source: typed_source,
+                        dest: typed_dest,
+                    },
+                    stmt.span,
+                )
+            }
+
             // ==================== Additional Graphics Statements ====================
             StatementKind::Width { columns, rows } => {
                 let typed_columns = self.check_expr(columns);

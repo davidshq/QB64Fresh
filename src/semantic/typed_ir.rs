@@ -740,6 +740,22 @@ pub enum TypedStatementKind {
     /// _DISPLAY statement - updates the screen.
     GfxDisplay,
 
+    /// PALETTE statement - sets palette colors.
+    Palette {
+        /// Color attribute/index (0-255).
+        attribute: Option<TypedExpr>,
+        /// Color value to assign.
+        color: Option<TypedExpr>,
+    },
+
+    /// PCOPY statement - copies screen page.
+    Pcopy {
+        /// Source page number.
+        source: TypedExpr,
+        /// Destination page number.
+        dest: TypedExpr,
+    },
+
     /// WIDTH statement - sets screen width.
     Width {
         /// Number of columns.

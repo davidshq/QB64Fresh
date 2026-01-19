@@ -378,6 +378,57 @@ pub extern "C" fn qb_gfx_display() -> c_int {
     }
 }
 
+/// Copy one video page to another.
+///
+/// Used for double-buffering and animation. Copies all pixels from
+/// the source page to the destination page.
+///
+/// # Arguments
+/// - `src`: Source page number
+/// - `dst`: Destination page number
+///
+/// # Returns
+/// - `0` on success, non-zero on error
+#[no_mangle]
+pub extern "C" fn qb_gfx_pcopy(src: i32, dst: i32) -> c_int {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            match backend.pcopy(src, dst) {
+                Ok(()) => 0,
+                Err(_) => 1,
+            }
+        } else {
+            1
+        }
+    }
+}
+
+/// Map coordinates between world and screen coordinate systems.
+///
+/// PMAP converts coordinates based on the WINDOW statement settings.
+///
+/// # Arguments
+/// - `coord`: The coordinate value to convert
+/// - `func_code`: Conversion function:
+///   - 0: World X to Screen X
+///   - 1: World Y to Screen Y
+///   - 2: Screen X to World X
+///   - 3: Screen Y to World Y
+///
+/// # Returns
+/// - The converted coordinate value
+#[no_mangle]
+pub extern "C" fn qb_gfx_pmap(coord: f64, func_code: i32) -> f64 {
+    unsafe {
+        if let Some(ref backend) = crate::graphics::GRAPHICS_BACKEND {
+            backend.pmap(coord, func_code)
+        } else {
+            // No backend initialized - return coordinate unchanged
+            coord
+        }
+    }
+}
+
 /// Poll for window events.
 ///
 /// # Returns

@@ -738,6 +738,30 @@ pub enum StatementKind {
     /// `_DISPLAY` - Update screen (for double-buffered graphics)
     GfxDisplay,
 
+    /// `PALETTE [attribute, color]` - Set palette colors
+    ///
+    /// In screen modes that use palettes (e.g., SCREEN 12, 13), this statement
+    /// maps a color attribute to an actual color value.
+    /// - `PALETTE` alone resets all palette entries to defaults
+    /// - `PALETTE attr, color` sets a single palette entry
+    Palette {
+        /// Color attribute/index (0-255 depending on mode)
+        attribute: Option<Expr>,
+        /// Color value to assign to this attribute
+        color: Option<Expr>,
+    },
+
+    /// `PCOPY source%, dest%` - Copy screen page
+    ///
+    /// Copies the contents of one video page to another.
+    /// Useful for double-buffering and animation.
+    Pcopy {
+        /// Source page number
+        source: Expr,
+        /// Destination page number
+        dest: Expr,
+    },
+
     /// `WIDTH columns[, rows]` - Set screen text width
     Width {
         /// Number of columns

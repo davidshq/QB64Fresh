@@ -264,9 +264,9 @@ against the current QB64Fresh implementation. Organized by priority and category
 - [ ] `FREE` statement - free string space
 - [ ] `WAIT` statement - wait for port
 - [ ] `INP()` / `OUT` - port I/O (may need sandboxing)
-- [ ] `PALETTE` statement - set palette colors
-- [ ] `PCOPY` statement - copy screen page
-- [ ] `PMAP()` function - coordinate mapping
+- [x] `PALETTE` statement - set palette colors ✅
+- [x] `PCOPY` statement - copy screen page ✅
+- [x] `PMAP()` function - coordinate mapping ✅
 - [ ] `OFF` keyword - turn off event trapping (KEY OFF, etc.)
 - [ ] `ONLY` keyword - exclusive file access (OPEN...FOR...ONLY)
 - [ ] `SMOOTH` keyword - graphics smooth mode
@@ -446,7 +446,7 @@ against the current QB64Fresh implementation. Organized by priority and category
 - [ ] `_NEGATE` function - negate value
 - [ ] `OPTION _EXPLICIT` / `OPTION _EXPLICITARRAY` - require declarations
 - [ ] `SELECT EVERYCASE` - check all cases
-- [ ] `_TRUE` / `_FALSE` constants
+- [x] `_TRUE` / `_FALSE` constants ✅
 - [ ] `_FPS` function - current frame rate
 - [ ] `_FREETIMER` function - free a timer
 

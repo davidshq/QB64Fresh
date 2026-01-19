@@ -433,6 +433,14 @@ pub enum TokenKind {
     #[token("PAINT", ignore(ascii_case))]
     Paint,
 
+    /// PALETTE statement - set palette colors
+    #[token("PALETTE", ignore(ascii_case))]
+    Palette,
+
+    /// PCOPY statement - copy screen page
+    #[token("PCOPY", ignore(ascii_case))]
+    Pcopy,
+
     /// _DISPLAY statement - update screen
     #[token("_DISPLAY", ignore(ascii_case))]
     Display,

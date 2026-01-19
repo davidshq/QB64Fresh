@@ -2664,6 +2664,26 @@ fn emit_graphics_stubs(output: &mut String) {
     writeln!(output, "uint32_t qb_gfx_height(void) {{ return 25; }}").unwrap();
     writeln!(output).unwrap();
 
+    // Palette and page copy
+    writeln!(
+        output,
+        "int qb_gfx_palette(int32_t attr, uint32_t color) {{ (void)attr; (void)color; return 0; }}"
+    )
+    .unwrap();
+    writeln!(output, "int qb_gfx_palette_reset(void) {{ return 0; }}").unwrap();
+    writeln!(
+        output,
+        "int qb_gfx_pcopy(int32_t src, int32_t dst) {{ (void)src; (void)dst; return 0; }}"
+    )
+    .unwrap();
+    // PMAP: coordinate mapping (stub returns coordinate unchanged)
+    writeln!(
+        output,
+        "double qb_gfx_pmap(double coord, int32_t func_code) {{ (void)func_code; return coord; }}"
+    )
+    .unwrap();
+    writeln!(output).unwrap();
+
     // Extended graphics
     writeln!(
         output,

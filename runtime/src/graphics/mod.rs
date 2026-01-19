@@ -203,6 +203,33 @@ pub trait GraphicsBackend {
     fn get_screen_size(&self) -> (u32, u32);
 
     // ============================================================================
+    // Page Copy and Coordinate Mapping Operations
+    // ============================================================================
+
+    /// Copy one video page to another.
+    ///
+    /// Used for double-buffering and animation.
+    fn pcopy(&mut self, _src: i32, _dst: i32) -> Result<(), GraphicsError> {
+        Ok(()) // Default: no-op (single page mode)
+    }
+
+    /// Map coordinates between world and screen coordinate systems.
+    ///
+    /// # Arguments
+    /// - `coord`: The coordinate value to convert
+    /// - `func_code`: Conversion function (0-3)
+    ///   - 0: World X → Screen X
+    ///   - 1: World Y → Screen Y
+    ///   - 2: Screen X → World X
+    ///   - 3: Screen Y → World Y
+    ///
+    /// # Returns
+    /// The converted coordinate value
+    fn pmap(&self, coord: f64, _func_code: i32) -> f64 {
+        coord // Default: identity mapping (no WINDOW set)
+    }
+
+    // ============================================================================
     // Batch Operations (optimization)
     // ============================================================================
 
