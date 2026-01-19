@@ -2357,3 +2357,236 @@ folder = _SELECTFOLDERDIALOG$("Select Folder")
         assert!(code.contains("qb_selectfolderdialog("));
     }
 }
+
+/// Tests for reciprocal trig functions (_SEC, _CSC, _COT, etc.)
+mod reciprocal_trig_functions {
+    use super::*;
+
+    #[test]
+    fn sec_function() {
+        let code = compile_to_c("DIM x AS DOUBLE\nx = _SEC(0.5)").unwrap();
+        assert!(code.contains("qb_sec("));
+    }
+
+    #[test]
+    fn csc_function() {
+        let code = compile_to_c("DIM x AS DOUBLE\nx = _CSC(0.5)").unwrap();
+        assert!(code.contains("qb_csc("));
+    }
+
+    #[test]
+    fn cot_function() {
+        let code = compile_to_c("DIM x AS DOUBLE\nx = _COT(0.5)").unwrap();
+        assert!(code.contains("qb_cot("));
+    }
+
+    #[test]
+    fn sech_function() {
+        let code = compile_to_c("DIM x AS DOUBLE\nx = _SECH(0.5)").unwrap();
+        assert!(code.contains("qb_sech("));
+    }
+
+    #[test]
+    fn csch_function() {
+        let code = compile_to_c("DIM x AS DOUBLE\nx = _CSCH(0.5)").unwrap();
+        assert!(code.contains("qb_csch("));
+    }
+
+    #[test]
+    fn coth_function() {
+        let code = compile_to_c("DIM x AS DOUBLE\nx = _COTH(0.5)").unwrap();
+        assert!(code.contains("qb_coth("));
+    }
+
+    #[test]
+    fn arcsec_function() {
+        let code = compile_to_c("DIM x AS DOUBLE\nx = _ARCSEC(2.0)").unwrap();
+        assert!(code.contains("qb_arcsec("));
+    }
+
+    #[test]
+    fn arccsc_function() {
+        let code = compile_to_c("DIM x AS DOUBLE\nx = _ARCCSC(2.0)").unwrap();
+        assert!(code.contains("qb_arccsc("));
+    }
+
+    #[test]
+    fn arccot_function() {
+        let code = compile_to_c("DIM x AS DOUBLE\nx = _ARCCOT(1.0)").unwrap();
+        assert!(code.contains("qb_arccot("));
+    }
+
+    #[test]
+    fn arcsech_function() {
+        let code = compile_to_c("DIM x AS DOUBLE\nx = _ARCSECH(0.5)").unwrap();
+        assert!(code.contains("qb_arcsech("));
+    }
+
+    #[test]
+    fn arccsch_function() {
+        let code = compile_to_c("DIM x AS DOUBLE\nx = _ARCCSCH(0.5)").unwrap();
+        assert!(code.contains("qb_arccsch("));
+    }
+
+    #[test]
+    fn arccoth_function() {
+        let code = compile_to_c("DIM x AS DOUBLE\nx = _ARCCOTH(2.0)").unwrap();
+        assert!(code.contains("qb_arccoth("));
+    }
+}
+
+/// Tests for gradian conversion functions
+mod gradian_conversions {
+    use super::*;
+
+    #[test]
+    fn d2g_function() {
+        let code = compile_to_c("DIM x AS DOUBLE\nx = _D2G(90.0)").unwrap();
+        assert!(code.contains("qb_d2g("));
+    }
+
+    #[test]
+    fn g2d_function() {
+        let code = compile_to_c("DIM x AS DOUBLE\nx = _G2D(100.0)").unwrap();
+        assert!(code.contains("qb_g2d("));
+    }
+
+    #[test]
+    fn g2r_function() {
+        let code = compile_to_c("DIM x AS DOUBLE\nx = _G2R(100.0)").unwrap();
+        assert!(code.contains("qb_g2r("));
+    }
+
+    #[test]
+    fn r2g_function() {
+        let code = compile_to_c("DIM x AS DOUBLE\nx = _R2G(1.5708)").unwrap();
+        assert!(code.contains("qb_r2g("));
+    }
+}
+
+/// Tests for number-to-string conversion functions
+mod number_conversion_functions {
+    use super::*;
+
+    #[test]
+    fn bin_function() {
+        let code = compile_to_c("DIM s AS STRING\ns = _BIN$(42)").unwrap();
+        assert!(code.contains("qb_bin("));
+    }
+
+    #[test]
+    fn tostr_function() {
+        let code = compile_to_c("DIM s AS STRING\ns = _TOSTR$(3.14159)").unwrap();
+        assert!(code.contains("qb_tostr("));
+    }
+
+    #[test]
+    fn hex_function() {
+        let code = compile_to_c("DIM s AS STRING\ns = HEX$(255)").unwrap();
+        assert!(code.contains("qb_hex("));
+    }
+
+    #[test]
+    fn oct_function() {
+        let code = compile_to_c("DIM s AS STRING\ns = OCT$(64)").unwrap();
+        assert!(code.contains("qb_oct("));
+    }
+}
+
+/// Tests for inline conditional functions (_IIF)
+mod inline_conditional_functions {
+    use super::*;
+
+    #[test]
+    fn iif_numeric() {
+        let code = compile_to_c("DIM x AS DOUBLE\nx = _IIF(1, 10.0, 20.0)").unwrap();
+        assert!(code.contains("qb_iif("));
+    }
+
+    #[test]
+    fn iif_string() {
+        let code = compile_to_c(
+            r#"
+DIM s AS STRING
+s = _IIF$(-1, "yes", "no")
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("qb_iif_str("));
+    }
+}
+
+/// Tests for window control functions
+mod window_control_functions {
+    use super::*;
+
+    #[test]
+    fn screenmove_function() {
+        let code = compile_to_c("DIM r AS LONG\nr = _SCREENMOVE(100, 100)").unwrap();
+        assert!(code.contains("qb_screenmove("));
+    }
+
+    #[test]
+    fn screenhide_function() {
+        let code = compile_to_c("DIM r AS LONG\nr = _SCREENHIDE").unwrap();
+        assert!(code.contains("qb_screenhide("));
+    }
+
+    #[test]
+    fn screenshow_function() {
+        let code = compile_to_c("DIM r AS LONG\nr = _SCREENSHOW").unwrap();
+        assert!(code.contains("qb_screenshow("));
+    }
+
+    #[test]
+    fn fullscreen_function() {
+        let code = compile_to_c("DIM m AS LONG\nm = _FULLSCREEN").unwrap();
+        assert!(code.contains("qb_fullscreen("));
+    }
+
+    #[test]
+    fn screenclick_function() {
+        let code = compile_to_c("DIM r AS LONG\nr = _SCREENCLICK").unwrap();
+        assert!(code.contains("qb_screenclick("));
+    }
+}
+
+/// Tests for sound statements
+mod sound_statements {
+    use super::*;
+
+    #[test]
+    fn beep_statement() {
+        let code = compile_to_c("BEEP").unwrap();
+        assert!(code.contains("qb_beep("));
+    }
+
+    #[test]
+    fn sound_statement() {
+        let code = compile_to_c("SOUND 440, 18").unwrap();
+        assert!(code.contains("qb_sound("));
+    }
+
+    #[test]
+    fn play_statement() {
+        let code = compile_to_c(r#"PLAY "CDEFGAB""#).unwrap();
+        assert!(code.contains("qb_play("));
+    }
+}
+
+/// Tests for font functions
+mod font_functions {
+    use super::*;
+
+    #[test]
+    fn font_function() {
+        let code = compile_to_c("DIM prev AS LONG\nprev = _FONT(16)").unwrap();
+        assert!(code.contains("qb_font("));
+    }
+
+    #[test]
+    fn freefont_function() {
+        let code = compile_to_c("DIM r AS LONG\nr = _FREEFONT(16)").unwrap();
+        assert!(code.contains("qb_freefont("));
+    }
+}

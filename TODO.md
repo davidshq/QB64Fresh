@@ -294,7 +294,7 @@ runtime/src/
 - [ ] Example programs
 
 ### Testing (See TESTING_INFRASTRUCTURE_PLAN.md for details)
-- [x] Integration tests for compiled programs (207 tests)
+- [x] Integration tests for compiled programs (239 tests)
 - [x] Golden/snapshot tests for codegen (10 tests)
 - [x] Property-based testing with proptest (19 tests)
 - [x] Fuzz testing infrastructure (3 targets: lexer, parser, full pipeline)
@@ -426,12 +426,13 @@ against the current QB64Fresh implementation. Organized by priority and category
 - [x] `_ATAN2(y, x)` function - arc tangent of y/x
 - [x] `_SINH(n)` / `_COSH(n)` / `_TANH(n)` - hyperbolic functions
 - [x] `_ASINH(n)` / `_ACOSH(n)` / `_ATANH(n)` - inverse hyperbolic functions
-- [ ] `_SEC(n)` / `_CSC(n)` / `_COT(n)` - secant/cosecant/cotangent
-- [ ] `_SECH(n)` / `_CSCH(n)` / `_COTH(n)` - hyperbolic sec/csc/cot
-- [ ] `_ARCSEC(n)` / `_ARCCSC(n)` / `_ARCCOT(n)` - inverse sec/csc/cot
+- [x] `_SEC(n)` / `_CSC(n)` / `_COT(n)` - secant/cosecant/cotangent
+- [x] `_SECH(n)` / `_CSCH(n)` / `_COTH(n)` - hyperbolic sec/csc/cot
+- [x] `_ARCSEC(n)` / `_ARCCSC(n)` / `_ARCCOT(n)` - inverse sec/csc/cot
+- [x] `_ARCSECH(n)` / `_ARCCSCH(n)` / `_ARCCOTH(n)` - inverse hyperbolic sec/csc/cot
 - [x] `_D2R(degrees)` / `_R2D(radians)` - degree/radian conversion
 - [x] `_NEGATE(n)` - negate value
-- [ ] `_D2G(degrees)` / `_G2D(gradians)` / `_G2R(gradians)` / `_R2G(radians)` - gradian conversions
+- [x] `_D2G(degrees)` / `_G2D(gradians)` / `_G2R(gradians)` / `_R2G(radians)` - gradian conversions
 
 #### Bitwise Operations ✅
 - [x] `_SHL(value, bits)` function - shift left
@@ -446,8 +447,8 @@ against the current QB64Fresh implementation. Organized by priority and category
 #### String Functions
 - [x] `_STRCMP(a$, b$)` function - case-sensitive compare
 - [x] `_STRICMP(a$, b$)` function - case-insensitive compare
-- [ ] `_TOSTR$(n)` function - number to string (no leading space)
-- [ ] `_BIN$(n)` function - number to binary string
+- [x] `_TOSTR$(n)` function - number to string (no leading space)
+- [x] `_BIN$(n)` function - number to binary string
 - [ ] `_CV(type, string$)` function - generic convert string to type
 - [ ] `_MK$(type, value)` function - generic convert value to string
 
@@ -460,7 +461,8 @@ against the current QB64Fresh implementation. Organized by priority and category
 - [ ] `_EXIT` statement - exit program with code
 
 #### Utility Functions
-- [ ] `_IIF(condition, true_val, false_val)` function - inline IF
+- [x] `_IIF(condition, true_val, false_val)` function - inline IF
+- [x] `_IIF$(condition, true_str$, false_str$)` function - inline IF for strings
 - [ ] `_CAST(type, value)` function - explicit type cast
 - [ ] `_DEFINE` statement - define default variable types by letter range
 - [x] `_COMMANDCOUNT` function - count of command line arguments
@@ -479,13 +481,13 @@ against the current QB64Fresh implementation. Organized by priority and category
 - [x] `_SCREENX` / `_SCREENY` functions - window position
 - [x] `_TITLE$` function - get window title
 - [x] `_WINDOWHANDLE` / `_WINDOWHASFOCUS` functions - window state
-- [ ] `_SCREENMOVE x, y` statement - move window
+- [x] `_SCREENMOVE(x, y)` function - move window
 - [ ] `_SCREENEXISTS` function - check if window exists
-- [ ] `_SCREENHIDE` / `_SCREENSHOW` statements - hide/show window
+- [x] `_SCREENHIDE` / `_SCREENSHOW` functions - hide/show window
 - [ ] `_SCREENICON` function - check if window is minimized
 - [ ] `_SCREENPRINT` statement - print screen contents
-- [ ] `_SCREENCLICK` statement - simulate screen click
-- [ ] `_FULLSCREEN` statement - toggle fullscreen
+- [x] `_SCREENCLICK` function - bring window to front
+- [x] `_FULLSCREEN` function - get/toggle fullscreen mode
 - [ ] `_ALLOWFULLSCREEN` statement - allow/disallow fullscreen toggle
 - [ ] `_TITLE` / `_TITLE$` - set/get window title
 - [ ] `_ICON` statement - set window icon
@@ -496,8 +498,8 @@ against the current QB64Fresh implementation. Organized by priority and category
 
 #### Font Support
 - [x] `_LOADFONT(file$, size)` function - load font (stub)
-- [ ] `_FONT` statement - set current font
-- [ ] `_FREEFONT(handle)` statement - release font
+- [x] `_FONT(handle)` function - set current font, returns previous
+- [x] `_FREEFONT(handle)` function - release font
 - [x] `_FONTHEIGHT` / `_FONTWIDTH` functions - font dimensions (stubs)
 
 #### Unicode Font Support

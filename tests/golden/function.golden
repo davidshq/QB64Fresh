@@ -319,12 +319,44 @@ int64_t qb_togglebit(int64_t value, int64_t bit) {
     return value ^ ((int64_t)1 << (bit & 63));
 }
 
+double qb_sec(double n) { return 1.0 / cos(n); }
+double qb_csc(double n) { return 1.0 / sin(n); }
+double qb_cot(double n) { return 1.0 / tan(n); }
+
+double qb_sech(double n) { return 1.0 / cosh(n); }
+double qb_csch(double n) { return 1.0 / sinh(n); }
+double qb_coth(double n) { return 1.0 / tanh(n); }
+
+double qb_arcsec(double n) { return acos(1.0 / n); }
+double qb_arccsc(double n) { return asin(1.0 / n); }
+double qb_arccot(double n) { return atan(1.0 / n); }
+
+double qb_arcsech(double n) { return acosh(1.0 / n); }
+double qb_arccsch(double n) { return asinh(1.0 / n); }
+double qb_arccoth(double n) { return atanh(1.0 / n); }
+
 double qb_d2r(double degrees) {
     return degrees * 3.14159265358979323846 / 180.0;
 }
 
 double qb_r2d(double radians) {
     return radians * 180.0 / 3.14159265358979323846;
+}
+
+double qb_d2g(double degrees) {
+    return degrees * 10.0 / 9.0;
+}
+
+double qb_g2d(double gradians) {
+    return gradians * 9.0 / 10.0;
+}
+
+double qb_g2r(double gradians) {
+    return gradians * 3.14159265358979323846 / 200.0;
+}
+
+double qb_r2g(double radians) {
+    return radians * 200.0 / 3.14159265358979323846;
 }
 
 double qb_negate(double n) {
@@ -475,6 +507,46 @@ qb_string* qb_str_float(double n) {
     char buf[64];
     snprintf(buf, sizeof(buf), "%g", n);
     return qb_string_new(buf);
+}
+
+qb_string* qb_hex(int64_t n) {
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%llX", (unsigned long long)(uint64_t)n);
+    return qb_string_new(buf);
+}
+
+qb_string* qb_oct(int64_t n) {
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%llo", (unsigned long long)(uint64_t)n);
+    return qb_string_new(buf);
+}
+
+qb_string* qb_bin(int64_t n) {
+    char buf[65];
+    uint64_t v = (uint64_t)n;
+    char* p = buf + 64;
+    *p = '\0';
+    if (v == 0) { *--p = '0'; }
+    else { while (v) { *--p = '0' + (v & 1); v >>= 1; } }
+    return qb_string_new(p);
+}
+
+qb_string* qb_tostr(double n) {
+    char buf[64];
+    if (floor(n) == n && n >= -9007199254740992.0 && n <= 9007199254740992.0) {
+        snprintf(buf, sizeof(buf), "%.0f", n);
+    } else {
+        snprintf(buf, sizeof(buf), "%.14g", n);
+    }
+    return qb_string_new(buf);
+}
+
+double qb_iif(int64_t cond, double true_val, double false_val) {
+    return cond ? true_val : false_val;
+}
+
+qb_string* qb_iif_str(int64_t cond, qb_string* true_val, qb_string* false_val) {
+    return cond ? true_val : false_val;
 }
 
 /* File I/O Functions */
@@ -1183,6 +1255,107 @@ void qb_array_erase(void* arr) {
     // Currently a no-op as our arrays are fixed-size
 }
 
+/* Audio Functions (Inline Runtime) */
+/* For full audio support, use --runtime external and link with libqb64fresh_rt */
+
+static int _qb_audio_warned = 0;
+static void _qb_audio_warn(void) {
+    if (!_qb_audio_warned) {
+        fprintf(stderr, "Warning: Audio functions require external runtime. Use --runtime external\n");
+        _qb_audio_warned = 1;
+    }
+}
+
+void qb_beep(void) {
+#ifdef _WIN32
+    Beep(800, 250); /* 800Hz for 250ms */
+#else
+    printf("\a"); fflush(stdout); /* ASCII bell */
+#endif
+}
+
+void qb_sound(double frequency, double duration) {
+#ifdef _WIN32
+    if (frequency > 37 && frequency < 32767) {
+        /* Duration is in clock ticks (18.2/sec) */
+        int ms = (int)(duration * 1000.0 / 18.2);
+        Beep((DWORD)frequency, (DWORD)ms);
+    }
+#else
+    _qb_audio_warn();
+    (void)frequency; (void)duration;
+#endif
+}
+
+void qb_play(qb_string* commands) {
+    _qb_audio_warn();
+    (void)commands;
+}
+
+int32_t qb_sndopen(qb_string* filename) {
+    _qb_audio_warn();
+    (void)filename;
+    return -1; /* Return invalid handle */
+}
+
+void qb_sndclose(int32_t handle) {
+    (void)handle;
+}
+
+void qb_sndplay(int32_t handle) {
+    _qb_audio_warn();
+    (void)handle;
+}
+
+void qb_sndstop(int32_t handle) {
+    (void)handle;
+}
+
+void qb_sndpause(int32_t handle) {
+    (void)handle;
+}
+
+void qb_sndloop(int32_t handle) {
+    _qb_audio_warn();
+    (void)handle;
+}
+
+void qb_sndvol(int32_t handle, double volume) {
+    (void)handle; (void)volume;
+}
+
+void qb_sndbal(int32_t handle, double balance) {
+    (void)handle; (void)balance;
+}
+
+double qb_sndlen(int32_t handle) {
+    (void)handle;
+    return 0.0;
+}
+
+double qb_sndgetpos(int32_t handle) {
+    (void)handle;
+    return 0.0;
+}
+
+void qb_sndsetpos(int32_t handle, double position) {
+    (void)handle; (void)position;
+}
+
+int32_t qb_sndplaying(int32_t handle) {
+    (void)handle;
+    return 0;
+}
+
+int32_t qb_sndpaused(int32_t handle) {
+    (void)handle;
+    return 0;
+}
+
+int32_t qb_sndrate(void) {
+    return 44100;
+}
+
 /* Graphics Stubs (Inline Runtime) */
 /* For full graphics support, use --runtime external and link with libqb64fresh_rt */
 
@@ -1282,9 +1455,14 @@ int64_t qb_environcount(void) {
 #endif
 
 /* Font Stubs */
+static int64_t _qb_current_font = 0;
 int64_t qb_loadfont(qb_string* file, int64_t size) { _qb_gfx_warn(); (void)file; (void)size; return 0; }
-void qb_font(int64_t handle) { (void)handle; }
-void qb_freefont(int64_t handle) { (void)handle; }
+int64_t qb_font(int64_t handle) {
+    int64_t prev = _qb_current_font;
+    _qb_current_font = handle;
+    return prev;
+}
+int64_t qb_freefont(int64_t handle) { (void)handle; return 0; }
 int64_t qb_fontheight(void) { return 16; }
 int64_t qb_fontwidth(void) { return 8; }
 
@@ -1304,6 +1482,36 @@ qb_string* qb_title_get(void) { return qb_string_new(_qb_window_title); }
 void qb_title_set(qb_string* title) { if (title && title->data) strncpy(_qb_window_title, title->data, 255); }
 int64_t qb_windowhandle(void) { return 0; }
 int64_t qb_windowhasfocus(void) { return -1; }
+
+/* Window Control Functions */
+static int _qb_screen_visible = 1;
+static int _qb_fullscreen_mode = 0;
+
+int64_t qb_screenmove(int64_t x, int64_t y) {
+    _qb_gfx_warn();
+    (void)x; (void)y;
+    return 0;
+}
+
+int64_t qb_screenhide(void) {
+    _qb_screen_visible = 0;
+    return 0;
+}
+
+int64_t qb_screenshow(void) {
+    _qb_screen_visible = 1;
+    return 0;
+}
+
+int64_t qb_fullscreen(void) {
+    _qb_gfx_warn();
+    return _qb_fullscreen_mode;
+}
+
+int64_t qb_screenclick(void) {
+    /* Stub - brings window to front in GUI mode */
+    return 0;
+}
 
 /* Dialog Box Stubs */
 /* Full implementations require platform-specific GUI libraries */

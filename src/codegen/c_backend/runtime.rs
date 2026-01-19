@@ -87,6 +87,7 @@ fn emit_runtime_declarations(output: &mut String) {
     emit_keyboard_functions(output);
     emit_timing_functions(output);
     emit_array_functions(output);
+    emit_audio_functions(output);
     emit_graphics_stubs(output);
 }
 
@@ -634,7 +635,68 @@ fn emit_math_functions(output: &mut String) {
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
-    // Angle conversions
+    // Reciprocal trig functions
+    writeln!(output, "double qb_sec(double n) {{ return 1.0 / cos(n); }}").unwrap();
+    writeln!(output, "double qb_csc(double n) {{ return 1.0 / sin(n); }}").unwrap();
+    writeln!(output, "double qb_cot(double n) {{ return 1.0 / tan(n); }}").unwrap();
+    writeln!(output).unwrap();
+
+    // Hyperbolic reciprocals
+    writeln!(
+        output,
+        "double qb_sech(double n) {{ return 1.0 / cosh(n); }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "double qb_csch(double n) {{ return 1.0 / sinh(n); }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "double qb_coth(double n) {{ return 1.0 / tanh(n); }}"
+    )
+    .unwrap();
+    writeln!(output).unwrap();
+
+    // Inverse reciprocal trig: arcsec(x) = acos(1/x), arccsc(x) = asin(1/x)
+    writeln!(
+        output,
+        "double qb_arcsec(double n) {{ return acos(1.0 / n); }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "double qb_arccsc(double n) {{ return asin(1.0 / n); }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "double qb_arccot(double n) {{ return atan(1.0 / n); }}"
+    )
+    .unwrap();
+    writeln!(output).unwrap();
+
+    // Inverse hyperbolic reciprocals
+    // arcsech(x) = acosh(1/x), arccsch(x) = asinh(1/x), arccoth(x) = atanh(1/x)
+    writeln!(
+        output,
+        "double qb_arcsech(double n) {{ return acosh(1.0 / n); }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "double qb_arccsch(double n) {{ return asinh(1.0 / n); }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "double qb_arccoth(double n) {{ return atanh(1.0 / n); }}"
+    )
+    .unwrap();
+    writeln!(output).unwrap();
+
+    // Angle conversions (degrees <-> radians)
     writeln!(output, "double qb_d2r(double degrees) {{").unwrap();
     writeln!(
         output,
@@ -648,6 +710,35 @@ fn emit_math_functions(output: &mut String) {
     writeln!(
         output,
         "    return radians * 180.0 / 3.14159265358979323846;"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // Gradian conversions (400 gradians = 360 degrees = 2*pi radians)
+    writeln!(output, "double qb_d2g(double degrees) {{").unwrap();
+    writeln!(output, "    return degrees * 10.0 / 9.0;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "double qb_g2d(double gradians) {{").unwrap();
+    writeln!(output, "    return gradians * 9.0 / 10.0;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "double qb_g2r(double gradians) {{").unwrap();
+    writeln!(
+        output,
+        "    return gradians * 3.14159265358979323846 / 200.0;"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "double qb_r2g(double radians) {{").unwrap();
+    writeln!(
+        output,
+        "    return radians * 200.0 / 3.14159265358979323846;"
     )
     .unwrap();
     writeln!(output, "}}").unwrap();
@@ -896,6 +987,82 @@ fn emit_utility_functions(output: &mut String) {
     writeln!(output, "    char buf[64];").unwrap();
     writeln!(output, "    snprintf(buf, sizeof(buf), \"%g\", n);").unwrap();
     writeln!(output, "    return qb_string_new(buf);").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // HEX$ - convert number to hexadecimal string
+    writeln!(output, "qb_string* qb_hex(int64_t n) {{").unwrap();
+    writeln!(output, "    char buf[32];").unwrap();
+    writeln!(
+        output,
+        "    snprintf(buf, sizeof(buf), \"%llX\", (unsigned long long)(uint64_t)n);"
+    )
+    .unwrap();
+    writeln!(output, "    return qb_string_new(buf);").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // OCT$ - convert number to octal string
+    writeln!(output, "qb_string* qb_oct(int64_t n) {{").unwrap();
+    writeln!(output, "    char buf[32];").unwrap();
+    writeln!(
+        output,
+        "    snprintf(buf, sizeof(buf), \"%llo\", (unsigned long long)(uint64_t)n);"
+    )
+    .unwrap();
+    writeln!(output, "    return qb_string_new(buf);").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _BIN$ - convert number to binary string
+    writeln!(output, "qb_string* qb_bin(int64_t n) {{").unwrap();
+    writeln!(output, "    char buf[65];").unwrap();
+    writeln!(output, "    uint64_t v = (uint64_t)n;").unwrap();
+    writeln!(output, "    char* p = buf + 64;").unwrap();
+    writeln!(output, "    *p = '\\0';").unwrap();
+    writeln!(output, "    if (v == 0) {{ *--p = '0'; }}").unwrap();
+    writeln!(
+        output,
+        "    else {{ while (v) {{ *--p = '0' + (v & 1); v >>= 1; }} }}"
+    )
+    .unwrap();
+    writeln!(output, "    return qb_string_new(p);").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _TOSTR$ - convert number to string without leading space
+    writeln!(output, "qb_string* qb_tostr(double n) {{").unwrap();
+    writeln!(output, "    char buf[64];").unwrap();
+    writeln!(
+        output,
+        "    if (floor(n) == n && n >= -9007199254740992.0 && n <= 9007199254740992.0) {{"
+    )
+    .unwrap();
+    writeln!(output, "        snprintf(buf, sizeof(buf), \"%.0f\", n);").unwrap();
+    writeln!(output, "    }} else {{").unwrap();
+    writeln!(output, "        snprintf(buf, sizeof(buf), \"%.14g\", n);").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    return qb_string_new(buf);").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _IIF - inline conditional for numeric values
+    writeln!(
+        output,
+        "double qb_iif(int64_t cond, double true_val, double false_val) {{"
+    )
+    .unwrap();
+    writeln!(output, "    return cond ? true_val : false_val;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _IIF$ - inline conditional for string values
+    writeln!(
+        output,
+        "qb_string* qb_iif_str(int64_t cond, qb_string* true_val, qb_string* false_val) {{"
+    )
+    .unwrap();
+    writeln!(output, "    return cond ? true_val : false_val;").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 }
@@ -2264,7 +2431,171 @@ fn emit_array_functions(output: &mut String) {
     writeln!(output).unwrap();
 }
 
-/// Emits stub functions for graphics operations in inline runtime mode.
+/// Emits audio function stubs for BEEP, SOUND, PLAY, and _SND* functions.
+///
+/// These stubs provide basic functionality or warnings for audio operations.
+/// For full audio support, use the external runtime library with rodio backend.
+fn emit_audio_functions(output: &mut String) {
+    writeln!(output, "/* Audio Functions (Inline Runtime) */").unwrap();
+    writeln!(
+        output,
+        "/* For full audio support, use --runtime external and link with libqb64fresh_rt */"
+    )
+    .unwrap();
+    writeln!(output).unwrap();
+
+    // Warning flag for audio
+    writeln!(output, "static int _qb_audio_warned = 0;").unwrap();
+    writeln!(output, "static void _qb_audio_warn(void) {{").unwrap();
+    writeln!(output, "    if (!_qb_audio_warned) {{").unwrap();
+    writeln!(output, "        fprintf(stderr, \"Warning: Audio functions require external runtime. Use --runtime external\\n\");").unwrap();
+    writeln!(output, "        _qb_audio_warned = 1;").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // BEEP - simple console beep
+    writeln!(output, "void qb_beep(void) {{").unwrap();
+    writeln!(output, "#ifdef _WIN32").unwrap();
+    writeln!(output, "    Beep(800, 250); /* 800Hz for 250ms */").unwrap();
+    writeln!(output, "#else").unwrap();
+    writeln!(
+        output,
+        "    printf(\"\\a\"); fflush(stdout); /* ASCII bell */"
+    )
+    .unwrap();
+    writeln!(output, "#endif").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // SOUND - play tone (stub)
+    writeln!(
+        output,
+        "void qb_sound(double frequency, double duration) {{"
+    )
+    .unwrap();
+    writeln!(output, "#ifdef _WIN32").unwrap();
+    writeln!(output, "    if (frequency > 37 && frequency < 32767) {{").unwrap();
+    writeln!(
+        output,
+        "        /* Duration is in clock ticks (18.2/sec) */"
+    )
+    .unwrap();
+    writeln!(output, "        int ms = (int)(duration * 1000.0 / 18.2);").unwrap();
+    writeln!(output, "        Beep((DWORD)frequency, (DWORD)ms);").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "#else").unwrap();
+    writeln!(output, "    _qb_audio_warn();").unwrap();
+    writeln!(output, "    (void)frequency; (void)duration;").unwrap();
+    writeln!(output, "#endif").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // PLAY - play MML string (stub)
+    writeln!(output, "void qb_play(qb_string* commands) {{").unwrap();
+    writeln!(output, "    _qb_audio_warn();").unwrap();
+    writeln!(output, "    (void)commands;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _SNDOPEN - open sound file (stub)
+    writeln!(output, "int32_t qb_sndopen(qb_string* filename) {{").unwrap();
+    writeln!(output, "    _qb_audio_warn();").unwrap();
+    writeln!(output, "    (void)filename;").unwrap();
+    writeln!(output, "    return -1; /* Return invalid handle */").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _SNDCLOSE - close sound
+    writeln!(output, "void qb_sndclose(int32_t handle) {{").unwrap();
+    writeln!(output, "    (void)handle;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _SNDPLAY - play sound
+    writeln!(output, "void qb_sndplay(int32_t handle) {{").unwrap();
+    writeln!(output, "    _qb_audio_warn();").unwrap();
+    writeln!(output, "    (void)handle;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _SNDSTOP - stop sound
+    writeln!(output, "void qb_sndstop(int32_t handle) {{").unwrap();
+    writeln!(output, "    (void)handle;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _SNDPAUSE - pause sound
+    writeln!(output, "void qb_sndpause(int32_t handle) {{").unwrap();
+    writeln!(output, "    (void)handle;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _SNDLOOP - play sound in loop
+    writeln!(output, "void qb_sndloop(int32_t handle) {{").unwrap();
+    writeln!(output, "    _qb_audio_warn();").unwrap();
+    writeln!(output, "    (void)handle;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _SNDVOL - set sound volume
+    writeln!(output, "void qb_sndvol(int32_t handle, double volume) {{").unwrap();
+    writeln!(output, "    (void)handle; (void)volume;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _SNDBAL - set sound balance
+    writeln!(output, "void qb_sndbal(int32_t handle, double balance) {{").unwrap();
+    writeln!(output, "    (void)handle; (void)balance;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _SNDLEN - get sound length (returns 0)
+    writeln!(output, "double qb_sndlen(int32_t handle) {{").unwrap();
+    writeln!(output, "    (void)handle;").unwrap();
+    writeln!(output, "    return 0.0;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _SNDGETPOS - get playback position (returns 0)
+    writeln!(output, "double qb_sndgetpos(int32_t handle) {{").unwrap();
+    writeln!(output, "    (void)handle;").unwrap();
+    writeln!(output, "    return 0.0;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _SNDSETPOS - set playback position
+    writeln!(
+        output,
+        "void qb_sndsetpos(int32_t handle, double position) {{"
+    )
+    .unwrap();
+    writeln!(output, "    (void)handle; (void)position;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _SNDPLAYING - check if sound is playing (returns 0)
+    writeln!(output, "int32_t qb_sndplaying(int32_t handle) {{").unwrap();
+    writeln!(output, "    (void)handle;").unwrap();
+    writeln!(output, "    return 0;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _SNDPAUSED - check if sound is paused (returns 0)
+    writeln!(output, "int32_t qb_sndpaused(int32_t handle) {{").unwrap();
+    writeln!(output, "    (void)handle;").unwrap();
+    writeln!(output, "    return 0;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _SNDRATE - get sample rate (returns 44100)
+    writeln!(output, "int32_t qb_sndrate(void) {{").unwrap();
+    writeln!(output, "    return 44100;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+}
+
+/// Emits graphics operation stubs for the inline runtime.
 ///
 /// These stubs allow programs that use graphics commands to compile even when
 /// using the inline runtime. They print a warning message on first use and
@@ -2486,11 +2817,16 @@ fn emit_graphics_stubs(output: &mut String) {
 
     // Font stubs
     writeln!(output, "/* Font Stubs */").unwrap();
+    writeln!(output, "static int64_t _qb_current_font = 0;").unwrap();
     writeln!(output, "int64_t qb_loadfont(qb_string* file, int64_t size) {{ _qb_gfx_warn(); (void)file; (void)size; return 0; }}").unwrap();
-    writeln!(output, "void qb_font(int64_t handle) {{ (void)handle; }}").unwrap();
+    writeln!(output, "int64_t qb_font(int64_t handle) {{").unwrap();
+    writeln!(output, "    int64_t prev = _qb_current_font;").unwrap();
+    writeln!(output, "    _qb_current_font = handle;").unwrap();
+    writeln!(output, "    return prev;").unwrap();
+    writeln!(output, "}}").unwrap();
     writeln!(
         output,
-        "void qb_freefont(int64_t handle) {{ (void)handle; }}"
+        "int64_t qb_freefont(int64_t handle) {{ (void)handle; return 0; }}"
     )
     .unwrap();
     writeln!(output, "int64_t qb_fontheight(void) {{ return 16; }}").unwrap();
@@ -2535,6 +2871,47 @@ fn emit_graphics_stubs(output: &mut String) {
     writeln!(output, "void qb_title_set(qb_string* title) {{ if (title && title->data) strncpy(_qb_window_title, title->data, 255); }}").unwrap();
     writeln!(output, "int64_t qb_windowhandle(void) {{ return 0; }}").unwrap();
     writeln!(output, "int64_t qb_windowhasfocus(void) {{ return -1; }}").unwrap();
+    writeln!(output).unwrap();
+
+    // Window control functions
+    writeln!(output, "/* Window Control Functions */").unwrap();
+    writeln!(output, "static int _qb_screen_visible = 1;").unwrap();
+    writeln!(output, "static int _qb_fullscreen_mode = 0;").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "int64_t qb_screenmove(int64_t x, int64_t y) {{").unwrap();
+    writeln!(output, "    _qb_gfx_warn();").unwrap();
+    writeln!(output, "    (void)x; (void)y;").unwrap();
+    writeln!(output, "    return 0;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "int64_t qb_screenhide(void) {{").unwrap();
+    writeln!(output, "    _qb_screen_visible = 0;").unwrap();
+    writeln!(output, "    return 0;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "int64_t qb_screenshow(void) {{").unwrap();
+    writeln!(output, "    _qb_screen_visible = 1;").unwrap();
+    writeln!(output, "    return 0;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "int64_t qb_fullscreen(void) {{").unwrap();
+    writeln!(output, "    _qb_gfx_warn();").unwrap();
+    writeln!(output, "    return _qb_fullscreen_mode;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "int64_t qb_screenclick(void) {{").unwrap();
+    writeln!(
+        output,
+        "    /* Stub - brings window to front in GUI mode */"
+    )
+    .unwrap();
+    writeln!(output, "    return 0;").unwrap();
+    writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
     // Dialog boxes

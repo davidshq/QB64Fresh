@@ -282,9 +282,35 @@ pub(super) fn c_function_name(name: &str) -> String {
         "_ACOSH" => "acosh".to_string(),
         "_ATANH" => "atanh".to_string(),
 
-        // Angle conversions
+        // Reciprocal trig functions
+        "_SEC" => "qb_sec".to_string(),
+        "_CSC" => "qb_csc".to_string(),
+        "_COT" => "qb_cot".to_string(),
+
+        // Hyperbolic reciprocals
+        "_SECH" => "qb_sech".to_string(),
+        "_CSCH" => "qb_csch".to_string(),
+        "_COTH" => "qb_coth".to_string(),
+
+        // Inverse reciprocal trig
+        "_ARCSEC" => "qb_arcsec".to_string(),
+        "_ARCCSC" => "qb_arccsc".to_string(),
+        "_ARCCOT" => "qb_arccot".to_string(),
+
+        // Inverse hyperbolic reciprocals
+        "_ARCSECH" => "qb_arcsech".to_string(),
+        "_ARCCSCH" => "qb_arccsch".to_string(),
+        "_ARCCOTH" => "qb_arccoth".to_string(),
+
+        // Angle conversions (degrees <-> radians)
         "_D2R" => "qb_d2r".to_string(),
         "_R2D" => "qb_r2d".to_string(),
+
+        // Gradian conversions
+        "_D2G" => "qb_d2g".to_string(),
+        "_G2D" => "qb_g2d".to_string(),
+        "_G2R" => "qb_g2r".to_string(),
+        "_R2G" => "qb_r2g".to_string(),
 
         // Negate
         "_NEGATE" => "qb_negate".to_string(),
@@ -419,6 +445,8 @@ pub(super) fn c_function_name(name: &str) -> String {
         "_LOADFONT" => "qb_loadfont".to_string(),
         "_FONTHEIGHT" => "qb_fontheight".to_string(),
         "_FONTWIDTH" => "qb_fontwidth".to_string(),
+        "_FONT" => "qb_font".to_string(),
+        "_FREEFONT" => "qb_freefont".to_string(),
 
         // Desktop/Window functions
         "_DESKTOPWIDTH" => "qb_desktopwidth".to_string(),
@@ -429,12 +457,29 @@ pub(super) fn c_function_name(name: &str) -> String {
         "_WINDOWHANDLE" => "qb_windowhandle".to_string(),
         "_WINDOWHASFOCUS" => "qb_windowhasfocus".to_string(),
 
+        // Window control functions
+        "_SCREENMOVE" => "qb_screenmove".to_string(),
+        "_SCREENHIDE" => "qb_screenhide".to_string(),
+        "_SCREENSHOW" => "qb_screenshow".to_string(),
+        "_FULLSCREEN" => "qb_fullscreen".to_string(),
+        "_SCREENCLICK" => "qb_screenclick".to_string(),
+
         // Dialog boxes
         "_MESSAGEBOX" => "qb_messagebox".to_string(),
         "_INPUTBOX$" => "qb_inputbox".to_string(),
         "_OPENFILEDIALOG$" => "qb_openfiledialog".to_string(),
         "_SAVEFILEDIALOG$" => "qb_savefiledialog".to_string(),
         "_SELECTFOLDERDIALOG$" => "qb_selectfolderdialog".to_string(),
+
+        // Binary/number-to-string conversion
+        "HEX$" => "qb_hex".to_string(),
+        "OCT$" => "qb_oct".to_string(),
+        "_BIN$" => "qb_bin".to_string(),
+        "_TOSTR$" => "qb_tostr".to_string(),
+
+        // Inline conditional
+        "_IIF" => "qb_iif".to_string(),
+        "_IIF$" => "qb_iif_str".to_string(),
 
         // Phase 5: Networking
         "_OPENHOST" => "qb_net_openhost".to_string(),

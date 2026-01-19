@@ -377,7 +377,27 @@ impl SemanticAnalyzer {
         self.register_builtin_function("_ACOSH", &[("n", BasicType::Double)], BasicType::Double);
         self.register_builtin_function("_ATANH", &[("n", BasicType::Double)], BasicType::Double);
 
-        // Angle conversions
+        // Reciprocal trig functions (sec, csc, cot)
+        self.register_builtin_function("_SEC", &[("n", BasicType::Double)], BasicType::Double);
+        self.register_builtin_function("_CSC", &[("n", BasicType::Double)], BasicType::Double);
+        self.register_builtin_function("_COT", &[("n", BasicType::Double)], BasicType::Double);
+
+        // Hyperbolic reciprocals
+        self.register_builtin_function("_SECH", &[("n", BasicType::Double)], BasicType::Double);
+        self.register_builtin_function("_CSCH", &[("n", BasicType::Double)], BasicType::Double);
+        self.register_builtin_function("_COTH", &[("n", BasicType::Double)], BasicType::Double);
+
+        // Inverse reciprocal trig (arcsec, arccsc, arccot)
+        self.register_builtin_function("_ARCSEC", &[("n", BasicType::Double)], BasicType::Double);
+        self.register_builtin_function("_ARCCSC", &[("n", BasicType::Double)], BasicType::Double);
+        self.register_builtin_function("_ARCCOT", &[("n", BasicType::Double)], BasicType::Double);
+
+        // Inverse hyperbolic reciprocals
+        self.register_builtin_function("_ARCSECH", &[("n", BasicType::Double)], BasicType::Double);
+        self.register_builtin_function("_ARCCSCH", &[("n", BasicType::Double)], BasicType::Double);
+        self.register_builtin_function("_ARCCOTH", &[("n", BasicType::Double)], BasicType::Double);
+
+        // Angle conversions (degrees <-> radians)
         self.register_builtin_function(
             "_D2R",
             &[("degrees", BasicType::Double)],
@@ -385,6 +405,28 @@ impl SemanticAnalyzer {
         );
         self.register_builtin_function(
             "_R2D",
+            &[("radians", BasicType::Double)],
+            BasicType::Double,
+        );
+
+        // Gradian conversions
+        self.register_builtin_function(
+            "_D2G",
+            &[("degrees", BasicType::Double)],
+            BasicType::Double,
+        );
+        self.register_builtin_function(
+            "_G2D",
+            &[("gradians", BasicType::Double)],
+            BasicType::Double,
+        );
+        self.register_builtin_function(
+            "_G2R",
+            &[("gradians", BasicType::Double)],
+            BasicType::Double,
+        );
+        self.register_builtin_function(
+            "_R2G",
             &[("radians", BasicType::Double)],
             BasicType::Double,
         );
@@ -449,6 +491,28 @@ impl SemanticAnalyzer {
         // Type conversion
         self.register_builtin_function("HEX$", &[("n", BasicType::Long)], BasicType::String);
         self.register_builtin_function("OCT$", &[("n", BasicType::Long)], BasicType::String);
+        self.register_builtin_function("_BIN$", &[("n", BasicType::Long)], BasicType::String);
+        self.register_builtin_function("_TOSTR$", &[("n", BasicType::Double)], BasicType::String);
+
+        // Inline conditional
+        self.register_builtin_function(
+            "_IIF",
+            &[
+                ("cond", BasicType::Long),
+                ("true_val", BasicType::Double),
+                ("false_val", BasicType::Double),
+            ],
+            BasicType::Double,
+        );
+        self.register_builtin_function(
+            "_IIF$",
+            &[
+                ("cond", BasicType::Long),
+                ("true_val", BasicType::String),
+                ("false_val", BasicType::String),
+            ],
+            BasicType::String,
+        );
 
         // Array functions
         self.register_builtin_function("LBOUND", &[("arr", BasicType::Unknown)], BasicType::Long);
@@ -620,6 +684,12 @@ impl SemanticAnalyzer {
         );
         self.register_builtin_function("_FONTHEIGHT", &[], BasicType::Long);
         self.register_builtin_function("_FONTWIDTH", &[], BasicType::Long);
+        self.register_builtin_function("_FONT", &[("handle", BasicType::Long)], BasicType::Long); // Sets current font, returns previous handle
+        self.register_builtin_function(
+            "_FREEFONT",
+            &[("handle", BasicType::Long)],
+            BasicType::Long,
+        );
 
         // Desktop/Window functions
         self.register_builtin_function("_DESKTOPWIDTH", &[], BasicType::Long);
@@ -629,6 +699,17 @@ impl SemanticAnalyzer {
         self.register_builtin_function("_TITLE$", &[], BasicType::String);
         self.register_builtin_function("_WINDOWHANDLE", &[], BasicType::Long);
         self.register_builtin_function("_WINDOWHASFOCUS", &[], BasicType::Long);
+
+        // Window control functions (also used as statements)
+        self.register_builtin_function(
+            "_SCREENMOVE",
+            &[("x", BasicType::Long), ("y", BasicType::Long)],
+            BasicType::Long, // Returns 0 for success
+        );
+        self.register_builtin_function("_SCREENHIDE", &[], BasicType::Long);
+        self.register_builtin_function("_SCREENSHOW", &[], BasicType::Long);
+        self.register_builtin_function("_FULLSCREEN", &[], BasicType::Long); // Returns/toggles fullscreen mode
+        self.register_builtin_function("_SCREENCLICK", &[], BasicType::Long);
 
         // Dialog boxes
         self.register_builtin_function(
