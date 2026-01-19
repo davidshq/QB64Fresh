@@ -15,7 +15,8 @@ use crate::ast::{ExitType, FileAccess, FileLock, FileMode, PrintSeparator};
 use crate::codegen::error::CodeGenError;
 use crate::semantic::typed_ir::{
     TypedArrayDimension, TypedCaseCompareOp, TypedCaseMatch, TypedDoCondition, TypedExpr,
-    TypedMember, TypedParameter, TypedPrintItem, TypedStatement, TypedStatementKind,
+    TypedMember, TypedParameter, TypedPrintItem, TypedReadTarget, TypedStatement,
+    TypedStatementKind,
 };
 use crate::semantic::types::BasicType;
 
@@ -484,20 +485,18 @@ impl StmtEmitter {
                 // DATA statements are handled in collect_data_values during global emission
             }
 
-            TypedStatementKind::Read { variables } => {
-                self.emit_read(&indent, variables, output)?;
+            TypedStatementKind::Read { targets } => {
+                self.emit_read(&indent, targets, output)?;
             }
 
             TypedStatementKind::Restore { label } => {
                 self.emit_restore(&indent, label, output)?;
             }
 
-            TypedStatementKind::Randomize { seed, use_timer } => {
-                if *use_timer {
-                    // RANDOMIZE TIMER - seed with system time
-                    writeln!(output, "{}qb_randomize_timer();", indent).unwrap();
-                } else if let Some(seed_expr) = seed {
+            TypedStatementKind::Randomize { seed } => {
+                if let Some(seed_expr) = seed {
                     // RANDOMIZE expr - seed with specific value
+                    // TIMER is just a function call in the expression, no special handling needed
                     let seed_code = emit_expr(seed_expr)?;
                     writeln!(output, "{}qb_randomize((double)({}));", indent, seed_code).unwrap();
                 } else {
@@ -650,11 +649,39 @@ impl StmtEmitter {
             }
 
             // ==================== Graphics Statements ====================
-            TypedStatementKind::Screen { mode } => {
-                let mode_code = emit_expr(mode)?;
-                // SCREEN mode initializes graphics - for now mode is used to set resolution
-                // Mode 0 = text, mode 12 = 640x480, mode 13 = 320x200, etc.
-                writeln!(output, "{}qb_gfx_init((int32_t){});", indent, mode_code).unwrap();
+            TypedStatementKind::Screen {
+                mode,
+                color_switch,
+                active_page,
+                visual_page,
+            } => {
+                // SCREEN [mode][,[colorswitch]][,[apage]][,[vpage]]
+                let mode_code = mode
+                    .as_ref()
+                    .map(emit_expr)
+                    .transpose()?
+                    .unwrap_or_else(|| "-1".to_string());
+                let color_code = color_switch
+                    .as_ref()
+                    .map(emit_expr)
+                    .transpose()?
+                    .unwrap_or_else(|| "-1".to_string());
+                let apage_code = active_page
+                    .as_ref()
+                    .map(emit_expr)
+                    .transpose()?
+                    .unwrap_or_else(|| "-1".to_string());
+                let vpage_code = visual_page
+                    .as_ref()
+                    .map(emit_expr)
+                    .transpose()?
+                    .unwrap_or_else(|| "-1".to_string());
+                writeln!(
+                    output,
+                    "{}qb_gfx_screen((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){});",
+                    indent, mode_code, color_code, apage_code, vpage_code
+                )
+                .unwrap();
             }
 
             TypedStatementKind::Cls { mode } => {
@@ -953,7 +980,9 @@ impl StmtEmitter {
                 step,
                 array_name,
                 array_index,
+                clip,
                 action,
+                transparent_color,
             } => {
                 use crate::ast::PutAction;
 
@@ -978,18 +1007,27 @@ impl StmtEmitter {
                     PutAction::Or => "QB_PUT_OR",
                 };
 
+                // QB64 extension: _CLIP with optional transparent color
+                let trans_code = if let Some(tc) = transparent_color {
+                    emit_expr(tc)?
+                } else {
+                    "-1".to_string() // No transparent color
+                };
+
+                let clip_flag = if *clip { "1" } else { "0" };
+
                 if *step {
                     writeln!(
                         output,
-                        "{}qb_gfx_put_step((int32_t){}, (int32_t){}, {}, {});",
-                        indent, x_code, y_code, arr_ptr, action_code
+                        "{}qb_gfx_put_step((int32_t){}, (int32_t){}, {}, {}, {}, (int32_t){});",
+                        indent, x_code, y_code, arr_ptr, action_code, clip_flag, trans_code
                     )
                     .unwrap();
                 } else {
                     writeln!(
                         output,
-                        "{}qb_gfx_put((int32_t){}, (int32_t){}, {}, {});",
-                        indent, x_code, y_code, arr_ptr, action_code
+                        "{}qb_gfx_put((int32_t){}, (int32_t){}, {}, {}, {}, (int32_t){});",
+                        indent, x_code, y_code, arr_ptr, action_code, clip_flag, trans_code
                     )
                     .unwrap();
                 }
@@ -1891,11 +1929,28 @@ impl StmtEmitter {
     fn emit_read(
         &self,
         indent: &str,
-        variables: &[(String, BasicType)],
+        targets: &[TypedReadTarget],
         output: &mut String,
     ) -> Result<(), CodeGenError> {
-        for (var_name, var_type) in variables {
-            let c_var = c_identifier(var_name);
+        for target in targets {
+            let (c_target, var_type) = match target {
+                TypedReadTarget::Variable { name, basic_type } => {
+                    (c_identifier(name), basic_type.clone())
+                }
+                TypedReadTarget::ArrayElement {
+                    name,
+                    indices,
+                    basic_type,
+                } => {
+                    let c_arr = c_identifier(name);
+                    let idx_parts: Vec<_> = indices
+                        .iter()
+                        .map(emit_expr)
+                        .collect::<Result<Vec<_>, _>>()?;
+                    let idx_str = idx_parts.join("][");
+                    (format!("{}[{}]", c_arr, idx_str), basic_type.clone())
+                }
+            };
 
             match var_type {
                 BasicType::String | BasicType::FixedString(_) => {
@@ -1908,7 +1963,7 @@ impl StmtEmitter {
                     writeln!(
                         output,
                         "{}    {} = qb_str_from_c(_qb_data[_qb_data_ptr].v.s);",
-                        indent, c_var
+                        indent, c_target
                     )
                     .unwrap();
                     writeln!(
@@ -1920,14 +1975,14 @@ impl StmtEmitter {
                     writeln!(
                         output,
                         "{}    {} = qb_str_float(_qb_data[_qb_data_ptr].v.n);",
-                        indent, c_var
+                        indent, c_target
                     )
                     .unwrap();
                     writeln!(output, "{}}}", indent).unwrap();
                     writeln!(output, "{}_qb_data_ptr++;", indent).unwrap();
                 }
                 _ => {
-                    let c_ty = c_type(var_type);
+                    let c_ty = c_type(&var_type);
                     writeln!(
                         output,
                         "{}if (_qb_data_ptr < _qb_data_count && _qb_data[_qb_data_ptr].type == 'd') {{",
@@ -1937,7 +1992,7 @@ impl StmtEmitter {
                     writeln!(
                         output,
                         "{}    {} = ({})_qb_data[_qb_data_ptr].v.n;",
-                        indent, c_var, c_ty
+                        indent, c_target, c_ty
                     )
                     .unwrap();
                     writeln!(output, "{}}}", indent).unwrap();

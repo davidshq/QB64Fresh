@@ -395,38 +395,70 @@ impl<'a> TypeChecker<'a> {
                 )
             }
 
-            StatementKind::Read { variables } => {
-                // Look up each variable and get its type
-                // Variables that don't exist are auto-declared based on suffix
-                let typed_vars: Vec<(String, BasicType)> = variables
+            StatementKind::Read { targets } => {
+                use crate::ast::ReadTarget;
+                use crate::semantic::typed_ir::TypedReadTarget;
+
+                // Process each target (variable or array element)
+                let typed_targets: Vec<TypedReadTarget> = targets
                     .iter()
-                    .map(|var_name| {
-                        let var_type = if let Some(symbol) = self.symbols.lookup_symbol(var_name) {
-                            symbol.basic_type.clone()
-                        } else {
-                            // Infer type from suffix or default
-                            let inferred = type_from_suffix(var_name)
-                                .unwrap_or_else(|| self.symbols.default_type_for(var_name));
+                    .map(|target| match target {
+                        ReadTarget::Variable(var_name) => {
+                            let var_type =
+                                if let Some(symbol) = self.symbols.lookup_symbol(var_name) {
+                                    symbol.basic_type.clone()
+                                } else {
+                                    // Infer type from suffix or default
+                                    let inferred = type_from_suffix(var_name)
+                                        .unwrap_or_else(|| self.symbols.default_type_for(var_name));
 
-                            // Define the variable
-                            let symbol = Symbol {
+                                    // Define the variable
+                                    let symbol = Symbol {
+                                        name: var_name.clone(),
+                                        kind: SymbolKind::Variable,
+                                        basic_type: inferred.clone(),
+                                        span: stmt.span,
+                                        is_mutable: true,
+                                    };
+                                    let _ = self.symbols.define_symbol(symbol);
+
+                                    inferred
+                                };
+                            TypedReadTarget::Variable {
                                 name: var_name.clone(),
-                                kind: SymbolKind::Variable,
-                                basic_type: inferred.clone(),
-                                span: stmt.span,
-                                is_mutable: true,
-                            };
-                            let _ = self.symbols.define_symbol(symbol);
+                                basic_type: var_type,
+                            }
+                        }
+                        ReadTarget::ArrayElement { name, indices } => {
+                            // Type check indices
+                            let typed_indices: Vec<_> =
+                                indices.iter().map(|e| self.check_expr(e)).collect();
 
-                            inferred
-                        };
-                        (var_name.clone(), var_type)
+                            // Look up array and get element type
+                            let basic_type = if let Some(symbol) = self.symbols.lookup_symbol(name)
+                            {
+                                symbol.basic_type.clone()
+                            } else {
+                                // Array not declared - error
+                                self.errors.push(SemanticError::UndefinedVariable {
+                                    name: name.clone(),
+                                    span: stmt.span,
+                                });
+                                BasicType::Single // Default on error
+                            };
+
+                            TypedReadTarget::ArrayElement {
+                                name: name.clone(),
+                                indices: typed_indices,
+                                basic_type,
+                            }
+                        }
                     })
                     .collect();
 
                 TypedStatement::new(
                     TypedStatementKind::Read {
-                        variables: typed_vars,
+                        targets: typed_targets,
                     },
                     stmt.span,
                 )
@@ -443,7 +475,7 @@ impl<'a> TypeChecker<'a> {
                 )
             }
 
-            StatementKind::Randomize { seed, use_timer } => {
+            StatementKind::Randomize { seed } => {
                 // Type check the seed expression if provided
                 let typed_seed = seed.as_ref().map(|s| self.check_expr(s));
 
@@ -456,10 +488,7 @@ impl<'a> TypeChecker<'a> {
                 }
 
                 TypedStatement::new(
-                    TypedStatementKind::Randomize {
-                        seed: typed_seed,
-                        use_timer: *use_timer,
-                    },
+                    TypedStatementKind::Randomize { seed: typed_seed },
                     stmt.span,
                 )
             }
@@ -919,9 +948,25 @@ impl<'a> TypeChecker<'a> {
             }
 
             // ==================== Graphics Statements ====================
-            StatementKind::Screen { mode } => {
-                let typed_mode = self.check_expr(mode);
-                TypedStatement::new(TypedStatementKind::Screen { mode: typed_mode }, stmt.span)
+            StatementKind::Screen {
+                mode,
+                color_switch,
+                active_page,
+                visual_page,
+            } => {
+                let typed_mode = mode.as_ref().map(|e| self.check_expr(e));
+                let typed_color_switch = color_switch.as_ref().map(|e| self.check_expr(e));
+                let typed_active_page = active_page.as_ref().map(|e| self.check_expr(e));
+                let typed_visual_page = visual_page.as_ref().map(|e| self.check_expr(e));
+                TypedStatement::new(
+                    TypedStatementKind::Screen {
+                        mode: typed_mode,
+                        color_switch: typed_color_switch,
+                        active_page: typed_active_page,
+                        visual_page: typed_visual_page,
+                    },
+                    stmt.span,
+                )
             }
 
             StatementKind::Cls { mode } => {
@@ -1144,11 +1189,14 @@ impl<'a> TypeChecker<'a> {
                 step,
                 array_name,
                 array_index,
+                clip,
                 action,
+                transparent_color,
             } => {
                 let typed_x = self.check_expr(x);
                 let typed_y = self.check_expr(y);
                 let typed_index = array_index.as_ref().map(|e| self.check_expr(e));
+                let typed_transparent = transparent_color.as_ref().map(|e| self.check_expr(e));
                 TypedStatement::new(
                     TypedStatementKind::GraphicsPut {
                         x: typed_x,
@@ -1156,7 +1204,9 @@ impl<'a> TypeChecker<'a> {
                         step: *step,
                         array_name: array_name.clone(),
                         array_index: typed_index,
+                        clip: *clip,
                         action: *action,
+                        transparent_color: typed_transparent,
                     },
                     stmt.span,
                 )

@@ -617,6 +617,11 @@ pub enum TokenKind {
     #[token("_MOUSEMOVE", ignore(ascii_case))]
     MouseMove,
 
+    // ==================== Graphics Modifiers (QB64) ====================
+    /// _CLIP modifier for PUT statement - clip to screen boundaries (QB64)
+    #[token("_CLIP", ignore(ascii_case))]
+    Clip,
+
     // ==================== Clipboard Keywords ====================
     /// _CLIPBOARD$ function/statement - clipboard access (QB64)
     #[token("_CLIPBOARD$", ignore(ascii_case))]

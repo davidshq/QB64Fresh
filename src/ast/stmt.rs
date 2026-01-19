@@ -265,9 +265,10 @@ pub enum StatementKind {
     /// `READ var1, var2, ...` - read from DATA pool
     ///
     /// READ statements consume values from the DATA pool in order.
+    /// Targets can be simple variables or array elements.
     Read {
-        /// Variables to read into.
-        variables: Vec<String>,
+        /// Targets to read into (variables or array elements).
+        targets: Vec<ReadTarget>,
     },
 
     /// `RESTORE [label]` - reset DATA pointer
@@ -282,12 +283,12 @@ pub enum StatementKind {
     /// `RANDOMIZE [seed]` or `RANDOMIZE TIMER`
     ///
     /// Seeds the random number generator. If no argument, prompts user for seed.
-    /// RANDOMIZE TIMER seeds with the current system time.
+    /// RANDOMIZE [seed] - Initialize random number generator.
+    /// If seed is None, implementation may prompt user or use a default.
+    /// TIMER is just a function call in the seed expression (e.g., RANDOMIZE TIMER).
     Randomize {
-        /// Seed expression. None means prompt user, Some with TIMER uses system time.
+        /// Seed expression. None means no seed provided.
         seed: Option<Expr>,
-        /// True if TIMER keyword was used (RANDOMIZE TIMER).
-        use_timer: bool,
     },
 
     /// Label definition: `labelName:`
@@ -579,10 +580,22 @@ pub enum StatementKind {
     },
 
     // ==================== Graphics Statements ====================
-    /// `SCREEN mode` - Initialize graphics mode
+    /// `SCREEN [mode][,[colorswitch]][,[apage]][,[vpage]]` - Initialize graphics mode
+    ///
+    /// Full QB45 syntax supports:
+    /// - mode: Screen mode number (0=text, 1-13=various graphics modes)
+    /// - colorswitch: Color/monochrome flag
+    /// - apage: Active page number
+    /// - vpage: Visual page number
     Screen {
-        /// Screen mode number (0=text, 1-13=various graphics modes)
-        mode: Expr,
+        /// Screen mode number (optional, can be omitted with empty first argument)
+        mode: Option<Expr>,
+        /// Color switch (optional)
+        color_switch: Option<Expr>,
+        /// Active page number (optional)
+        active_page: Option<Expr>,
+        /// Visual page number (optional)
+        visual_page: Option<Expr>,
     },
 
     /// `CLS [mode]` - Clear screen
@@ -735,6 +748,8 @@ pub enum StatementKind {
     /// - AND: Bitwise AND with destination
     /// - OR: Bitwise OR with destination
     /// - XOR: Bitwise XOR with destination (default)
+    ///
+    /// QB64 adds: `PUT (x,y), array, _CLIP action, transparent_color`
     GraphicsPut {
         /// X coordinate for placing the image
         x: Expr,
@@ -746,8 +761,12 @@ pub enum StatementKind {
         array_name: String,
         /// Optional array index
         array_index: Option<Expr>,
+        /// QB64: _CLIP modifier to clip image at screen boundaries
+        clip: bool,
         /// Action for combining pixels with existing screen content
         action: PutAction,
+        /// QB64: Optional transparent color (after _CLIP)
+        transparent_color: Option<Expr>,
     },
 
     // ==================== QB64 Graphics Extensions ====================
@@ -1191,6 +1210,15 @@ pub enum ContinueType {
     For,
     While,
     Do,
+}
+
+/// Target for READ statement - can be a variable or array element.
+#[derive(Debug, Clone)]
+pub enum ReadTarget {
+    /// Simple variable: `READ x`
+    Variable(String),
+    /// Array element: `READ arr(i, j)`
+    ArrayElement { name: String, indices: Vec<Expr> },
 }
 
 /// Action mode for graphics PUT statement.

@@ -960,14 +960,38 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses a READ statement.
+    ///
+    /// READ can read into simple variables or array elements:
+    /// - `READ x, y, z` - read into variables
+    /// - `READ arr(i), arr(j)` - read into array elements
+    /// - `READ x, arr(i, j), y` - mixed
     pub(super) fn parse_read(&mut self) -> Result<Statement, ()> {
+        use crate::ast::ReadTarget;
+
         let start = self.advance().expect("READ keyword").span.start; // consume READ
 
-        let mut variables = Vec::new();
+        let mut targets = Vec::new();
 
         loop {
             let var_token = self.expect(&TokenKind::Identifier, "variable name")?;
-            variables.push(var_token.text.to_string());
+            let name = var_token.text.to_string();
+
+            // Check for array element: var(index, index, ...)
+            let target = if self.match_token(&TokenKind::LeftParen) {
+                let mut indices = Vec::new();
+                loop {
+                    indices.push(self.parse_expression()?);
+                    if !self.match_token(&TokenKind::Comma) {
+                        break;
+                    }
+                }
+                self.expect(&TokenKind::RightParen, "`)` after array indices")?;
+                ReadTarget::ArrayElement { name, indices }
+            } else {
+                ReadTarget::Variable(name)
+            };
+
+            targets.push(target);
 
             if !self.match_token(&TokenKind::Comma) {
                 break;
@@ -975,7 +999,7 @@ impl<'a> Parser<'a> {
         }
 
         let span = self.span_from(start);
-        Ok(Statement::new(StatementKind::Read { variables }, span))
+        Ok(Statement::new(StatementKind::Read { targets }, span))
     }
 
     /// Parses a RESTORE statement.
@@ -1005,40 +1029,18 @@ impl<'a> Parser<'a> {
     pub(super) fn parse_randomize(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("RANDOMIZE keyword").span.start;
 
-        // Check for TIMER keyword (handled as identifier since it's not a reserved keyword)
-        if let Some(token) = self.peek()
-            && token.kind == TokenKind::Identifier
-            && token.text.eq_ignore_ascii_case("TIMER")
-        {
-            self.advance(); // consume TIMER
-            let span = self.span_from(start);
-            return Ok(Statement::new(
-                StatementKind::Randomize {
-                    seed: None,
-                    use_timer: true,
-                },
-                span,
-            ));
-        }
-
-        // Check for seed expression - if we have something that could be an expression
-        let seed = if !self.is_at_end()
-            && !self.check(&TokenKind::Colon)
-            && !self.check(&TokenKind::Newline)
-        {
-            self.parse_expression().ok()
+        // RANDOMIZE can optionally take a seed expression
+        // Note: TIMER is just a function that returns the system time, so
+        // expressions like "RANDOMIZE TIMER + VAL(DATE$)" are valid.
+        // We don't special-case TIMER - it's handled as part of the expression.
+        let seed = if !self.is_at_statement_end() {
+            Some(self.parse_expression()?)
         } else {
             None
         };
 
         let span = self.span_from(start);
-        Ok(Statement::new(
-            StatementKind::Randomize {
-                seed,
-                use_timer: false,
-            },
-            span,
-        ))
+        Ok(Statement::new(StatementKind::Randomize { seed }, span))
     }
 
     // ==================== Other Statements ====================
@@ -1742,9 +1744,12 @@ impl<'a> Parser<'a> {
             None
         };
 
-        // Check for optional action: , PSET|PRESET|AND|OR|XOR
-        let action = if self.match_token(&TokenKind::Comma) {
-            if self.match_token(&TokenKind::Pset) {
+        // Check for optional action: , [_CLIP] PSET|PRESET|AND|OR|XOR [, transparent_color]
+        let (clip, action, transparent_color) = if self.match_token(&TokenKind::Comma) {
+            // QB64 extension: _CLIP modifier
+            let clip = self.match_token(&TokenKind::Clip);
+
+            let action = if self.match_token(&TokenKind::Pset) {
                 PutAction::Pset
             } else if self.match_token(&TokenKind::Preset) {
                 PutAction::Preset
@@ -1761,9 +1766,18 @@ impl<'a> Parser<'a> {
                     self.span_from(start),
                 ));
                 return Err(());
-            }
+            };
+
+            // QB64 extension: optional transparent color after _CLIP
+            let transparent_color = if clip && self.match_token(&TokenKind::Comma) {
+                Some(self.parse_expression()?)
+            } else {
+                None
+            };
+
+            (clip, action, transparent_color)
         } else {
-            PutAction::default() // XOR
+            (false, PutAction::default(), None) // XOR
         };
 
         let span = self.span_from(start);
@@ -1774,7 +1788,9 @@ impl<'a> Parser<'a> {
                 step,
                 array_name,
                 array_index,
+                clip,
                 action,
+                transparent_color,
             },
             span,
         ))
@@ -2085,11 +2101,65 @@ impl<'a> Parser<'a> {
     /// Parses SCREEN statement.
     ///
     /// Syntax: `SCREEN mode`
+    /// Parses SCREEN statement.
+    ///
+    /// Full QB45 syntax: `SCREEN [mode][,[colorswitch]][,[apage]][,[vpage]]`
+    ///
+    /// All arguments are optional, but if you want to specify later ones,
+    /// you need the commas: `SCREEN , , 1, 0` (just page arguments)
     pub(super) fn parse_screen(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("SCREEN keyword").span.start;
-        let mode = self.parse_expression()?;
+
+        // Parse mode (first argument) - may be omitted
+        let mode = if !self.is_at_statement_end() && !self.check(&TokenKind::Comma) {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+
+        // Parse colorswitch (second argument)
+        let color_switch = if self.match_token(&TokenKind::Comma) {
+            if !self.is_at_statement_end() && !self.check(&TokenKind::Comma) {
+                Some(self.parse_expression()?)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // Parse active page (third argument)
+        let active_page = if self.match_token(&TokenKind::Comma) {
+            if !self.is_at_statement_end() && !self.check(&TokenKind::Comma) {
+                Some(self.parse_expression()?)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // Parse visual page (fourth argument)
+        let visual_page = if self.match_token(&TokenKind::Comma) {
+            if !self.is_at_statement_end() {
+                Some(self.parse_expression()?)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         let span = self.span_from(start);
-        Ok(Statement::new(StatementKind::Screen { mode }, span))
+        Ok(Statement::new(
+            StatementKind::Screen {
+                mode,
+                color_switch,
+                active_page,
+                visual_page,
+            },
+            span,
+        ))
     }
 
     /// Parses CLS statement.

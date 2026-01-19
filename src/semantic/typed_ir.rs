@@ -422,8 +422,8 @@ pub enum TypedStatementKind {
     ///
     /// Each READ consumes values from the DATA pool in order.
     Read {
-        /// Variables to read into, paired with their types.
-        variables: Vec<(String, BasicType)>,
+        /// Targets to read into (variables or array elements).
+        targets: Vec<TypedReadTarget>,
     },
 
     /// RESTORE statement - reset DATA pointer.
@@ -437,14 +437,13 @@ pub enum TypedStatementKind {
 
     /// RANDOMIZE statement to seed the random number generator.
     ///
-    /// - `RANDOMIZE` - prompt user for seed (not typically used in modern programs)
-    /// - `RANDOMIZE TIMER` - seed with system time
+    /// RANDOMIZE [seed] - Initialize random number generator.
+    /// - `RANDOMIZE` - no seed (implementation defined behavior)
+    /// - `RANDOMIZE TIMER` - seed is the TIMER function call
     /// - `RANDOMIZE expr` - seed with specific value
     Randomize {
         /// The seed expression (if provided).
         seed: Option<TypedExpr>,
-        /// Whether to use TIMER (system time) as the seed.
-        use_timer: bool,
     },
 
     // ==================== File I/O Statements ====================
@@ -611,9 +610,17 @@ pub enum TypedStatementKind {
 
     // ==================== Graphics Statements ====================
     /// SCREEN statement - sets graphics mode.
+    ///
+    /// Full QB45 syntax: `SCREEN [mode][,[colorswitch]][,[apage]][,[vpage]]`
     Screen {
-        /// Screen mode number.
-        mode: TypedExpr,
+        /// Screen mode number (optional).
+        mode: Option<TypedExpr>,
+        /// Color switch (optional).
+        color_switch: Option<TypedExpr>,
+        /// Active page number (optional).
+        active_page: Option<TypedExpr>,
+        /// Visual page number (optional).
+        visual_page: Option<TypedExpr>,
     },
 
     /// CLS statement - clears the screen.
@@ -766,8 +773,12 @@ pub enum TypedStatementKind {
         array_name: String,
         /// Optional array index.
         array_index: Option<TypedExpr>,
+        /// QB64: _CLIP modifier to clip at screen boundaries.
+        clip: bool,
         /// Action for combining pixels.
         action: crate::ast::PutAction,
+        /// QB64: Optional transparent color.
+        transparent_color: Option<TypedExpr>,
     },
 
     // ==================== QB64 Graphics Extensions ====================
@@ -1014,6 +1025,21 @@ pub struct TypedMember {
     pub name: String,
     /// Member type.
     pub basic_type: BasicType,
+}
+
+/// A typed target for READ statement.
+///
+/// READ can read into simple variables or array elements.
+#[derive(Debug, Clone)]
+pub enum TypedReadTarget {
+    /// Simple variable: `READ x`
+    Variable { name: String, basic_type: BasicType },
+    /// Array element: `READ arr(i, j)`
+    ArrayElement {
+        name: String,
+        indices: Vec<TypedExpr>,
+        basic_type: BasicType,
+    },
 }
 
 /// A typed value from a DATA statement.
