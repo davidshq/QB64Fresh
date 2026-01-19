@@ -2519,6 +2519,11 @@ impl<'a> Parser<'a> {
     pub(super) fn parse_view(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("VIEW keyword").span.start;
 
+        // Check for VIEW PRINT (text viewport)
+        if self.check(&TokenKind::Print) {
+            return self.parse_view_print(start);
+        }
+
         // Check for VIEW with no arguments (reset viewport)
         if self.is_at_end_of_statement() {
             let span = self.span_from(start);
@@ -2573,6 +2578,39 @@ impl<'a> Parser<'a> {
                 coords,
                 fill_color,
                 border_color,
+            },
+            span,
+        ))
+    }
+
+    /// Parses VIEW PRINT statement (text viewport).
+    ///
+    /// Syntax: `VIEW PRINT [topRow TO bottomRow]`
+    fn parse_view_print(&mut self, start: usize) -> Result<Statement, ()> {
+        self.advance(); // consume PRINT
+
+        // VIEW PRINT with no arguments resets to full screen
+        if self.is_at_end_of_statement() {
+            let span = self.span_from(start);
+            return Ok(Statement::new(
+                StatementKind::ViewPrint {
+                    top: None,
+                    bottom: None,
+                },
+                span,
+            ));
+        }
+
+        // Parse: topRow TO bottomRow
+        let top = self.parse_expression()?;
+        self.expect(&TokenKind::To, "TO")?;
+        let bottom = self.parse_expression()?;
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::ViewPrint {
+                top: Some(top),
+                bottom: Some(bottom),
             },
             span,
         ))

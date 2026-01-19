@@ -732,6 +732,14 @@ pub enum TypedStatementKind {
         border_color: Option<TypedExpr>,
     },
 
+    /// VIEW PRINT statement - text viewport.
+    ViewPrint {
+        /// Top row (if specified).
+        top: Option<TypedExpr>,
+        /// Bottom row (if specified).
+        bottom: Option<TypedExpr>,
+    },
+
     /// WINDOW statement - defines coordinate system.
     WindowCoords {
         /// Whether SCREEN was specified.

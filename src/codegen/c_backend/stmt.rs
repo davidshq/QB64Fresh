@@ -929,6 +929,22 @@ impl StmtEmitter {
                 }
             }
 
+            TypedStatementKind::ViewPrint { top, bottom } => {
+                if let (Some(t), Some(b)) = (top, bottom) {
+                    let top_code = emit_expr(t)?;
+                    let bottom_code = emit_expr(b)?;
+                    writeln!(
+                        output,
+                        "{}qb_view_print((int32_t){}, (int32_t){});",
+                        indent, top_code, bottom_code
+                    )
+                    .unwrap();
+                } else {
+                    // Reset text viewport
+                    writeln!(output, "{}qb_view_print_reset();", indent).unwrap();
+                }
+            }
+
             TypedStatementKind::WindowCoords { screen, coords } => {
                 let screen_int = if *screen { 1 } else { 0 };
                 if let Some(c) = coords {

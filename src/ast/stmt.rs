@@ -626,6 +626,18 @@ pub enum StatementKind {
         col: Expr,
     },
 
+    /// `VIEW PRINT [top TO bottom]` - Set text viewport
+    ///
+    /// Restricts PRINT output to a range of screen rows.
+    /// - `VIEW PRINT` alone resets to full screen.
+    /// - `VIEW PRINT 1 TO 20` restricts printing to rows 1-20.
+    ViewPrint {
+        /// Top row (if specified)
+        top: Option<Expr>,
+        /// Bottom row (if specified)
+        bottom: Option<Expr>,
+    },
+
     /// `PSET (x, y)[, color]` - Plot pixel
     Pset {
         /// X coordinate

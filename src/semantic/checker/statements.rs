@@ -1186,6 +1186,18 @@ impl<'a> TypeChecker<'a> {
                 )
             }
 
+            StatementKind::ViewPrint { top, bottom } => {
+                let typed_top = top.as_ref().map(|e| self.check_expr(e));
+                let typed_bottom = bottom.as_ref().map(|e| self.check_expr(e));
+                TypedStatement::new(
+                    TypedStatementKind::ViewPrint {
+                        top: typed_top,
+                        bottom: typed_bottom,
+                    },
+                    stmt.span,
+                )
+            }
+
             StatementKind::WindowCoords { screen, coords } => {
                 let typed_coords = coords.as_ref().map(|c| self.check_view_coords(c));
                 TypedStatement::new(

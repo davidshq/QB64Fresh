@@ -65,13 +65,22 @@ impl<'a> Parser<'a> {
                 then_branch.push(self.parse_single_line_if_statement()?);
                 // Check if next is colon (more statements) or ELSE/end of line
                 if self.check(&TokenKind::Colon) {
-                    // Peek ahead to see if ELSE follows
-                    if let Some(next) = self.peek_ahead(1)
-                        && next.kind == TokenKind::Else
-                    {
-                        break; // Stop at ELSE
+                    // Peek ahead to see what follows the colon
+                    if let Some(next) = self.peek_ahead(1) {
+                        // Stop if ELSE, Newline, or end of statement follows
+                        if matches!(
+                            next.kind,
+                            TokenKind::Else | TokenKind::Newline | TokenKind::Comment
+                        ) {
+                            self.advance(); // consume the trailing colon
+                            break;
+                        }
+                    } else {
+                        // No more tokens - consume colon and stop
+                        self.advance();
+                        break;
                     }
-                    self.advance(); // consume colon
+                    self.advance(); // consume colon, continue parsing
                 } else {
                     break; // No more statements
                 }
@@ -82,8 +91,18 @@ impl<'a> Parser<'a> {
                 let mut else_stmts = Vec::new();
                 loop {
                     else_stmts.push(self.parse_single_line_if_statement()?);
-                    if self.match_token(&TokenKind::Colon) {
-                        // More statements in ELSE clause
+                    if self.check(&TokenKind::Colon) {
+                        // Check if this is a trailing colon (followed by newline/EOF)
+                        if let Some(next) = self.peek_ahead(1) {
+                            if matches!(next.kind, TokenKind::Newline | TokenKind::Comment) {
+                                self.advance(); // consume trailing colon
+                                break;
+                            }
+                        } else {
+                            self.advance(); // consume trailing colon at EOF
+                            break;
+                        }
+                        self.advance(); // consume colon, continue parsing
                     } else {
                         break;
                     }
