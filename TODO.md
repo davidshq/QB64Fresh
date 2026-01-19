@@ -1,5 +1,7 @@
 # QB64Fresh TODO
 
+*Last updated: 2026-01-19*
+
 A prioritized roadmap for QB64Fresh development. Items are ordered from most granular (near-term) to high-level (long-term).
 
 ---
@@ -185,10 +187,10 @@ runtime/src/
 - [ ] Example programs
 
 ### Testing (See TESTING_INFRASTRUCTURE_PLAN.md for details)
-- [ ] Expand test suite for all built-ins
-- [ ] Compatibility tests against QB64 programs
+- [x] Expand test suite for all built-ins (272 integration tests) ✅
+- [ ] Compatibility tests against QB64 programs (16 fixture files, need more)
 - [ ] Port QB4.5 test cases from QB64pe
-- [ ] Achieve 80%+ line coverage
+- [ ] Achieve 80%+ line coverage (currently 72.67%)
 
 ---
 
@@ -309,12 +311,13 @@ against the current QB64Fresh implementation. Organized by priority and category
 - [ ] `_SCREENICON` function - check if window is minimized
 - [ ] `_SCREENPRINT` statement - print screen contents
 - [ ] `_ALLOWFULLSCREEN` statement - allow/disallow fullscreen toggle
-- [ ] `_TITLE` / `_TITLE$` - set/get window title
+- [x] `_TITLE$` - get window title (codegen complete, backend pending) ✅
+- [ ] `_TITLE` statement - set window title
 - [ ] `_ICON` statement - set window icon
 - [ ] `_HIDE` / `_SHOW` statements - hide/show window (alias)
 - [ ] `_ONTOP` statement - set window always on top
-- [ ] `_WINDOWHANDLE` function - get native window handle
-- [ ] `_WINDOWHASFOCUS` function - check if window has focus
+- [x] `_WINDOWHANDLE` function - get native window handle (codegen complete) ✅
+- [x] `_WINDOWHASFOCUS` function - check if window has focus (codegen complete) ✅
 
 #### Font Support
 
@@ -497,6 +500,8 @@ If raw OpenGL is needed, users can use `DECLARE LIBRARY` to call OpenGL function
 - [ ] Large array handling: Verify stack vs heap allocation
 - [ ] Unicode support: Currently ASCII-focused
 - [ ] Windows-specific path handling in file I/O
+- [ ] **Implicit SUB calls without parentheses** - `Greet "World"` doesn't parse; must use
+      `CALL Greet("World")` instead. This is a parser limitation (discovered session 021).
 - [ ] **GOSUB uses GCC computed goto extension** - The GOSUB/RETURN implementation uses GCC's
       computed goto extension (`&&label` for label addresses, `goto *ptr` for indirect jumps).
       This works with GCC and Clang but NOT MSVC. For MSVC support, would need a switch-based

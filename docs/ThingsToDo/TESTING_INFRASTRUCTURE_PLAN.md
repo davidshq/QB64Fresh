@@ -1,7 +1,7 @@
 # Testing Infrastructure Plan
 
 **Created:** 2026-01-18
-**Updated:** 2026-01-18
+**Updated:** 2026-01-19
 **Purpose:** Comprehensive plan for building out QB64Fresh testing infrastructure
 **Based On:** QB64PE testing framework analysis + codebase review findings
 
@@ -10,16 +10,16 @@
 ## Executive Summary
 
 **UPDATE:** As of 2026-01-19, the testing infrastructure has been substantially implemented:
-- **163 unit tests** in source modules
+- **170 unit tests** in source modules
 - **272 integration tests** (0 ignored)
 - **10 golden tests** for C code generation snapshots
-- **16 compatibility test fixtures** (auto-discovered)
+- **16 compatibility test fixtures** (12 success + 4 error, auto-discovered)
 - **19 property-based tests** using proptest (thousands of iterations)
 - **30 benchmarks** measuring compiler performance
 - **44 runtime tests**
 
-Total: **494+ tests** across the workspace.
-**Line coverage:** 59.92% (measured via cargo-llvm-cov)
+Total: **534+ tests** across the workspace (11 ignored for platform-specific features).
+**Line coverage:** 72.67% (measured via cargo-llvm-cov)
 **Fuzz testing:** 3 fuzz targets verified (~4.6M inputs, 0 crashes)
 
 ---
@@ -28,12 +28,12 @@ Total: **494+ tests** across the workspace.
 
 ### What We Have (Updated)
 - Unit tests integrated into source files using `#[cfg(test)]` modules
-- **163 passing unit tests** across compiler modules
-- **148 integration tests** covering full compilation pipeline
+- **170 passing unit tests** across compiler modules
+- **272 integration tests** covering full compilation pipeline
 - **10 golden tests** for codegen snapshot verification
 - **16 compatibility test fixtures** in QB64pe-style format
 - **30 criterion benchmarks** for performance tracking
-- **37 runtime library tests**
+- **44 runtime library tests**
 - Good lexer, parser, and semantic test coverage
 - Comprehensive codegen testing via integration tests
 
@@ -43,7 +43,7 @@ Total: **494+ tests** across the workspace.
 | `src/codegen/c_backend/stmt.rs` | 2,533 | Via integration | Medium |
 | `src/parser/statements.rs` | 1,200+ | Good | Low |
 | `src/semantic/checker/statements.rs` | 1,000+ | Good | Low |
-| `runtime/src/` | ~500 | 37 tests | Low |
+| `runtime/src/` | ~500 | 44 tests | Low |
 
 ---
 
@@ -52,7 +52,7 @@ Total: **494+ tests** across the workspace.
 ### Tier 1: Unit Tests ✅ IMPLEMENTED
 **Location:** `src/**/*.rs` (inline `#[cfg(test)]` modules)
 **Purpose:** Test individual functions and methods in isolation
-**Status:** 163 tests passing
+**Status:** 170 tests passing
 
 ```
 src/
@@ -72,7 +72,7 @@ src/
 ### Tier 2: Integration Tests ✅ IMPLEMENTED
 **Location:** `tests/integration_tests.rs`
 **Purpose:** Test complete compiler pipeline end-to-end
-**Status:** 239 tests passing, 0 ignored
+**Status:** 272 tests passing, 0 ignored
 
 Tests cover:
 - Basic programs (hello world, comments, END)
@@ -198,7 +198,7 @@ cargo +nightly fuzz run fuzz_lexer -- -max_total_time=60
 ### Phase 1: Foundation ✅ COMPLETE
 
 #### 1.1 Integration Test Framework ✅
-Implemented in `tests/integration_tests.rs` with 148 tests covering:
+Implemented in `tests/integration_tests.rs` with 272 tests covering:
 - Full compilation pipeline (lex → parse → analyze → codegen)
 - Helper functions: `compile_to_c()`, `assert_compiles()`, `assert_compile_error()`
 - Organized into modules by feature area
@@ -256,24 +256,18 @@ Sample results:
 | hello_world | ~19 µs | ~1 MiB/s |
 | complex (500 bytes) | ~48 µs | ~10 MiB/s |
 
-### Phase 5: Advanced Testing (Future)
+### Phase 5: Advanced Testing ✅ COMPLETE
 
-#### 5.1 Property-Based Testing
-Using `proptest` crate (not yet implemented):
-```rust
-proptest! {
-    #[test]
-    fn lexer_never_panics(s: String) {
-        let _ = qb64fresh::lexer::lex(&s);
-    }
-}
-```
+#### 5.1 Property-Based Testing ✅
+Implemented in `tests/proptest_tests.rs` with 19 tests using `proptest` crate.
 
-#### 5.2 Fuzzing with `cargo-fuzz`
-Not yet implemented. Fuzz targets would be:
-- Lexer (random strings → never panic)
-- Parser (random token sequences → never panic)
-- Full pipeline (random source → meaningful errors or success)
+#### 5.2 Fuzzing with `cargo-fuzz` ✅
+Implemented in `fuzz/` directory with 3 fuzz targets:
+- `fuzz_lexer` - Fuzz arbitrary input to the lexer
+- `fuzz_parser` - Fuzz arbitrary token sequences to the parser
+- `fuzz_full_pipeline` - Fuzz the complete compilation pipeline
+
+Verified with ~4.6M total inputs, 0 crashes found.
 
 ---
 
@@ -289,9 +283,9 @@ Not yet implemented. Fuzz targets would be:
 | `cargo-llvm-cov` | Coverage reporting | ✅ Installed (CI integrated) |
 
 ### Future Additions
-| Crate | Purpose | Add to Cargo.toml |
-|-------|---------|-------------------|
-| `cargo-fuzz` | Fuzz testing | `cargo install cargo-fuzz` |
+| Crate | Purpose | Status |
+|-------|---------|--------|
+| `cargo-mutants` | Mutation testing | Not yet installed |
 
 ---
 
@@ -302,7 +296,7 @@ Not yet implemented. Fuzz targets would be:
 - [ ] Automated comparison with QB64PE output
 
 ### Phase 4 Goals ✅ BENCHMARKS + PROPTEST + FUZZING COMPLETE
-- [ ] 80%+ line coverage (currently 59.92%)
+- [ ] 80%+ line coverage (currently 72.67% - up from 59.92%)
 
 ---
 
@@ -315,8 +309,8 @@ Not yet implemented. Fuzz targets would be:
 - [ ] Port 50+ compatibility tests
 
 ### Long Term (Next Quarter)
-- [ ] Set up continuous fuzzing with `cargo-fuzz`
-- [ ] Achieve 80%+ coverage
+- [x] Set up continuous fuzzing with `cargo-fuzz` ✅
+- [ ] Achieve 80%+ coverage (currently 72.67%)
 - [ ] All QB4.5 compatibility tests passing
 
 ---
@@ -328,7 +322,7 @@ Not yet implemented. Fuzz targets would be:
 cargo test --workspace
 
 # Run specific test suites
-cargo test --test integration_tests    # 239 integration tests
+cargo test --test integration_tests    # 272 integration tests
 cargo test --test golden_tests         # 10 golden tests
 cargo test --test compatibility        # 16 fixture tests
 cargo test --test proptest_tests       # 19 property-based tests
@@ -372,3 +366,4 @@ cargo llvm-cov --workspace --lcov      # LCOV format for CI
 *Updated: 2026-01-18 - Session 021: PRINT USING, ? as PRINT alias, bitwise ops (_SHL/_SHR/_ROL/_ROR/_READBIT/_SETBIT/_RESETBIT/_TOGGLEBIT), keyboard (_CINP, lock keys), graphics stubs, _CLAMP/_HYPOT tests; 176 tests*
 *Updated: 2026-01-18 - Session 022: Hyperbolic trig (_SINH/_COSH/_TANH/_ASINH/_ACOSH/_ATANH), angle conversion (_D2R/_R2D), _NEGATE, string compare (_STRCMP/_STRICMP), error extensions (_ERRORLINE/_ERRORMESSAGE$), utility funcs (_COMMANDCOUNT/_ENVIRONCOUNT), font stubs, desktop/window funcs, dialog boxes, RodioBackend for audio; 207 tests*
 *Updated: 2026-01-18 - Session 023: Reciprocal trig (_SEC/_CSC/_COT/_SECH/_CSCH/_COTH/_ARCSEC/_ARCCSC/_ARCCOT/_ARCSECH/_ARCCSCH/_ARCCOTH), gradian conversions (_D2G/_G2D/_G2R/_R2G), _TOSTR$, _BIN$, _IIF/_IIF$, window control (_SCREENMOVE/_SCREENHIDE/_SCREENSHOW/_FULLSCREEN/_SCREENCLICK), sound codegen (BEEP/SOUND/PLAY runtime), _FONT/_FREEFONT; 239 tests*
+*Updated: 2026-01-19 - Consolidated test counts: 534+ tests total (170 unit, 272 integration, 10 golden, 19 proptest, 44 runtime, 19 misc); coverage improved to 72.67%; updated golden files for current codegen output*

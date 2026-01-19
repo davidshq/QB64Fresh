@@ -1387,6 +1387,11 @@ int qb_gfx_poll_events(void) { return 1; }
 uint32_t qb_gfx_width(void) { return 80; }
 uint32_t qb_gfx_height(void) { return 25; }
 
+int qb_gfx_palette(int32_t attr, uint32_t color) { (void)attr; (void)color; return 0; }
+int qb_gfx_palette_reset(void) { return 0; }
+int qb_gfx_pcopy(int32_t src, int32_t dst) { (void)src; (void)dst; return 0; }
+double qb_gfx_pmap(double coord, int32_t func_code) { (void)func_code; return coord; }
+
 int qb_gfx_set_width(uint32_t cols, uint32_t rows) { (void)cols; (void)rows; return 0; }
 int qb_gfx_view(int screen, int32_t x1, int32_t y1, int32_t x2, int32_t y2, int32_t fill, int32_t border) { (void)screen; (void)x1; (void)y1; (void)x2; (void)y2; (void)fill; (void)border; return 0; }
 int qb_gfx_view_reset(void) { return 0; }
@@ -1463,6 +1468,10 @@ int64_t qb_font(int64_t handle) {
 int64_t qb_freefont(int64_t handle) { (void)handle; return 0; }
 int64_t qb_fontheight(void) { return 16; }
 int64_t qb_fontwidth(void) { return 8; }
+int64_t qb_printwidth(qb_string* text) {
+    if (text == NULL || text->data == NULL) return 0;
+    return (int64_t)text->length * qb_fontwidth();
+}
 
 /* Desktop/Window Functions */
 #ifdef _WIN32
