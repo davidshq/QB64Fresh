@@ -58,10 +58,37 @@ impl<'a> Parser<'a> {
         // A comment after THEN still makes it multi-line (the comment ends the line)
         if !self.check(&TokenKind::Newline) && !self.check(&TokenKind::Comment) && !self.is_at_end()
         {
-            // Single-line IF - handle line numbers as implicit GOTO
-            let then_stmt = self.parse_single_line_if_statement()?;
+            // Single-line IF: IF cond THEN stmt1: stmt2: ... ELSE stmt3: stmt4: ...
+            // Parse THEN branch - multiple statements separated by colons until ELSE or end of line
+            let mut then_branch = Vec::new();
+            loop {
+                then_branch.push(self.parse_single_line_if_statement()?);
+                // Check if next is colon (more statements) or ELSE/end of line
+                if self.check(&TokenKind::Colon) {
+                    // Peek ahead to see if ELSE follows
+                    if let Some(next) = self.peek_ahead(1)
+                        && next.kind == TokenKind::Else
+                    {
+                        break; // Stop at ELSE
+                    }
+                    self.advance(); // consume colon
+                } else {
+                    break; // No more statements
+                }
+            }
+
+            // Parse ELSE branch if present
             let else_branch = if self.match_token(&TokenKind::Else) {
-                Some(vec![self.parse_single_line_if_statement()?])
+                let mut else_stmts = Vec::new();
+                loop {
+                    else_stmts.push(self.parse_single_line_if_statement()?);
+                    if self.match_token(&TokenKind::Colon) {
+                        // More statements in ELSE clause
+                    } else {
+                        break;
+                    }
+                }
+                Some(else_stmts)
             } else {
                 None
             };
@@ -70,7 +97,7 @@ impl<'a> Parser<'a> {
             return Ok(Statement::new(
                 StatementKind::If {
                     condition,
-                    then_branch: vec![then_stmt],
+                    then_branch,
                     elseif_branches: Vec::new(),
                     else_branch,
                 },
