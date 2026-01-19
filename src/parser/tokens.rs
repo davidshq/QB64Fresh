@@ -125,13 +125,18 @@ impl<'a> Parser<'a> {
             || self.check(&TokenKind::Comment)
     }
 
-    /// Skips statement separators (newlines and colons).
+    /// Skips statement separators (newlines, colons, and comments).
     ///
     /// In BASIC, both newlines and colons separate statements:
     /// - `x = 1` / `y = 2` (newline separator)
     /// - `x = 1: y = 2` (colon separator on same line)
+    ///
+    /// Comments can also appear between statements and should be skipped.
     pub(super) fn skip_statement_separators(&mut self) {
-        while self.check(&TokenKind::Newline) || self.check(&TokenKind::Colon) {
+        while self.check(&TokenKind::Newline)
+            || self.check(&TokenKind::Colon)
+            || self.check(&TokenKind::Comment)
+        {
             self.advance();
         }
     }
