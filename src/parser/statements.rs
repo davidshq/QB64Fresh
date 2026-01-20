@@ -1229,6 +1229,18 @@ impl<'a> Parser<'a> {
                 // valid in DATA statements as unquoted string values. Examples:
                 //   DATA ╬,∩,▓,¥  (graphics characters in DOS/CP437)
                 TokenKind::Error => self.parse_data_unquoted_string(negative),
+                // Operator and punctuation tokens as standalone DATA values (e.g., DATA * or DATA !)
+                // In BASIC, these are treated as single-character string values
+                TokenKind::Star
+                | TokenKind::Slash
+                | TokenKind::Hash
+                | TokenKind::Plus
+                | TokenKind::Dot
+                | TokenKind::Ampersand
+                | TokenKind::Exclamation
+                | TokenKind::Print  // ? can appear in DATA values
+                | TokenKind::Percent
+                | TokenKind::DollarSign => self.parse_data_unquoted_string(negative),
                 _ => {
                     let span: Span = token.span.clone().into();
                     self.errors.push(ParseError::syntax(
@@ -1274,6 +1286,10 @@ impl<'a> Parser<'a> {
                 | TokenKind::Hash
                 | TokenKind::Dot
                 | TokenKind::Ampersand
+                | TokenKind::Exclamation
+                | TokenKind::Print  // ? can appear in DATA values
+                | TokenKind::Percent
+                | TokenKind::DollarSign
                 | TokenKind::Error => {
                     // Error tokens include extended ASCII characters (128-255)
                     // which are valid in DATA statement values
