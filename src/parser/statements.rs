@@ -499,7 +499,10 @@ impl<'a> Parser<'a> {
             return Ok(Statement::new(StatementKind::Call { name, args }, span));
         }
 
-        // If followed by LeftParen, parse as function call
+        // If followed by LeftParen, this could be either:
+        // 1. A SUB call with parens: SubName(arg1, arg2, arg3)
+        // 2. A SUB call where first arg is parenthesized: SubName ((expr)), arg2, arg3
+        // We can distinguish these cases by checking if there's a comma after the closing paren
         if self.check(&TokenKind::LeftParen) {
             self.advance(); // consume (
             let mut args = Vec::new();
@@ -513,6 +516,21 @@ impl<'a> Parser<'a> {
                 }
             }
             self.expect(&TokenKind::RightParen, ")")?;
+
+            // Check if there are more arguments after the closing paren
+            // This handles: SubName ((expr)), arg2, arg3
+            // where the first argument was parenthesized for clarity
+            if self.match_token(&TokenKind::Comma) {
+                // Continue parsing additional arguments
+                loop {
+                    let arg = self.parse_expression()?;
+                    args.push(arg);
+                    if !self.match_token(&TokenKind::Comma) {
+                        break;
+                    }
+                }
+            }
+
             let span = self.span_from(start);
             return Ok(Statement::new(StatementKind::Call { name, args }, span));
         }
