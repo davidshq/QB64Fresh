@@ -95,22 +95,39 @@ impl<'a> Parser<'a> {
 
     /// Parses COLOR statement.
     ///
-    /// Syntax: `COLOR foreground[, background[, border]]`
+    /// Syntax: `COLOR [foreground][, background][, border]]`
     ///
+    /// All parameters are optional. Omitting a parameter keeps the current value.
     /// In text mode, the third parameter sets the border color (CGA/EGA legacy).
     pub(super) fn parse_color(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("COLOR keyword").span.start;
-        let foreground = self.parse_expression()?;
 
-        let background = if self.match_token(&TokenKind::Comma) {
+        // Foreground is optional - check if we have a comma first (meaning omitted)
+        let foreground = if self.check(&TokenKind::Comma) || self.is_at_statement_end() {
+            None
+        } else {
             Some(self.parse_expression()?)
+        };
+
+        // Background is optional
+        let background = if self.match_token(&TokenKind::Comma) {
+            // Check if background is omitted (another comma or end of statement)
+            if self.check(&TokenKind::Comma) || self.is_at_statement_end() {
+                None
+            } else {
+                Some(self.parse_expression()?)
+            }
         } else {
             None
         };
 
         // Third parameter is border color (text mode only, CGA/EGA legacy)
-        let border = if background.is_some() && self.match_token(&TokenKind::Comma) {
-            Some(self.parse_expression()?)
+        let border = if self.match_token(&TokenKind::Comma) {
+            if self.is_at_statement_end() {
+                None
+            } else {
+                Some(self.parse_expression()?)
+            }
         } else {
             None
         };

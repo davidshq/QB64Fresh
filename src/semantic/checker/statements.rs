@@ -80,8 +80,9 @@ impl<'a> TypeChecker<'a> {
             StatementKind::Input {
                 prompt,
                 show_question_mark,
+                same_line,
                 targets,
-            } => self.check_input(prompt, *show_question_mark, targets, stmt.span),
+            } => self.check_input(prompt, *show_question_mark, *same_line, targets, stmt.span),
 
             StatementKind::LineInput { prompt, variable } => {
                 self.check_line_input(prompt, variable, stmt.span)
@@ -1399,7 +1400,7 @@ impl<'a> TypeChecker<'a> {
                 background,
                 border,
             } => {
-                let typed_fg = self.check_expr(foreground);
+                let typed_fg = foreground.as_ref().map(|e| self.check_expr(e));
                 let typed_bg = background.as_ref().map(|e| self.check_expr(e));
                 let typed_border = border.as_ref().map(|e| self.check_expr(e));
                 TypedStatement::new(

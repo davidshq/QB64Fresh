@@ -237,9 +237,17 @@ impl StmtEmitter {
             TypedStatementKind::Input {
                 prompt,
                 show_question_mark,
+                same_line,
                 targets,
             } => {
-                self.emit_input(&indent, prompt, *show_question_mark, targets, output)?;
+                self.emit_input(
+                    &indent,
+                    prompt,
+                    *show_question_mark,
+                    *same_line,
+                    targets,
+                    output,
+                )?;
             }
 
             TypedStatementKind::LineInput { prompt, variable } => {
@@ -898,18 +906,23 @@ impl StmtEmitter {
                 background,
                 border,
             } => {
-                let fg_code = emit_expr(foreground)?;
+                // Use -1 as sentinel for "unchanged" - runtime will check this
+                let fg_code = foreground
+                    .as_ref()
+                    .map(emit_expr)
+                    .transpose()?
+                    .unwrap_or_else(|| "-1".to_string());
                 let bg_code = background
                     .as_ref()
                     .map(emit_expr)
                     .transpose()?
-                    .unwrap_or_else(|| "0".to_string());
+                    .unwrap_or_else(|| "-1".to_string());
                 // Border is ignored in modern systems (was CGA/EGA text mode only)
                 // We accept it for compatibility but don't use it
                 let _border_code = border.as_ref().map(emit_expr).transpose()?;
                 writeln!(
                     output,
-                    "{}qb_gfx_color((uint32_t){}, (uint32_t){});",
+                    "{}qb_gfx_color((int32_t){}, (int32_t){});",
                     indent, fg_code, bg_code
                 )
                 .unwrap();
@@ -2234,10 +2247,16 @@ impl StmtEmitter {
         indent: &str,
         prompt: &Option<String>,
         show_question_mark: bool,
+        same_line: bool,
         targets: &[TypedInputTarget],
         output: &mut String,
     ) -> Result<(), CodeGenError> {
         use TypedInputTarget::*;
+
+        // Note: same_line is currently stored but not used in codegen
+        // The runtime would need to be updated to support this behavior
+        // (keep cursor on same line after input instead of moving to new line)
+        let _ = same_line;
 
         let full_prompt = match prompt {
             Some(p) => {

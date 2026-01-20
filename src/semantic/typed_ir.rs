@@ -231,6 +231,8 @@ pub enum TypedStatementKind {
     Input {
         prompt: Option<String>,
         show_question_mark: bool,
+        /// Keep cursor on same line after input (leading semicolon).
+        same_line: bool,
         /// Input targets (variables, array elements, fields) with their types.
         targets: Vec<TypedInputTarget>,
     },
@@ -736,9 +738,11 @@ pub enum TypedStatementKind {
     },
 
     /// COLOR statement - sets foreground/background colors.
+    ///
+    /// All parameters are optional. Omitting a parameter keeps the current value.
     Color {
-        /// Foreground color.
-        foreground: TypedExpr,
+        /// Optional foreground color (omit to keep current).
+        foreground: Option<TypedExpr>,
         /// Optional background color.
         background: Option<TypedExpr>,
         /// Optional border color (text mode only, CGA/EGA legacy).

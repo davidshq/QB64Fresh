@@ -273,11 +273,15 @@ pub enum StatementKind {
     },
 
     /// `INPUT [;]["prompt"{;|,}] variable[, variable...]`
+    ///
+    /// The optional leading semicolon keeps the cursor on the same line after input.
     Input {
         /// Optional prompt string.
         prompt: Option<String>,
         /// Whether to show question mark after prompt.
         show_question_mark: bool,
+        /// Keep cursor on same line after input (leading semicolon).
+        same_line: bool,
         /// Targets to read into (variables, array elements, or fields).
         targets: Vec<InputTarget>,
     },
@@ -717,12 +721,13 @@ pub enum StatementKind {
         mode: Option<Expr>,
     },
 
-    /// `COLOR foreground[, background[, border]]` - Set text/drawing colors
+    /// `COLOR [foreground][, background][, border]]` - Set text/drawing colors
     ///
+    /// All parameters are optional. Omitting a parameter keeps the current value.
     /// In text mode, the third parameter sets the border color (CGA/EGA).
     Color {
-        /// Foreground color
-        foreground: Expr,
+        /// Foreground color (optional - omit to keep current)
+        foreground: Option<Expr>,
         /// Background color (optional)
         background: Option<Expr>,
         /// Border color (optional, text mode only)

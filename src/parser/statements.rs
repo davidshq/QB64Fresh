@@ -1628,9 +1628,16 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses a console INPUT statement (original logic).
+    ///
+    /// Syntax: `INPUT [;] ["prompt" {; | ,}] variable[, variable...]`
+    ///
+    /// The optional leading semicolon keeps cursor on same line after input.
     fn parse_console_input(&mut self, start: usize) -> Result<Statement, ()> {
         let mut prompt = None;
         let mut show_question_mark = true;
+
+        // Check for leading semicolon (keep cursor on same line after input)
+        let same_line = self.match_token(&TokenKind::Semicolon);
 
         if self.check(&TokenKind::StringLiteral) {
             let token = self.advance().expect("prompt string");
@@ -1666,6 +1673,7 @@ impl<'a> Parser<'a> {
             StatementKind::Input {
                 prompt,
                 show_question_mark,
+                same_line,
                 targets,
             },
             span,

@@ -364,6 +364,7 @@ impl<'a> TypeChecker<'a> {
         &mut self,
         prompt: &Option<String>,
         show_question_mark: bool,
+        same_line: bool,
         targets: &[crate::ast::InputTarget],
         span: crate::ast::Span,
     ) -> TypedStatement {
@@ -451,6 +452,7 @@ impl<'a> TypeChecker<'a> {
             TypedStatementKind::Input {
                 prompt: prompt.clone(),
                 show_question_mark,
+                same_line,
                 targets: typed_targets,
             },
             span,
