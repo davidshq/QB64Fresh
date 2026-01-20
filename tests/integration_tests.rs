@@ -3798,3 +3798,155 @@ $END IF
         }
     }
 }
+
+// =============================================================================
+// System Statements Tests (File System, Shell, Memory, Mouse, Clipboard)
+// =============================================================================
+
+mod system_statements {
+    use super::*;
+
+    // File system statements
+
+    #[test]
+    fn kill_statement() {
+        let source = r#"KILL "test.txt""#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_kill("));
+    }
+
+    #[test]
+    fn kill_with_variable() {
+        let source = r#"
+DIM filename$
+filename$ = "test.txt"
+KILL filename$
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_kill("));
+    }
+
+    #[test]
+    fn name_statement() {
+        let source = r#"NAME "old.txt" AS "new.txt""#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_rename("));
+    }
+
+    #[test]
+    fn mkdir_statement() {
+        let source = r#"MKDIR "testdir""#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_mkdir("));
+    }
+
+    #[test]
+    fn rmdir_statement() {
+        let source = r#"RMDIR "testdir""#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_rmdir("));
+    }
+
+    #[test]
+    fn chdir_statement() {
+        let source = r#"CHDIR "/tmp""#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_chdir("));
+    }
+
+    // Shell statements
+
+    #[test]
+    fn shell_no_command() {
+        let source = "SHELL";
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_shell("));
+    }
+
+    #[test]
+    fn shell_with_command() {
+        let source = r#"SHELL "ls -la""#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_shell("));
+    }
+
+    #[test]
+    fn shellhide_statement() {
+        let source = r#"_SHELLHIDE "background_task""#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_shellhide("));
+    }
+
+    // Memory statements
+
+    #[test]
+    fn bload_simple() {
+        let source = r#"BLOAD "data.bin""#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_bload("));
+    }
+
+    #[test]
+    fn bload_with_address() {
+        let source = r#"BLOAD "data.bin", 12345"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_bload("));
+    }
+
+    #[test]
+    fn bsave_statement() {
+        let source = r#"BSAVE "data.bin", 12345, 1000"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_bsave("));
+    }
+
+    #[test]
+    fn setmem_statement() {
+        let source = "SETMEM 65536";
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_setmem("));
+    }
+
+    // Mouse statements
+
+    #[test]
+    fn mousehide_statement() {
+        let source = "_MOUSEHIDE";
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_mousehide("));
+    }
+
+    #[test]
+    fn mouseshow_statement() {
+        let source = "_MOUSESHOW";
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_mouseshow("));
+    }
+
+    #[test]
+    fn mousemove_statement() {
+        let source = "_MOUSEMOVE 100, 200";
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_mousemove("));
+    }
+
+    // Clipboard statements
+
+    #[test]
+    fn clipboard_set_statement() {
+        let source = r#"_CLIPBOARD$ = "Hello""#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_clipboard_set("));
+    }
+
+    #[test]
+    fn clipboard_set_with_variable() {
+        let source = r#"
+DIM text$
+text$ = "copied text"
+_CLIPBOARD$ = text$
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_clipboard_set("));
+    }
+}

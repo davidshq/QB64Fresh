@@ -642,8 +642,14 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses array dimensions.
+    /// Handles empty parentheses () for dynamic array declarations in STATIC/DIM.
     fn parse_array_dimensions(&mut self) -> Result<Vec<ArrayDimension>, ()> {
         let mut dims = Vec::new();
+
+        // Handle empty parentheses: arr() means dynamic array with no specified dimensions
+        if self.check(&TokenKind::RightParen) {
+            return Ok(dims); // Empty dimensions
+        }
 
         loop {
             let first = self.parse_expression()?;
