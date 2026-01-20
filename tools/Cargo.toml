@@ -1,0 +1,16 @@
+[package]
+name = "fix_encoding"
+version = "0.1.0"
+edition = "2021"
+description = "Fix encoding issues in legacy BASIC source files (DOS CP437, Latin1, etc.)"
+authors = ["QB64Fresh Contributors"]
+
+[[bin]]
+name = "fix_encoding"
+path = "fix_encoding.rs"
+
+[dependencies]
+# No external dependencies - pure std library
+
+[profile.release]
+opt-level = 2
