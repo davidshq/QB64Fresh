@@ -797,6 +797,8 @@ pub enum TypedStatementKind {
         color: Option<TypedExpr>,
         /// Box style: None = line, Some(false) = box, Some(true) = filled box.
         box_style: Option<bool>,
+        /// Line style pattern (16-bit, e.g., &HCCCC for dashed).
+        style: Option<TypedExpr>,
     },
 
     /// CIRCLE statement - draws a circle.

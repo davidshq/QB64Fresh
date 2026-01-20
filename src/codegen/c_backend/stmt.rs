@@ -1023,6 +1023,7 @@ impl StmtEmitter {
                 step2,
                 color,
                 box_style,
+                style: _, // TODO: implement line style pattern support
             } => {
                 let x2_code = emit_expr(x2)?;
                 let y2_code = emit_expr(y2)?;

@@ -1503,12 +1503,14 @@ impl<'a> TypeChecker<'a> {
                 step2,
                 color,
                 box_style,
+                style,
             } => {
                 let typed_x1 = x1.as_ref().map(|e| self.check_expr(e));
                 let typed_y1 = y1.as_ref().map(|e| self.check_expr(e));
                 let typed_x2 = self.check_expr(x2);
                 let typed_y2 = self.check_expr(y2);
                 let typed_color = color.as_ref().map(|e| self.check_expr(e));
+                let typed_style = style.as_ref().map(|e| self.check_expr(e));
                 TypedStatement::new(
                     TypedStatementKind::Line {
                         x1: typed_x1,
@@ -1518,6 +1520,7 @@ impl<'a> TypeChecker<'a> {
                         step2: *step2,
                         color: typed_color,
                         box_style: *box_style,
+                        style: typed_style,
                     },
                     stmt.span,
                 )

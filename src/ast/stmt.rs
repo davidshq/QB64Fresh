@@ -780,7 +780,7 @@ pub enum StatementKind {
         y: Expr,
     },
 
-    /// `LINE [(x1, y1)]-[STEP](x2, y2)[, color][, B|BF]` - Draw line or box
+    /// `LINE [(x1, y1)]-[STEP](x2, y2)[, color][, B|BF[, style]]` - Draw line or box
     Line {
         /// Start X (optional - uses last point if not specified)
         x1: Option<Expr>,
@@ -796,6 +796,8 @@ pub enum StatementKind {
         color: Option<Expr>,
         /// Box style: None = line, Some(false) = box outline, Some(true) = filled box
         box_style: Option<bool>,
+        /// Line style pattern (16-bit, e.g., &HCCCC for dashed) - only valid with B/BF
+        style: Option<Expr>,
     },
 
     /// `CIRCLE [STEP](x, y), radius[, color][, start][, end][, aspect][, F]`

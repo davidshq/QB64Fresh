@@ -327,6 +327,14 @@ impl<'a> Parser<'a> {
             None
         };
 
+        // Optional style pattern (16-bit hex value like &HCCCC for dashed lines)
+        // Only valid after B or BF, but we parse it regardless
+        let style = if self.match_token(&TokenKind::Comma) {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+
         let span = self.span_from(start);
         Ok(Statement::new(
             StatementKind::Line {
@@ -337,6 +345,7 @@ impl<'a> Parser<'a> {
                 step2,
                 color,
                 box_style,
+                style,
             },
             span,
         ))

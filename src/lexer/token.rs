@@ -1073,8 +1073,9 @@ pub enum TokenKind {
     FloatLiteral,
 
     /// String literal
-    /// Everything between double quotes
-    #[regex(r#""[^"]*""#)]
+    /// Everything between double quotes on a single line
+    /// In BASIC, strings cannot contain newlines - use UnterminatedString for that case
+    #[regex(r#""[^"\n]*""#)]
     StringLiteral,
 
     /// Unterminated string literal (missing closing quote)
