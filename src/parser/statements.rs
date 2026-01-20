@@ -1138,6 +1138,17 @@ impl<'a> Parser<'a> {
 
     /// Parses a single DATA value (numeric or string literal).
     fn parse_data_value(&mut self) -> Result<DataValue, ()> {
+        // Check for empty value (consecutive commas like DATA ,,)
+        // In BASIC, this represents an empty string value
+        if let Some(token) = self.peek()
+            && matches!(
+                token.kind,
+                TokenKind::Comma | TokenKind::Newline | TokenKind::Colon
+            )
+        {
+            return Ok(DataValue::String(String::new()));
+        }
+
         // Check for negative number
         let negative = self.match_token(&TokenKind::Minus);
 
@@ -1296,7 +1307,21 @@ impl<'a> Parser<'a> {
                     let tok = self.advance().expect("token");
                     unquoted_value.push_str(&tok.text);
                 }
-                _ => break,
+                // Keywords appearing in DATA values should be treated as text
+                // e.g., DATA Short Line, where "Line" is the LINE keyword
+                // We accept any token that has text except structural delimiters
+                _ => {
+                    // Check if this looks like a structural token we shouldn't consume
+                    if matches!(
+                        tok.kind,
+                        TokenKind::LeftParen | TokenKind::RightParen | TokenKind::Semicolon
+                    ) {
+                        break;
+                    }
+                    // Otherwise, treat it as text (covers keywords like LINE, INPUT, etc.)
+                    let tok = self.advance().expect("token");
+                    unquoted_value.push_str(&tok.text);
+                }
             }
         }
 

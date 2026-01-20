@@ -1358,8 +1358,8 @@ void qb_sndvol(int32_t handle, double volume) {
     (void)handle; (void)volume;
 }
 
-void qb_sndbal(int32_t handle, double balance) {
-    (void)handle; (void)balance;
+void qb_sndbal(int32_t handle, double x, double y, double z, int32_t channel) {
+    (void)handle; (void)x; (void)y; (void)z; (void)channel;
 }
 
 double qb_sndlen(int32_t handle) {
