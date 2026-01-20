@@ -3249,6 +3249,110 @@ mod sound_statements {
         let code = compile_to_c(r#"PLAY "CDEFGAB""#).unwrap();
         assert!(code.contains("qb_play("));
     }
+
+    // QB64 sound extensions
+
+    #[test]
+    fn sndclose_statement() {
+        let source = r#"
+DIM h AS LONG
+h = 1
+_SNDCLOSE h
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_sndclose("));
+    }
+
+    #[test]
+    fn sndplay_statement() {
+        let source = r#"
+DIM h AS LONG
+h = 1
+_SNDPLAY h
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_sndplay("));
+    }
+
+    #[test]
+    fn sndstop_statement() {
+        let source = r#"
+DIM h AS LONG
+h = 1
+_SNDSTOP h
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_sndstop("));
+    }
+
+    #[test]
+    fn sndpause_statement() {
+        let source = r#"
+DIM h AS LONG
+h = 1
+_SNDPAUSE h
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_sndpause("));
+    }
+
+    #[test]
+    fn sndloop_statement() {
+        let source = r#"
+DIM h AS LONG
+h = 1
+_SNDLOOP h
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_sndloop("));
+    }
+
+    #[test]
+    fn sndvol_statement() {
+        let source = r#"
+DIM h AS LONG
+h = 1
+_SNDVOL h, 0.5
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_sndvol("));
+    }
+
+    #[test]
+    fn sndbal_simple() {
+        let source = r#"
+DIM h AS LONG
+h = 1
+_SNDBAL h, -1.0
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_sndbal("));
+    }
+
+    #[test]
+    fn sndbal_3d() {
+        let source = r#"
+DIM h AS LONG
+h = 1
+_SNDBAL h, 1.0, 2.0, 3.0, 0
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_sndbal("));
+    }
+
+    #[test]
+    fn sndraw_mono() {
+        let source = "_SNDRAW 0.5";
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_sndraw("));
+    }
+
+    #[test]
+    fn sndraw_stereo() {
+        let source = "_SNDRAW 0.5, -0.5";
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_sndraw_stereo("));
+    }
 }
 
 /// Tests for font functions
@@ -3812,7 +3916,7 @@ mod system_statements {
     fn kill_statement() {
         let source = r#"KILL "test.txt""#;
         let code = compile_to_c(source).unwrap();
-        assert!(code.contains("qb_kill("));
+        assert!(code.contains("qb_file_kill("));
     }
 
     #[test]
@@ -3823,14 +3927,14 @@ filename$ = "test.txt"
 KILL filename$
 "#;
         let code = compile_to_c(source).unwrap();
-        assert!(code.contains("qb_kill("));
+        assert!(code.contains("qb_file_kill("));
     }
 
     #[test]
     fn name_statement() {
         let source = r#"NAME "old.txt" AS "new.txt""#;
         let code = compile_to_c(source).unwrap();
-        assert!(code.contains("qb_rename("));
+        assert!(code.contains("qb_file_rename("));
     }
 
     #[test]
@@ -3874,7 +3978,7 @@ KILL filename$
     fn shellhide_statement() {
         let source = r#"_SHELLHIDE "background_task""#;
         let code = compile_to_c(source).unwrap();
-        assert!(code.contains("qb_shellhide("));
+        assert!(code.contains("qb_shell_hide("));
     }
 
     // Memory statements
@@ -3902,9 +4006,10 @@ KILL filename$
 
     #[test]
     fn setmem_statement() {
+        // SETMEM is a no-op in modern systems
         let source = "SETMEM 65536";
         let code = compile_to_c(source).unwrap();
-        assert!(code.contains("qb_setmem("));
+        assert!(code.contains("SETMEM: no-op"));
     }
 
     // Mouse statements
@@ -3913,21 +4018,21 @@ KILL filename$
     fn mousehide_statement() {
         let source = "_MOUSEHIDE";
         let code = compile_to_c(source).unwrap();
-        assert!(code.contains("qb_mousehide("));
+        assert!(code.contains("qb_mouse_hide("));
     }
 
     #[test]
     fn mouseshow_statement() {
         let source = "_MOUSESHOW";
         let code = compile_to_c(source).unwrap();
-        assert!(code.contains("qb_mouseshow("));
+        assert!(code.contains("qb_mouse_show("));
     }
 
     #[test]
     fn mousemove_statement() {
         let source = "_MOUSEMOVE 100, 200";
         let code = compile_to_c(source).unwrap();
-        assert!(code.contains("qb_mousemove("));
+        assert!(code.contains("qb_mouse_move("));
     }
 
     // Clipboard statements
@@ -3948,5 +4053,420 @@ _CLIPBOARD$ = text$
 "#;
         let code = compile_to_c(source).unwrap();
         assert!(code.contains("qb_clipboard_set("));
+    }
+}
+
+// =============================================================================
+// Hardware/Event Control Statement Tests
+// =============================================================================
+
+/// Tests for hardware I/O statements (WAIT, POKE, OUT)
+mod hardware_io_statements {
+    use super::*;
+
+    #[test]
+    fn wait_statement() {
+        let code = compile_to_c("WAIT &H3DA, 8").unwrap();
+        assert!(code.contains("qb_wait("));
+    }
+
+    #[test]
+    fn wait_with_xor_mask() {
+        let code = compile_to_c("WAIT &H3DA, 8, 8").unwrap();
+        assert!(code.contains("qb_wait("));
+    }
+
+    #[test]
+    fn poke_statement() {
+        let code = compile_to_c("POKE &HA000, 255").unwrap();
+        assert!(code.contains("qb_poke("));
+    }
+
+    #[test]
+    fn out_statement() {
+        let code = compile_to_c("OUT &H3C8, 0").unwrap();
+        assert!(code.contains("qb_out_port("));
+    }
+}
+
+/// Tests for legacy interrupt statements
+mod interrupt_statements {
+    use super::*;
+
+    #[test]
+    fn interrupt_statement() {
+        let source = r#"
+DIM inregs AS RegType
+DIM outregs AS RegType
+INTERRUPT &H10, inregs, outregs
+"#;
+        // This should parse successfully even if RegType isn't defined
+        // (we're testing the parser, not semantic analysis)
+        let result = compile_to_c(source);
+        // Allow parse success or semantic error (type not defined)
+        assert!(result.is_ok() || result.unwrap_err().contains("Semantic"));
+    }
+
+    #[test]
+    fn interruptx_statement() {
+        let source = r#"
+DIM inregs AS RegTypeX
+DIM outregs AS RegTypeX
+INTERRUPTX &H10, inregs, outregs
+"#;
+        let result = compile_to_c(source);
+        assert!(result.is_ok() || result.unwrap_err().contains("Semantic"));
+    }
+}
+
+/// Tests for event control statements (STRIG, COM, PEN, etc.)
+mod event_control_statements {
+    use super::*;
+
+    #[test]
+    fn strig_on() {
+        let code = compile_to_c("STRIG(0) ON").unwrap();
+        assert!(code.contains("qb_strig_control("));
+    }
+
+    #[test]
+    fn strig_off() {
+        let code = compile_to_c("STRIG(0) OFF").unwrap();
+        assert!(code.contains("qb_strig_control("));
+    }
+
+    #[test]
+    fn strig_stop() {
+        let code = compile_to_c("STRIG(0) STOP").unwrap();
+        assert!(code.contains("qb_strig_control("));
+    }
+
+    #[test]
+    fn com_on() {
+        let code = compile_to_c("COM(1) ON").unwrap();
+        assert!(code.contains("qb_com_control("));
+    }
+
+    #[test]
+    fn com_off() {
+        let code = compile_to_c("COM(1) OFF").unwrap();
+        assert!(code.contains("qb_com_control("));
+    }
+
+    #[test]
+    fn pen_on() {
+        let code = compile_to_c("PEN ON").unwrap();
+        assert!(code.contains("qb_pen_control("));
+    }
+
+    #[test]
+    fn pen_off() {
+        let code = compile_to_c("PEN OFF").unwrap();
+        assert!(code.contains("qb_pen_control("));
+    }
+
+    #[test]
+    fn timer_on() {
+        let code = compile_to_c("TIMER ON").unwrap();
+        assert!(code.contains("qb_timer_control("));
+    }
+
+    #[test]
+    fn timer_off() {
+        let code = compile_to_c("TIMER OFF").unwrap();
+        assert!(code.contains("qb_timer_control("));
+    }
+
+    #[test]
+    fn uevent_on() {
+        let code = compile_to_c("UEVENT ON").unwrap();
+        assert!(code.contains("qb_uevent_control("));
+    }
+
+    #[test]
+    fn uevent_trigger() {
+        let code = compile_to_c("UEVENT").unwrap();
+        assert!(code.contains("qb_uevent_trigger("));
+    }
+
+    #[test]
+    fn signal_on() {
+        let code = compile_to_c("SIGNAL(1) ON").unwrap();
+        assert!(code.contains("qb_signal_control("));
+    }
+
+    #[test]
+    fn signal_off() {
+        let code = compile_to_c("SIGNAL(1) OFF").unwrap();
+        assert!(code.contains("qb_signal_control("));
+    }
+}
+
+/// Tests for MID$ statement (string replacement)
+mod mid_assignment {
+    use super::*;
+
+    #[test]
+    fn mid_simple() {
+        let source = r#"
+DIM s$
+s$ = "Hello World"
+MID$(s$, 7) = "BASIC"
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_mid_assign("));
+    }
+
+    #[test]
+    fn mid_with_length() {
+        let source = r#"
+DIM s$
+s$ = "Hello World"
+MID$(s$, 1, 5) = "Goodbye"
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_mid_assign("));
+    }
+
+    #[test]
+    fn mid_array_element() {
+        let source = r#"
+DIM arr$(10)
+arr$(1) = "Test"
+MID$(arr$(1), 1, 2) = "XX"
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_mid_assign("));
+    }
+}
+
+/// Tests for IOCTL statement
+mod ioctl_statement {
+    use super::*;
+
+    #[test]
+    fn ioctl_basic() {
+        let code = compile_to_c("IOCTL #1, \"command\"").unwrap();
+        assert!(code.contains("qb_ioctl("));
+    }
+
+    #[test]
+    fn ioctl_without_hash() {
+        let code = compile_to_c("IOCTL 1, \"command\"").unwrap();
+        assert!(code.contains("qb_ioctl("));
+    }
+}
+
+/// Tests for RANDOMIZE statement variations
+mod randomize_statement {
+    use super::*;
+
+    #[test]
+    fn randomize_no_args() {
+        let code = compile_to_c("RANDOMIZE").unwrap();
+        assert!(code.contains("qb_randomize("));
+    }
+
+    #[test]
+    fn randomize_timer() {
+        let code = compile_to_c("RANDOMIZE TIMER").unwrap();
+        assert!(code.contains("qb_randomize("));
+    }
+
+    #[test]
+    fn randomize_with_seed() {
+        let code = compile_to_c("RANDOMIZE 12345").unwrap();
+        assert!(code.contains("qb_randomize("));
+    }
+}
+
+/// Tests for _CONTINUE statement
+mod continue_statement {
+    use super::*;
+
+    #[test]
+    fn continue_default() {
+        let source = r#"
+DO
+    _CONTINUE
+LOOP
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("continue;"));
+    }
+
+    #[test]
+    fn continue_do() {
+        let source = r#"
+DO
+    _CONTINUE DO
+LOOP
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("continue;"));
+    }
+
+    #[test]
+    fn continue_for() {
+        let source = r#"
+FOR i = 1 TO 10
+    _CONTINUE FOR
+NEXT i
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("continue;"));
+    }
+
+    #[test]
+    fn continue_while() {
+        let source = r#"
+DIM x AS INTEGER
+x = 1
+WHILE x < 10
+    x = x + 1
+    _CONTINUE WHILE
+WEND
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("continue;"));
+    }
+}
+
+/// Tests for DEFTYPE statements
+mod deftype_statements {
+    use super::*;
+
+    #[test]
+    fn defint_single_letter() {
+        let source = r#"
+DEFINT I
+DIM icount
+icount = 42
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("int16_t icount"));
+    }
+
+    #[test]
+    fn defint_range() {
+        let source = r#"
+DEFINT I-N
+DIM index
+index = 100
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("int16_t index"));
+    }
+
+    #[test]
+    fn deflng_statement() {
+        let source = r#"
+DEFLNG L
+DIM lvalue
+lvalue = 1000000
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("int32_t lvalue"));
+    }
+
+    #[test]
+    fn defsng_statement() {
+        let source = r#"
+DEFSNG S
+DIM svalue
+svalue = 1.5
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("float svalue"));
+    }
+
+    #[test]
+    fn defdbl_statement() {
+        let source = r#"
+DEFDBL D
+DIM dvalue
+dvalue = 3.14159
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("double dvalue"));
+    }
+
+    #[test]
+    fn defstr_statement() {
+        let source = r#"
+DEFSTR S
+DIM sname
+sname = "test"
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_string_t* sname"));
+    }
+}
+
+/// Tests for CALL ABSOLUTE statement
+mod call_absolute {
+    use super::*;
+
+    #[test]
+    fn call_absolute_basic() {
+        let source = r#"
+DIM addr AS LONG
+addr = 12345
+CALL ABSOLUTE(addr)
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_call_absolute("));
+    }
+}
+
+/// Tests for SHARED statement inside procedures
+mod shared_inside_procedure {
+    use super::*;
+
+    #[test]
+    fn shared_inside_sub() {
+        let source = r#"
+DIM globalvar AS INTEGER
+globalvar = 100
+
+SUB MySub
+    SHARED globalvar
+    globalvar = globalvar + 1
+END SUB
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("globalvar"));
+    }
+}
+
+/// Tests for STATIC statement inside procedures
+mod static_inside_procedure {
+    use super::*;
+
+    #[test]
+    fn static_variable_in_sub() {
+        let source = r#"
+SUB Counter
+    STATIC count AS INTEGER
+    count = count + 1
+    PRINT count
+END SUB
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("static"));
+    }
+
+    #[test]
+    fn static_array_in_function() {
+        let source = r#"
+FUNCTION GetNext%
+    STATIC values%(10)
+    STATIC idx AS INTEGER
+    idx = idx + 1
+    GetNext% = values%(idx)
+END FUNCTION
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("static"));
     }
 }

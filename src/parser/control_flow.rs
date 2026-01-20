@@ -232,6 +232,29 @@ impl<'a> Parser<'a> {
             return Ok(Statement::new(StatementKind::Goto { target }, span));
         }
 
+        // Special handling for identifier statements in single-line IF context:
+        // In "IF x THEN SubName: Stmt2", the colon is a statement separator, NOT a label.
+        // parse_statement would incorrectly treat "SubName:" as a label definition.
+        if self.check(&TokenKind::Identifier)
+            && let Some(next) = self.peek_ahead(1)
+            && next.kind == TokenKind::Colon
+        {
+            // This looks like "identifier:" but in single-line IF context
+            // it's actually a procedure call followed by statement separator.
+            // Parse as procedure call without arguments.
+            let start = self.peek().unwrap().span.start;
+            let name_token = self.advance().expect("identifier");
+            let name = name_token.text.to_string();
+            let span = self.span_from(start);
+            return Ok(Statement::new(
+                StatementKind::Call {
+                    name,
+                    args: Vec::new(),
+                },
+                span,
+            ));
+        }
+
         // Otherwise parse a normal statement
         self.parse_statement()
     }
