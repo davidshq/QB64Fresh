@@ -216,12 +216,22 @@ impl<'a> Parser<'a> {
         let var_token = self.expect(&TokenKind::Identifier, "variable name")?;
         let variable = var_token.text.to_string();
 
+        // Optional array index (for `GET #1, , arr(i)`)
+        let index = if self.match_token(&TokenKind::LeftParen) {
+            let idx = self.parse_expression()?;
+            self.expect(&TokenKind::RightParen, "`)` after array index")?;
+            Some(idx)
+        } else {
+            None
+        };
+
         let span = self.span_from(start);
         Ok(Statement::new(
             StatementKind::FileGet {
                 file_num,
                 position,
                 variable,
+                index,
             },
             span,
         ))

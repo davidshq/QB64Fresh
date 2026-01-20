@@ -186,6 +186,16 @@ fn run_compat_tests(test_dir: &Path, category: &str) -> TestResults {
         for (stage, files) in &failures_by_stage {
             println!("  {}: {} files", stage, files.len());
         }
+
+        // Also print failing file names in verbose mode
+        if std::env::var("VERBOSE").is_ok() {
+            println!("\nFailing files:");
+            for (stage, files) in &failures_by_stage {
+                for f in files {
+                    println!("  ✗ [{}] {}", stage, f);
+                }
+            }
+        }
     }
 
     // Print passing files in verbose mode

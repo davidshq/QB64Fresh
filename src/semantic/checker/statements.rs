@@ -823,9 +823,11 @@ impl<'a> TypeChecker<'a> {
                 file_num,
                 position,
                 variable,
+                index,
             } => {
                 let typed_file_num = self.check_expr(file_num);
                 let typed_position = position.as_ref().map(|e| self.check_expr(e));
+                let typed_index = index.as_ref().map(|e| self.check_expr(e));
 
                 // Look up variable type
                 let var_type = if let Some(symbol) = self.symbols.lookup_symbol(variable) {
@@ -852,6 +854,7 @@ impl<'a> TypeChecker<'a> {
                         position: typed_position,
                         variable: variable.clone(),
                         var_type,
+                        index: typed_index,
                     },
                     stmt.span,
                 )

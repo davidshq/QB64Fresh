@@ -216,11 +216,18 @@ impl<'a> Parser<'a> {
     ///
     /// In classic BASIC, a bare line number after THEN/ELSE is an implicit GOTO:
     /// `IF x > 0 THEN 100` means `IF x > 0 THEN GOTO 100`
+    /// Classic BASIC allows decimal line numbers like `IF x > 0 THEN 1.1`
     fn parse_single_line_if_statement(&mut self) -> Result<Statement, ()> {
-        // Check for line number (implicit GOTO)
+        // Check for line number (implicit GOTO) - integer or float
         if self.check(&TokenKind::IntegerLiteral) {
             let token = self.advance().expect("line number");
             let target = format!("_line_{}", token.text);
+            let span: Span = token.span.clone().into();
+            return Ok(Statement::new(StatementKind::Goto { target }, span));
+        }
+        if self.check(&TokenKind::FloatLiteral) {
+            let token = self.advance().expect("float line number");
+            let target = format!("_line_{}", token.text.replace('.', "_"));
             let span: Span = token.span.clone().into();
             return Ok(Statement::new(StatementKind::Goto { target }, span));
         }

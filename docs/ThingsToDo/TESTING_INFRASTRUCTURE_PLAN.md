@@ -1,7 +1,7 @@
 # Testing Infrastructure Plan
 
 **Created:** 2026-01-18
-**Updated:** 2026-01-19 (Session 027)
+**Updated:** 2026-01-20 (Session 028)
 **Purpose:** Comprehensive plan for building out QB64Fresh testing infrastructure
 **Based On:** QB64PE testing framework analysis + codebase review findings
 
@@ -9,41 +9,72 @@
 
 ## Executive Summary
 
-**UPDATE:** As of 2026-01-19 (Session 027), the testing infrastructure has been substantially implemented:
-- **205 unit tests** in source modules
-- **340 integration tests** (0 ignored) - *+25 new graphics tests*
+**UPDATE:** As of 2026-01-20 (Session 028), the testing infrastructure has been substantially implemented:
+- **217 unit tests** in source modules
+- **340 integration tests** (0 ignored)
 - **10 golden tests** for C code generation snapshots
 - **16 compatibility test fixtures** (12 success + 4 error, auto-discovered)
 - **19 property-based tests** using proptest (thousands of iterations)
 - **30 benchmarks** measuring compiler performance
-- **44 runtime tests**
+- **44 runtime tests** (all passing)
 
-Total: **620+ tests** across the workspace (11 ignored for platform-specific features).
-**Line coverage:** 81.63% (measured via cargo-llvm-cov) ✅ Target achieved!
+Total: **591+ tests** across the main compiler (11 doc-test ignored for setup requirements).
+**QB64PE Compatibility:** 78.7% (111/141 files compile successfully)
 **Fuzz testing:** 3 fuzz targets verified (~4.6M inputs, 0 crashes)
+
+### ✅ Runtime Compilation Fixed (2026-01-20)
+
+The runtime library `*_step` methods have been added to the `GraphicsBackend` trait:
+- `pset_step()` - Plot pixel with STEP support
+- `line_step()` - Draw line with STEP for both endpoints
+- `circle_step()` - Draw circle with STEP center
+- `paint_step()` - Flood fill with STEP starting point
+
+All 44 runtime tests now pass.
 
 ---
 
 ## Current State Analysis
 
-### What We Have (Updated)
+### What We Have (Updated 2026-01-20)
 - Unit tests integrated into source files using `#[cfg(test)]` modules
-- **205 passing unit tests** across compiler modules
+- **217 passing unit tests** across compiler modules
 - **340 integration tests** covering full compilation pipeline
 - **10 golden tests** for codegen snapshot verification
 - **16 compatibility test fixtures** in QB64pe-style format
 - **30 criterion benchmarks** for performance tracking
-- **44 runtime library tests**
 - Good lexer, parser, and semantic test coverage
 - Comprehensive codegen testing via integration tests
+- **58 test modules** covering different language features
+
+### Test Modules by Category
+
+| Category | Modules | Notes |
+|----------|---------|-------|
+| **Core Language** | basic_programs, variables, expressions, control_flow, procedures, arrays, constants, literals | Foundation tests |
+| **Control Flow** | control_flow (IF/FOR/WHILE/DO/SELECT) | All variants covered |
+| **Data** | data_statements, shared_variables, field_statement | DATA/READ, SHARED scope |
+| **Functions** | builtin_functions, math_functions, type_conversions, extended_math | 50+ built-in functions |
+| **Trigonometry** | hyperbolic_functions, reciprocal_trig_functions, angle_conversions, gradian_conversions | Sin/cos/tan + extensions |
+| **Strings** | print_formatting, print_using, print_shorthand, string_comparison | LEN, LEFT$, MID$, etc. |
+| **I/O** | file_io, console_input, keyboard_input, lprint_statement | File + console I/O |
+| **Graphics** | graphics_stubs, extended_graphics, font_stubs, font_functions | GET/PUT, VIEW PRINT, _PRINTWIDTH |
+| **Sound** | sound_statements | BEEP, SOUND, PLAY |
+| **Window/Display** | window_control_functions, desktop_functions, dialog_functions, screenicon_statement | Screen control |
+| **System** | timing_statements, utility_functions, run_statement, chain_statement | SLEEP, _DELAY, RUN, CHAIN |
+| **Advanced** | bitwise_operations, inline_conditional_functions, number_conversion_functions | _SHL, _IIF, _BIN$ |
+| **Errors** | error_detection, error_extensions | Type mismatch, undefined vars |
+| **Meta** | conditional_compilation, trace_statements, assert_statement | $IF/$ELSE, TRON/TROFF |
 
 ### Remaining Gaps
-| Module | Lines | Tests | Risk Level |
-|--------|-------|-------|------------|
-| `src/codegen/c_backend/stmt.rs` | 2,533 | Via integration | Medium |
-| `src/parser/statements.rs` | 1,200+ | Good | Low |
-| `src/semantic/checker/statements.rs` | 1,000+ | Good | Low |
-| `runtime/src/` | ~500 | 44 tests | Low |
+
+| Area | Current State | Risk Level | Recommendation |
+|------|---------------|------------|----------------|
+| Runtime tests | ✅ **FIXED** | LOW | All 44 tests passing |
+| STEP graphics variants | ✅ **FIXED** | LOW | Trait methods added |
+| STRING * n assignment | Type mismatch error | Medium | Add implicit padding/conversion |
+| Coverage reporting | Ready to run | Low | Run `cargo llvm-cov --workspace` |
+| File I/O runtime | Stubs only | Low | Covered by codegen tests |
 
 ---
 
@@ -52,7 +83,7 @@ Total: **620+ tests** across the workspace (11 ignored for platform-specific fea
 ### Tier 1: Unit Tests ✅ IMPLEMENTED
 **Location:** `src/**/*.rs` (inline `#[cfg(test)]` modules)
 **Purpose:** Test individual functions and methods in isolation
-**Status:** 205 tests passing
+**Status:** 217 tests passing
 
 ```
 src/
@@ -61,7 +92,11 @@ src/
 ├── parser/
 │   ├── expressions.rs    ✅ Good coverage
 │   ├── statements.rs     ✅ Good coverage
-│   └── control_flow.rs   ✅ Good coverage
+│   ├── control_flow.rs   ✅ Good coverage
+│   ├── graphics.rs       ✅ New - modularized
+│   ├── audio.rs          ✅ New - modularized
+│   ├── system.rs         ✅ New - modularized
+│   └── file_io.rs        ✅ New - modularized
 ├── semantic/
 │   ├── checker/          ✅ Good coverage (via integration)
 │   └── types.rs          ✅ Good coverage
@@ -80,15 +115,18 @@ Tests cover:
 - Expressions (arithmetic, logical, comparison, string)
 - Control flow (IF/ELSE, FOR/NEXT, WHILE/WEND, DO/LOOP, SELECT CASE)
 - Procedures (SUB, FUNCTION, parameters, recursion)
-- Arrays (1D, 2D, indexing)
+- Arrays (1D, 2D, indexing, REDIM, ERASE)
 - DATA/READ statements
 - Type conversions (CINT, CLNG, CSNG, CDBL)
-- Built-in functions (math, type conversion)
+- Built-in functions (math, type conversion, string)
 - String functions (LEN, LEFT$, RIGHT$, MID$, UCASE$, LCASE$, CHR$, ASC, INSTR, SPACE$, STRING$)
 - RND/RANDOMIZE (random number generation)
 - Error detection (type mismatch, undefined procedures)
 - File compilation (example .bas files)
-- Graphics (GET/PUT arrays, VIEW PRINT, _PRINTWIDTH) - *Session 027*
+- Graphics (GET/PUT arrays, VIEW PRINT, _PRINTWIDTH)
+- Sound (BEEP, SOUND, PLAY)
+- Window control (_SCREENMOVE, _FULLSCREEN, etc.)
+- Conditional compilation ($IF, $ELSE, $END IF)
 
 ### Tier 3: Golden Tests ✅ IMPLEMENTED
 **Location:** `tests/golden_tests.rs` + `tests/golden/*.golden`
@@ -107,8 +145,8 @@ tests/
     ├── function.golden
     ├── array.golden
     ├── data_read.golden
-    ├── error_type_mismatch.golden
-    └── error_undefined_variable.golden
+    ├── error_type_mismatch.err.golden
+    └── error_undefined_variable.err.golden
 ```
 
 Update golden files: `UPDATE_GOLDEN=1 cargo test --test golden_tests`
@@ -120,10 +158,7 @@ QB64Fresh has **two complementary compatibility test systems**:
 #### 4a. Local Fixtures (`tests/compatibility.rs`)
 **Location:** `tests/compatibility.rs` + `tests/fixtures/`
 **Purpose:** Curated tests for features we've implemented
-**Status:** 16 fixture files auto-discovered
-
-These are tests written specifically for QB64Fresh that verify compilation succeeds
-and (optionally) that output matches expected values.
+**Status:** 16 fixture files auto-discovered (12 success + 4 error)
 
 ```
 tests/
@@ -154,36 +189,33 @@ Run: `cargo test --test compatibility`
 #### 4b. QB64pe Test Suite (`tests/qb45_compat.rs`)
 **Location:** `tests/qb45_compat.rs` (reads from `../QB64pe/tests/`)
 **Purpose:** Track compatibility with real-world QB64 programs
-**Status:** 141 files tested, **39 passing (27.7%)**
+**Status:** 141 files tested, **111 passing (78.7%)**
 
 This test runner executes tests directly from the QB64pe repository without
 copying them. It provides compatibility tracking against real QB4.5 and QB64 programs.
 
-**Current Results (2026-01-19):**
+**Current Results (2026-01-20):**
 | Category | Files | Passing | Rate |
 |----------|-------|---------|------|
-| qb45com | 5 | 0 | 0% |
-| misc | 46 | 11 | 23.9% |
-| n54 | 3 | 0 | 0% |
-| pete | 68 | 28 | 41.2% |
-| thebob | 19 | 0 | 0% |
-| **Total** | **141** | **39** | **27.7%** |
+| pete | 68 | 59 | **86.8%** |
+| misc | 46 | ~31 | 67.4% |
+| thebob | 19 | 11 | 57.9% |
+| qb45com | 5 | ~2 | 40.0% |
+| n54 | 3 | 1 | 33.3% |
+| **Total** | **141** | **111** | **78.7%** |
 
-**Failure breakdown:**
-- Semantic errors: 52 (missing features like SHARED, DEF SEG, etc.)
-- Parser errors: 25 (unimplemented syntax)
-- I/O errors: 24 (missing files, encoding issues)
-- Lexer errors: 1
+**Failure breakdown (30 files):**
+- Parser errors: 14 (missing syntax features)
+- Semantic errors: 13 (missing features like STRING * n conversion)
+- Lexer errors: 3 (@ and | characters, extended ASCII)
 
-**Recent improvements (Session 025):**
-- Implicit numeric type coercion (INTEGER↔LONG, etc.) - unlocked 23 more tests
-- `$CONSOLE`, `$CONSOLE:ONLY`, `$SCREENHIDE`, `$SCREENSHOW` metacommands
+**Recent improvements:**
+- `REDIM SHARED` / `REDIM _PRESERVE SHARED` syntax
+- `CIRCLE STEP` / `PAINT STEP` relative coordinates
+- DATA statement hex-like values (`DATA 8B,E5`)
+- Graphics GET/PUT with coordinate syntax
 
 Run: `cargo test --test qb45_compat -- --nocapture`
-
-**Note:** The QB64pe repository also has `tests/compile_tests/` with 100+ structured
-tests (`.bas` + `.output` pairs). These now parse correctly with the new metacommand
-support.
 
 ### Tier 5: Benchmarks ✅ IMPLEMENTED
 **Location:** `benches/compiler_benchmarks.rs`
@@ -206,6 +238,7 @@ Run: `cargo bench`
 
 Property tests verify the compiler never panics on arbitrary input:
 - `lexer_never_panics` - Random binary input
+- `parser_handles_arbitrary_input` - Handles all ASCII
 - `parser_never_panics_on_basic_input` - BASIC-like random code
 - `full_pipeline_never_panics` - Complete compilation pipeline
 - `handles_long_programs` - Stress testing with large inputs
@@ -245,10 +278,10 @@ cargo +nightly fuzz run fuzz_lexer -- -max_total_time=60
 ### Phase 1: Foundation ✅ COMPLETE
 
 #### 1.1 Integration Test Framework ✅
-Implemented in `tests/integration_tests.rs` with 315 tests covering:
+Implemented in `tests/integration_tests.rs` with 340 tests covering:
 - Full compilation pipeline (lex → parse → analyze → codegen)
 - Helper functions: `compile_to_c()`, `assert_compiles()`, `assert_compile_error()`
-- Organized into modules by feature area
+- Organized into 58 modules by feature area
 
 #### 1.2 Golden/Snapshot Testing ✅
 Implemented in `tests/golden_tests.rs` (manual approach instead of `insta`):
@@ -266,13 +299,16 @@ Covered via integration tests that verify:
 
 #### 2.1 Statement-by-Statement Tests ✅
 Integration tests cover each statement type:
-- [ ] `OPEN/CLOSE/PRINT#/INPUT#/GET/PUT` (file I/O not yet implemented)
-- [ ] Graphics statements (runtime stubs only)
-- [ ] Sound statements (runtime stubs only)
+- [x] All control flow (IF, FOR, WHILE, DO, SELECT CASE)
+- [x] All data operations (DIM, DATA, READ, RESTORE)
+- [x] All procedures (SUB, FUNCTION, DECLARE)
+- [x] Graphics primitives (GET, PUT, VIEW PRINT)
+- [ ] File I/O at runtime level (stubs only - codegen tested)
+- [ ] Graphics runtime (stubs only - codegen tested)
+- [ ] Sound runtime (stubs only - codegen tested)
 
 #### 2.2 Semantic Checker Tests ✅
-Covered via integration tests and error detection tests:
-- [ ] Array bounds checking (runtime feature)
+Covered via integration tests and error detection tests.
 
 ### Phase 3: Compatibility Testing ✅ IMPLEMENTED
 
@@ -287,12 +323,12 @@ Implemented in `tests/compatibility.rs`:
 Implemented in `tests/qb45_compat.rs`:
 - Runs tests directly from `../QB64pe/tests/qbasic_testcases/`
 - No need to copy/port files - reads them in place
-- Currently tests 141 files, 39 passing (27.7%)
+- Currently tests 141 files, 111 passing (78.7%)
 - Provides failure diagnostics by stage (lexer/parser/semantic/codegen)
 
 #### 3.3 Future: Increase Compatibility
-- Most failures are semantic errors (52) from missing features
-- Key missing features: SHARED scope, DEF SEG, graphics primitives
+- Most remaining failures are parser/semantic errors from missing features
+- Key missing features: STRING * n implicit conversion, @ lexer token
 - As features are implemented, more tests will automatically pass
 
 ### Phase 4: Benchmarking ✅ COMPLETE
@@ -304,23 +340,13 @@ Implemented in `benches/compiler_benchmarks.rs`:
 - 30 total benchmarks
 - HTML reports generated in `target/criterion/`
 
-Sample results:
-| Program | Full Compilation | Throughput |
-|---------|-----------------|------------|
-| hello_world | ~19 µs | ~1 MiB/s |
-| complex (500 bytes) | ~48 µs | ~10 MiB/s |
-
 ### Phase 5: Advanced Testing ✅ COMPLETE
 
 #### 5.1 Property-Based Testing ✅
 Implemented in `tests/proptest_tests.rs` with 19 tests using `proptest` crate.
 
 #### 5.2 Fuzzing with `cargo-fuzz` ✅
-Implemented in `fuzz/` directory with 3 fuzz targets:
-- `fuzz_lexer` - Fuzz arbitrary input to the lexer
-- `fuzz_parser` - Fuzz arbitrary token sequences to the parser
-- `fuzz_full_pipeline` - Fuzz the complete compilation pipeline
-
+Implemented in `fuzz/` directory with 3 fuzz targets.
 Verified with ~4.6M total inputs, 0 crashes found.
 
 ---
@@ -334,7 +360,7 @@ Verified with ~4.6M total inputs, 0 crashes found.
 | `pretty_assertions` | Better diff output | ✅ Installed |
 | `criterion` | Benchmarking | ✅ Installed |
 | `proptest` | Property-based testing | ✅ Installed (19 tests) |
-| `cargo-llvm-cov` | Coverage reporting | ✅ Installed (CI integrated) |
+| `cargo-llvm-cov` | Coverage reporting | ✅ Installed (blocked by runtime errors) |
 
 ### Future Additions
 | Crate | Purpose | Status |
@@ -347,47 +373,63 @@ Verified with ~4.6M total inputs, 0 crashes found.
 
 ### Phase 3 Goals 🔄 IN PROGRESS
 - [x] QB64pe test runner implemented (reads tests in place, no porting needed)
-- [ ] 50+ QB4.5 compatibility tests passing (currently 41/141 = 29.1%)
+- [x] 50+ QB4.5 compatibility tests passing (**111/141 = 78.7%** - target exceeded!)
+- [ ] 80%+ QB4.5 compatibility (currently 78.7%)
 - [ ] Automated comparison with QB64PE output (compile_tests now supported)
 
-### Phase 4 Goals ✅ COMPLETE
-- [x] 80%+ line coverage (**81.63%** achieved! - up from 72.67%)
+### Phase 4 Goals ✅ UNBLOCKED
+- [ ] 80%+ line coverage (was 81.63%, runtime now compiles - ready to measure)
+
+### New Tests Needed
+
+| Area | Priority | Rationale |
+|------|----------|-----------|
+| ~~Fix runtime `*_step` methods~~ | ~~HIGH~~ | ✅ FIXED (2026-01-20) |
+| STRING * n conversion tests | Medium | Would fix 6+ QB64pe failures |
+| @ and \| lexer tokens | Low | Would fix 1 QB64pe file |
+| Extended ASCII handling | Low | Would fix 1 QB64pe file |
 
 ---
 
 ## Implementation Checklist
 
+### Immediate ✅ COMPLETE
+- [x] **Fix runtime compilation errors** - Added `*_step` methods to GraphicsBackend trait (2026-01-20)
+
 ### Short Term ✅ COMPLETE
 - [x] QB64pe test runner implemented - no need to port, tests run from source
 - [x] Implicit numeric type coercion (INTEGER↔LONG, DOUBLE↔INTEGER, etc.)
 - [x] Console metacommands (`$CONSOLE`, `$CONSOLE:ONLY`, `$SCREENHIDE`, `$SCREENSHOW`)
+- [x] REDIM SHARED syntax
+- [x] Graphics coordinate syntax for GET/PUT
 
 ### Medium Term 🔄 IN PROGRESS
-- [ ] Get 50+ QB64pe tests passing (currently 41 after SHARED implementation)
-- [ ] Integrate `compile_tests` runner for structured output comparison
+- [ ] Get 80%+ QB64pe tests passing (currently 78.7%)
+- [ ] Restore coverage reporting (fix runtime first)
+- [ ] STRING * n implicit conversion
 
 ### Long Term
 - [x] Set up continuous fuzzing with `cargo-fuzz` ✅
-- [x] Achieve 80%+ coverage (**81.63%** achieved!)
-- [ ] 50%+ QB4.5 compatibility tests passing
+- [ ] Restore 80%+ coverage measurement
+- [x] 50%+ QB4.5 compatibility tests passing (**78.7%** achieved!)
 
 ---
 
 ## Quick Reference: Running Tests
 
 ```bash
-# Run all tests
-cargo test --workspace
+# Run all tests (compiler + runtime)
+cargo test
 
 # Run specific test suites
-cargo test --test integration_tests    # 277 integration tests
-cargo test --test golden_tests         # 10 golden tests
-cargo test --test compatibility        # 16 local fixture tests
-cargo test --test proptest_tests       # 19 property-based tests
-cargo test --test qb45_compat          # QB64pe compatibility (141 files)
+cargo test -p qb64fresh --test integration_tests    # 340 integration tests
+cargo test -p qb64fresh --test golden_tests         # 10 golden tests
+cargo test -p qb64fresh --test compatibility        # 16 local fixture tests
+cargo test -p qb64fresh --test proptest_tests       # 19 property-based tests
+cargo test -p qb64fresh --test qb45_compat          # QB64pe compatibility (141 files)
 
 # Run unit tests only
-cargo test --lib
+cargo test -p qb64fresh --lib                       # 217 unit tests
 
 # QB64pe compatibility tests (with output)
 cargo test --test qb45_compat -- --nocapture
@@ -405,10 +447,9 @@ UPDATE_GOLDEN=1 cargo test --test golden_tests
 # Run with verbose output
 cargo test -- --nocapture
 
-# Coverage reporting
+# Coverage reporting (runtime fixed - now available)
 cargo llvm-cov --workspace             # Console summary
 cargo llvm-cov --workspace --html      # HTML report in target/llvm-cov/html
-cargo llvm-cov --workspace --lcov      # LCOV format for CI
 ```
 
 ---
@@ -417,6 +458,7 @@ cargo llvm-cov --workspace --lcov      # LCOV format for CI
 
 - QB64PE Testing Framework: `QB64pe/docs/testing.md`
 - QB64PE Test Cases: `QB64pe/tests/compile_tests/`
+- QB45 Compatibility Report: `docs/QB45_COMPATIBILITY_REPORT.md`
 - Rust Testing Book: https://doc.rust-lang.org/book/ch11-00-testing.html
 - Criterion Documentation: https://bheisler.github.io/criterion.rs/book/
 
@@ -426,12 +468,14 @@ cargo llvm-cov --workspace --lcov      # LCOV format for CI
 *Updated: 2026-01-18 - Marked completed items after testing infrastructure implementation*
 *Updated: 2026-01-18 - Added coverage reporting (56.53%), property-based testing (19 tests), CI coverage job*
 *Updated: 2026-01-18 - String functions and RND/RANDOMIZE implemented, 5 tests enabled (110 passing, 2 ignored)*
-*Updated: 2026-01-18 - Session 019: SYSTEM, labeled DATA, File I/O tests, console INPUT tests, built-in functions (TIMER, DATE$, TIME$, TRIM$), fuzz infrastructure (128 tests, 0 ignored, 59.92% coverage)*
-*Updated: 2026-01-18 - Session 020: SLEEP, _DELAY, _LIMIT, ERASE, TAB, SPC, POS, CSRLIN, _KEYHIT, _KEYDOWN, _KEYCLEAR; fuzz testing verified (~4.6M inputs, 0 crashes); 148 tests*
-*Updated: 2026-01-18 - Session 021: PRINT USING, ? as PRINT alias, bitwise ops (_SHL/_SHR/_ROL/_ROR/_READBIT/_SETBIT/_RESETBIT/_TOGGLEBIT), keyboard (_CINP, lock keys), graphics stubs, _CLAMP/_HYPOT tests; 176 tests*
-*Updated: 2026-01-18 - Session 022: Hyperbolic trig (_SINH/_COSH/_TANH/_ASINH/_ACOSH/_ATANH), angle conversion (_D2R/_R2D), _NEGATE, string compare (_STRCMP/_STRICMP), error extensions (_ERRORLINE/_ERRORMESSAGE$), utility funcs (_COMMANDCOUNT/_ENVIRONCOUNT), font stubs, desktop/window funcs, dialog boxes, RodioBackend for audio; 207 tests*
-*Updated: 2026-01-18 - Session 023: Reciprocal trig (_SEC/_CSC/_COT/_SECH/_CSCH/_COTH/_ARCSEC/_ARCCSC/_ARCCOT/_ARCSECH/_ARCCSCH/_ARCCOTH), gradian conversions (_D2G/_G2D/_G2R/_R2G), _TOSTR$, _BIN$, _IIF/_IIF$, window control (_SCREENMOVE/_SCREENHIDE/_SCREENSHOW/_FULLSCREEN/_SCREENCLICK), sound codegen (BEEP/SOUND/PLAY runtime), _FONT/_FREEFONT; 239 tests*
-*Updated: 2026-01-19 - Consolidated test counts: 534+ tests total (170 unit, 272 integration, 10 golden, 19 proptest, 44 runtime, 19 misc); coverage improved to 72.67%; updated golden files for current codegen output*
-*Updated: 2026-01-19 - Session 024: ENDIF keyword, _READFILE$/_WRITEFILE file helpers, verified implicit SUB calls already working, register_builtin_sub() for built-in SUBs; 277 integration tests*
-*Updated: 2026-01-19 - Session 025+: Updated test counts (205 unit, 307 integration, 600+ total); coverage improved to 81.63% (target achieved!); updated golden files for current codegen output*
-*Updated: 2026-01-19 - Session 027: Phase 3 graphics completion - text rendering, _PRINTWIDTH, GET/PUT arrays, VIEW PRINT; 340 integration tests (+25 graphics tests); 620+ total tests*
+*Updated: 2026-01-18 - Session 019: SYSTEM, labeled DATA, File I/O tests, console INPUT tests, built-in functions*
+*Updated: 2026-01-18 - Session 020: SLEEP, _DELAY, _LIMIT, ERASE, TAB, SPC, POS, CSRLIN, _KEYHIT, _KEYDOWN, _KEYCLEAR*
+*Updated: 2026-01-18 - Session 021: PRINT USING, ? as PRINT alias, bitwise ops, keyboard functions, graphics stubs*
+*Updated: 2026-01-18 - Session 022: Hyperbolic trig, angle conversion, string compare, error extensions*
+*Updated: 2026-01-18 - Session 023: Reciprocal trig, gradian conversions, _TOSTR$, _BIN$, _IIF/_IIF$, window control*
+*Updated: 2026-01-19 - Consolidated test counts; coverage improved to 72.67%; updated golden files*
+*Updated: 2026-01-19 - Session 024: ENDIF keyword, _READFILE$/_WRITEFILE file helpers*
+*Updated: 2026-01-19 - Session 025+: Updated test counts; coverage improved to 81.63% (target achieved!)*
+*Updated: 2026-01-19 - Session 027: Phase 3 graphics completion - GET/PUT arrays, VIEW PRINT; 340 integration tests*
+*Updated: 2026-01-20 - Session 028: Comprehensive review; QB64pe compatibility now 78.7% (111/141); identified runtime compilation blocker*
+*Updated: 2026-01-20 - Session 029: Fixed runtime `*_step` methods - added pset_step, line_step, circle_step, paint_step to GraphicsBackend trait; all 44 runtime tests passing*

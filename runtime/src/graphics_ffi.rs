@@ -297,6 +297,76 @@ pub extern "C" fn qb_gfx_line(x1: i32, y1: i32, x2: i32, y2: i32, color: u32) ->
     }
 }
 
+/// Draw a line with optional STEP mode for endpoints.
+///
+/// # Arguments
+/// - `x1`, `y1`: Start coordinates (or offset if step1 is non-zero)
+/// - `x2`, `y2`: End coordinates (or offset if step2 is non-zero)
+/// - `color`: Line color (ARGB format)
+/// - `step1`: If non-zero, start coordinates are relative to last graphics point
+/// - `step2`: If non-zero, end coordinates are relative to resolved start
+///
+/// # Returns
+/// - `0` on success
+/// - Non-zero on failure
+#[no_mangle]
+pub extern "C" fn qb_gfx_line_step(
+    x1: i32,
+    y1: i32,
+    x2: i32,
+    y2: i32,
+    color: u32,
+    step1: c_int,
+    step2: c_int,
+) -> c_int {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            match backend.line_step(x1, y1, x2, y2, color, false, step1 != 0, step2 != 0) {
+                Ok(()) => 0,
+                Err(_) => 1,
+            }
+        } else {
+            1
+        }
+    }
+}
+
+/// Draw a box with optional STEP mode for corners.
+///
+/// # Arguments
+/// - `x1`, `y1`: First corner coordinates (or offset if step1 is non-zero)
+/// - `x2`, `y2`: Opposite corner coordinates (or offset if step2 is non-zero)
+/// - `color`: Box color (ARGB format)
+/// - `filled`: 0 for outline, non-zero for filled
+/// - `step1`: If non-zero, first corner is relative to last graphics point
+/// - `step2`: If non-zero, second corner is relative to resolved first corner
+///
+/// # Returns
+/// - `0` on success
+/// - Non-zero on failure
+#[no_mangle]
+pub extern "C" fn qb_gfx_box_step(
+    x1: i32,
+    y1: i32,
+    x2: i32,
+    y2: i32,
+    color: u32,
+    filled: c_int,
+    step1: c_int,
+    step2: c_int,
+) -> c_int {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            match backend.line_step(x1, y1, x2, y2, color, filled != 0, step1 != 0, step2 != 0) {
+                Ok(()) => 0,
+                Err(_) => 1,
+            }
+        } else {
+            1
+        }
+    }
+}
+
 /// Draw a box (rectangle outline or filled).
 ///
 /// # Arguments

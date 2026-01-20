@@ -182,6 +182,100 @@ pub trait GraphicsBackend {
     ) -> Result<(), GraphicsError>;
 
     // ============================================================================
+    // STEP Variants (relative coordinate support)
+    // ============================================================================
+
+    /// Plot a pixel with optional STEP mode (relative coordinates).
+    ///
+    /// When `step` is true, coordinates are relative to the last graphics point.
+    /// The default implementation simply calls `pset` (ignoring STEP).
+    /// Backends that track the last graphics point should override this.
+    ///
+    /// # Arguments
+    /// - `x`, `y`: Coordinates (absolute or relative if step=true)
+    /// - `color`: Pixel color
+    /// - `step`: If true, coordinates are relative to last graphics point
+    fn pset_step(&mut self, x: i32, y: i32, color: u32, step: bool) -> Result<(), GraphicsError> {
+        // Default: ignore step flag, just use absolute coordinates
+        let _ = step;
+        self.pset(x, y, color)
+    }
+
+    /// Draw a line with optional STEP mode for both endpoints.
+    ///
+    /// When `step1` is true, (x1, y1) is relative to the last graphics point.
+    /// When `step2` is true, (x2, y2) is relative to (x1, y1) after STEP1 resolution.
+    ///
+    /// # Arguments
+    /// - `x1`, `y1`: Start coordinates
+    /// - `x2`, `y2`: End coordinates
+    /// - `color`: Line color
+    /// - `filled`: Whether to fill (for box drawing)
+    /// - `step1`: If true, start coordinates are relative
+    /// - `step2`: If true, end coordinates are relative to resolved start
+    fn line_step(
+        &mut self,
+        x1: i32,
+        y1: i32,
+        x2: i32,
+        y2: i32,
+        color: u32,
+        filled: bool,
+        step1: bool,
+        step2: bool,
+    ) -> Result<(), GraphicsError> {
+        // Default: ignore step flags, just use absolute coordinates
+        let _ = (step1, step2);
+        self.line(x1, y1, x2, y2, color, filled)
+    }
+
+    /// Draw a circle with optional STEP mode.
+    ///
+    /// When `step` is true, center coordinates are relative to the last graphics point.
+    ///
+    /// # Arguments
+    /// - `x`, `y`: Center coordinates (absolute or relative if step=true)
+    /// - `radius`: Circle radius in pixels
+    /// - `color`: Circle color
+    /// - `filled`: Whether to fill the circle
+    /// - `step`: If true, center is relative to last graphics point
+    fn circle_step(
+        &mut self,
+        x: i32,
+        y: i32,
+        radius: i32,
+        color: u32,
+        filled: bool,
+        step: bool,
+    ) -> Result<(), GraphicsError> {
+        // Default: ignore step flag, just use absolute coordinates
+        let _ = step;
+        self.circle(x, y, radius, color, filled)
+    }
+
+    /// Flood fill with optional STEP mode.
+    ///
+    /// When `step` is true, starting point is relative to the last graphics point.
+    ///
+    /// # Arguments
+    /// - `x`, `y`: Starting point (absolute or relative if step=true)
+    /// - `color`: Fill color
+    /// - `boundary_color`: Color of the boundary to stop at
+    /// - `step`: If true, starting point is relative
+    fn paint_step(
+        &mut self,
+        x: i32,
+        y: i32,
+        color: u32,
+        boundary_color: Option<u32>,
+        step: bool,
+    ) -> Result<(), GraphicsError> {
+        // Default: ignore step flag, just use absolute coordinates
+        let _ = step;
+        self.paint(x, y, color, boundary_color)
+    }
+
+    // ============================================================================
     // Display Management
     // ============================================================================
 

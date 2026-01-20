@@ -22,6 +22,10 @@ pub struct MockBackend {
     cursor_row: u32,
     cursor_col: u32,
     operations: Vec<MockOperation>,
+    /// Last referenced graphics point X (for STEP support)
+    last_gfx_x: i32,
+    /// Last referenced graphics point Y (for STEP support)
+    last_gfx_y: i32,
 }
 
 /// Recorded graphics operation.
@@ -54,6 +58,8 @@ impl MockBackend {
             cursor_row: 1,
             cursor_col: 1,
             operations: Vec::new(),
+            last_gfx_x: 0,
+            last_gfx_y: 0,
         }
     }
 
@@ -175,6 +181,8 @@ impl GraphicsBackend for MockBackend {
         if !self.initialized {
             return Err(GraphicsError::not_initialized());
         }
+        self.last_gfx_x = x;
+        self.last_gfx_y = y;
         self.operations.push(MockOperation::Pset(x, y, color));
         Ok(())
     }
@@ -215,6 +223,8 @@ impl GraphicsBackend for MockBackend {
         if !self.initialized {
             return Err(GraphicsError::not_initialized());
         }
+        self.last_gfx_x = x;
+        self.last_gfx_y = y;
         self.operations
             .push(MockOperation::Circle(x, y, radius, color, filled));
         Ok(())
@@ -230,9 +240,79 @@ impl GraphicsBackend for MockBackend {
         if !self.initialized {
             return Err(GraphicsError::not_initialized());
         }
+        self.last_gfx_x = x;
+        self.last_gfx_y = y;
         self.operations
             .push(MockOperation::Paint(x, y, color, boundary_color));
         Ok(())
+    }
+
+    fn pset_step(&mut self, x: i32, y: i32, color: u32, step: bool) -> Result<(), GraphicsError> {
+        let (final_x, final_y) = if step {
+            (self.last_gfx_x + x, self.last_gfx_y + y)
+        } else {
+            (x, y)
+        };
+        self.pset(final_x, final_y, color)
+    }
+
+    fn line_step(
+        &mut self,
+        x1: i32,
+        y1: i32,
+        x2: i32,
+        y2: i32,
+        color: u32,
+        filled: bool,
+        step1: bool,
+        step2: bool,
+    ) -> Result<(), GraphicsError> {
+        let (final_x1, final_y1) = if step1 {
+            (self.last_gfx_x + x1, self.last_gfx_y + y1)
+        } else {
+            (x1, y1)
+        };
+        let (final_x2, final_y2) = if step2 {
+            (final_x1 + x2, final_y1 + y2)
+        } else {
+            (x2, y2)
+        };
+        self.last_gfx_x = final_x2;
+        self.last_gfx_y = final_y2;
+        self.line(final_x1, final_y1, final_x2, final_y2, color, filled)
+    }
+
+    fn circle_step(
+        &mut self,
+        x: i32,
+        y: i32,
+        radius: i32,
+        color: u32,
+        filled: bool,
+        step: bool,
+    ) -> Result<(), GraphicsError> {
+        let (final_x, final_y) = if step {
+            (self.last_gfx_x + x, self.last_gfx_y + y)
+        } else {
+            (x, y)
+        };
+        self.circle(final_x, final_y, radius, color, filled)
+    }
+
+    fn paint_step(
+        &mut self,
+        x: i32,
+        y: i32,
+        color: u32,
+        boundary_color: Option<u32>,
+        step: bool,
+    ) -> Result<(), GraphicsError> {
+        let (final_x, final_y) = if step {
+            (self.last_gfx_x + x, self.last_gfx_y + y)
+        } else {
+            (x, y)
+        };
+        self.paint(final_x, final_y, color, boundary_color)
     }
 
     fn display(&mut self) -> Result<(), GraphicsError> {

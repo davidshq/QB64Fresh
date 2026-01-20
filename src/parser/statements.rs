@@ -219,8 +219,11 @@ impl<'a> Parser<'a> {
             TokenKind::RemComment => self.parse_rem_comment(),
             TokenKind::Identifier => self.parse_identifier_statement(),
 
-            // Line numbers (e.g., "100 PRINT" becomes label + statement)
-            TokenKind::IntegerLiteral => self.parse_line_number_statement(),
+            // Line numbers (e.g., "100 PRINT" or "1.1" becomes label + statement)
+            // Classic BASIC allows both integer and decimal line numbers
+            TokenKind::IntegerLiteral | TokenKind::FloatLiteral => {
+                self.parse_line_number_statement()
+            }
 
             _ => {
                 let span: Span = token.span.clone().into();
@@ -420,16 +423,18 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Parses a line number at the start of a statement (e.g., "100 PRINT").
+    /// Parses a line number at the start of a statement (e.g., "100 PRINT" or "1.1").
     /// Returns a Label statement. The subsequent statement (if any) is parsed
     /// by the main parser loop since we're at the statement boundary.
+    /// Classic BASIC allows both integer and decimal line numbers (e.g., "1.1").
     fn parse_line_number_statement(&mut self) -> Result<Statement, ()> {
-        let start = self.peek().expect("integer token").span.start;
-        let line_num_token = self.advance().expect("integer literal");
+        let start = self.peek().expect("numeric token").span.start;
+        let line_num_token = self.advance().expect("numeric literal");
         let line_num = line_num_token.text.to_string();
 
         // Create a label name from the line number (prefixed to be valid C identifier)
-        let name = format!("_line_{}", line_num);
+        // Replace '.' with '_' for float line numbers (e.g., 1.1 -> _line_1_1)
+        let name = format!("_line_{}", line_num.replace('.', "_"));
         let span = self.span_from(start);
 
         Ok(Statement::new(StatementKind::Label { name }, span))
@@ -835,6 +840,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses a label target (identifier or line number).
+    /// Classic BASIC allows both integer and decimal line numbers (e.g., GOTO 1.1).
     fn parse_label_target(&mut self) -> Result<String, ()> {
         let token = self.peek();
         match token.map(|t| &t.kind) {
@@ -846,6 +852,11 @@ impl<'a> Parser<'a> {
                 let target_token = self.advance().expect("integer");
                 // Prefix with underscore to create valid C identifier for line numbers
                 Ok(format!("_line_{}", target_token.text))
+            }
+            Some(TokenKind::FloatLiteral) => {
+                let target_token = self.advance().expect("float");
+                // Prefix with underscore and replace '.' with '_' for valid C identifier
+                Ok(format!("_line_{}", target_token.text.replace('.', "_")))
             }
             _ => {
                 let span = token
@@ -2006,7 +2017,13 @@ impl<'a> Parser<'a> {
             Some(ResumeTarget::Label(token.text.to_string()))
         } else if self.check(&TokenKind::IntegerLiteral) {
             let token = self.advance().expect("line number");
-            Some(ResumeTarget::Label(token.text.to_string()))
+            Some(ResumeTarget::Label(format!("_line_{}", token.text)))
+        } else if self.check(&TokenKind::FloatLiteral) {
+            let token = self.advance().expect("float line number");
+            Some(ResumeTarget::Label(format!(
+                "_line_{}",
+                token.text.replace('.', "_")
+            )))
         } else {
             None // Plain RESUME - retry the statement that caused the error
         };

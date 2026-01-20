@@ -596,6 +596,8 @@ pub enum TypedStatementKind {
         variable: String,
         /// Variable type.
         var_type: BasicType,
+        /// Optional array index (for `GET #1, , arr(i)`).
+        index: Option<TypedExpr>,
     },
 
     /// PUT statement (binary/random file write).

@@ -702,6 +702,7 @@ impl StmtEmitter {
                 position,
                 variable,
                 var_type,
+                index,
             } => {
                 self.emit_file_get(
                     &indent,
@@ -709,6 +710,7 @@ impl StmtEmitter {
                     position.as_ref(),
                     variable,
                     var_type,
+                    index.as_ref(),
                     output,
                 )?;
             }
@@ -3251,6 +3253,7 @@ impl StmtEmitter {
     }
 
     /// Emits a GET statement.
+    #[allow(clippy::too_many_arguments)]
     fn emit_file_get(
         &self,
         indent: &str,
@@ -3258,6 +3261,7 @@ impl StmtEmitter {
         position: Option<&TypedExpr>,
         variable: &str,
         var_type: &BasicType,
+        index: Option<&TypedExpr>,
         output: &mut String,
     ) -> Result<(), CodeGenError> {
         let file_num_code = emit_expr(file_num)?;
@@ -3274,14 +3278,24 @@ impl StmtEmitter {
             .unwrap();
         }
 
-        // Read the data
+        // Read the data - handle array indexing if present
         let size = type_size(var_type);
-        writeln!(
-            output,
-            "{}qb_file_get({}, &{}, {});",
-            indent, file_num_code, c_var, size
-        )
-        .unwrap();
+        if let Some(idx) = index {
+            let idx_code = emit_expr(idx)?;
+            writeln!(
+                output,
+                "{}qb_file_get({}, &{}[{}], {});",
+                indent, file_num_code, c_var, idx_code, size
+            )
+            .unwrap();
+        } else {
+            writeln!(
+                output,
+                "{}qb_file_get({}, &{}, {});",
+                indent, file_num_code, c_var, size
+            )
+            .unwrap();
+        }
 
         Ok(())
     }

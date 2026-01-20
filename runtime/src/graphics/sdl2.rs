@@ -1464,6 +1464,38 @@ impl GraphicsBackend for SDL2Backend {
         Ok(())
     }
 
+    fn line_step(
+        &mut self,
+        x1: i32,
+        y1: i32,
+        x2: i32,
+        y2: i32,
+        color: u32,
+        filled: bool,
+        step1: bool,
+        step2: bool,
+    ) -> Result<(), GraphicsError> {
+        // Resolve first coordinate
+        let (final_x1, final_y1) = if step1 {
+            (self.last_gfx_x + x1, self.last_gfx_y + y1)
+        } else {
+            (x1, y1)
+        };
+
+        // Resolve second coordinate (relative to resolved first if step2)
+        let (final_x2, final_y2) = if step2 {
+            (final_x1 + x2, final_y1 + y2)
+        } else {
+            (x2, y2)
+        };
+
+        // Update last graphics point to the end of the line
+        self.last_gfx_x = final_x2;
+        self.last_gfx_y = final_y2;
+
+        self.line(final_x1, final_y1, final_x2, final_y2, color, filled)
+    }
+
     fn circle(
         &mut self,
         x: i32,

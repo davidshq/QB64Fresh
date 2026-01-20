@@ -130,6 +130,10 @@ impl<'a> Parser<'a> {
             TokenKind::Key => self.parse_builtin_function("KEY"),
             TokenKind::InputDollar => self.parse_builtin_function("INPUT$"),
 
+            // QB64 Sound functions (return handles or values)
+            TokenKind::SndOpen => self.parse_builtin_function("_SNDOPEN"),
+            TokenKind::SndOpenRaw => self.parse_builtin_function("_SNDOPENRAW"),
+
             // Keywords that can be used as variable names in expression context
             // In BASIC, keywords like NAME, INPUT, OUTPUT can be used as variable names
             // when context makes it unambiguous that an identifier is expected.

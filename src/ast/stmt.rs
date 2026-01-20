@@ -498,6 +498,8 @@ pub enum StatementKind {
         position: Option<Expr>,
         /// Variable to read into.
         variable: String,
+        /// Optional array index (for `GET #1, , arr(i)`).
+        index: Option<Expr>,
     },
 
     /// `PUT [#]filenum, [position], variable` or `PUT #filenum, , variable`
