@@ -452,6 +452,11 @@ pub enum TokenKind {
     #[token("INPUT", ignore(ascii_case))]
     Input,
 
+    /// INPUT$ function (reads characters from keyboard or file)
+    /// Must be higher priority than INPUT keyword to avoid keyword + $ tokenization
+    #[regex(r"(?i:INPUT\$)", priority = 4)]
+    InputDollar,
+
     /// OPEN statement
     #[token("OPEN", ignore(ascii_case))]
     Open,

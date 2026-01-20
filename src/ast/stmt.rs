@@ -278,8 +278,8 @@ pub enum StatementKind {
         prompt: Option<String>,
         /// Whether to show question mark after prompt.
         show_question_mark: bool,
-        /// Variables to read into.
-        variables: Vec<String>,
+        /// Targets to read into (variables, array elements, or fields).
+        targets: Vec<InputTarget>,
     },
 
     /// `LINE INPUT [;]["prompt";] variable$`
@@ -717,12 +717,16 @@ pub enum StatementKind {
         mode: Option<Expr>,
     },
 
-    /// `COLOR foreground[, background]` - Set text/drawing colors
+    /// `COLOR foreground[, background[, border]]` - Set text/drawing colors
+    ///
+    /// In text mode, the third parameter sets the border color (CGA/EGA).
     Color {
         /// Foreground color
         foreground: Expr,
         /// Background color (optional)
         background: Option<Expr>,
+        /// Border color (optional, text mode only)
+        border: Option<Expr>,
     },
 
     /// `LOCATE [row][, col][, cursor][, start, stop]` - Position cursor
@@ -895,11 +899,11 @@ pub enum StatementKind {
         step2: bool,
         /// Array name to store the captured image
         array_name: String,
-        /// Optional array index for storing in array of arrays
-        array_index: Option<Expr>,
+        /// Optional array indices for storing in array (supports multi-dimensional)
+        array_indices: Vec<Expr>,
     },
 
-    /// `PUT (x, y), array[(index)][, action]` - Draw array contents to screen
+    /// `PUT (x, y), array[(indices)][, action]` - Draw array contents to screen
     ///
     /// Draws a previously captured image (via GET) to the screen at the specified
     /// coordinates. The action parameter determines how pixels are combined:
@@ -919,8 +923,8 @@ pub enum StatementKind {
         step: bool,
         /// Array name containing the image data
         array_name: String,
-        /// Optional array index
-        array_index: Option<Expr>,
+        /// Optional array indices (supports multi-dimensional arrays)
+        array_indices: Vec<Expr>,
         /// QB64: _CLIP modifier to clip image at screen boundaries
         clip: bool,
         /// Action for combining pixels with existing screen content

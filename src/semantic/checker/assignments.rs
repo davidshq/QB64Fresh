@@ -364,29 +364,86 @@ impl<'a> TypeChecker<'a> {
         &mut self,
         prompt: &Option<String>,
         show_question_mark: bool,
-        variables: &[String],
+        targets: &[crate::ast::InputTarget],
         span: crate::ast::Span,
     ) -> TypedStatement {
-        let typed_vars: Vec<(String, BasicType)> = variables
+        use crate::ast::InputTarget;
+        use crate::semantic::typed_ir::TypedInputTarget;
+
+        // Type-check each input target (same logic as FileInput)
+        let typed_targets: Vec<TypedInputTarget> = targets
             .iter()
-            .map(|name| {
-                let basic_type = if let Some(sym) = self.symbols.lookup_symbol(name) {
-                    sym.basic_type.clone()
-                } else {
-                    // Implicitly declare
-                    let t = type_from_suffix(name)
-                        .unwrap_or_else(|| self.symbols.default_type_for(name));
-                    let symbol = Symbol {
-                        name: name.clone(),
-                        kind: SymbolKind::Variable,
-                        basic_type: t.clone(),
-                        span,
-                        is_mutable: true,
+            .map(|target| match target {
+                InputTarget::Variable(name) => {
+                    let var_type = if let Some(symbol) = self.symbols.lookup_symbol(name) {
+                        symbol.basic_type.clone()
+                    } else {
+                        // Infer type from suffix or default
+                        let inferred = type_from_suffix(name)
+                            .unwrap_or_else(|| self.symbols.default_type_for(name));
+                        let symbol = Symbol {
+                            name: name.clone(),
+                            kind: SymbolKind::Variable,
+                            basic_type: inferred.clone(),
+                            span,
+                            is_mutable: true,
+                        };
+                        let _ = self.symbols.define_symbol(symbol);
+                        inferred
                     };
-                    let _ = self.symbols.define_symbol(symbol);
-                    t
-                };
-                (name.clone(), basic_type)
+                    TypedInputTarget::Variable {
+                        name: name.clone(),
+                        basic_type: var_type,
+                    }
+                }
+                InputTarget::ArrayElement { name, indices } => {
+                    let typed_indices: Vec<_> =
+                        indices.iter().map(|i| self.check_expr(i)).collect();
+                    let element_type = if let Some(symbol) = self.symbols.lookup_symbol(name) {
+                        if let BasicType::Array { element_type, .. } = &symbol.basic_type {
+                            (**element_type).clone()
+                        } else {
+                            symbol.basic_type.clone()
+                        }
+                    } else {
+                        type_from_suffix(name)
+                            .unwrap_or_else(|| self.symbols.default_type_for(name))
+                    };
+                    TypedInputTarget::ArrayElement {
+                        name: name.clone(),
+                        indices: typed_indices,
+                        element_type,
+                    }
+                }
+                InputTarget::ArrayElementField {
+                    name,
+                    indices,
+                    fields,
+                } => {
+                    let typed_indices: Vec<_> =
+                        indices.iter().map(|i| self.check_expr(i)).collect();
+                    let field_type = fields
+                        .last()
+                        .and_then(|f| type_from_suffix(f))
+                        .unwrap_or(BasicType::Single);
+                    TypedInputTarget::ArrayElementField {
+                        name: name.clone(),
+                        indices: typed_indices,
+                        fields: fields.clone(),
+                        field_type,
+                    }
+                }
+                InputTarget::Field { name, fields } => {
+                    let field_type = fields
+                        .last()
+                        .and_then(|f| type_from_suffix(f))
+                        .unwrap_or(BasicType::Single);
+                    TypedInputTarget::Field {
+                        name: name.clone(),
+                        fields: fields.clone(),
+                        field_type,
+                    }
+                }
             })
             .collect();
 
@@ -394,7 +451,7 @@ impl<'a> TypeChecker<'a> {
             TypedStatementKind::Input {
                 prompt: prompt.clone(),
                 show_question_mark,
-                variables: typed_vars,
+                targets: typed_targets,
             },
             span,
         )

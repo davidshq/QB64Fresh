@@ -134,12 +134,24 @@ impl<'a> TypeChecker<'a> {
             };
 
             if let Err(err) = self.symbols.define_symbol(symbol) {
-                let (existing, _) = *err;
-                self.errors.push(SemanticError::DuplicateVariable {
-                    name: var.name.clone(),
-                    original_span: existing.span,
-                    duplicate_span: span,
-                });
+                let (existing, new) = *err;
+                // In classic BASIC, DIM can re-dimension a simple variable as an array.
+                // This is common when a FOR loop implicitly creates a variable, and then
+                // DIM is used later to declare an array with the same name.
+                let is_array_replacing_simple =
+                    matches!(new.kind, SymbolKind::ArrayVariable { .. })
+                        && matches!(existing.kind, SymbolKind::Variable);
+
+                if is_array_replacing_simple {
+                    // Allow the redefinition by updating the symbol
+                    self.symbols.update_or_define_symbol(new);
+                } else {
+                    self.errors.push(SemanticError::DuplicateVariable {
+                        name: var.name.clone(),
+                        original_span: existing.span,
+                        duplicate_span: span,
+                    });
+                }
             }
 
             typed_variables.push(TypedDimVariable {

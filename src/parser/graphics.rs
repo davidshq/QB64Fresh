@@ -95,20 +95,32 @@ impl<'a> Parser<'a> {
 
     /// Parses COLOR statement.
     ///
-    /// Syntax: `COLOR foreground[, background]`
+    /// Syntax: `COLOR foreground[, background[, border]]`
+    ///
+    /// In text mode, the third parameter sets the border color (CGA/EGA legacy).
     pub(super) fn parse_color(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("COLOR keyword").span.start;
         let foreground = self.parse_expression()?;
+
         let background = if self.match_token(&TokenKind::Comma) {
             Some(self.parse_expression()?)
         } else {
             None
         };
+
+        // Third parameter is border color (text mode only, CGA/EGA legacy)
+        let border = if background.is_some() && self.match_token(&TokenKind::Comma) {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+
         let span = self.span_from(start);
         Ok(Statement::new(
             StatementKind::Color {
                 foreground,
                 background,
+                border,
             },
             span,
         ))

@@ -237,9 +237,9 @@ impl StmtEmitter {
             TypedStatementKind::Input {
                 prompt,
                 show_question_mark,
-                variables,
+                targets,
             } => {
-                self.emit_input(&indent, prompt, *show_question_mark, variables, output)?;
+                self.emit_input(&indent, prompt, *show_question_mark, targets, output)?;
             }
 
             TypedStatementKind::LineInput { prompt, variable } => {
@@ -896,20 +896,23 @@ impl StmtEmitter {
             TypedStatementKind::Color {
                 foreground,
                 background,
+                border,
             } => {
                 let fg_code = emit_expr(foreground)?;
-                if let Some(bg) = background {
-                    let bg_code = emit_expr(bg)?;
-                    writeln!(
-                        output,
-                        "{}qb_gfx_color((uint32_t){}, (uint32_t){});",
-                        indent, fg_code, bg_code
-                    )
-                    .unwrap();
-                } else {
-                    // Only set foreground, pass 0 for background (unchanged)
-                    writeln!(output, "{}qb_gfx_color((uint32_t){}, 0);", indent, fg_code).unwrap();
-                }
+                let bg_code = background
+                    .as_ref()
+                    .map(emit_expr)
+                    .transpose()?
+                    .unwrap_or_else(|| "0".to_string());
+                // Border is ignored in modern systems (was CGA/EGA text mode only)
+                // We accept it for compatibility but don't use it
+                let _border_code = border.as_ref().map(emit_expr).transpose()?;
+                writeln!(
+                    output,
+                    "{}qb_gfx_color((uint32_t){}, (uint32_t){});",
+                    indent, fg_code, bg_code
+                )
+                .unwrap();
             }
 
             TypedStatementKind::Locate { row, col } => {
@@ -1205,7 +1208,7 @@ impl StmtEmitter {
                 y2,
                 step2,
                 array_name,
-                array_index,
+                array_indices,
             } => {
                 let x1_code = emit_expr(x1)?;
                 let y1_code = emit_expr(y1)?;
@@ -1214,11 +1217,15 @@ impl StmtEmitter {
                 let arr_name = c_identifier(array_name);
 
                 // Calculate array pointer - either base or with offset
-                let arr_ptr = if let Some(idx) = array_index {
-                    let idx_code = emit_expr(idx)?;
-                    format!("&{}[{}]", arr_name, idx_code)
-                } else {
+                let arr_ptr = if array_indices.is_empty() {
                     arr_name.clone()
+                } else {
+                    // For multi-dimensional arrays, generate index expression
+                    let indices: Vec<String> = array_indices
+                        .iter()
+                        .map(emit_expr)
+                        .collect::<Result<_, _>>()?;
+                    format!("&{}[{}]", arr_name, indices.join("]["))
                 };
 
                 if *step2 {
@@ -1244,7 +1251,7 @@ impl StmtEmitter {
                 y,
                 step,
                 array_name,
-                array_index,
+                array_indices,
                 clip,
                 action,
                 transparent_color,
@@ -1256,11 +1263,15 @@ impl StmtEmitter {
                 let arr_name = c_identifier(array_name);
 
                 // Calculate array pointer
-                let arr_ptr = if let Some(idx) = array_index {
-                    let idx_code = emit_expr(idx)?;
-                    format!("&{}[{}]", arr_name, idx_code)
-                } else {
+                let arr_ptr = if array_indices.is_empty() {
                     arr_name.clone()
+                } else {
+                    // For multi-dimensional arrays, generate index expression
+                    let indices: Vec<String> = array_indices
+                        .iter()
+                        .map(emit_expr)
+                        .collect::<Result<_, _>>()?;
+                    format!("&{}[{}]", arr_name, indices.join("]["))
                 };
 
                 // Map action to C constant
@@ -2223,9 +2234,11 @@ impl StmtEmitter {
         indent: &str,
         prompt: &Option<String>,
         show_question_mark: bool,
-        variables: &[(String, BasicType)],
+        targets: &[TypedInputTarget],
         output: &mut String,
     ) -> Result<(), CodeGenError> {
+        use TypedInputTarget::*;
+
         let full_prompt = match prompt {
             Some(p) => {
                 if show_question_mark {
@@ -2243,8 +2256,48 @@ impl StmtEmitter {
             }
         };
 
-        for (i, (var_name, var_type)) in variables.iter().enumerate() {
-            let c_name = c_identifier(var_name);
+        for (i, target) in targets.iter().enumerate() {
+            let (target_code, var_type) = match target {
+                Variable { name, basic_type } => (c_identifier(name), basic_type.clone()),
+                ArrayElement {
+                    name,
+                    indices,
+                    element_type,
+                } => {
+                    let c_arr = c_identifier(name);
+                    let idx_code: Vec<_> =
+                        indices.iter().map(emit_expr).collect::<Result<_, _>>()?;
+                    // Use first index for 1D array syntax (TODO: handle multi-dim)
+                    let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
+                    (format!("{}[{}]", c_arr, idx), element_type.clone())
+                }
+                ArrayElementField {
+                    name,
+                    indices,
+                    fields,
+                    field_type,
+                } => {
+                    let c_arr = c_identifier(name);
+                    let idx_code: Vec<_> =
+                        indices.iter().map(emit_expr).collect::<Result<_, _>>()?;
+                    let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
+                    let field_chain = fields.join(".");
+                    (
+                        format!("{}[{}].{}", c_arr, idx, field_chain),
+                        field_type.clone(),
+                    )
+                }
+                Field {
+                    name,
+                    fields,
+                    field_type,
+                } => {
+                    let c_var = c_identifier(name);
+                    let field_chain = fields.join(".");
+                    (format!("{}.{}", c_var, field_chain), field_type.clone())
+                }
+            };
+
             let prompt_arg = if i == 0 && !full_prompt.is_empty() {
                 format!("\"{}\"", escape_string(&full_prompt))
             } else {
@@ -2255,21 +2308,21 @@ impl StmtEmitter {
                 writeln!(
                     output,
                     "{}qb_input_string({}, &{});",
-                    indent, prompt_arg, c_name
+                    indent, prompt_arg, target_code
                 )
                 .unwrap();
             } else if var_type.is_float() {
                 writeln!(
                     output,
                     "{}qb_input_float({}, &{});",
-                    indent, prompt_arg, c_name
+                    indent, prompt_arg, target_code
                 )
                 .unwrap();
             } else {
                 writeln!(
                     output,
                     "{}qb_input_int({}, &{});",
-                    indent, prompt_arg, c_name
+                    indent, prompt_arg, target_code
                 )
                 .unwrap();
             }

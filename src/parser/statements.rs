@@ -1650,10 +1650,11 @@ impl<'a> Parser<'a> {
             }
         }
 
-        let mut variables = Vec::new();
+        // Parse comma-separated input targets (variables, array elements, fields)
+        let mut targets = Vec::new();
         loop {
-            let var_token = self.expect(&TokenKind::Identifier, "variable name")?;
-            variables.push(var_token.text.to_string());
+            let target = self.parse_input_target()?;
+            targets.push(target);
 
             if !self.match_token(&TokenKind::Comma) {
                 break;
@@ -1665,7 +1666,7 @@ impl<'a> Parser<'a> {
             StatementKind::Input {
                 prompt,
                 show_question_mark,
-                variables,
+                targets,
             },
             span,
         ))

@@ -128,6 +128,7 @@ impl<'a> Parser<'a> {
             TokenKind::Erdev => self.parse_builtin_function("ERDEV"),
             TokenKind::Ioctl => self.parse_builtin_function("IOCTL$"),
             TokenKind::Key => self.parse_builtin_function("KEY"),
+            TokenKind::InputDollar => self.parse_builtin_function("INPUT$"),
 
             // Keywords that can be used as variable names in expression context
             // In BASIC, keywords like NAME, INPUT, OUTPUT can be used as variable names

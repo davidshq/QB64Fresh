@@ -555,11 +555,21 @@ impl SemanticAnalyzer {
         self.register_builtin_function("EOF", &[("fnum", BasicType::Integer)], BasicType::Integer);
         self.register_builtin_function("LOF", &[("fnum", BasicType::Integer)], BasicType::Long);
         self.register_builtin_function("LOC", &[("fnum", BasicType::Integer)], BasicType::Long);
+        self.register_builtin_function("SEEK", &[("fnum", BasicType::Integer)], BasicType::Long);
         self.register_builtin_function("FREEFILE", &[], BasicType::Integer);
 
         // Keyboard input functions
         self.register_builtin_function("INKEY$", &[], BasicType::String);
-        self.register_builtin_function("INPUT$", &[("n", BasicType::Integer)], BasicType::String);
+        // INPUT$(n) - read n chars from keyboard
+        // INPUT$(n, filenum) - read n chars from file
+        self.register_builtin_function_with_optionals(
+            "INPUT$",
+            &[
+                ("n", BasicType::Integer, false),
+                ("filenum", BasicType::Integer, true),
+            ],
+            BasicType::String,
+        );
 
         // QB64 keyboard extensions
         self.register_builtin_function("_KEYHIT", &[], BasicType::Long);

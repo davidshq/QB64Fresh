@@ -434,7 +434,7 @@
 
 ---
 
-*Last updated: 2026-01-19 (Session 024 - Array passing support)*
+*Last updated: 2026-01-20 (Session 025 - QB4.5 compatibility fixes)*
 
 ---
 
@@ -525,3 +525,24 @@
 - [x] REDIM now uses `update_or_define_symbol` to properly update array parameters
 - [x] Skip dimension validation for dynamic arrays (empty dimensions)
 - [x] Code generation for `ArrayRef` (emits array name, decays to pointer in C)
+
+---
+
+## Phase 7: QB4.5 Compatibility Improvements ✅ (Session 025)
+
+### Lexer Fixes
+- [x] `INPUT$` function token - Added `InputDollar` token with high priority regex to prevent `INPUT$` being tokenized as `INPUT` keyword + `$` suffix
+- [x] Parser support for `INPUT$` as builtin function call
+
+### Semantic Analysis Fixes
+- [x] `DIM` can now replace simple variables with arrays - Allows `DIM x(10)` after `FOR x = 1 TO n` without "duplicate variable" error
+- [x] `STRING * n` ↔ `STRING` conversion - Fixed-length strings and regular strings are now interconvertible
+
+### Console INPUT Improvements
+- [x] `INPUT` statement now accepts array elements - `INPUT p(k)` works correctly
+- [x] Changed INPUT statement AST from `variables: Vec<String>` to `targets: Vec<InputTarget>`
+- [x] Support for `InputTarget` variants: Variable, ArrayElement, ArrayElementField, Field
+- [x] Updated semantic checker, typed IR, and codegen for INPUT with complex targets
+
+### Test Results Improvement
+- QB4.5 test case compatibility: **105/141 → 108/141** (74.5% → 76.6%)

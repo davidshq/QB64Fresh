@@ -227,12 +227,12 @@ pub enum TypedStatementKind {
         newline: bool,
     },
 
-    /// INPUT statement with typed variables.
+    /// INPUT statement with typed targets.
     Input {
         prompt: Option<String>,
         show_question_mark: bool,
-        /// Variables paired with their types.
-        variables: Vec<(String, BasicType)>,
+        /// Input targets (variables, array elements, fields) with their types.
+        targets: Vec<TypedInputTarget>,
     },
 
     /// LINE INPUT statement.
@@ -741,6 +741,8 @@ pub enum TypedStatementKind {
         foreground: TypedExpr,
         /// Optional background color.
         background: Option<TypedExpr>,
+        /// Optional border color (text mode only, CGA/EGA legacy).
+        border: Option<TypedExpr>,
     },
 
     /// LOCATE statement - positions the cursor.
@@ -896,8 +898,8 @@ pub enum TypedStatementKind {
         step2: bool,
         /// Array name to store captured image.
         array_name: String,
-        /// Optional array index.
-        array_index: Option<TypedExpr>,
+        /// Array indices (supports multi-dimensional).
+        array_indices: Vec<TypedExpr>,
     },
 
     /// PUT graphics statement - draw array contents to screen.
@@ -910,8 +912,8 @@ pub enum TypedStatementKind {
         step: bool,
         /// Array name containing image data.
         array_name: String,
-        /// Optional array index.
-        array_index: Option<TypedExpr>,
+        /// Array indices (supports multi-dimensional).
+        array_indices: Vec<TypedExpr>,
         /// QB64: _CLIP modifier to clip at screen boundaries.
         clip: bool,
         /// Action for combining pixels.

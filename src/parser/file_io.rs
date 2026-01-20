@@ -227,7 +227,7 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    /// Parses graphics GET: `GET (x1, y1)-(x2, y2), array[(index)]`
+    /// Parses graphics GET: `GET (x1, y1)-(x2, y2), array[(indices)]`
     fn parse_graphics_get(&mut self, start: usize) -> Result<Statement, ()> {
         self.expect(&TokenKind::LeftParen, "`(` for coordinates")?;
         let x1 = self.parse_expression()?;
@@ -250,18 +250,22 @@ impl<'a> Parser<'a> {
         let array_token = self.expect(&TokenKind::Identifier, "array name")?;
         let array_name = array_token.text.to_string();
 
-        // Array index is optional. Empty parens like arr() mean "whole array from start"
-        let array_index = if self.match_token(&TokenKind::LeftParen) {
+        // Array indices are optional. Supports multi-dimensional: arr(i, j)
+        // Empty parens like arr() mean "whole array from start"
+        let array_indices = if self.match_token(&TokenKind::LeftParen) {
             if self.match_token(&TokenKind::RightParen) {
-                // Empty parens - use None to indicate whole array
-                None
+                // Empty parens - empty Vec to indicate whole array
+                Vec::new()
             } else {
-                let idx = self.parse_expression()?;
-                self.expect(&TokenKind::RightParen, "`)` after array index")?;
-                Some(idx)
+                let mut indices = vec![self.parse_expression()?];
+                while self.match_token(&TokenKind::Comma) {
+                    indices.push(self.parse_expression()?);
+                }
+                self.expect(&TokenKind::RightParen, "`)` after array indices")?;
+                indices
             }
         } else {
-            None
+            Vec::new()
         };
 
         let span = self.span_from(start);
@@ -273,7 +277,7 @@ impl<'a> Parser<'a> {
                 y2,
                 step2,
                 array_name,
-                array_index,
+                array_indices,
             },
             span,
         ))
@@ -328,7 +332,7 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    /// Parses graphics PUT: `PUT (x, y), array[(index)][, action]`
+    /// Parses graphics PUT: `PUT (x, y), array[(indices)][, action]`
     fn parse_graphics_put(&mut self, start: usize) -> Result<Statement, ()> {
         let step = self.match_token(&TokenKind::Step);
 
@@ -343,18 +347,22 @@ impl<'a> Parser<'a> {
         let array_token = self.expect(&TokenKind::Identifier, "array name")?;
         let array_name = array_token.text.to_string();
 
-        // Array index is optional. Empty parens like arr() mean "whole array from start"
-        let array_index = if self.match_token(&TokenKind::LeftParen) {
+        // Array indices are optional. Supports multi-dimensional: arr(i, j)
+        // Empty parens like arr() mean "whole array from start"
+        let array_indices = if self.match_token(&TokenKind::LeftParen) {
             if self.match_token(&TokenKind::RightParen) {
-                // Empty parens - use None to indicate whole array
-                None
+                // Empty parens - empty Vec to indicate whole array
+                Vec::new()
             } else {
-                let idx = self.parse_expression()?;
-                self.expect(&TokenKind::RightParen, "`)` after array index")?;
-                Some(idx)
+                let mut indices = vec![self.parse_expression()?];
+                while self.match_token(&TokenKind::Comma) {
+                    indices.push(self.parse_expression()?);
+                }
+                self.expect(&TokenKind::RightParen, "`)` after array indices")?;
+                indices
             }
         } else {
-            None
+            Vec::new()
         };
 
         let (clip, action, transparent_color) = if self.match_token(&TokenKind::Comma) {
@@ -396,7 +404,7 @@ impl<'a> Parser<'a> {
                 y,
                 step,
                 array_name,
-                array_index,
+                array_indices,
                 clip,
                 action,
                 transparent_color,

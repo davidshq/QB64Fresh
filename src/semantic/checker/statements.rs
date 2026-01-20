@@ -80,8 +80,8 @@ impl<'a> TypeChecker<'a> {
             StatementKind::Input {
                 prompt,
                 show_question_mark,
-                variables,
-            } => self.check_input(prompt, *show_question_mark, variables, stmt.span),
+                targets,
+            } => self.check_input(prompt, *show_question_mark, targets, stmt.span),
 
             StatementKind::LineInput { prompt, variable } => {
                 self.check_line_input(prompt, variable, stmt.span)
@@ -1397,13 +1397,16 @@ impl<'a> TypeChecker<'a> {
             StatementKind::Color {
                 foreground,
                 background,
+                border,
             } => {
                 let typed_fg = self.check_expr(foreground);
                 let typed_bg = background.as_ref().map(|e| self.check_expr(e));
+                let typed_border = border.as_ref().map(|e| self.check_expr(e));
                 TypedStatement::new(
                     TypedStatementKind::Color {
                         foreground: typed_fg,
                         background: typed_bg,
+                        border: typed_border,
                     },
                     stmt.span,
                 )
@@ -1626,13 +1629,14 @@ impl<'a> TypeChecker<'a> {
                 y2,
                 step2,
                 array_name,
-                array_index,
+                array_indices,
             } => {
                 let typed_x1 = self.check_expr(x1);
                 let typed_y1 = self.check_expr(y1);
                 let typed_x2 = self.check_expr(x2);
                 let typed_y2 = self.check_expr(y2);
-                let typed_index = array_index.as_ref().map(|e| self.check_expr(e));
+                let typed_indices: Vec<_> =
+                    array_indices.iter().map(|e| self.check_expr(e)).collect();
                 TypedStatement::new(
                     TypedStatementKind::GraphicsGet {
                         x1: typed_x1,
@@ -1641,7 +1645,7 @@ impl<'a> TypeChecker<'a> {
                         y2: typed_y2,
                         step2: *step2,
                         array_name: array_name.clone(),
-                        array_index: typed_index,
+                        array_indices: typed_indices,
                     },
                     stmt.span,
                 )
@@ -1652,14 +1656,15 @@ impl<'a> TypeChecker<'a> {
                 y,
                 step,
                 array_name,
-                array_index,
+                array_indices,
                 clip,
                 action,
                 transparent_color,
             } => {
                 let typed_x = self.check_expr(x);
                 let typed_y = self.check_expr(y);
-                let typed_index = array_index.as_ref().map(|e| self.check_expr(e));
+                let typed_indices: Vec<_> =
+                    array_indices.iter().map(|e| self.check_expr(e)).collect();
                 let typed_transparent = transparent_color.as_ref().map(|e| self.check_expr(e));
                 TypedStatement::new(
                     TypedStatementKind::GraphicsPut {
@@ -1667,7 +1672,7 @@ impl<'a> TypeChecker<'a> {
                         y: typed_y,
                         step: *step,
                         array_name: array_name.clone(),
-                        array_index: typed_index,
+                        array_indices: typed_indices,
                         clip: *clip,
                         action: *action,
                         transparent_color: typed_transparent,

@@ -1,6 +1,6 @@
 # QB64Fresh TODO
 
-*Last updated: 2026-01-19 (Session 024)*
+*Last updated: 2026-01-20 (Session 025)*
 
 A prioritized roadmap for QB64Fresh development. For completed features, see [TODO-completed.md](TODO-completed.md).
 
@@ -89,7 +89,7 @@ All Phase 2 items have been completed:
 ### Testing (See TESTING_INFRASTRUCTURE_PLAN.md for details)
 - [x] Achieve 80%+ line coverage (**81.63%** achieved!)
 - [ ] Compatibility tests against QB64 programs (16 fixture files, need more)
-- [ ] Port QB4.5 test cases from QB64pe (currently 64/143 = 44.8% passing)
+- [ ] Port QB4.5 test cases from QB64pe (currently **108/141 = 76.6%** passing)
 
 ---
 

@@ -108,10 +108,14 @@ impl BasicType {
             return true;
         }
 
-        // String conversions only between string types
+        // String conversions: In BASIC, regular strings and fixed-length strings
+        // can be assigned to each other. When assigning to fixed-length, the value
+        // is truncated or padded as needed.
         match (self, target) {
-            (BasicType::String | BasicType::FixedString(_), BasicType::String) => return true,
+            (BasicType::String, BasicType::String) => return true,
             (BasicType::FixedString(_), BasicType::FixedString(_)) => return true,
+            (BasicType::FixedString(_), BasicType::String) => return true,
+            (BasicType::String, BasicType::FixedString(_)) => return true,
             (BasicType::String | BasicType::FixedString(_), _) => return false,
             (_, BasicType::String | BasicType::FixedString(_)) => return false,
             _ => {}
