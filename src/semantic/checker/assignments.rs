@@ -93,8 +93,8 @@ impl<'a> TypeChecker<'a> {
         let (element_type, dimensions) = if let Some(symbol) = self.symbols.lookup_symbol(name)
             && let SymbolKind::ArrayVariable { dimensions } = &symbol.kind
         {
-            // Verify dimension count
-            if indices.len() != dimensions.len() {
+            // Verify dimension count - skip if dimensions are unknown (empty, for array params)
+            if !dimensions.is_empty() && indices.len() != dimensions.len() {
                 self.errors.push(SemanticError::ArrayDimensionMismatch {
                     name: name.to_string(),
                     expected: dimensions.len(),
@@ -103,13 +103,21 @@ impl<'a> TypeChecker<'a> {
                 });
             }
 
-            let typed_dims: Vec<TypedArrayDimension> = dimensions
-                .iter()
-                .map(|d| TypedArrayDimension {
-                    lower: d.lower_bound,
-                    upper: d.upper_bound,
-                })
-                .collect();
+            // For dynamic arrays (empty dimensions), create placeholder dimensions
+            let typed_dims: Vec<TypedArrayDimension> = if dimensions.is_empty() {
+                indices
+                    .iter()
+                    .map(|_| TypedArrayDimension { lower: 0, upper: 0 })
+                    .collect()
+            } else {
+                dimensions
+                    .iter()
+                    .map(|d| TypedArrayDimension {
+                        lower: d.lower_bound,
+                        upper: d.upper_bound,
+                    })
+                    .collect()
+            };
 
             (symbol.basic_type.clone(), typed_dims)
         } else {
@@ -170,8 +178,8 @@ impl<'a> TypeChecker<'a> {
         let (element_type, dimensions) = if let Some(symbol) = self.symbols.lookup_symbol(name)
             && let SymbolKind::ArrayVariable { dimensions } = &symbol.kind
         {
-            // Verify dimension count
-            if indices.len() != dimensions.len() {
+            // Verify dimension count - skip if dimensions are unknown (empty, for array params)
+            if !dimensions.is_empty() && indices.len() != dimensions.len() {
                 self.errors.push(SemanticError::ArrayDimensionMismatch {
                     name: name.to_string(),
                     expected: dimensions.len(),
@@ -180,13 +188,21 @@ impl<'a> TypeChecker<'a> {
                 });
             }
 
-            let typed_dims: Vec<TypedArrayDimension> = dimensions
-                .iter()
-                .map(|d| TypedArrayDimension {
-                    lower: d.lower_bound,
-                    upper: d.upper_bound,
-                })
-                .collect();
+            // For dynamic arrays (empty dimensions), create placeholder dimensions
+            let typed_dims: Vec<TypedArrayDimension> = if dimensions.is_empty() {
+                indices
+                    .iter()
+                    .map(|_| TypedArrayDimension { lower: 0, upper: 0 })
+                    .collect()
+            } else {
+                dimensions
+                    .iter()
+                    .map(|d| TypedArrayDimension {
+                        lower: d.lower_bound,
+                        upper: d.upper_bound,
+                    })
+                    .collect()
+            };
 
             (symbol.basic_type.clone(), typed_dims)
         } else {
@@ -248,33 +264,24 @@ impl<'a> TypeChecker<'a> {
     /// Type checks a MID$ assignment statement: `MID$(str$, start [, len]) = value$`
     ///
     /// This replaces a portion of the string in-place.
+    /// The target can be a simple variable, array element, or UDT field.
     pub(super) fn check_mid_assignment(
         &mut self,
-        target: &str,
+        target: &Expr,
         start: &Expr,
         length: Option<&Expr>,
         value: &Expr,
         span: crate::ast::Span,
     ) -> TypedStatement {
-        // Look up the target variable - it must be a string
-        if let Some(symbol) = self.symbols.lookup_symbol(target) {
-            if symbol.basic_type != BasicType::String {
-                self.errors.push(SemanticError::TypeMismatch {
-                    expected: "STRING".to_string(),
-                    found: symbol.basic_type.to_string(),
-                    span,
-                });
-            }
-            if !symbol.is_mutable {
-                self.errors.push(SemanticError::AssignmentToConst {
-                    name: target.to_string(),
-                    span,
-                });
-            }
-        } else {
-            self.errors.push(SemanticError::UndefinedVariable {
-                name: target.to_string(),
-                span,
+        // Type check the target expression - it must be a string lvalue
+        let typed_target = self.check_expr(target);
+        if typed_target.basic_type != BasicType::String
+            && typed_target.basic_type != BasicType::Unknown
+        {
+            self.errors.push(SemanticError::TypeMismatch {
+                expected: "STRING".to_string(),
+                found: typed_target.basic_type.to_string(),
+                span: target.span,
             });
         }
 
@@ -315,7 +322,7 @@ impl<'a> TypeChecker<'a> {
 
         TypedStatement::new(
             TypedStatementKind::MidAssignment {
-                target: target.to_string(),
+                target: typed_target,
                 start: typed_start,
                 length: typed_length,
                 value: typed_value,

@@ -204,6 +204,9 @@ pub struct SDL2Backend {
     palette: ColorPalette,
     /// DRAW turtle state
     turtle: TurtleState,
+    /// Last referenced graphics point (for STEP coordinates)
+    last_gfx_x: i32,
+    last_gfx_y: i32,
     /// Auto-display mode
     autodisplay: bool,
     // Mouse state
@@ -264,6 +267,8 @@ impl SDL2Backend {
             world_coords: WorldCoords::default(),
             palette: ColorPalette::default(),
             turtle: TurtleState::default(),
+            last_gfx_x: 0,
+            last_gfx_y: 0,
             autodisplay: true,
             mouse_x: 0,
             mouse_y: 0,
@@ -1346,6 +1351,10 @@ impl GraphicsBackend for SDL2Backend {
             return Err(GraphicsError::not_initialized());
         }
 
+        // Update last referenced graphics point
+        self.last_gfx_x = x;
+        self.last_gfx_y = y;
+
         // Apply coordinate transformation if WINDOW is set
         let (sx, sy) = self.world_to_screen(x as f64, y as f64);
 
@@ -1362,6 +1371,15 @@ impl GraphicsBackend for SDL2Backend {
         }
 
         Ok(())
+    }
+
+    fn pset_step(&mut self, x: i32, y: i32, color: u32, step: bool) -> Result<(), GraphicsError> {
+        let (final_x, final_y) = if step {
+            (self.last_gfx_x + x, self.last_gfx_y + y)
+        } else {
+            (x, y)
+        };
+        self.pset(final_x, final_y, color)
     }
 
     fn point(&self, x: i32, y: i32) -> Result<u32, GraphicsError> {
@@ -1458,6 +1476,10 @@ impl GraphicsBackend for SDL2Backend {
             return Err(GraphicsError::not_initialized());
         }
 
+        // Update last referenced graphics point
+        self.last_gfx_x = x;
+        self.last_gfx_y = y;
+
         let (cx, cy) = self.world_to_screen(x as f64, y as f64);
 
         if filled {
@@ -1479,6 +1501,23 @@ impl GraphicsBackend for SDL2Backend {
         Ok(())
     }
 
+    fn circle_step(
+        &mut self,
+        x: i32,
+        y: i32,
+        radius: i32,
+        color: u32,
+        filled: bool,
+        step: bool,
+    ) -> Result<(), GraphicsError> {
+        let (final_x, final_y) = if step {
+            (self.last_gfx_x + x, self.last_gfx_y + y)
+        } else {
+            (x, y)
+        };
+        self.circle(final_x, final_y, radius, color, filled)
+    }
+
     fn paint(
         &mut self,
         x: i32,
@@ -1490,10 +1529,30 @@ impl GraphicsBackend for SDL2Backend {
             return Err(GraphicsError::not_initialized());
         }
 
+        // Update last referenced graphics point
+        self.last_gfx_x = x;
+        self.last_gfx_y = y;
+
         let (sx, sy) = self.world_to_screen(x as f64, y as f64);
         self.flood_fill(sx, sy, color, boundary_color);
 
         Ok(())
+    }
+
+    fn paint_step(
+        &mut self,
+        x: i32,
+        y: i32,
+        color: u32,
+        boundary_color: Option<u32>,
+        step: bool,
+    ) -> Result<(), GraphicsError> {
+        let (final_x, final_y) = if step {
+            (self.last_gfx_x + x, self.last_gfx_y + y)
+        } else {
+            (x, y)
+        };
+        self.paint(final_x, final_y, color, boundary_color)
     }
 
     fn display(&mut self) -> Result<(), GraphicsError> {

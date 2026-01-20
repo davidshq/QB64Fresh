@@ -128,23 +128,25 @@ impl StmtEmitter {
                 length,
                 value,
             } => {
-                let target_var = c_identifier(target);
+                // Target is an lvalue (variable, array element, or field access)
+                // We need to pass its address to qb_mid_assign
+                let target_code = emit_expr(target)?;
                 let start_code = emit_expr(start)?;
                 let value_code = emit_expr(value)?;
                 if let Some(len_expr) = length {
                     let len_code = emit_expr(len_expr)?;
                     writeln!(
                         output,
-                        "{}qb_mid_assign(&{}, {}, {}, {});",
-                        indent, target_var, start_code, len_code, value_code
+                        "{}qb_mid_assign(&({}), {}, {}, {});",
+                        indent, target_code, start_code, len_code, value_code
                     )
                     .unwrap();
                 } else {
                     // No length specified - use -1 to indicate "rest of string"
                     writeln!(
                         output,
-                        "{}qb_mid_assign(&{}, {}, -1, {});",
-                        indent, target_var, start_code, value_code
+                        "{}qb_mid_assign(&({}), {}, -1, {});",
+                        indent, target_code, start_code, value_code
                     )
                     .unwrap();
                 }
@@ -827,8 +829,13 @@ impl StmtEmitter {
 
             TypedStatementKind::Redim {
                 preserve,
+                shared: _shared,
                 variables,
             } => {
+                // Note: SHARED affects symbol visibility (handled in semantic analysis),
+                // but the generated code is the same - the array is allocated dynamically.
+                // For C codegen, SHARED arrays are just global variables that can be
+                // redimensioned at runtime.
                 for var in variables {
                     self.emit_redim(
                         &indent,
@@ -925,36 +932,38 @@ impl StmtEmitter {
                 .unwrap();
             }
 
-            TypedStatementKind::Pset { x, y, color } => {
+            TypedStatementKind::Pset { step, x, y, color } => {
                 let x_code = emit_expr(x)?;
                 let y_code = emit_expr(y)?;
+                let step_int = if *step { 1 } else { 0 };
                 if let Some(c) = color {
                     let c_code = emit_expr(c)?;
                     writeln!(
                         output,
-                        "{}qb_gfx_pset((int32_t){}, (int32_t){}, (uint32_t){});",
-                        indent, x_code, y_code, c_code
+                        "{}qb_gfx_pset_step((int32_t){}, (int32_t){}, (uint32_t){}, {});",
+                        indent, x_code, y_code, c_code, step_int
                     )
                     .unwrap();
                 } else {
                     // Use current foreground color (pass -1 to signal "use current")
                     writeln!(
                         output,
-                        "{}qb_gfx_pset((int32_t){}, (int32_t){}, 0xFFFFFFFF);",
-                        indent, x_code, y_code
+                        "{}qb_gfx_pset_step((int32_t){}, (int32_t){}, 0xFFFFFFFF, {});",
+                        indent, x_code, y_code, step_int
                     )
                     .unwrap();
                 }
             }
 
-            TypedStatementKind::Preset { x, y } => {
+            TypedStatementKind::Preset { step, x, y } => {
                 let x_code = emit_expr(x)?;
                 let y_code = emit_expr(y)?;
+                let step_int = if *step { 1 } else { 0 };
                 // PRESET plots in background color - pass 0 (black) by default
                 writeln!(
                     output,
-                    "{}qb_gfx_pset((int32_t){}, (int32_t){}, 0xFF000000);",
-                    indent, x_code, y_code
+                    "{}qb_gfx_pset_step((int32_t){}, (int32_t){}, 0xFF000000, {});",
+                    indent, x_code, y_code, step_int
                 )
                 .unwrap();
             }
@@ -1011,6 +1020,7 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::Circle {
+                step,
                 x,
                 y,
                 radius,
@@ -1026,15 +1036,17 @@ impl StmtEmitter {
                     "0xFFFFFFFF".to_string()
                 };
                 let filled_int = if *filled { 1 } else { 0 };
+                let step_int = if *step { 1 } else { 0 };
                 writeln!(
                     output,
-                    "{}qb_gfx_circle((int32_t){}, (int32_t){}, (int32_t){}, (uint32_t){}, {});",
-                    indent, x_code, y_code, r_code, color_code, filled_int
+                    "{}qb_gfx_circle_step((int32_t){}, (int32_t){}, (int32_t){}, (uint32_t){}, {}, {});",
+                    indent, x_code, y_code, r_code, color_code, filled_int, step_int
                 )
                 .unwrap();
             }
 
             TypedStatementKind::Paint {
+                step,
                 x,
                 y,
                 color,
@@ -1052,10 +1064,11 @@ impl StmtEmitter {
                 } else {
                     color_code.clone() // Default border = fill color
                 };
+                let step_int = if *step { 1 } else { 0 };
                 writeln!(
                     output,
-                    "{}qb_gfx_paint((int32_t){}, (int32_t){}, (uint32_t){}, (uint32_t){});",
-                    indent, x_code, y_code, color_code, border_code
+                    "{}qb_gfx_paint_step((int32_t){}, (int32_t){}, (uint32_t){}, (uint32_t){}, {});",
+                    indent, x_code, y_code, color_code, border_code, step_int
                 )
                 .unwrap();
             }

@@ -188,9 +188,12 @@ impl<'a> Parser<'a> {
 
     /// Parses PSET statement.
     ///
-    /// Syntax: `PSET (x, y)[, color]`
+    /// Syntax: `PSET [STEP](x, y)[, color]`
     pub(super) fn parse_pset(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("PSET keyword").span.start;
+
+        // Check for STEP (relative coordinates)
+        let step = self.match_token(&TokenKind::Step);
 
         self.expect(&TokenKind::LeftParen, "(")?;
         let x = self.parse_expression()?;
@@ -205,14 +208,20 @@ impl<'a> Parser<'a> {
         };
 
         let span = self.span_from(start);
-        Ok(Statement::new(StatementKind::Pset { x, y, color }, span))
+        Ok(Statement::new(
+            StatementKind::Pset { step, x, y, color },
+            span,
+        ))
     }
 
     /// Parses PRESET statement.
     ///
-    /// Syntax: `PRESET (x, y)`
+    /// Syntax: `PRESET [STEP](x, y)`
     pub(super) fn parse_preset(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("PRESET keyword").span.start;
+
+        // Check for STEP (relative coordinates)
+        let step = self.match_token(&TokenKind::Step);
 
         self.expect(&TokenKind::LeftParen, "(")?;
         let x = self.parse_expression()?;
@@ -221,7 +230,7 @@ impl<'a> Parser<'a> {
         self.expect(&TokenKind::RightParen, ")")?;
 
         let span = self.span_from(start);
-        Ok(Statement::new(StatementKind::Preset { x, y }, span))
+        Ok(Statement::new(StatementKind::Preset { step, x, y }, span))
     }
 
     /// Parses LINE statement for graphics.
@@ -306,9 +315,12 @@ impl<'a> Parser<'a> {
 
     /// Parses CIRCLE statement.
     ///
-    /// Syntax: `CIRCLE (x, y), radius[, color][, , , , F]`
+    /// Syntax: `CIRCLE [STEP](x, y), radius[, color][, , , , F]`
     pub(super) fn parse_circle(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("CIRCLE keyword").span.start;
+
+        // Check for STEP (relative coordinates)
+        let step = self.match_token(&TokenKind::Step);
 
         self.expect(&TokenKind::LeftParen, "(")?;
         let x = self.parse_expression()?;
@@ -346,6 +358,7 @@ impl<'a> Parser<'a> {
         let span = self.span_from(start);
         Ok(Statement::new(
             StatementKind::Circle {
+                step,
                 x,
                 y,
                 radius,
@@ -358,9 +371,12 @@ impl<'a> Parser<'a> {
 
     /// Parses PAINT statement.
     ///
-    /// Syntax: `PAINT (x, y)[, color][, border]`
+    /// Syntax: `PAINT [STEP](x, y)[, color][, border]`
     pub(super) fn parse_paint(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("PAINT keyword").span.start;
+
+        // Check for STEP (relative coordinates)
+        let step = self.match_token(&TokenKind::Step);
 
         self.expect(&TokenKind::LeftParen, "(")?;
         let x = self.parse_expression()?;
@@ -387,6 +403,7 @@ impl<'a> Parser<'a> {
         let span = self.span_from(start);
         Ok(Statement::new(
             StatementKind::Paint {
+                step,
                 x,
                 y,
                 color,

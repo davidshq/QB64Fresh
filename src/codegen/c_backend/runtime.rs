@@ -2766,6 +2766,14 @@ fn emit_graphics_stubs(output: &mut String) {
         "double qb_gfx_pmap(double coord, int32_t func_code) {{ (void)func_code; return coord; }}"
     )
     .unwrap();
+    // POINT: get pixel color or cursor coordinates
+    // POINT(x, y) returns color at pixel, POINT(func) returns coordinate
+    // For now, stub returns 0 (black color / origin coordinate)
+    writeln!(
+        output,
+        "int32_t qb_gfx_point(int32_t x_or_func, int32_t y) {{ (void)x_or_func; (void)y; return 0; }}"
+    )
+    .unwrap();
     writeln!(output).unwrap();
 
     // Extended graphics

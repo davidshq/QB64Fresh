@@ -102,6 +102,12 @@ impl BasicType {
             return true;
         }
 
+        // Unknown converts to/from anything (for inference and variadic params)
+        // Check this BEFORE string checks to allow STRING to convert to UNKNOWN
+        if matches!(self, BasicType::Unknown) || matches!(target, BasicType::Unknown) {
+            return true;
+        }
+
         // String conversions only between string types
         match (self, target) {
             (BasicType::String | BasicType::FixedString(_), BasicType::String) => return true,
@@ -109,11 +115,6 @@ impl BasicType {
             (BasicType::String | BasicType::FixedString(_), _) => return false,
             (_, BasicType::String | BasicType::FixedString(_)) => return false,
             _ => {}
-        }
-
-        // Unknown converts to anything (for inference)
-        if matches!(self, BasicType::Unknown) || matches!(target, BasicType::Unknown) {
-            return true;
         }
 
         // Numeric conversion: BASIC allows implicit conversion between all numeric types

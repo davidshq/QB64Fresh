@@ -298,9 +298,19 @@ impl<'a> TypeChecker<'a> {
                     .or_else(|| type_from_suffix(&p.name))
                     .unwrap_or_else(|| self.symbols.default_type_for(&p.name));
 
+                // Array parameters need to be registered as ArrayVariable so
+                // array access and array passing work correctly inside the procedure
+                let symbol_kind = if p.is_array {
+                    // Array parameters have unknown dimensions at definition time
+                    // We use empty dimensions which will be filled at call site
+                    SymbolKind::ArrayVariable { dimensions: vec![] }
+                } else {
+                    SymbolKind::Parameter { by_val: p.by_val }
+                };
+
                 let symbol = Symbol {
                     name: p.name.clone(),
-                    kind: SymbolKind::Parameter { by_val: p.by_val },
+                    kind: symbol_kind,
                     basic_type: basic_type.clone(),
                     span,
                     is_mutable: true,
@@ -383,9 +393,17 @@ impl<'a> TypeChecker<'a> {
                     .or_else(|| type_from_suffix(&p.name))
                     .unwrap_or_else(|| self.symbols.default_type_for(&p.name));
 
+                // Array parameters need to be registered as ArrayVariable so
+                // array access and array passing work correctly inside the procedure
+                let symbol_kind = if p.is_array {
+                    SymbolKind::ArrayVariable { dimensions: vec![] }
+                } else {
+                    SymbolKind::Parameter { by_val: p.by_val }
+                };
+
                 let symbol = Symbol {
                     name: p.name.clone(),
-                    kind: SymbolKind::Parameter { by_val: p.by_val },
+                    kind: symbol_kind,
                     basic_type: basic_type.clone(),
                     span,
                     is_mutable: true,

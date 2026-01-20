@@ -192,6 +192,7 @@ impl SemanticAnalyzer {
                     basic_type,
                     by_val: p.by_val,
                     is_optional: false,
+                    is_array: p.is_array,
                 }
             })
             .collect();
@@ -238,6 +239,7 @@ impl SemanticAnalyzer {
                     basic_type,
                     by_val: p.by_val,
                     is_optional: false,
+                    is_array: p.is_array,
                 }
             })
             .collect();
@@ -815,6 +817,22 @@ impl SemanticAnalyzer {
             BasicType::Double,
         );
 
+        // POINT function - get pixel color or cursor coordinates
+        // POINT(x, y) - returns color attribute of pixel at (x, y) - returns LONG
+        // POINT(function) - returns cursor coordinates:
+        //   0 = current logical X, 1 = current logical Y,
+        //   2 = current physical X, 3 = current physical Y
+        // When called with one argument, returns Double (for world coordinates)
+        // When called with two arguments, returns Long (color value)
+        self.register_builtin_function_with_optionals(
+            "POINT",
+            &[
+                ("x_or_function", BasicType::Long, false), // X coordinate or function code
+                ("y", BasicType::Long, true),              // Y coordinate (optional)
+            ],
+            BasicType::Long, // Returns color (Long) or coordinate (also Long for physical coords)
+        );
+
         // Print formatting functions (legacy)
         // LPOS returns the current position of the line printer
         self.register_builtin_function("LPOS", &[("n", BasicType::Long)], BasicType::Integer);
@@ -934,6 +952,7 @@ impl SemanticAnalyzer {
                     basic_type: t.clone(),
                     by_val: true,
                     is_optional: false,
+                    is_array: false,
                 })
                 .collect(),
             return_type: Some(return_type),
@@ -961,6 +980,7 @@ impl SemanticAnalyzer {
                     basic_type: t.clone(),
                     by_val: true,
                     is_optional: *opt,
+                    is_array: false,
                 })
                 .collect(),
             return_type: Some(return_type),
@@ -982,6 +1002,7 @@ impl SemanticAnalyzer {
                     basic_type: t.clone(),
                     by_val: true,
                     is_optional: false,
+                    is_array: false,
                 })
                 .collect(),
             return_type: None, // SUBs have no return type

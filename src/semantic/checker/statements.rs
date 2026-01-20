@@ -1301,6 +1301,7 @@ impl<'a> TypeChecker<'a> {
 
             StatementKind::Redim {
                 preserve,
+                shared,
                 variables,
             } => {
                 use crate::semantic::typed_ir::TypedRedimVariable;
@@ -1324,17 +1325,30 @@ impl<'a> TypeChecker<'a> {
                         .collect();
 
                     // Update symbol table (or define if not exists)
+                    // Use ArrayVariable kind so array passing works correctly.
+                    // REDIM can resize existing arrays (including array parameters),
+                    // so we use update_or_define to replace any existing symbol.
+                    // For SHARED arrays, define at module scope.
                     let symbol = Symbol {
                         name: var.name.clone(),
-                        kind: SymbolKind::Variable,
-                        basic_type: BasicType::Array {
-                            element_type: Box::new(element_type.clone()),
-                            dimensions: typed_dims.len(),
+                        kind: SymbolKind::ArrayVariable {
+                            dimensions: typed_dims
+                                .iter()
+                                .map(|d| crate::semantic::symbols::ArrayDimInfo {
+                                    lower_bound: d.lower,
+                                    upper_bound: d.upper,
+                                })
+                                .collect(),
                         },
+                        basic_type: element_type.clone(),
                         span: stmt.span,
                         is_mutable: true,
                     };
-                    let _ = self.symbols.define_symbol(symbol);
+                    if *shared {
+                        self.symbols.define_shared_symbol(symbol);
+                    } else {
+                        self.symbols.update_or_define_symbol(symbol);
+                    }
 
                     typed_vars.push(TypedRedimVariable {
                         name: var.name.clone(),
@@ -1346,6 +1360,7 @@ impl<'a> TypeChecker<'a> {
                 TypedStatement::new(
                     TypedStatementKind::Redim {
                         preserve: *preserve,
+                        shared: *shared,
                         variables: typed_vars,
                     },
                     stmt.span,
@@ -1406,12 +1421,13 @@ impl<'a> TypeChecker<'a> {
                 )
             }
 
-            StatementKind::Pset { x, y, color } => {
+            StatementKind::Pset { step, x, y, color } => {
                 let typed_x = self.check_expr(x);
                 let typed_y = self.check_expr(y);
                 let typed_color = color.as_ref().map(|e| self.check_expr(e));
                 TypedStatement::new(
                     TypedStatementKind::Pset {
+                        step: *step,
                         x: typed_x,
                         y: typed_y,
                         color: typed_color,
@@ -1420,11 +1436,12 @@ impl<'a> TypeChecker<'a> {
                 )
             }
 
-            StatementKind::Preset { x, y } => {
+            StatementKind::Preset { step, x, y } => {
                 let typed_x = self.check_expr(x);
                 let typed_y = self.check_expr(y);
                 TypedStatement::new(
                     TypedStatementKind::Preset {
+                        step: *step,
                         x: typed_x,
                         y: typed_y,
                     },
@@ -1461,6 +1478,7 @@ impl<'a> TypeChecker<'a> {
             }
 
             StatementKind::Circle {
+                step,
                 x,
                 y,
                 radius,
@@ -1473,6 +1491,7 @@ impl<'a> TypeChecker<'a> {
                 let typed_color = color.as_ref().map(|e| self.check_expr(e));
                 TypedStatement::new(
                     TypedStatementKind::Circle {
+                        step: *step,
                         x: typed_x,
                         y: typed_y,
                         radius: typed_radius,
@@ -1484,6 +1503,7 @@ impl<'a> TypeChecker<'a> {
             }
 
             StatementKind::Paint {
+                step,
                 x,
                 y,
                 color,
@@ -1495,6 +1515,7 @@ impl<'a> TypeChecker<'a> {
                 let typed_border = border.as_ref().map(|e| self.check_expr(e));
                 TypedStatement::new(
                     TypedStatementKind::Paint {
+                        step: *step,
                         x: typed_x,
                         y: typed_y,
                         color: typed_color,

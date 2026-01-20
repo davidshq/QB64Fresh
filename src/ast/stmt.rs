@@ -92,9 +92,11 @@ pub enum StatementKind {
     /// Replaces a portion of the string with a new value.
     /// If length is omitted, replaces from start to the end of the string
     /// or to the length of the replacement value, whichever is shorter.
+    ///
+    /// The target can be a simple variable, array element, or UDT field.
     MidAssignment {
-        /// Target string variable name.
-        target: String,
+        /// Target string expression (variable, array element, or field access).
+        target: Expr,
         /// Start position (1-based).
         start: Expr,
         /// Optional length to replace.
@@ -651,6 +653,8 @@ pub enum StatementKind {
     Redim {
         /// Whether to preserve existing contents.
         preserve: bool,
+        /// Whether SHARED was specified (module-level visibility).
+        shared: bool,
         /// List of arrays to redimension.
         variables: Vec<DimVariable>,
     },
@@ -743,8 +747,10 @@ pub enum StatementKind {
         bottom: Option<Expr>,
     },
 
-    /// `PSET (x, y)[, color]` - Plot pixel
+    /// `PSET [STEP](x, y)[, color]` - Plot pixel
     Pset {
+        /// Whether coordinates are relative (STEP)
+        step: bool,
         /// X coordinate
         x: Expr,
         /// Y coordinate
@@ -753,8 +759,10 @@ pub enum StatementKind {
         color: Option<Expr>,
     },
 
-    /// `PRESET (x, y)` - Plot pixel with background color
+    /// `PRESET [STEP](x, y)` - Plot pixel with background color
     Preset {
+        /// Whether coordinates are relative (STEP)
+        step: bool,
         /// X coordinate
         x: Expr,
         /// Y coordinate
@@ -779,8 +787,10 @@ pub enum StatementKind {
         box_style: Option<bool>,
     },
 
-    /// `CIRCLE (x, y), radius[, color][, start][, end][, aspect][, F]`
+    /// `CIRCLE [STEP](x, y), radius[, color][, start][, end][, aspect][, F]`
     Circle {
+        /// Whether STEP was used (relative to last graphics position)
+        step: bool,
         /// Center X
         x: Expr,
         /// Center Y
@@ -793,8 +803,10 @@ pub enum StatementKind {
         filled: bool,
     },
 
-    /// `PAINT (x, y)[, color][, border]` - Flood fill
+    /// `PAINT [STEP](x, y)[, color][, border]` - Flood fill
     Paint {
+        /// Whether STEP was used (relative to last graphics position)
+        step: bool,
         /// Start X
         x: Expr,
         /// Start Y

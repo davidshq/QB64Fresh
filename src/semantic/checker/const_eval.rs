@@ -82,9 +82,10 @@ impl<'a> TypeChecker<'a> {
                 self.convert_const_value(inner_val, to_type)
             }
 
-            // Function calls, array access, and field access are not constant
+            // Function calls, array access, array refs, and field access are not constant
             TypedExprKind::FunctionCall { .. }
             | TypedExprKind::ArrayAccess { .. }
+            | TypedExprKind::ArrayRef { .. }
             | TypedExprKind::FieldAccess { .. } => None,
         }
     }

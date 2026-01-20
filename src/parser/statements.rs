@@ -8,9 +8,9 @@
 
 use crate::ast::{
     AllowFullScreenMode, ArrayDimension, CommonVariable, ContinueType, DataValue, DeclareParam,
-    DefTypeKind, EventControlMode, ExitType, Expr, ExternalDeclaration, ExternalParam, FieldSpec,
-    FullScreenMode, PrintItem, PrintSeparator, ResumeTarget, Span, Statement, StatementKind,
-    TypeSpec,
+    DefTypeKind, EventControlMode, ExitType, Expr, ExprKind, ExternalDeclaration, ExternalParam,
+    FieldSpec, FullScreenMode, PrintItem, PrintSeparator, ResumeTarget, Span, Statement,
+    StatementKind, TypeSpec,
 };
 use crate::lexer::TokenKind;
 
@@ -283,12 +283,57 @@ impl<'a> Parser<'a> {
 
     /// Parses a MID$ statement: `MID$(str$, start [, len]) = value$`
     /// This replaces a portion of the string with a new value.
+    /// The target can be a simple variable, array element, or UDT field.
     fn parse_mid_statement(&mut self, start: usize) -> Result<Statement, ()> {
         self.expect(&TokenKind::LeftParen, "(")?;
 
-        // Parse target string variable
+        // Parse target string expression (variable, array element, or field access)
+        // We need to be careful here because commas separate arguments,
+        // so we parse the lvalue manually rather than using parse_expression.
         let target_token = self.expect(&TokenKind::Identifier, "string variable")?;
-        let target = target_token.text.to_string();
+        let target_name = target_token.text.to_string();
+        let target_start = target_token.span.start;
+
+        // Check for array index: varname$(index, ...)
+        let target = if self.match_token(&TokenKind::LeftParen) {
+            let mut args = Vec::new();
+            loop {
+                args.push(self.parse_expression()?);
+                if !self.match_token(&TokenKind::Comma) {
+                    break;
+                }
+            }
+            self.expect(&TokenKind::RightParen, "`)` after array indices")?;
+
+            let array_span = self.span_from(target_start);
+            let array_expr = Expr::new(
+                ExprKind::FunctionCall {
+                    name: target_name,
+                    args,
+                },
+                array_span,
+            );
+
+            // Check for field access: arr$(i).field$
+            if self.match_token(&TokenKind::Dot) {
+                let field_token = self.expect(&TokenKind::Identifier, "field name")?;
+                let field_name = field_token.text.to_string();
+                let span = self.span_from(target_start);
+                Expr::new(
+                    ExprKind::FieldAccess {
+                        object: Box::new(array_expr),
+                        field: field_name,
+                    },
+                    span,
+                )
+            } else {
+                array_expr
+            }
+        } else {
+            // Simple variable
+            let span = self.span_from(target_start);
+            Expr::new(ExprKind::Identifier(target_name), span)
+        };
 
         self.expect(&TokenKind::Comma, ",")?;
 
@@ -1088,6 +1133,21 @@ impl<'a> Parser<'a> {
         if let Some(token) = self.peek() {
             match &token.kind {
                 TokenKind::IntegerLiteral => {
+                    // Check if this integer is immediately followed by an identifier (e.g., "8B")
+                    // In QB45 DATA statements, such values are unquoted strings, not numbers.
+                    let int_token = self.peek().expect("integer literal");
+                    let int_end = int_token.span.end;
+
+                    // Look ahead to see if there's an adjacent identifier
+                    if let Some(next) = self.peek_ahead(1)
+                        && next.span.start == int_end
+                        && matches!(next.kind, TokenKind::Identifier)
+                    {
+                        // This is an unquoted string like "8B" - fall through to string collection
+                        return self.parse_data_unquoted_string(negative);
+                    }
+
+                    // Pure integer literal
                     let token = self.advance().expect("integer literal");
                     let mut value: i64 = token
                         .text
@@ -1153,37 +1213,7 @@ impl<'a> Parser<'a> {
                 }
                 // Unquoted strings in DATA - collect all tokens until comma or end of line
                 // This handles cases like: DATA o3e-o2b-ge-  (PLAY strings)
-                TokenKind::Identifier => {
-                    // Start with the leading minus if present
-                    let mut unquoted_value = if negative {
-                        "-".to_string()
-                    } else {
-                        String::new()
-                    };
-
-                    // Collect tokens until we hit comma or newline
-                    while let Some(tok) = self.peek() {
-                        match &tok.kind {
-                            TokenKind::Comma | TokenKind::Newline | TokenKind::Colon => break,
-                            TokenKind::Identifier
-                            | TokenKind::Minus
-                            | TokenKind::IntegerLiteral
-                            | TokenKind::FloatLiteral
-                            | TokenKind::Plus
-                            | TokenKind::Star
-                            | TokenKind::Slash
-                            | TokenKind::Hash
-                            | TokenKind::Dot
-                            | TokenKind::Ampersand => {
-                                let tok = self.advance().expect("token");
-                                unquoted_value.push_str(&tok.text);
-                            }
-                            _ => break,
-                        }
-                    }
-
-                    Ok(DataValue::String(unquoted_value.trim().to_string()))
-                }
+                TokenKind::Identifier => self.parse_data_unquoted_string(negative),
                 _ => {
                     let span: Span = token.span.clone().into();
                     self.errors.push(ParseError::syntax(
@@ -1197,6 +1227,46 @@ impl<'a> Parser<'a> {
             self.errors.push(ParseError::eof("DATA value"));
             Err(())
         }
+    }
+
+    /// Parses an unquoted string in a DATA statement.
+    ///
+    /// In QB45, DATA statements can contain unquoted values that should be treated as strings.
+    /// This includes things like:
+    /// - PLAY strings: `o3e-o2b-ge-`
+    /// - Hex-like values: `8B`, `E5`, `55,89,E5,8B,5E` (machine code bytes)
+    ///
+    /// This collects all adjacent tokens until a comma, newline, or colon is found.
+    fn parse_data_unquoted_string(&mut self, negative: bool) -> Result<DataValue, ()> {
+        // Start with the leading minus if present
+        let mut unquoted_value = if negative {
+            "-".to_string()
+        } else {
+            String::new()
+        };
+
+        // Collect tokens until we hit comma or newline
+        while let Some(tok) = self.peek() {
+            match &tok.kind {
+                TokenKind::Comma | TokenKind::Newline | TokenKind::Colon => break,
+                TokenKind::Identifier
+                | TokenKind::Minus
+                | TokenKind::IntegerLiteral
+                | TokenKind::FloatLiteral
+                | TokenKind::Plus
+                | TokenKind::Star
+                | TokenKind::Slash
+                | TokenKind::Hash
+                | TokenKind::Dot
+                | TokenKind::Ampersand => {
+                    let tok = self.advance().expect("token");
+                    unquoted_value.push_str(&tok.text);
+                }
+                _ => break,
+            }
+        }
+
+        Ok(DataValue::String(unquoted_value.trim().to_string()))
     }
 
     /// Parses a READ statement.
@@ -2197,13 +2267,20 @@ impl<'a> Parser<'a> {
 
     /// Parses a REDIM statement.
     ///
-    /// Syntax: `REDIM [_PRESERVE] array1(dims) [AS type], array2(dims) [AS type], ...`
+    /// Syntax: `REDIM [SHARED] [_PRESERVE] array1(dims) [AS type], array2(dims) [AS type], ...`
+    /// Note: SHARED and _PRESERVE can appear in either order for compatibility.
     pub(super) fn parse_redim(&mut self) -> Result<Statement, ()> {
         use crate::ast::DimVariable;
 
         let start = self.advance().expect("REDIM keyword").span.start;
 
+        // SHARED and _PRESERVE can appear in either order
+        let mut shared = self.match_token(&TokenKind::Shared);
         let preserve = self.match_token(&TokenKind::Preserve);
+        // Check for SHARED after _PRESERVE too (both orderings are valid)
+        if !shared {
+            shared = self.match_token(&TokenKind::Shared);
+        }
 
         let mut variables = Vec::new();
 
@@ -2236,6 +2313,7 @@ impl<'a> Parser<'a> {
         Ok(Statement::new(
             StatementKind::Redim {
                 preserve,
+                shared,
                 variables,
             },
             span,
@@ -3167,7 +3245,7 @@ impl<'a> Parser<'a> {
         let visible = if self.check(&TokenKind::On) {
             self.advance();
             true
-        } else if self.check_identifier_text("OFF") {
+        } else if self.check(&TokenKind::Off) {
             self.advance();
             false
         } else {

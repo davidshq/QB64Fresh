@@ -374,9 +374,18 @@ impl<'a> TypeChecker<'a> {
             });
         }
 
-        // Check argument types
+        // Check argument types, handling array arguments specially
         let mut typed_args = Vec::new();
         for (i, arg) in args.iter().enumerate() {
+            // Check if this argument is an array reference (arr() syntax)
+            if i < proc.params.len()
+                && proc.params[i].is_array
+                && let Some(typed_arg) = self.try_check_array_ref(arg)
+            {
+                typed_args.push(typed_arg);
+                continue;
+            }
+
             let typed_arg = self.check_expr(arg);
 
             if i < proc.params.len() {
@@ -404,6 +413,48 @@ impl<'a> TypeChecker<'a> {
         )
     }
 
+    /// Attempts to check an expression as an array reference (arr() syntax).
+    ///
+    /// In BASIC, `arr()` means "pass the entire array" to a procedure.
+    /// This is recognized when the expression is a FunctionCall with empty args
+    /// and the name matches a declared array.
+    ///
+    /// Returns `Some(TypedExpr)` with `ArrayRef` kind if this is an array reference,
+    /// or `None` if the expression should be checked normally.
+    pub(super) fn try_check_array_ref(&mut self, expr: &Expr) -> Option<TypedExpr> {
+        // Array reference syntax: name with empty parentheses, e.g., arr()
+        if let ExprKind::FunctionCall { name, args } = &expr.kind
+            && args.is_empty()
+        {
+            // Check if this name refers to a declared array
+            if let Some(symbol) = self.symbols.lookup_symbol(name)
+                && let SymbolKind::ArrayVariable { dimensions } = &symbol.kind
+            {
+                let typed_dimensions: Vec<TypedArrayDimension> = dimensions
+                    .iter()
+                    .map(|d| TypedArrayDimension {
+                        lower: d.lower_bound,
+                        upper: d.upper_bound,
+                    })
+                    .collect();
+
+                return Some(TypedExpr::new(
+                    TypedExprKind::ArrayRef {
+                        name: name.to_string(),
+                        element_type: symbol.basic_type.clone(),
+                        dimensions: typed_dimensions,
+                    },
+                    // The type of an array reference is a pointer/reference type,
+                    // but for simplicity we use the element type since BASIC
+                    // doesn't have explicit pointer types
+                    symbol.basic_type.clone(),
+                    expr.span,
+                ));
+            }
+        }
+        None
+    }
+
     /// Type checks an array access.
     pub(super) fn check_array_access(
         &mut self,
@@ -413,7 +464,9 @@ impl<'a> TypeChecker<'a> {
         element_type: BasicType,
         span: crate::ast::Span,
     ) -> TypedExpr {
-        if indices.len() != dim_info.len() {
+        // Only check dimension count if we know the dimensions (not empty).
+        // Array parameters and REDIM arrays may have unknown dimensions at compile time.
+        if !dim_info.is_empty() && indices.len() != dim_info.len() {
             self.errors.push(SemanticError::ArrayDimensionMismatch {
                 name: name.to_string(),
                 expected: dim_info.len(),
@@ -435,13 +488,22 @@ impl<'a> TypeChecker<'a> {
         }
 
         // Convert ArrayDimInfo to TypedArrayDimension for code generation
-        let typed_dimensions: Vec<TypedArrayDimension> = dim_info
-            .iter()
-            .map(|d| TypedArrayDimension {
-                lower: d.lower_bound,
-                upper: d.upper_bound,
-            })
-            .collect();
+        // For dynamic arrays (empty dim_info), use placeholder dimensions
+        let typed_dimensions: Vec<TypedArrayDimension> = if dim_info.is_empty() {
+            // Dynamic array - create placeholder dimensions based on indices
+            indices
+                .iter()
+                .map(|_| TypedArrayDimension { lower: 0, upper: 0 })
+                .collect()
+        } else {
+            dim_info
+                .iter()
+                .map(|d| TypedArrayDimension {
+                    lower: d.lower_bound,
+                    upper: d.upper_bound,
+                })
+                .collect()
+        };
 
         TypedExpr::new(
             TypedExprKind::ArrayAccess {

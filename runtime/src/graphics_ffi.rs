@@ -229,6 +229,31 @@ pub extern "C" fn qb_gfx_pset(x: i32, y: i32, color: u32) -> c_int {
     }
 }
 
+/// Plot a pixel at the specified coordinates with optional STEP mode.
+///
+/// # Arguments
+/// - `x`: X coordinate (or offset if step is non-zero)
+/// - `y`: Y coordinate (or offset if step is non-zero)
+/// - `color`: Pixel color (ARGB format)
+/// - `step`: If non-zero, coordinates are relative to last graphics point
+///
+/// # Returns
+/// - `0` on success
+/// - Non-zero on failure
+#[no_mangle]
+pub extern "C" fn qb_gfx_pset_step(x: i32, y: i32, color: u32, step: c_int) -> c_int {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            match backend.pset_step(x, y, color, step != 0) {
+                Ok(()) => 0,
+                Err(_) => 1,
+            }
+        } else {
+            1
+        }
+    }
+}
+
 /// Get the color of a pixel at the specified coordinates.
 ///
 /// # Arguments
@@ -329,6 +354,40 @@ pub extern "C" fn qb_gfx_circle(x: i32, y: i32, radius: i32, color: u32, filled:
     }
 }
 
+/// Draw a circle with optional STEP mode.
+///
+/// # Arguments
+/// - `x`: X coordinate of center (or offset if step is non-zero)
+/// - `y`: Y coordinate of center (or offset if step is non-zero)
+/// - `radius`: Circle radius
+/// - `color`: Circle color (ARGB format)
+/// - `filled`: Non-zero to fill the circle
+/// - `step`: If non-zero, coordinates are relative to last graphics point
+///
+/// # Returns
+/// - `0` on success
+/// - Non-zero on failure
+#[no_mangle]
+pub extern "C" fn qb_gfx_circle_step(
+    x: i32,
+    y: i32,
+    radius: i32,
+    color: u32,
+    filled: c_int,
+    step: c_int,
+) -> c_int {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            match backend.circle_step(x, y, radius, color, filled != 0, step != 0) {
+                Ok(()) => 0,
+                Err(_) => 1,
+            }
+        } else {
+            1
+        }
+    }
+}
+
 /// Flood fill starting from the given point.
 ///
 /// # Arguments
@@ -350,6 +409,43 @@ pub extern "C" fn qb_gfx_paint(x: i32, y: i32, color: u32, boundary_color: i32) 
     unsafe {
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
             match backend.paint(x, y, color, boundary) {
+                Ok(()) => 0,
+                Err(_) => 1,
+            }
+        } else {
+            1
+        }
+    }
+}
+
+/// Flood fill with optional STEP mode.
+///
+/// # Arguments
+/// - `x`, `y`: Starting point (or offset if step is non-zero)
+/// - `color`: Fill color (ARGB format)
+/// - `boundary_color`: Boundary color (-1 for match mode, else boundary mode)
+/// - `step`: If non-zero, coordinates are relative to last graphics point
+///
+/// # Returns
+/// - `0` on success
+/// - Non-zero on failure
+#[no_mangle]
+pub extern "C" fn qb_gfx_paint_step(
+    x: i32,
+    y: i32,
+    color: u32,
+    boundary_color: i32,
+    step: c_int,
+) -> c_int {
+    let boundary = if boundary_color < 0 {
+        None
+    } else {
+        Some(boundary_color as u32)
+    };
+
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            match backend.paint_step(x, y, color, boundary, step != 0) {
                 Ok(()) => 0,
                 Err(_) => 1,
             }

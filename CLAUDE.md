@@ -433,6 +433,120 @@ let span: Span = token.span.clone().into();
 
 ---
 
+## Critical Codebase Knowledge (For Context Recovery)
+
+**IMPORTANT: At session start or after context recovery, DO THIS FIRST:**
+1. Read `src/ast/expr.rs` (ExprKind variants)
+2. Read `src/ast/stmt.rs` lines 1-200 (key StatementKind variants)
+3. Read `src/semantic/typed_ir.rs` lines 1-250 (TypedExprKind, TypedStatementKind)
+4. Skim `src/lexer/token.rs` for TokenKind variants you need
+
+This takes ~30 seconds and prevents 10+ minutes of fumbling with wrong variant names.
+
+### AST Type Definitions
+
+**Expressions (`src/ast/expr.rs`):**
+```rust
+pub enum ExprKind {
+    IntegerLiteral(i64),
+    FloatLiteral(f64),
+    StringLiteral(String),
+    Identifier(String),
+    Binary { left: Box<Expr>, op: BinaryOp, right: Box<Expr> },
+    Unary { op: UnaryOp, operand: Box<Expr> },
+    Grouped(Box<Expr>),
+    FunctionCall { name: String, args: Vec<Expr> },  // Also used for array access!
+    FieldAccess { object: Box<Expr>, field: String },
+}
+```
+
+**Key insight:** There is NO separate `ArrayElement` variant. Array access uses `FunctionCall` because the syntax is identical: `arr(i)` vs `func(i)`.
+
+**Statements (`src/ast/stmt.rs`):** ~100 variants including:
+- `Let { name, value }` - simple assignment
+- `ArrayAssignment { name, indices, value }` - array element assignment
+- `MidAssignment { target: Expr, start, length, value }` - MID$ statement (target is Expr for array support)
+- `Dim`, `Redim { preserve, shared, variables }`, `Const`
+- Control flow: `If`, `For`, `While`, `DoLoop`, `Select`
+- Graphics: `Circle { step, ... }`, `Paint { step, ... }`, `Line`, `Pset`, etc.
+
+### Typed IR (`src/semantic/typed_ir.rs`)
+
+Mirrors AST but with type information:
+- `TypedExpr` has `kind: TypedExprKind` and `basic_type: BasicType`
+- `TypedStatement` has `kind: TypedStatementKind`
+- When adding AST features, also update TypedIR
+
+### Adding a New Language Feature
+
+1. **AST** (`src/ast/stmt.rs` or `expr.rs`): Add variant
+2. **Parser** (`src/parser/*.rs`): Parse the syntax, produce AST
+3. **TypedIR** (`src/semantic/typed_ir.rs`): Add typed variant
+4. **Semantic checker** (`src/semantic/checker/*.rs`): Type-check, produce TypedIR
+5. **Codegen** (`src/codegen/c_backend/stmt.rs` or `expr.rs`): Emit C code
+
+### Token Definitions (`src/lexer/token.rs`)
+
+Uses `logos` crate. Tokens defined with `#[token(...)]` or `#[regex(...)]` attributes:
+```rust
+#[derive(Logos)]
+pub enum TokenKind {
+    #[token("IF", ignore(ascii_case))]
+    If,
+    #[regex(r"[A-Za-z_][A-Za-z0-9_.]*[$%&!#]?", priority = 3)]
+    Identifier,
+    // ... ~200 token types
+}
+```
+
+**Type suffixes:** `$` (string), `%` (integer), `&` (long), `!` (single), `#` (double) are part of the identifier token.
+
+### Common Patterns
+
+**Parser helper methods (`src/parser/tokens.rs`):**
+- `peek()` - look at current token
+- `peek_ahead(n)` - look n tokens ahead
+- `advance()` - consume and return current token
+- `match_token(&TokenKind)` - consume if matches, return bool
+- `expect(&TokenKind, msg)` - consume or error
+
+**Semantic checker (`src/semantic/checker/`):**
+- `check_expr(&Expr) -> TypedExpr`
+- `check_statement(&Statement) -> TypedStatement`
+- Methods return typed versions, push errors to `self.errors`
+
+### Testing Commands
+
+```bash
+# Test a single file through stages
+cargo run --bin qb64fresh -- file.bas --tokens    # Lexer output
+cargo run --bin qb64fresh -- file.bas --ast       # Parser output
+cargo run --bin qb64fresh -- file.bas --typed-ir  # Semantic output
+cargo run --bin qb64fresh -- file.bas --emit-c    # C code output
+
+# Run QB45 compatibility tests
+cargo test --test qb45_compat -- --nocapture
+
+# Test from file (avoids shell escaping issues with $)
+echo 'MID$(arr$(1), 1, 2) = "x"' > /tmp/test.bas
+cargo run --bin qb64fresh -- /tmp/test.bas --ast
+```
+
+**Important:** When testing code with `$` characters, use files or heredocs, not echo pipes (shell interprets `$`).
+
+### QB45 Compatibility Status
+
+Current: **97/141 files (68.8%)**
+
+Remaining issues (as of 2026-01-19):
+- Parser: 29 failures (various missing syntax)
+- Semantic: 12 failures (type mismatches, symbol lookup issues)
+- Lexer: 3 failures (special characters like `@`, `|`, extended ASCII)
+
+Test files: `/home/dave/repos/qb64contain/QB64pe/tests/qbasic_testcases/`
+
+---
+
 ## Reference Material
 
 When implementing, refer to:

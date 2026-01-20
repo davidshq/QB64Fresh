@@ -250,10 +250,16 @@ impl<'a> Parser<'a> {
         let array_token = self.expect(&TokenKind::Identifier, "array name")?;
         let array_name = array_token.text.to_string();
 
+        // Array index is optional. Empty parens like arr() mean "whole array from start"
         let array_index = if self.match_token(&TokenKind::LeftParen) {
-            let idx = self.parse_expression()?;
-            self.expect(&TokenKind::RightParen, "`)` after array index")?;
-            Some(idx)
+            if self.match_token(&TokenKind::RightParen) {
+                // Empty parens - use None to indicate whole array
+                None
+            } else {
+                let idx = self.parse_expression()?;
+                self.expect(&TokenKind::RightParen, "`)` after array index")?;
+                Some(idx)
+            }
         } else {
             None
         };
@@ -337,10 +343,16 @@ impl<'a> Parser<'a> {
         let array_token = self.expect(&TokenKind::Identifier, "array name")?;
         let array_name = array_token.text.to_string();
 
+        // Array index is optional. Empty parens like arr() mean "whole array from start"
         let array_index = if self.match_token(&TokenKind::LeftParen) {
-            let idx = self.parse_expression()?;
-            self.expect(&TokenKind::RightParen, "`)` after array index")?;
-            Some(idx)
+            if self.match_token(&TokenKind::RightParen) {
+                // Empty parens - use None to indicate whole array
+                None
+            } else {
+                let idx = self.parse_expression()?;
+                self.expect(&TokenKind::RightParen, "`)` after array index")?;
+                Some(idx)
+            }
         } else {
             None
         };

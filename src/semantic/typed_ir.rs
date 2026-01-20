@@ -76,6 +76,19 @@ pub enum TypedExprKind {
         dimensions: Vec<TypedArrayDimension>,
     },
 
+    /// Array reference (passing whole array to a procedure).
+    ///
+    /// In BASIC, `arr()` means "the entire array", used when passing
+    /// arrays as arguments to SUB/FUNCTION. This is different from
+    /// `arr(i)` which accesses a single element.
+    ArrayRef {
+        name: String,
+        /// The element type of the array.
+        element_type: BasicType,
+        /// Dimension information for the array.
+        dimensions: Vec<TypedArrayDimension>,
+    },
+
     /// Explicit type conversion (inserted by type checker for implicit conversions).
     ///
     /// The inner expression's type is converted to `to_type`.
@@ -186,9 +199,10 @@ pub enum TypedStatementKind {
 
     /// MID$ assignment - substring replacement.
     /// `MID$(str$, start [, length]) = value$`
+    /// The target can be a simple variable, array element, or UDT field.
     MidAssignment {
-        /// Target string variable name.
-        target: String,
+        /// Target string expression (variable, array element, or field access).
+        target: TypedExpr,
         /// Start position (1-based).
         start: TypedExpr,
         /// Optional length to replace.
@@ -693,6 +707,8 @@ pub enum TypedStatementKind {
     Redim {
         /// Whether to preserve contents.
         preserve: bool,
+        /// Whether SHARED was specified (module-level visibility).
+        shared: bool,
         /// Arrays to redimension.
         variables: Vec<TypedRedimVariable>,
     },
@@ -737,6 +753,8 @@ pub enum TypedStatementKind {
 
     /// PSET statement - plots a point.
     Pset {
+        /// Whether coordinates are relative (STEP).
+        step: bool,
         /// X coordinate.
         x: TypedExpr,
         /// Y coordinate.
@@ -747,6 +765,8 @@ pub enum TypedStatementKind {
 
     /// PRESET statement - plots a point in background color.
     Preset {
+        /// Whether coordinates are relative (STEP).
+        step: bool,
         /// X coordinate.
         x: TypedExpr,
         /// Y coordinate.
@@ -773,6 +793,8 @@ pub enum TypedStatementKind {
 
     /// CIRCLE statement - draws a circle.
     Circle {
+        /// Whether STEP was used (relative to last graphics position).
+        step: bool,
         /// Center X.
         x: TypedExpr,
         /// Center Y.
@@ -787,6 +809,8 @@ pub enum TypedStatementKind {
 
     /// PAINT statement - flood fills an area.
     Paint {
+        /// Whether STEP was used (relative to last graphics position).
+        step: bool,
         /// Starting X.
         x: TypedExpr,
         /// Starting Y.

@@ -128,28 +128,43 @@ fn run_compat_tests(test_dir: &Path, category: &str) -> TestResults {
             .display()
             .to_string();
 
-        match fs::read_to_string(file) {
-            Ok(source) => {
-                let result = try_compile(&source);
-                if result.is_success() {
-                    passed += 1;
-                    passing_files.push(relative_path);
-                } else {
-                    failed += 1;
-                    let stage = result.stage().to_string();
-                    failures_by_stage
-                        .entry(stage)
-                        .or_default()
-                        .push(relative_path);
+        // Try UTF-8 first, fall back to latin1 for legacy DOS files
+        let source = match fs::read_to_string(file) {
+            Ok(s) => s,
+            Err(_) => {
+                // UTF-8 failed, try reading as bytes and converting from latin1
+                match fs::read(file) {
+                    Ok(bytes) => {
+                        // Strip trailing Control-Z (DOS EOF marker) and convert
+                        bytes
+                            .iter()
+                            .take_while(|&&b| b != 0x1A)
+                            .map(|&b| b as char)
+                            .collect()
+                    }
+                    Err(e) => {
+                        failed += 1;
+                        failures_by_stage
+                            .entry("io_error".to_string())
+                            .or_default()
+                            .push(format!("{}: {}", relative_path, e));
+                        continue;
+                    }
                 }
             }
-            Err(e) => {
-                failed += 1;
-                failures_by_stage
-                    .entry("io_error".to_string())
-                    .or_default()
-                    .push(format!("{}: {}", relative_path, e));
-            }
+        };
+
+        let result = try_compile(&source);
+        if result.is_success() {
+            passed += 1;
+            passing_files.push(relative_path);
+        } else {
+            failed += 1;
+            let stage = result.stage().to_string();
+            failures_by_stage
+                .entry(stage)
+                .or_default()
+                .push(relative_path);
         }
     }
 

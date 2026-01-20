@@ -426,6 +426,22 @@ qb_string* qb_mid(qb_string* s, int32_t start, int32_t n) {
     return result;
 }
 
+void qb_mid_assign(qb_string** target, int32_t start, int32_t length, qb_string* value) {
+    if (!target || !*target || !value) return;
+    qb_string* s = *target;
+    if (start < 1 || (size_t)start > s->len) return;
+    size_t idx = (size_t)(start - 1);
+    size_t max_len = s->len - idx;
+    size_t replace_len;
+    if (length < 0) {
+        replace_len = (value->len < max_len) ? value->len : max_len;
+    } else {
+        replace_len = ((size_t)length < max_len) ? (size_t)length : max_len;
+        if (replace_len > value->len) replace_len = value->len;
+    }
+    memcpy(s->data + idx, value->data, replace_len);
+}
+
 int32_t qb_instr(int32_t start, qb_string* s, qb_string* find) {
     if (!s || !find || start < 1 || (size_t)start > s->len || find->len == 0) return 0;
     char* pos = strstr(s->data + start - 1, find->data);
@@ -1104,6 +1120,13 @@ int32_t qb_get_segment(void) {
     return qb_current_segment;
 }
 
+int qb_peek(int64_t address) {
+    // PEEK emulation: return 0 for addresses outside valid range
+    // This is a stub for compatibility - real memory access is sandboxed
+    (void)address;
+    return 0;
+}
+
 typedef struct qb_mem {
     void* offset;      /* Pointer to data */
     intptr_t size;     /* Size in bytes */
@@ -1401,6 +1424,7 @@ int qb_gfx_palette(int32_t attr, uint32_t color) { (void)attr; (void)color; retu
 int qb_gfx_palette_reset(void) { return 0; }
 int qb_gfx_pcopy(int32_t src, int32_t dst) { (void)src; (void)dst; return 0; }
 double qb_gfx_pmap(double coord, int32_t func_code) { (void)func_code; return coord; }
+int32_t qb_gfx_point(int32_t x_or_func, int32_t y) { (void)x_or_func; (void)y; return 0; }
 
 int qb_gfx_set_width(uint32_t cols, uint32_t rows) { (void)cols; (void)rows; return 0; }
 int qb_gfx_view(int screen, int32_t x1, int32_t y1, int32_t x2, int32_t y2, int32_t fill, int32_t border) { (void)screen; (void)x1; (void)y1; (void)x2; (void)y2; (void)fill; (void)border; return 0; }

@@ -99,6 +99,12 @@ pub(super) fn emit_expr(expr: &TypedExpr) -> Result<String, CodeGenError> {
             let c_field = c_identifier(field);
             Ok(format!("{}.{}", obj_code, c_field))
         }
+
+        TypedExprKind::ArrayRef { name, .. } => {
+            // Array reference: pass the array pointer to a procedure.
+            // In C, the array name decays to a pointer when passed.
+            Ok(c_identifier(name))
+        }
     }
 }
 
@@ -495,8 +501,9 @@ pub(super) fn c_function_name(name: &str) -> String {
         "_WIDTH" => "qb_gfx_image_width".to_string(),
         "_HEIGHT" => "qb_gfx_image_height".to_string(),
 
-        // Coordinate mapping
+        // Coordinate mapping and pixel query
         "PMAP" => "qb_gfx_pmap".to_string(),
+        "POINT" => "qb_gfx_point".to_string(),
 
         // Event handling functions (QB4.5)
         "KEY" => "qb_key_status".to_string(), // KEY(n) function - check key trap status

@@ -436,9 +436,26 @@ impl<'a> TypeChecker<'a> {
         args: &[Expr],
         span: crate::ast::Span,
     ) -> TypedStatement {
-        let typed_args: Vec<TypedExpr> = args.iter().map(|a| self.check_expr(a)).collect();
+        // Look up procedure first to know which params expect arrays
+        let proc = self.symbols.lookup_procedure(name).cloned();
 
-        if let Some(proc) = self.symbols.lookup_procedure(name) {
+        // Type check arguments, handling array references specially
+        let mut typed_args = Vec::new();
+        for (i, arg) in args.iter().enumerate() {
+            // Check if this argument should be an array reference
+            if let Some(ref p) = proc
+                && i < p.params.len()
+                && p.params[i].is_array
+                && let Some(typed_arg) = self.try_check_array_ref(arg)
+            {
+                typed_args.push(typed_arg);
+                continue;
+            }
+
+            typed_args.push(self.check_expr(arg));
+        }
+
+        if let Some(proc) = proc {
             // Check argument count (considering optional parameters)
             let required_count = proc.required_param_count();
             let max_count = proc.params.len();
@@ -456,6 +473,10 @@ impl<'a> TypeChecker<'a> {
             for (i, (arg, typed_arg)) in args.iter().zip(&typed_args).enumerate() {
                 if i < proc.params.len() {
                     let param = &proc.params[i];
+                    // Skip type check for array references - they match by being arrays
+                    if param.is_array {
+                        continue;
+                    }
                     if !typed_arg.basic_type.is_convertible_to(&param.basic_type) {
                         self.errors.push(SemanticError::ArgumentTypeMismatch {
                             position: i + 1,

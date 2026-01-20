@@ -434,7 +434,7 @@
 
 ---
 
-*Last updated: 2026-01-19 (Session 023 - QB4.5 compatibility fixes)*
+*Last updated: 2026-01-19 (Session 024 - Array passing support)*
 
 ---
 
@@ -511,3 +511,17 @@
 
 ### Test Results Improvement
 - QB4.5 test case compatibility: 56 → 64 files passing (39% → 45%)
+
+---
+
+## Phase 7: Array Passing Support ✅ (Session 024)
+
+### Array Parameters
+- [x] Array passing with `array()` syntax - pass entire arrays to SUB/FUNCTION
+- [x] `ArrayRef` expression kind in typed IR for array references
+- [x] `is_array` field in `ParameterInfo` for parameter tracking
+- [x] Array parameters registered as `ArrayVariable` with dynamic dimensions
+- [x] `try_check_array_ref()` method to detect array reference arguments
+- [x] REDIM now uses `update_or_define_symbol` to properly update array parameters
+- [x] Skip dimension validation for dynamic arrays (empty dimensions)
+- [x] Code generation for `ArrayRef` (emits array name, decays to pointer in C)

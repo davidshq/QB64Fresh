@@ -13,32 +13,45 @@ This document describes the high-level architecture of QB64Fresh, a BASIC compil
         │
         ▼
 ┌───────────────┐
+│ Preprocessor  │  Handles $INCLUDE, $IF, $CHECKING directives
+│(preprocessor) │  Expands includes, evaluates conditional compilation
+└───────┬───────┘
+        │ Preprocessed source
+        ▼
+┌───────────────┐
 │    Lexer      │  Tokenizes source into a stream of tokens
-│  (src/lexer)  │  Uses `logos` crate for fast lexical analysis
+│  (src/lexer)  │  Uses `logos` crate for fast lexical analysis (~1,670 lines)
 └───────┬───────┘
         │ Vec<Token>
         ▼
 ┌───────────────┐
 │    Parser     │  Builds Abstract Syntax Tree from tokens
 │ (src/parser)  │  Pratt parsing for expressions, recursive descent for statements
+│               │  11 specialized modules (~7,798 lines)
 └───────┬───────┘
         │ Program (AST)
         ▼
 ┌───────────────┐
 │   Semantic    │  Type checking, symbol resolution, validation
-│ (src/semantic)│  Produces TypedProgram IR
+│ (src/semantic)│  Two-pass analysis, constant evaluation (~11,051 lines)
 └───────┬───────┘
         │ TypedProgram (IR)
         ▼
 ┌───────────────┐
 │   CodeGen     │  Generates target code via backend trait
-│ (src/codegen) │  C backend implemented (~1375 lines)
+│ (src/codegen) │  C backend with inline runtime (~8,957 lines)
 └───────┬───────┘
         │ Generated C code
         ▼
 ┌───────────────┐
 │  C Compiler   │  External: gcc/clang compiles to executable
-│  (external)   │
+│  (external)   │  Links against qb64fresh_runtime library
+└───────┬───────┘
+        │
+        ▼
+┌───────────────┐
+│   Runtime     │  Graphics (SDL2), Audio (Rodio), I/O, Strings
+│   (runtime/)  │  Rust library with C FFI (~8,618 lines)
 └───────┬───────┘
         │
         ▼
@@ -49,50 +62,84 @@ This document describes the high-level architecture of QB64Fresh, a BASIC compil
 
 ```
 src/
-├── lib.rs              # Library root, public API
-├── main.rs             # CLI entry point
+├── lib.rs                # Library root, public API exports
+├── main.rs               # CLI entry point (--tokens, --ast, --typed-ir, --emit-c)
+├── preprocessor.rs       # $INCLUDE directive processing
 │
-├── lexer/              # Phase 1: Lexical Analysis
-│   ├── mod.rs          # Lexer struct, iterator interface
-│   └── token.rs        # TokenKind enum (logos-generated)
+├── lexer/                # Phase 1: Lexical Analysis (~1,670 lines)
+│   ├── mod.rs            # Lexer struct, iterator interface
+│   └── token.rs          # TokenKind enum (logos-generated)
 │
-├── ast/                # AST Type Definitions
-│   ├── mod.rs          # Span, Program
-│   ├── expr.rs         # Expression nodes
-│   └── stmt.rs         # Statement nodes
+├── ast/                  # AST Type Definitions (~2,342 lines)
+│   ├── mod.rs            # Span, Program types
+│   ├── expr.rs           # Expression AST nodes
+│   └── stmt.rs           # Statement AST nodes (comprehensive coverage)
 │
-├── parser/             # Phase 2: Syntax Analysis
-│   ├── mod.rs          # Parser implementation
-│   └── error.rs        # ParseError types
+├── parser/               # Phase 2: Syntax Analysis (~7,798 lines) ✓
+│   ├── mod.rs            # Parser entry point, recursive descent
+│   ├── tokens.rs         # Token navigation utilities (peek, advance, match)
+│   ├── expressions.rs    # Pratt parser with full operator precedence
+│   ├── statements.rs     # Core statement parsing (largest file)
+│   ├── control_flow.rs   # IF/FOR/WHILE/DO/SELECT parsing
+│   ├── procedures.rs     # SUB/FUNCTION/TYPE definitions
+│   ├── directives.rs     # Preprocessor directives ($IF, $CHECKING)
+│   ├── audio.rs          # Audio: BEEP, SOUND, PLAY, _SNDxxx
+│   ├── graphics.rs       # Graphics: SCREEN, CLS, PSET, LINE, CIRCLE, etc.
+│   ├── file_io.rs        # File I/O: OPEN, CLOSE, GET, PUT, SEEK
+│   ├── system.rs         # System: KILL, NAME, MKDIR, SHELL, mouse, clipboard
+│   └── error.rs          # ParseError types with spans
 │
-├── semantic/           # Phase 3: Semantic Analysis [COMPLETE]
-│   ├── mod.rs          # Analysis entry point, built-in registration
-│   ├── symbols.rs      # Symbol table with scope management
-│   ├── types.rs        # BasicType enum, type inference
-│   ├── checker.rs      # Type checker for expressions/statements
-│   ├── typed_ir.rs     # TypedProgram, TypedExpr, TypedStatement
-│   └── error.rs        # Semantic error types
+├── semantic/             # Phase 3: Semantic Analysis (~11,051 lines) ✓
+│   ├── mod.rs            # Analysis entry point, built-in registration
+│   ├── symbols.rs        # Symbol table with scope management
+│   ├── types.rs          # BasicType enum, type inference
+│   ├── typed_ir.rs       # TypedProgram, TypedExpr, TypedStatement
+│   ├── error.rs          # Semantic error types with spans
+│   └── checker/          # Type Checker Submodule
+│       ├── mod.rs        # Checker entry point
+│       ├── expressions.rs # Expression type checking
+│       ├── statements.rs  # Statement type checking
+│       ├── control_flow.rs # Control flow validation
+│       ├── assignments.rs  # Assignment validation
+│       ├── definitions.rs  # Definition handling
+│       └── const_eval.rs   # Constant expression evaluation
 │
-├── codegen/            # Phase 4: Code Generation ✓
-│   ├── mod.rs          # CodeGenerator trait, GeneratedOutput
-│   ├── error.rs        # CodeGenError types
-│   └── c_backend.rs    # C code generator (~1375 lines)
+├── codegen/              # Phase 4: Code Generation (~8,957 lines) ✓
+│   ├── mod.rs            # CodeGenerator trait, GeneratedOutput
+│   ├── error.rs          # CodeGenError types
+│   └── c_backend/        # C Code Generator Submodule
+│       ├── mod.rs        # Backend entry point
+│       ├── expr.rs       # Expression code generation
+│       ├── stmt.rs       # Statement code generation
+│       ├── types.rs      # Type mapping (BASIC → C)
+│       ├── runtime.rs    # Inline C runtime library
+│       └── analysis.rs   # DATA/label collection pre-pass
 │
-├── lsp/                # Language Server Protocol ✓
-│   ├── mod.rs          # LSP server implementation
-│   └── main.rs         # qb64fresh-lsp binary entry
-│
-├── lib.rs              # Library crate root
-└── main.rs             # CLI binary entry
+└── lsp/                  # Language Server Protocol ✓
+    ├── mod.rs            # LSP server implementation (tower-lsp)
+    └── main.rs           # qb64fresh-lsp binary entry
 
-runtime/                # Runtime Library (workspace member) ✓
+runtime/                  # Runtime Library (workspace member) (~8,618 lines) ✓
 ├── src/
-│   ├── lib.rs          # Crate root, init/shutdown
-│   ├── string.rs       # Reference-counted strings (~730 lines)
-│   ├── io.rs           # PRINT, INPUT, console (~305 lines)
-│   └── math.rs         # Math functions (~390 lines)
+│   ├── lib.rs            # Crate root, init/shutdown
+│   ├── string.rs         # Reference-counted dynamic strings (~758 lines)
+│   ├── io.rs             # PRINT, INPUT, console operations (~852 lines)
+│   ├── math.rs           # Mathematical functions (~392 lines)
+│   ├── graphics_ffi.rs   # C FFI layer for graphics (~1,238 lines)
+│   ├── audio_ffi.rs      # C FFI layer for audio (~439 lines)
+│   ├── graphics/         # Graphics Backend System (~3,558 lines)
+│   │   ├── mod.rs        # GraphicsBackend trait definition
+│   │   ├── sdl2.rs       # SDL2 implementation (primary)
+│   │   ├── font.rs       # Font rendering
+│   │   ├── mock.rs       # Mock backend for testing
+│   │   └── error.rs      # Graphics error types
+│   └── audio/            # Audio Backend System (~1,298 lines)
+│       ├── mod.rs        # AudioBackend trait definition
+│       ├── rodio_backend.rs  # Rodio implementation (primary)
+│       ├── mock.rs       # Mock backend for testing
+│       └── error.rs      # Audio error types
 └── include/
-    └── qb64fresh_rt.h  # C header for FFI
+    └── qb64fresh_rt.h    # C header for FFI
 ```
 
 ## Key Components
@@ -215,9 +262,14 @@ pub trait CodeGenerator {
 }
 ```
 
-**C Backend (implemented):**
+**C Backend (implemented, ~8,957 lines across 6 files):**
 - Proven approach (QB64pe uses C++)
-- ~1375 lines in `c_backend.rs`
+- Refactored into specialized submodules:
+  - `expr.rs` - Expression generation with type coercion
+  - `stmt.rs` - Statement generation (control flow, I/O, procedures)
+  - `types.rs` - BASIC to C type mapping
+  - `runtime.rs` - Inline C runtime (~3,897 lines)
+  - `analysis.rs` - Pre-pass for DATA statements and labels
 - Two runtime modes: `inline` (self-contained) and `external` (library-linked)
 - Handles all statements: assignments, control flow, procedures
 - Type conversions, string operations, built-in functions
@@ -228,6 +280,52 @@ pub trait CodeGenerator {
 - LLVM via `inkwell`
 - Cranelift for JIT
 - Direct x86/ARM
+
+### Runtime Library (`runtime/`)
+
+The runtime provides standard library functions callable from generated C code.
+
+**Core Modules:**
+- `string.rs` - Reference-counted dynamic strings with copy-on-write
+- `io.rs` - PRINT, INPUT, console operations with formatting
+- `math.rs` - Mathematical functions (SIN, COS, RND, etc.)
+
+**Graphics Backend System (`runtime/src/graphics/`):**
+
+Uses a trait-based abstraction for graphics operations:
+
+```rust
+pub trait GraphicsBackend {
+    fn init(&mut self, width: u32, height: u32) -> Result<(), GraphicsError>;
+    fn set_pixel(&mut self, x: i32, y: i32, color: u32);
+    fn draw_line(&mut self, x1: i32, y1: i32, x2: i32, y2: i32, color: u32);
+    fn present(&mut self);
+    // ... more operations
+}
+```
+
+- **SDL2 Backend** (`sdl2.rs`) - Primary implementation using SDL2 library
+- **Mock Backend** (`mock.rs`) - For testing without graphics hardware
+- **Font Rendering** (`font.rs`) - Text drawing support
+- **C FFI** (`graphics_ffi.rs`) - Exposes backend to generated C code
+
+**Audio Backend System (`runtime/src/audio/`):**
+
+Uses a trait-based abstraction for audio operations:
+
+```rust
+pub trait AudioBackend {
+    fn init(&mut self) -> Result<(), AudioError>;
+    fn beep(&mut self, frequency: f32, duration: f32);
+    fn play_sound(&mut self, handle: u32);
+    fn load_sound(&mut self, path: &str) -> Result<u32, AudioError>;
+    // ... more operations
+}
+```
+
+- **Rodio Backend** (`rodio_backend.rs`) - Primary implementation using Rodio crate
+- **Mock Backend** (`mock.rs`) - For testing without audio hardware
+- **C FFI** (`audio_ffi.rs`) - Exposes backend to generated C code
 
 ## Data Flow
 
@@ -265,43 +363,160 @@ C:      printf("%d\n", (1 + 2));
 
 ### Adding New Syntax
 
-1. Add token(s) to `src/lexer/token.rs`
+1. Add token(s) to `src/lexer/token.rs` (use logos derive macros)
 2. Add AST node(s) to `src/ast/expr.rs` or `src/ast/stmt.rs`
-3. Add parser logic to `src/parser/mod.rs`
-4. Add semantic rules to `src/semantic/` [when implemented]
-5. Add codegen rules to `src/codegen/` [when implemented]
+3. Add parser logic to appropriate module:
+   - `parser/expressions.rs` - New operators or expression forms
+   - `parser/statements.rs` - New statement types
+   - `parser/control_flow.rs` - New control structures
+   - `parser/graphics.rs` - Graphics commands
+   - `parser/audio.rs` - Audio commands
+   - `parser/file_io.rs` - File operations
+   - `parser/system.rs` - System/OS operations
+4. Add typed IR node to `src/semantic/typed_ir.rs`
+5. Add type checking to `src/semantic/checker/`
+6. Add code generation to `src/codegen/c_backend/stmt.rs` or `expr.rs`
 
-### Adding a New Backend
+### Adding a New Code Generation Backend
 
-1. Implement the `CodeGenerator` trait
-2. Handle all IR node types
-3. Register in CLI options
+1. Create new module under `src/codegen/`
+2. Implement the `CodeGenerator` trait
+3. Handle all `TypedStatement` and `TypedExpr` variants
+4. Register in CLI options in `src/main.rs`
+
+### Adding a New Graphics Backend
+
+1. Create new module under `runtime/src/graphics/`
+2. Implement the `GraphicsBackend` trait
+3. Add feature flag to `runtime/Cargo.toml`
+4. Wire up in `runtime/src/graphics/mod.rs`
+
+### Adding a New Audio Backend
+
+1. Create new module under `runtime/src/audio/`
+2. Implement the `AudioBackend` trait
+3. Add feature flag to `runtime/Cargo.toml`
+4. Wire up in `runtime/src/audio/mod.rs`
 
 ## Testing Strategy
 
 - **Unit tests** - Each module has `#[cfg(test)]` tests
-- **Integration tests** - Parse real BASIC programs
-- **Compatibility tests** - Use QB64pe test suite (`tests/qbasic_testcases/`)
+- **Integration tests** - Parse and compile real BASIC programs
+- **Golden tests** - Compare output against known-good files
+- **Fixture tests** - Success cases with expected output, error cases with expected errors
+- **Property-based tests** - Using `proptest` for fuzzing inputs
+- **Compatibility tests** - QBasic 4.5 compatibility suite
+
+**Test Directory Structure:**
+```
+tests/
+├── common/mod.rs          # Shared test utilities
+├── compatibility.rs       # Compatibility test suite
+├── golden_tests.rs        # Golden file testing
+├── integration_tests.rs   # Integration tests
+├── proptest_tests.rs      # Property-based tests
+├── qb45_compat.rs         # QBasic 4.5 compatibility
+├── fixtures/
+│   ├── success/           # Valid programs with expected output
+│   │   ├── *.bas          # BASIC source files
+│   │   └── *.output       # Expected stdout
+│   └── error/             # Error cases with expected messages
+│       ├── *.bas          # Invalid programs
+│       └── *.err          # Expected error output
+└── golden/
+    ├── *.bas              # Source files
+    └── *.golden           # Expected compiler output
+```
 
 Run tests:
 ```bash
-cargo test          # All tests
-cargo test parser   # Parser tests only
-cargo test --doc    # Doc tests only
+cargo test                # All tests
+cargo test parser         # Parser tests only
+cargo test --doc          # Doc tests only
+cargo test golden         # Golden file tests
+cargo test --features graphics-sdl2  # With graphics
 ```
 
 ## Dependencies
 
+### Compiler Crate
+
 | Crate | Purpose |
 |-------|---------|
-| `logos` | Lexer generation |
-| `clap` | CLI argument parsing |
-| `thiserror` | Error type derivation |
-| `env_logger` | Logging |
+| `logos` 0.14 | Lexer generation with derive macros |
+| `ariadne` 0.4 | Beautiful error diagnostics with spans |
+| `clap` 4 | CLI argument parsing |
+| `thiserror` 1.0 | Error type derivation |
+| `log` + `env_logger` | Logging infrastructure |
+| `tower-lsp` 0.20 | Language Server Protocol support |
+| `tokio` 1 | Async runtime for LSP |
+| `serde` + `serde_json` | JSON serialization |
+
+### Runtime Crate
+
+| Crate | Purpose |
+|-------|---------|
+| `libc` 0.2 | C library bindings for FFI |
+| `sdl2` 0.37 | Graphics backend (optional, feature-gated) |
+| `image` 0.25 | Image loading for sprites (optional) |
+| `rodio` 0.19 | Audio backend (optional, feature-gated) |
+
+### Feature Flags
+
+```toml
+[features]
+default = ["graphics-sdl2", "audio-rodio"]
+graphics-sdl2 = ["sdl2", "image"]
+audio-rodio = ["rodio"]
+```
+
+### Dev Dependencies
+
+| Crate | Purpose |
+|-------|---------|
+| `pretty_assertions` 1.4 | Enhanced test diff output |
+| `tempfile` 3 | Temporary files for tests |
+| `proptest` 1.5 | Property-based testing |
+| `criterion` 0.5 | Benchmarking |
+
+## Build Configuration
+
+- **Workspace** - Two crates: `qb64fresh` (compiler) and `qb64fresh_runtime`
+- **Pre-commit hooks** - `cargo-husky` runs fmt/clippy
+- **CI/CD** - GitHub Actions in `.github/workflows/`
+- **Benchmarks** - Criterion benchmarks in `benches/`
+- **Fuzzing** - Infrastructure in `fuzz/`
 
 ## Related Documents
 
 - [CLAUDE.md](CLAUDE.md) - AI assistant configuration
 - [DEVELOPMENT.md](DEVELOPMENT.md) - Developer onboarding
+- [GRAPHICS_ARCHITECTURE.md](GRAPHICS_ARCHITECTURE.md) - Graphics system design
 - [docs/PARSER_PLAN.md](docs/PARSER_PLAN.md) - Parser implementation details
 - [docs/QB64_SYNTAX_REFERENCE.md](docs/QB64_SYNTAX_REFERENCE.md) - Language syntax reference
+- [docs/QB64_LANGUAGE_SPECIFICATION.md](docs/QB64_LANGUAGE_SPECIFICATION.md) - Complete language reference
+
+### Architecture Decision Records (ADRs)
+
+| ADR | Decision |
+|-----|----------|
+| ADR-0001 | Implementation language: Rust |
+| ADR-0002 | Code generation backend: C with trait abstraction |
+| ADR-0003 | Runtime library: Hybrid Rust + established crates |
+| ADR-0004 | Build system tooling |
+| ADR-0005 | Testing framework |
+| ADR-0006 | Graphics system: Trait-based with SDL2 |
+| ADR-0007 | Audio system: Trait-based with Rodio |
+| ADR-0008 | C interoperability |
+
+## Code Statistics Summary
+
+| Component | Lines | Status |
+|-----------|-------|--------|
+| Lexer | ~1,670 | ✓ Complete |
+| AST | ~2,342 | ✓ Complete |
+| Parser | ~7,798 | ✓ Complete |
+| Semantic Analysis | ~11,051 | ✓ Complete |
+| Code Generation | ~8,957 | ✓ Complete |
+| Runtime Library | ~8,618 | ✓ Complete |
+| **Total** | **~40,436** | |

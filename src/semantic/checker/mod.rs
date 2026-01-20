@@ -433,7 +433,9 @@ mod tests {
     }
 
     #[test]
-    fn test_dim_with_variable_bound_errors() {
+    fn test_dim_with_variable_bound_allowed() {
+        // In QB/QB64, DIM with variable bounds IS allowed (evaluated at runtime).
+        // This is different from some other BASICs that require constant bounds.
         let mut symbols = SymbolTable::new();
 
         // Define a variable (not a constant)
@@ -447,7 +449,7 @@ mod tests {
 
         let mut checker = TypeChecker::new(&mut symbols);
 
-        // DIM arr(size) should error - variable bounds not allowed
+        // DIM arr(size) should succeed - variable bounds ARE allowed in QB/QB64
         let stmt = Statement::new(
             StatementKind::Dim {
                 variables: vec![DimVariable {
@@ -465,15 +467,9 @@ mod tests {
 
         let _typed = checker.check_statement(&stmt);
         assert!(
-            !checker.errors.is_empty(),
-            "DIM with variable bound should error"
-        );
-        assert!(
-            matches!(
-                checker.errors[0],
-                SemanticError::NonConstantExpression { .. }
-            ),
-            "Expected NonConstantExpression error"
+            checker.errors.is_empty(),
+            "DIM with variable bound should be allowed: {:?}",
+            checker.errors
         );
     }
 
@@ -896,6 +892,7 @@ mod tests {
         let stmt = Statement::new(
             StatementKind::Redim {
                 preserve: false,
+                shared: false,
                 variables: vec![DimVariable {
                     name: "array".to_string(),
                     dimensions: vec![ArrayDimension {
@@ -927,6 +924,7 @@ mod tests {
         let stmt = Statement::new(
             StatementKind::Redim {
                 preserve: true,
+                shared: false,
                 variables: vec![DimVariable {
                     name: "buffer$".to_string(),
                     dimensions: vec![ArrayDimension {

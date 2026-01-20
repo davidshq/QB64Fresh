@@ -60,12 +60,24 @@ fn main() {
 
     let args = Args::parse();
 
-    // Read source file
+    // Read source file - try UTF-8 first, fall back to latin1 (preserves any bytes)
     let raw_source = match fs::read_to_string(&args.input) {
         Ok(s) => s,
-        Err(e) => {
-            eprintln!("Error reading '{}': {}", args.input.display(), e);
-            std::process::exit(1);
+        Err(_) => {
+            // UTF-8 failed, try reading as bytes and converting from latin1/cp1252
+            // This handles legacy DOS/Windows files encoded in CP437/CP1252
+            match fs::read(&args.input) {
+                Ok(bytes) => {
+                    // Convert bytes to string assuming latin1 (each byte maps to its Unicode value)
+                    // Strip trailing Control-Z (0x1A) which DOS uses as EOF marker
+                    let bytes: Vec<u8> = bytes.iter().copied().take_while(|&b| b != 0x1A).collect();
+                    bytes.iter().map(|&b| b as char).collect::<String>()
+                }
+                Err(e) => {
+                    eprintln!("Error reading '{}': {}", args.input.display(), e);
+                    std::process::exit(1);
+                }
+            }
         }
     };
 
@@ -153,7 +165,10 @@ fn main() {
         Err(errors) => {
             eprintln!("Semantic errors:");
             for err in &errors {
-                eprintln!("  {}", err);
+                // Compute line number from span
+                let span = err.span();
+                let line = source[..span.start].chars().filter(|&c| c == '\n').count() + 1;
+                eprintln!("  line {}: {}", line, err);
             }
             std::process::exit(1);
         }

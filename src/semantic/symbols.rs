@@ -7,7 +7,17 @@
 //! - **SHARED variables**: Access to module-level variables from procedures
 //! - **Case-insensitive lookups**: Following BASIC tradition
 //! - **DEFtype defaults**: Type defaults by variable first letter
-//! - **Type suffix normalization**: `x%`, `x$`, and `x` map to base name "X"
+//! - **Type suffix differentiation**: `x%`, `x$`, and `x&` are DIFFERENT variables
+//!
+//! # Variable Name Semantics
+//!
+//! In BASIC, variables with different type suffixes are completely different variables:
+//! - `A$` is a STRING variable
+//! - `A%` is an INTEGER variable
+//! - `A&` is a LONG variable
+//! - `A` (bare) uses DEFtype or defaults to SINGLE
+//!
+//! All of these can coexist in the same scope. Case is ignored (`A$` == `a$`).
 //!
 //! # Scope Rules
 //!
@@ -18,8 +28,32 @@
 //! - Labels are scope-local (can't GOTO into/out of procedures)
 
 use crate::ast::Span;
-use crate::semantic::types::{BasicType, strip_suffix};
+use crate::semantic::types::BasicType;
 use std::collections::{HashMap, HashSet};
+
+/// Strips the type suffix from an identifier name for DEFtype purposes only.
+///
+/// This is used only to determine which letter-range applies for DEFtype.
+/// It does NOT mean the variables are the same - `a$` and `a&` are different.
+fn strip_suffix_for_deftype(name: &str) -> &str {
+    // Two-character suffixes (must check first)
+    let two_char_suffixes = ["%%", "&&", "##", "%&", "~%", "~&", "~`"];
+    for suffix in &two_char_suffixes {
+        if let Some(stripped) = name.strip_suffix(suffix) {
+            return stripped;
+        }
+    }
+
+    // Single-character suffixes
+    let one_char_suffixes = ['$', '%', '&', '!', '#', '`'];
+    if let Some(last) = name.chars().last()
+        && one_char_suffixes.contains(&last)
+    {
+        return &name[..name.len() - 1];
+    }
+
+    name
+}
 
 /// Unique identifier for a scope.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -143,6 +177,8 @@ pub struct ParameterInfo {
     /// Whether this parameter is optional (has a default value).
     /// Used for built-in functions like MID$ (2 or 3 args) and RND (0 or 1 arg).
     pub is_optional: bool,
+    /// Whether this parameter is an array (e.g., `arr()` syntax).
+    pub is_array: bool,
 }
 
 /// A user-defined TYPE definition.
@@ -326,13 +362,13 @@ impl SymbolTable {
     ///
     /// Returns `Err((existing, new))` if a symbol with this name already exists.
     ///
-    /// Note: Type suffixes are stripped for lookup purposes, so `x%` and `x$`
-    /// and `x` all map to the same base name. This follows BASIC convention
-    /// where suffixes are type declarations, not part of the variable name.
+    /// Note: In BASIC, variables with different type suffixes are DIFFERENT variables:
+    /// `x%`, `x$`, and `x&` are three separate variables. However, lookups are
+    /// case-insensitive, so `X$` and `x$` are the same variable.
     pub fn define_symbol(&mut self, symbol: Symbol) -> Result<(), Box<(Symbol, Symbol)>> {
         let scope = self.scopes.get_mut(&self.current_scope).unwrap();
-        // Strip suffix for consistent lookups: x%, x$, x -> X
-        let name_upper = strip_suffix(&symbol.name).to_uppercase();
+        // Use the FULL name (including suffix) for uniqueness, but case-insensitive
+        let name_upper = symbol.name.to_uppercase();
 
         if let Some(existing) = scope.symbols.get(&name_upper) {
             return Err(Box::new((existing.clone(), symbol)));
@@ -342,16 +378,26 @@ impl SymbolTable {
         Ok(())
     }
 
+    /// Updates an existing symbol or defines a new one in the current scope.
+    ///
+    /// This is used for REDIM which can resize an existing array (including
+    /// array parameters) or create a new dynamic array.
+    pub fn update_or_define_symbol(&mut self, symbol: Symbol) {
+        let scope = self.scopes.get_mut(&self.current_scope).unwrap();
+        let name_upper = symbol.name.to_uppercase();
+        scope.symbols.insert(name_upper, symbol);
+    }
+
     /// Looks up a symbol by name, searching up the scope chain.
     ///
     /// In BASIC, procedure scopes (SUB/FUNCTION) are isolated from global scope.
     /// Variables from global scope are only visible if explicitly SHARED.
     ///
-    /// Type suffixes are stripped for lookups, so `x%`, `x$`, and `x` all
-    /// resolve to the same symbol.
+    /// Variables with different type suffixes are DIFFERENT variables:
+    /// `x$`, `x%`, and `x&` are three separate variables. Lookups are case-insensitive.
     pub fn lookup_symbol(&self, name: &str) -> Option<&Symbol> {
-        // Strip suffix for consistent lookups: x%, x$, x -> X
-        let name_upper = strip_suffix(name).to_uppercase();
+        // Use FULL name (including suffix) for lookup, case-insensitive
+        let name_upper = name.to_uppercase();
         let scope = self.scopes.get(&self.current_scope)?;
 
         // Check current scope first
@@ -370,9 +416,7 @@ impl SymbolTable {
 
             // Check if this variable is explicitly SHARED in this scope
             if let Some(shared_names) = self.shared_vars.get(&self.current_scope)
-                && shared_names
-                    .iter()
-                    .any(|n| strip_suffix(n).to_uppercase() == name_upper)
+                && shared_names.iter().any(|n| n.to_uppercase() == name_upper)
             {
                 // Look up in global scope only
                 if let Some(global) = self.scopes.get(&ScopeId::GLOBAL) {
@@ -389,10 +433,10 @@ impl SymbolTable {
 
     /// Checks if a symbol exists in the current scope only (not parent scopes).
     ///
-    /// Type suffixes are stripped for lookups.
+    /// Variables with different type suffixes are DIFFERENT variables.
     pub fn symbol_in_current_scope(&self, name: &str) -> bool {
-        // Strip suffix for consistent lookups: x%, x$, x -> X
-        let name_upper = strip_suffix(name).to_uppercase();
+        // Use FULL name (including suffix) for lookup, case-insensitive
+        let name_upper = name.to_uppercase();
         self.scopes
             .get(&self.current_scope)
             .map(|s| s.symbols.contains_key(&name_upper))
@@ -464,7 +508,22 @@ impl SymbolTable {
     /// These variables are automatically visible from all procedures without
     /// needing an explicit SHARED statement inside the procedure.
     pub fn add_module_shared_var(&mut self, name: String) {
-        let name_upper = strip_suffix(&name).to_uppercase();
+        // Use full name including suffix since a$ and a& are different variables
+        let name_upper = name.to_uppercase();
+        self.module_shared_vars.insert(name_upper);
+    }
+
+    /// Defines a symbol as shared at module level.
+    ///
+    /// This is used for REDIM SHARED statements. The symbol is:
+    /// 1. Defined in the global scope (always, regardless of current scope)
+    /// 2. Registered as module-shared so it's visible from all procedures
+    pub fn define_shared_symbol(&mut self, symbol: Symbol) {
+        let name_upper = symbol.name.to_uppercase();
+        // Always define in global scope
+        let global = self.scopes.get_mut(&ScopeId::GLOBAL).unwrap();
+        global.symbols.insert(name_upper.clone(), symbol);
+        // Mark as module-shared
         self.module_shared_vars.insert(name_upper);
     }
 
@@ -473,16 +532,18 @@ impl SymbolTable {
     /// This is used to validate SHARED statements - the variable must exist
     /// at module level to be shared.
     pub fn lookup_global_symbol(&self, name: &str) -> Option<&Symbol> {
-        let name_upper = strip_suffix(name).to_uppercase();
+        // Use full name including suffix since a$ and a& are different variables
+        let name_upper = name.to_uppercase();
         self.scopes.get(&ScopeId::GLOBAL)?.symbols.get(&name_upper)
     }
 
     /// Gets the default type for a variable based on its first letter.
     ///
     /// By default, all variables are SINGLE. DEFtype statements change this.
-    /// Type suffixes are stripped before determining the first letter.
+    /// Type suffixes are stripped before determining the first letter,
+    /// since DEFtype only affects variables WITHOUT explicit suffixes.
     pub fn default_type_for(&self, name: &str) -> BasicType {
-        let base_name = strip_suffix(name);
+        let base_name = strip_suffix_for_deftype(name);
         let first = base_name.chars().next().unwrap_or('A').to_ascii_uppercase();
 
         if first.is_ascii_uppercase() {
@@ -751,31 +812,37 @@ mod tests {
     }
 
     #[test]
-    fn test_type_suffix_stripping() {
+    fn test_type_suffix_differentiation() {
         let mut table = SymbolTable::new();
 
-        // Define a variable with a type suffix
-        let symbol = Symbol {
+        // In BASIC, variables with different suffixes are DIFFERENT variables
+        // Define a string variable: name$
+        let symbol1 = Symbol {
             name: "name$".to_string(),
             kind: SymbolKind::Variable,
             basic_type: BasicType::String,
             span: Span::new(0, 5),
             is_mutable: true,
         };
-        table.define_symbol(symbol).unwrap();
+        table.define_symbol(symbol1).unwrap();
 
-        // Should be findable by any variant (suffix stripped for lookup)
+        // name$ should only be found by name$ (case insensitive)
         assert!(table.lookup_symbol("name$").is_some(), "Should find name$");
         assert!(
-            table.lookup_symbol("name").is_some(),
-            "Should find via name (no suffix)"
+            table.lookup_symbol("NAME$").is_some(),
+            "Should find NAME$ (case insensitive)"
+        );
+        // name (no suffix) should NOT find name$
+        assert!(
+            table.lookup_symbol("name").is_none(),
+            "Should NOT find via 'name' (different variable)"
         );
         assert!(
-            table.lookup_symbol("NAME").is_some(),
-            "Should find via NAME (case insensitive)"
+            table.lookup_symbol("NAME").is_none(),
+            "Should NOT find via 'NAME' (different variable)"
         );
 
-        // Defining with different suffix should fail (same base name)
+        // Defining with different suffix should SUCCEED (different variable!)
         let symbol2 = Symbol {
             name: "name%".to_string(),
             kind: SymbolKind::Variable,
@@ -785,11 +852,15 @@ mod tests {
         };
         let result = table.define_symbol(symbol2);
         assert!(
-            result.is_err(),
-            "Should fail: name$ and name% have same base name"
+            result.is_ok(),
+            "Should succeed: name$ and name% are different variables"
         );
 
-        // Defining with no suffix should also fail
+        // Both should be findable by their respective names
+        assert!(table.lookup_symbol("name$").is_some(), "Should find name$");
+        assert!(table.lookup_symbol("name%").is_some(), "Should find name%");
+
+        // Defining with no suffix should also SUCCEED (another different variable)
         let symbol3 = Symbol {
             name: "name".to_string(),
             kind: SymbolKind::Variable,
@@ -799,8 +870,16 @@ mod tests {
         };
         let result = table.define_symbol(symbol3);
         assert!(
-            result.is_err(),
-            "Should fail: name and name$ have same base name"
+            result.is_ok(),
+            "Should succeed: name, name$, name% are all different variables"
         );
+
+        // All three should be findable
+        assert!(
+            table.lookup_symbol("name").is_some(),
+            "Should find name (no suffix)"
+        );
+        assert!(table.lookup_symbol("name$").is_some(), "Should find name$");
+        assert!(table.lookup_symbol("name%").is_some(), "Should find name%");
     }
 }
