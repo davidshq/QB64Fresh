@@ -250,8 +250,37 @@ impl StmtEmitter {
                 )?;
             }
 
-            TypedStatementKind::LineInput { prompt, variable } => {
-                let c_name = c_identifier(variable);
+            TypedStatementKind::LineInput { prompt, target } => {
+                use TypedInputTarget::*;
+
+                let target_code = match target {
+                    Variable { name, .. } => c_identifier(name),
+                    ArrayElement { name, indices, .. } => {
+                        let c_arr = c_identifier(name);
+                        let idx_code: Vec<_> =
+                            indices.iter().map(emit_expr).collect::<Result<_, _>>()?;
+                        let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
+                        format!("{}[{}]", c_arr, idx)
+                    }
+                    ArrayElementField {
+                        name,
+                        indices,
+                        fields,
+                        ..
+                    } => {
+                        let c_arr = c_identifier(name);
+                        let idx_code: Vec<_> =
+                            indices.iter().map(emit_expr).collect::<Result<_, _>>()?;
+                        let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
+                        let field_chain = fields.join(".");
+                        format!("{}[{}].{}", c_arr, idx, field_chain)
+                    }
+                    Field { name, fields, .. } => {
+                        let c_name = c_identifier(name);
+                        let field_chain = fields.join(".");
+                        format!("{}.{}", c_name, field_chain)
+                    }
+                };
                 let prompt_arg = match prompt {
                     Some(p) => format!("\"{}\"", escape_string(p)),
                     None => "NULL".to_string(),
@@ -259,7 +288,7 @@ impl StmtEmitter {
                 writeln!(
                     output,
                     "{}qb_input_string({}, &{});",
-                    indent, prompt_arg, c_name
+                    indent, prompt_arg, target_code
                 )
                 .unwrap();
             }
@@ -693,8 +722,8 @@ impl StmtEmitter {
                 self.emit_file_input(&indent, file_num, targets, output)?;
             }
 
-            TypedStatementKind::FileLineInput { file_num, variable } => {
-                self.emit_file_line_input(&indent, file_num, variable, output)?;
+            TypedStatementKind::FileLineInput { file_num, target } => {
+                self.emit_file_line_input(&indent, file_num, target, output)?;
             }
 
             TypedStatementKind::FileGet {
@@ -1217,11 +1246,12 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::GraphicsGet {
+                step1,
                 x1,
                 y1,
+                step2,
                 x2,
                 y2,
-                step2,
                 array_name,
                 array_indices,
             } => {
@@ -1243,22 +1273,20 @@ impl StmtEmitter {
                     format!("&{}[{}]", arr_name, indices.join("]["))
                 };
 
-                if *step2 {
-                    // STEP means x2,y2 are relative (width, height)
-                    writeln!(
-                        output,
-                        "{}qb_gfx_get_step((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, {});",
-                        indent, x1_code, y1_code, x2_code, y2_code, arr_ptr
-                    )
-                    .unwrap();
-                } else {
-                    writeln!(
-                        output,
-                        "{}qb_gfx_get((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, {});",
-                        indent, x1_code, y1_code, x2_code, y2_code, arr_ptr
-                    )
-                    .unwrap();
-                }
+                // Generate appropriate function call based on step flags
+                // step1 affects (x1, y1), step2 affects (x2, y2)
+                let func_name = match (*step1, *step2) {
+                    (false, false) => "qb_gfx_get",
+                    (false, true) => "qb_gfx_get_step2",
+                    (true, false) => "qb_gfx_get_step1",
+                    (true, true) => "qb_gfx_get_step_both",
+                };
+                writeln!(
+                    output,
+                    "{}{}((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, {});",
+                    indent, func_name, x1_code, y1_code, x2_code, y2_code, arr_ptr
+                )
+                .unwrap();
             }
 
             TypedStatementKind::GraphicsPut {
@@ -1471,13 +1499,34 @@ impl StmtEmitter {
                 .unwrap();
             }
 
-            TypedStatementKind::SndBal { handle, balance } => {
+            TypedStatementKind::SndBal {
+                handle,
+                x,
+                y,
+                z,
+                channel,
+            } => {
                 let h_code = emit_expr(handle)?;
-                let bal_code = emit_expr(balance)?;
+                let x_code = match x {
+                    Some(e) => emit_expr(e)?,
+                    None => "0.0".to_string(),
+                };
+                let y_code = match y {
+                    Some(e) => emit_expr(e)?,
+                    None => "0.0".to_string(),
+                };
+                let z_code = match z {
+                    Some(e) => emit_expr(e)?,
+                    None => "0.0".to_string(),
+                };
+                let ch_code = match channel {
+                    Some(e) => emit_expr(e)?,
+                    None => "0".to_string(),
+                };
                 writeln!(
                     output,
-                    "{}qb_sndbal((int32_t){}, (double){});",
-                    indent, h_code, bal_code
+                    "{}qb_sndbal((int32_t){}, (double){}, (double){}, (double){}, (int32_t){});",
+                    indent, h_code, x_code, y_code, z_code, ch_code
                 )
                 .unwrap();
             }
@@ -1585,7 +1634,7 @@ impl StmtEmitter {
                 .unwrap();
             }
 
-            TypedStatementKind::CallAbsolute { address } => {
+            TypedStatementKind::CallAbsolute { args: _, address } => {
                 // CALL ABSOLUTE is a legacy statement that cannot be safely implemented
                 let addr_code = emit_expr(address)?;
                 writeln!(
@@ -3236,16 +3285,44 @@ impl StmtEmitter {
         &self,
         indent: &str,
         file_num: &TypedExpr,
-        variable: &str,
+        target: &TypedInputTarget,
         output: &mut String,
     ) -> Result<(), CodeGenError> {
+        use TypedInputTarget::*;
+
         let file_num_code = emit_expr(file_num)?;
-        let c_var = c_identifier(variable);
+
+        let target_code = match target {
+            Variable { name, .. } => c_identifier(name),
+            ArrayElement { name, indices, .. } => {
+                let c_arr = c_identifier(name);
+                let idx_code: Vec<_> = indices.iter().map(emit_expr).collect::<Result<_, _>>()?;
+                let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
+                format!("{}[{}]", c_arr, idx)
+            }
+            ArrayElementField {
+                name,
+                indices,
+                fields,
+                ..
+            } => {
+                let c_arr = c_identifier(name);
+                let idx_code: Vec<_> = indices.iter().map(emit_expr).collect::<Result<_, _>>()?;
+                let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
+                let field_chain = fields.join(".");
+                format!("{}[{}].{}", c_arr, idx, field_chain)
+            }
+            Field { name, fields, .. } => {
+                let c_name = c_identifier(name);
+                let field_chain = fields.join(".");
+                format!("{}.{}", c_name, field_chain)
+            }
+        };
 
         writeln!(
             output,
             "{}qb_file_line_input({}, &{});",
-            indent, file_num_code, c_var
+            indent, file_num_code, target_code
         )
         .unwrap();
 

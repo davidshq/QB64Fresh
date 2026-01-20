@@ -46,29 +46,61 @@ impl CompileResult {
             CompileResult::CodegenError(_) => "codegen",
         }
     }
+
+    fn error_msg(&self) -> Option<&str> {
+        match self {
+            CompileResult::Success => None,
+            CompileResult::LexError(s) => Some(s),
+            CompileResult::ParseError(s) => Some(s),
+            CompileResult::SemanticError(s) => Some(s),
+            CompileResult::CodegenError(s) => Some(s),
+        }
+    }
+}
+
+/// Get line and column from byte offset in source
+fn get_line_col(source: &str, offset: usize) -> (usize, usize) {
+    let mut line = 1;
+    let mut col = 1;
+    for (i, ch) in source.char_indices() {
+        if i >= offset {
+            break;
+        }
+        if ch == '\n' {
+            line += 1;
+            col = 1;
+        } else {
+            col += 1;
+        }
+    }
+    (line, col)
 }
 
 /// Attempt to compile a BASIC source file through all stages
 fn try_compile(source: &str) -> CompileResult {
     // Stage 1: Lexing
     // The lexer doesn't fail - it produces Error tokens for invalid input
+    // Note: We don't reject Error tokens at this stage because the parser
+    // may successfully consume them (e.g., extended ASCII in DATA statements)
     let tokens = lex(source);
-
-    // Check for any lexer errors (Error tokens)
-    let lex_errors: Vec<_> = tokens
-        .iter()
-        .filter(|t| matches!(t.kind, TokenKind::Error))
-        .collect();
-
-    if !lex_errors.is_empty() {
-        return CompileResult::LexError(format!("{} error token(s)", lex_errors.len()));
-    }
 
     // Stage 2: Parsing
     let mut parser = Parser::new(&tokens);
     let ast = match parser.parse() {
         Ok(a) => a,
-        Err(e) => return CompileResult::ParseError(format!("{:?}", e)),
+        Err(errors) => {
+            // Format first error with line info
+            if let Some(first_err) = errors.first() {
+                if let Some(span) = first_err.span() {
+                    let (line, col) = get_line_col(source, span.start);
+                    return CompileResult::ParseError(format!(
+                        "line {}:{}: {}",
+                        line, col, first_err
+                    ));
+                }
+            }
+            return CompileResult::ParseError(format!("{:?}", errors));
+        }
     };
 
     // Stage 3: Semantic Analysis
@@ -161,10 +193,13 @@ fn run_compat_tests(test_dir: &Path, category: &str) -> TestResults {
         } else {
             failed += 1;
             let stage = result.stage().to_string();
-            failures_by_stage
-                .entry(stage)
-                .or_default()
-                .push(relative_path);
+            // Include error message for verbose output
+            let entry = if let Some(msg) = result.error_msg() {
+                format!("{}: {}", relative_path, msg)
+            } else {
+                relative_path
+            };
+            failures_by_stage.entry(stage).or_default().push(entry);
         }
     }
 

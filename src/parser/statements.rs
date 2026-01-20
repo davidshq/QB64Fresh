@@ -1225,6 +1225,10 @@ impl<'a> Parser<'a> {
                 // Unquoted strings in DATA - collect all tokens until comma or end of line
                 // This handles cases like: DATA o3e-o2b-ge-  (PLAY strings)
                 TokenKind::Identifier => self.parse_data_unquoted_string(negative),
+                // Error tokens often represent extended ASCII characters (128-255) which are
+                // valid in DATA statements as unquoted string values. Examples:
+                //   DATA ╬,∩,▓,¥  (graphics characters in DOS/CP437)
+                TokenKind::Error => self.parse_data_unquoted_string(negative),
                 _ => {
                     let span: Span = token.span.clone().into();
                     self.errors.push(ParseError::syntax(
@@ -1269,7 +1273,10 @@ impl<'a> Parser<'a> {
                 | TokenKind::Slash
                 | TokenKind::Hash
                 | TokenKind::Dot
-                | TokenKind::Ampersand => {
+                | TokenKind::Ampersand
+                | TokenKind::Error => {
+                    // Error tokens include extended ASCII characters (128-255)
+                    // which are valid in DATA statement values
                     let tok = self.advance().expect("token");
                     unquoted_value.push_str(&tok.text);
                 }
@@ -1383,11 +1390,28 @@ impl<'a> Parser<'a> {
         let start = self.advance().expect("CALL keyword").span.start; // consume CALL
 
         // Check for CALL ABSOLUTE (legacy machine code call)
+        // Syntax: CALL ABSOLUTE(arg1, arg2, ..., address)
         if self.match_token(&TokenKind::Absolute) {
-            let address = self.parse_expression()?;
+            self.expect(&TokenKind::LeftParen, "(")?;
+            let all_args = self.parse_argument_list()?;
+            self.expect(&TokenKind::RightParen, ")")?;
+
+            // Last argument is the address, rest are arguments to pass
+            let (args, address) = if all_args.is_empty() {
+                // No arguments - invalid, but allow parsing
+                (
+                    Vec::new(),
+                    Expr::new(ExprKind::IntegerLiteral(0), self.span_from(start)),
+                )
+            } else {
+                let mut args = all_args;
+                let address = args.pop().expect("at least one arg");
+                (args, address)
+            };
+
             let span = self.span_from(start);
             return Ok(Statement::new(
-                StatementKind::CallAbsolute { address },
+                StatementKind::CallAbsolute { args, address },
                 span,
             ));
         }
@@ -1785,12 +1809,12 @@ impl<'a> Parser<'a> {
             let file_num = self.parse_expression()?;
             self.expect(&TokenKind::Comma, "`,` after file number")?;
 
-            let var_token = self.expect(&TokenKind::Identifier, "string variable")?;
-            let variable = var_token.text.to_string();
+            // Parse target (variable or array element)
+            let target = self.parse_input_target()?;
 
             let span = self.span_from(start);
             return Ok(Statement::new(
-                StatementKind::FileLineInput { file_num, variable },
+                StatementKind::FileLineInput { file_num, target },
                 span,
             ));
         }
@@ -1808,12 +1832,12 @@ impl<'a> Parser<'a> {
             }
         }
 
-        let var_token = self.expect(&TokenKind::Identifier, "string variable")?;
-        let variable = var_token.text.to_string();
+        // Parse target (variable or array element)
+        let target = self.parse_input_target()?;
 
         let span = self.span_from(start);
         Ok(Statement::new(
-            StatementKind::LineInput { prompt, variable },
+            StatementKind::LineInput { prompt, target },
             span,
         ))
     }

@@ -84,8 +84,8 @@ impl<'a> TypeChecker<'a> {
                 targets,
             } => self.check_input(prompt, *show_question_mark, *same_line, targets, stmt.span),
 
-            StatementKind::LineInput { prompt, variable } => {
-                self.check_line_input(prompt, variable, stmt.span)
+            StatementKind::LineInput { prompt, target } => {
+                self.check_line_input(prompt, target, stmt.span)
             }
 
             StatementKind::If {
@@ -795,25 +795,64 @@ impl<'a> TypeChecker<'a> {
                 )
             }
 
-            StatementKind::FileLineInput { file_num, variable } => {
+            StatementKind::FileLineInput { file_num, target } => {
+                use crate::ast::InputTarget;
+                use crate::semantic::typed_ir::TypedInputTarget;
+
                 let typed_file_num = self.check_expr(file_num);
 
-                // Ensure variable is defined as string or define it
-                if self.symbols.lookup_symbol(variable).is_none() {
-                    let symbol = Symbol {
-                        name: variable.clone(),
-                        kind: SymbolKind::Variable,
-                        basic_type: BasicType::String,
-                        span: stmt.span,
-                        is_mutable: true,
-                    };
-                    let _ = self.symbols.define_symbol(symbol);
-                }
+                // LINE INPUT # always reads into a string
+                let typed_target = match target {
+                    InputTarget::Variable(name) => {
+                        if self.symbols.lookup_symbol(name).is_none() {
+                            let symbol = Symbol {
+                                name: name.clone(),
+                                kind: SymbolKind::Variable,
+                                basic_type: BasicType::String,
+                                span: stmt.span,
+                                is_mutable: true,
+                            };
+                            let _ = self.symbols.define_symbol(symbol);
+                        }
+                        TypedInputTarget::Variable {
+                            name: name.clone(),
+                            basic_type: BasicType::String,
+                        }
+                    }
+                    InputTarget::ArrayElement { name, indices } => {
+                        let typed_indices: Vec<_> =
+                            indices.iter().map(|i| self.check_expr(i)).collect();
+                        TypedInputTarget::ArrayElement {
+                            name: name.clone(),
+                            indices: typed_indices,
+                            element_type: BasicType::String,
+                        }
+                    }
+                    InputTarget::ArrayElementField {
+                        name,
+                        indices,
+                        fields,
+                    } => {
+                        let typed_indices: Vec<_> =
+                            indices.iter().map(|i| self.check_expr(i)).collect();
+                        TypedInputTarget::ArrayElementField {
+                            name: name.clone(),
+                            indices: typed_indices,
+                            fields: fields.clone(),
+                            field_type: BasicType::String,
+                        }
+                    }
+                    InputTarget::Field { name, fields } => TypedInputTarget::Field {
+                        name: name.clone(),
+                        fields: fields.clone(),
+                        field_type: BasicType::String,
+                    },
+                };
 
                 TypedStatement::new(
                     TypedStatementKind::FileLineInput {
                         file_num: typed_file_num,
-                        variable: variable.clone(),
+                        target: typed_target,
                     },
                     stmt.span,
                 )
@@ -1627,11 +1666,12 @@ impl<'a> TypeChecker<'a> {
             }
 
             StatementKind::GraphicsGet {
+                step1,
                 x1,
                 y1,
+                step2,
                 x2,
                 y2,
-                step2,
                 array_name,
                 array_indices,
             } => {
@@ -1643,11 +1683,12 @@ impl<'a> TypeChecker<'a> {
                     array_indices.iter().map(|e| self.check_expr(e)).collect();
                 TypedStatement::new(
                     TypedStatementKind::GraphicsGet {
+                        step1: *step1,
                         x1: typed_x1,
                         y1: typed_y1,
+                        step2: *step2,
                         x2: typed_x2,
                         y2: typed_y2,
-                        step2: *step2,
                         array_name: array_name.clone(),
                         array_indices: typed_indices,
                     },
@@ -1852,13 +1893,25 @@ impl<'a> TypeChecker<'a> {
                 )
             }
 
-            StatementKind::SndBal { handle, balance } => {
+            StatementKind::SndBal {
+                handle,
+                x,
+                y,
+                z,
+                channel,
+            } => {
                 let typed_handle = self.check_expr(handle);
-                let typed_balance = self.check_expr(balance);
+                let typed_x = x.as_ref().map(|e| self.check_expr(e));
+                let typed_y = y.as_ref().map(|e| self.check_expr(e));
+                let typed_z = z.as_ref().map(|e| self.check_expr(e));
+                let typed_channel = channel.as_ref().map(|e| self.check_expr(e));
                 TypedStatement::new(
                     TypedStatementKind::SndBal {
                         handle: typed_handle,
-                        balance: typed_balance,
+                        x: typed_x,
+                        y: typed_y,
+                        z: typed_z,
+                        channel: typed_channel,
                     },
                     stmt.span,
                 )
@@ -1969,10 +2022,12 @@ impl<'a> TypeChecker<'a> {
                 TypedStatement::new(TypedStatementKind::Setmem { bytes: typed_bytes }, stmt.span)
             }
 
-            StatementKind::CallAbsolute { address } => {
+            StatementKind::CallAbsolute { args, address } => {
+                let typed_args: Vec<_> = args.iter().map(|e| self.check_expr(e)).collect();
                 let typed_address = self.check_expr(address);
                 TypedStatement::new(
                     TypedStatementKind::CallAbsolute {
+                        args: typed_args,
                         address: typed_address,
                     },
                     stmt.span,

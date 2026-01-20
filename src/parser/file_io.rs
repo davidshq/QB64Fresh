@@ -190,12 +190,12 @@ impl<'a> Parser<'a> {
     /// Parses a GET statement.
     ///
     /// File syntax: `GET [#]filenum, [position], variable`
-    /// Graphics syntax: `GET (x1, y1)-(x2, y2), array[(index)]`
+    /// Graphics syntax: `GET [STEP](x1, y1)-[STEP](x2, y2), array[(index)]`
     pub(super) fn parse_get(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("GET keyword").span.start;
 
-        // Check if this is graphics GET (starts with parenthesis) or file GET
-        if self.check(&TokenKind::LeftParen) {
+        // Check if this is graphics GET (starts with STEP or parenthesis) or file GET
+        if self.check(&TokenKind::LeftParen) || self.check(&TokenKind::Step) {
             return self.parse_graphics_get(start);
         }
 
@@ -237,8 +237,11 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    /// Parses graphics GET: `GET (x1, y1)-(x2, y2), array[(indices)]`
+    /// Parses graphics GET: `GET [STEP](x1, y1)-[STEP](x2, y2), array[(indices)]`
     fn parse_graphics_get(&mut self, start: usize) -> Result<Statement, ()> {
+        // Check for optional STEP before first coordinate pair
+        let step1 = self.match_token(&TokenKind::Step);
+
         self.expect(&TokenKind::LeftParen, "`(` for coordinates")?;
         let x1 = self.parse_expression()?;
         self.expect(&TokenKind::Comma, "`,` between x1 and y1")?;
@@ -247,6 +250,7 @@ impl<'a> Parser<'a> {
 
         self.expect(&TokenKind::Minus, "`-` between coordinate pairs")?;
 
+        // Check for optional STEP before second coordinate pair
         let step2 = self.match_token(&TokenKind::Step);
 
         self.expect(&TokenKind::LeftParen, "`(` for second coordinates")?;
@@ -281,11 +285,12 @@ impl<'a> Parser<'a> {
         let span = self.span_from(start);
         Ok(Statement::new(
             StatementKind::GraphicsGet {
+                step1,
                 x1,
                 y1,
+                step2,
                 x2,
                 y2,
-                step2,
                 array_name,
                 array_indices,
             },

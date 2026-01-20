@@ -2630,9 +2630,17 @@ fn emit_audio_functions(output: &mut String) {
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
-    // _SNDBAL - set sound balance
-    writeln!(output, "void qb_sndbal(int32_t handle, double balance) {{").unwrap();
-    writeln!(output, "    (void)handle; (void)balance;").unwrap();
+    // _SNDBAL - set sound balance/3D position
+    writeln!(
+        output,
+        "void qb_sndbal(int32_t handle, double x, double y, double z, int32_t channel) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    (void)handle; (void)x; (void)y; (void)z; (void)channel;"
+    )
+    .unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 

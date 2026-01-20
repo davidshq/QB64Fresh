@@ -290,8 +290,8 @@ pub enum StatementKind {
     LineInput {
         /// Optional prompt string.
         prompt: Option<String>,
-        /// Variable to read into (must be string).
-        variable: String,
+        /// Target to read into (variable or array element, must be string type).
+        target: InputTarget,
     },
 
     /// `DATA value1, value2, ...` - compile-time data definition
@@ -484,8 +484,8 @@ pub enum StatementKind {
     FileLineInput {
         /// The file number.
         file_num: Expr,
-        /// Variable to read into (must be string).
-        variable: String,
+        /// Target to read into (variable or array element, must be string type).
+        target: InputTarget,
     },
 
     /// `GET [#]filenum, [position], variable` or `GET #filenum, , variable`
@@ -889,21 +889,23 @@ pub enum StatementKind {
         commands: Expr,
     },
 
-    /// `GET (x1, y1)-(x2, y2), array[(index)]` - Capture screen region to array
+    /// `GET [STEP](x1, y1)-[STEP](x2, y2), array[(index)]` - Capture screen region to array
     ///
     /// Captures a rectangular screen region into an array for later use with PUT.
     /// The array must be large enough to hold the captured image data.
     GraphicsGet {
+        /// Whether x1,y1 are relative to last graphics point (STEP)
+        step1: bool,
         /// First corner X coordinate
         x1: Expr,
         /// First corner Y coordinate
         y1: Expr,
+        /// Whether x2,y2 are relative (STEP)
+        step2: bool,
         /// Second corner X coordinate (or width if step2 is true)
         x2: Expr,
         /// Second corner Y coordinate (or height if step2 is true)
         y2: Expr,
-        /// Whether x2,y2 are relative (STEP)
-        step2: bool,
         /// Array name to store the captured image
         array_name: String,
         /// Optional array indices for storing in array (supports multi-dimensional)
@@ -1045,12 +1047,18 @@ pub enum StatementKind {
         volume: Expr,
     },
 
-    /// `_SNDBAL handle&, balance!` - Set stereo balance
+    /// `_SNDBAL handle&, [x!], [y!], [z!], [channel&]` - Set stereo balance/3D position
     SndBal {
         /// Sound handle
         handle: Expr,
-        /// Balance (-1.0 left to 1.0 right)
-        balance: Expr,
+        /// X position (or simple balance if y, z not given)
+        x: Option<Expr>,
+        /// Y position (3D positioning)
+        y: Option<Expr>,
+        /// Z position (3D positioning)
+        z: Option<Expr>,
+        /// Optional channel
+        channel: Option<Expr>,
     },
 
     /// `_SNDRAW sample!` or `_SNDRAW left!, right!` - Write raw audio samples
@@ -1147,8 +1155,11 @@ pub enum StatementKind {
     /// Legacy statement for calling machine code at a specific memory address.
     /// This is unsafe and not meaningfully implementable in modern systems.
     /// Parsed for compatibility but generates a warning at runtime.
+    /// Syntax: `CALL ABSOLUTE(arg1, arg2, ..., address)`
     CallAbsolute {
-        /// Memory address of the routine to call
+        /// Arguments to pass (excluding the address)
+        args: Vec<Expr>,
+        /// Memory address of the routine to call (last argument)
         address: Expr,
     },
 

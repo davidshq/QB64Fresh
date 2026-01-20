@@ -114,15 +114,62 @@ impl<'a> Parser<'a> {
 
     /// Parses _SNDBAL statement.
     ///
-    /// Syntax: `_SNDBAL handle&, balance!`
+    /// Syntax: `_SNDBAL handle&, [x!], [y!], [z!], [channel&]`
     pub(super) fn parse_sndbal(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("_SNDBAL keyword").span.start;
         let handle = self.parse_expression()?;
-        self.expect(&TokenKind::Comma, ",")?;
-        let balance = self.parse_expression()?;
+
+        // Parse optional parameters: x, y, z, channel
+        let x = if self.match_token(&TokenKind::Comma) {
+            // Could be empty (just comma) or an expression
+            if self.check(&TokenKind::Comma) || self.is_at_end_of_statement() {
+                None // Empty position
+            } else {
+                Some(self.parse_expression()?)
+            }
+        } else {
+            None
+        };
+
+        let y = if self.match_token(&TokenKind::Comma) {
+            if self.check(&TokenKind::Comma) || self.is_at_end_of_statement() {
+                None
+            } else {
+                Some(self.parse_expression()?)
+            }
+        } else {
+            None
+        };
+
+        let z = if self.match_token(&TokenKind::Comma) {
+            if self.check(&TokenKind::Comma) || self.is_at_end_of_statement() {
+                None
+            } else {
+                Some(self.parse_expression()?)
+            }
+        } else {
+            None
+        };
+
+        let channel = if self.match_token(&TokenKind::Comma) {
+            if self.is_at_end_of_statement() {
+                None
+            } else {
+                Some(self.parse_expression()?)
+            }
+        } else {
+            None
+        };
+
         let span = self.span_from(start);
         Ok(Statement::new(
-            StatementKind::SndBal { handle, balance },
+            StatementKind::SndBal {
+                handle,
+                x,
+                y,
+                z,
+                channel,
+            },
             span,
         ))
     }

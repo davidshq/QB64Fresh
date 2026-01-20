@@ -240,7 +240,7 @@ pub enum TypedStatementKind {
     /// LINE INPUT statement.
     LineInput {
         prompt: Option<String>,
-        variable: String,
+        target: TypedInputTarget,
     },
 
     /// IF/ELSEIF/ELSE statement.
@@ -582,8 +582,8 @@ pub enum TypedStatementKind {
     FileLineInput {
         /// The file number.
         file_num: TypedExpr,
-        /// Variable to read into.
-        variable: String,
+        /// Target to read into.
+        target: TypedInputTarget,
     },
 
     /// GET statement (binary/random file read).
@@ -892,16 +892,18 @@ pub enum TypedStatementKind {
 
     /// GET graphics statement - capture screen region to array.
     GraphicsGet {
+        /// Whether first coordinate pair is relative (STEP).
+        step1: bool,
         /// First corner X coordinate.
         x1: TypedExpr,
         /// First corner Y coordinate.
         y1: TypedExpr,
+        /// Whether second coordinate pair is relative (STEP).
+        step2: bool,
         /// Second corner X coordinate (or width if step2).
         x2: TypedExpr,
         /// Second corner Y coordinate (or height if step2).
         y2: TypedExpr,
-        /// Whether second coordinate pair is relative (STEP).
-        step2: bool,
         /// Array name to store captured image.
         array_name: String,
         /// Array indices (supports multi-dimensional).
@@ -1037,8 +1039,14 @@ pub enum TypedStatementKind {
     SndBal {
         /// Sound handle.
         handle: TypedExpr,
-        /// Balance (-1.0 to 1.0).
-        balance: TypedExpr,
+        /// X position (or balance if y, z not given).
+        x: Option<TypedExpr>,
+        /// Y position (3D positioning).
+        y: Option<TypedExpr>,
+        /// Z position (3D positioning).
+        z: Option<TypedExpr>,
+        /// Optional channel.
+        channel: Option<TypedExpr>,
     },
 
     /// _SNDRAW statement.
@@ -1120,6 +1128,8 @@ pub enum TypedStatementKind {
 
     /// CALL ABSOLUTE statement - call machine language routine (legacy stub).
     CallAbsolute {
+        /// Arguments to pass (ignored, generates warning).
+        args: Vec<TypedExpr>,
         /// Memory address (ignored, generates warning).
         address: TypedExpr,
     },

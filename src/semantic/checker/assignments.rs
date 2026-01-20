@@ -500,25 +500,62 @@ impl<'a> TypeChecker<'a> {
     pub(super) fn check_line_input(
         &mut self,
         prompt: &Option<String>,
-        variable: &str,
+        target: &crate::ast::InputTarget,
         span: crate::ast::Span,
     ) -> TypedStatement {
+        use crate::ast::InputTarget;
+        use crate::semantic::typed_ir::TypedInputTarget;
+
         // LINE INPUT always reads into a string
-        if self.symbols.lookup_symbol(variable).is_none() {
-            let symbol = Symbol {
-                name: variable.to_string(),
-                kind: SymbolKind::Variable,
-                basic_type: BasicType::String,
-                span,
-                is_mutable: true,
-            };
-            let _ = self.symbols.define_symbol(symbol);
-        }
+        let typed_target = match target {
+            InputTarget::Variable(name) => {
+                if self.symbols.lookup_symbol(name).is_none() {
+                    let symbol = Symbol {
+                        name: name.clone(),
+                        kind: SymbolKind::Variable,
+                        basic_type: BasicType::String,
+                        span,
+                        is_mutable: true,
+                    };
+                    let _ = self.symbols.define_symbol(symbol);
+                }
+                TypedInputTarget::Variable {
+                    name: name.clone(),
+                    basic_type: BasicType::String,
+                }
+            }
+            InputTarget::ArrayElement { name, indices } => {
+                let typed_indices: Vec<_> = indices.iter().map(|i| self.check_expr(i)).collect();
+                TypedInputTarget::ArrayElement {
+                    name: name.clone(),
+                    indices: typed_indices,
+                    element_type: BasicType::String,
+                }
+            }
+            InputTarget::ArrayElementField {
+                name,
+                indices,
+                fields,
+            } => {
+                let typed_indices: Vec<_> = indices.iter().map(|i| self.check_expr(i)).collect();
+                TypedInputTarget::ArrayElementField {
+                    name: name.clone(),
+                    indices: typed_indices,
+                    fields: fields.clone(),
+                    field_type: BasicType::String,
+                }
+            }
+            InputTarget::Field { name, fields } => TypedInputTarget::Field {
+                name: name.clone(),
+                fields: fields.clone(),
+                field_type: BasicType::String,
+            },
+        };
 
         TypedStatement::new(
             TypedStatementKind::LineInput {
                 prompt: prompt.clone(),
-                variable: variable.to_string(),
+                target: typed_target,
             },
             span,
         )
