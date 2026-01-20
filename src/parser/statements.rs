@@ -158,6 +158,9 @@ impl<'a> Parser<'a> {
             TokenKind::SndVol => self.parse_sndvol(),
             TokenKind::SndBal => self.parse_sndbal(),
             TokenKind::SndRaw => self.parse_sndraw(),
+            TokenKind::SndPlayFile => self.parse_sndplayfile(),
+            TokenKind::SndPlayCopy => self.parse_sndplaycopy(),
+            TokenKind::SndSetPos => self.parse_sndsetpos(),
 
             // System integration statements
             TokenKind::Kill => self.parse_kill(),

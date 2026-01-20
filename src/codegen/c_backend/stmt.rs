@@ -1547,6 +1547,68 @@ impl StmtEmitter {
                 }
             }
 
+            TypedStatementKind::SndPlayFile {
+                filename,
+                volume,
+                x,
+                y,
+                z,
+            } => {
+                let filename_code = emit_expr(filename)?;
+                let volume_code = volume
+                    .as_ref()
+                    .map(emit_expr)
+                    .transpose()?
+                    .unwrap_or_else(|| "1.0".to_string());
+                let x_code = x
+                    .as_ref()
+                    .map(emit_expr)
+                    .transpose()?
+                    .unwrap_or_else(|| "0.0".to_string());
+                let y_code = y
+                    .as_ref()
+                    .map(emit_expr)
+                    .transpose()?
+                    .unwrap_or_else(|| "0.0".to_string());
+                let z_code = z
+                    .as_ref()
+                    .map(emit_expr)
+                    .transpose()?
+                    .unwrap_or_else(|| "0.0".to_string());
+                writeln!(
+                    output,
+                    "{}qb_sndplayfile({}->data, (double){}, (double){}, (double){}, (double){});",
+                    indent, filename_code, volume_code, x_code, y_code, z_code
+                )
+                .unwrap();
+            }
+
+            TypedStatementKind::SndPlayCopy { handle, volume } => {
+                let handle_code = emit_expr(handle)?;
+                let volume_code = volume
+                    .as_ref()
+                    .map(emit_expr)
+                    .transpose()?
+                    .unwrap_or_else(|| "1.0".to_string());
+                writeln!(
+                    output,
+                    "{}qb_sndplaycopy((int32_t){}, (double){});",
+                    indent, handle_code, volume_code
+                )
+                .unwrap();
+            }
+
+            TypedStatementKind::SndSetPos { handle, position } => {
+                let handle_code = emit_expr(handle)?;
+                let position_code = emit_expr(position)?;
+                writeln!(
+                    output,
+                    "{}qb_sndsetpos((int32_t){}, (double){});",
+                    indent, handle_code, position_code
+                )
+                .unwrap();
+            }
+
             // ==================== System Integration Statements ====================
             TypedStatementKind::Kill { filename } => {
                 let filename_code = emit_expr(filename)?;

@@ -190,4 +190,99 @@ impl<'a> Parser<'a> {
         let span = self.span_from(start);
         Ok(Statement::new(StatementKind::SndRaw { left, right }, span))
     }
+
+    /// Parses _SNDPLAYFILE statement.
+    ///
+    /// Syntax: `_SNDPLAYFILE filename$[, volume!][, x!][, y!][, z!]`
+    pub(super) fn parse_sndplayfile(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_SNDPLAYFILE keyword").span.start;
+        let filename = self.parse_expression()?;
+
+        let volume = if self.match_token(&TokenKind::Comma) {
+            if self.check(&TokenKind::Comma) || self.is_at_end_of_statement() {
+                None
+            } else {
+                Some(self.parse_expression()?)
+            }
+        } else {
+            None
+        };
+
+        let x = if self.match_token(&TokenKind::Comma) {
+            if self.check(&TokenKind::Comma) || self.is_at_end_of_statement() {
+                None
+            } else {
+                Some(self.parse_expression()?)
+            }
+        } else {
+            None
+        };
+
+        let y = if self.match_token(&TokenKind::Comma) {
+            if self.check(&TokenKind::Comma) || self.is_at_end_of_statement() {
+                None
+            } else {
+                Some(self.parse_expression()?)
+            }
+        } else {
+            None
+        };
+
+        let z = if self.match_token(&TokenKind::Comma) {
+            if self.is_at_end_of_statement() {
+                None
+            } else {
+                Some(self.parse_expression()?)
+            }
+        } else {
+            None
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::SndPlayFile {
+                filename,
+                volume,
+                x,
+                y,
+                z,
+            },
+            span,
+        ))
+    }
+
+    /// Parses _SNDPLAYCOPY statement.
+    ///
+    /// Syntax: `_SNDPLAYCOPY handle&[, volume!]`
+    pub(super) fn parse_sndplaycopy(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_SNDPLAYCOPY keyword").span.start;
+        let handle = self.parse_expression()?;
+
+        let volume = if self.match_token(&TokenKind::Comma) {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::SndPlayCopy { handle, volume },
+            span,
+        ))
+    }
+
+    /// Parses _SNDSETPOS statement.
+    ///
+    /// Syntax: `_SNDSETPOS handle&, position!`
+    pub(super) fn parse_sndsetpos(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_SNDSETPOS keyword").span.start;
+        let handle = self.parse_expression()?;
+        self.expect(&TokenKind::Comma, ",")?;
+        let position = self.parse_expression()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::SndSetPos { handle, position },
+            span,
+        ))
+    }
 }

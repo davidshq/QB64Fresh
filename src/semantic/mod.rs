@@ -710,6 +710,39 @@ impl SemanticAnalyzer {
         // Phase 5: Clipboard
         self.register_builtin_function("_CLIPBOARD$", &[], BasicType::String);
 
+        // Sound functions
+        // _SNDOPEN can have optional mode/requirements string
+        self.register_builtin_function_with_optionals(
+            "_SNDOPEN",
+            &[
+                ("file", BasicType::String, false),
+                ("mode", BasicType::String, true),
+            ],
+            BasicType::Long,
+        );
+        self.register_builtin_function("_SNDOPENRAW", &[], BasicType::Long);
+        self.register_builtin_function("_SNDCOPY", &[("handle", BasicType::Long)], BasicType::Long);
+        self.register_builtin_function(
+            "_SNDPLAYING",
+            &[("handle", BasicType::Long)],
+            BasicType::Integer,
+        );
+        self.register_builtin_function(
+            "_SNDPAUSED",
+            &[("handle", BasicType::Long)],
+            BasicType::Integer,
+        );
+        self.register_builtin_function(
+            "_SNDGETPOS",
+            &[("handle", BasicType::Long)],
+            BasicType::Double,
+        );
+        self.register_builtin_function(
+            "_SNDLEN",
+            &[("handle", BasicType::Long)],
+            BasicType::Double,
+        );
+
         // Font support
         self.register_builtin_function(
             "_LOADFONT",
@@ -943,6 +976,50 @@ impl SemanticAnalyzer {
         self.register_builtin_function("MKSMBF$", &[("n", BasicType::Single)], BasicType::String);
         // MKDMBF$ converts a DOUBLE to an 8-byte MBF string
         self.register_builtin_function("MKDMBF$", &[("n", BasicType::Double)], BasicType::String);
+
+        // QB64 Audio Functions
+        // _SNDOPEN loads a sound file and returns a handle
+        // Optional second param: mode ("SYNC", "STREAM", "VOL", "PAUSE", "NODECODE")
+        self.register_builtin_function_with_optionals(
+            "_SNDOPEN",
+            &[
+                ("filename", BasicType::String, false),
+                ("mode", BasicType::String, true),
+            ],
+            BasicType::Long,
+        );
+        // _SNDOPENRAW opens a raw sound buffer for audio output
+        self.register_builtin_function("_SNDOPENRAW", &[], BasicType::Long);
+        // _SNDCOPY creates a copy of a sound handle for independent playback
+        self.register_builtin_function("_SNDCOPY", &[("handle", BasicType::Long)], BasicType::Long);
+        // _SNDPLAYING returns -1 if sound is currently playing, 0 otherwise
+        self.register_builtin_function(
+            "_SNDPLAYING",
+            &[("handle", BasicType::Long)],
+            BasicType::Integer,
+        );
+        // _SNDPAUSED returns -1 if sound is paused, 0 otherwise
+        self.register_builtin_function(
+            "_SNDPAUSED",
+            &[("handle", BasicType::Long)],
+            BasicType::Integer,
+        );
+        // _SNDGETPOS returns the current playback position in seconds
+        self.register_builtin_function(
+            "_SNDGETPOS",
+            &[("handle", BasicType::Long)],
+            BasicType::Double,
+        );
+        // _SNDLEN returns the total length of the sound in seconds
+        self.register_builtin_function(
+            "_SNDLEN",
+            &[("handle", BasicType::Long)],
+            BasicType::Double,
+        );
+        // _SNDRATE returns the sample rate of a sound (usually 44100)
+        self.register_builtin_function("_SNDRATE", &[("handle", BasicType::Long)], BasicType::Long);
+        // _SNDRAWLEN returns the amount of queued raw sound data in seconds
+        self.register_builtin_function("_SNDRAWLEN", &[], BasicType::Double);
     }
 
     /// Registers a single built-in function.

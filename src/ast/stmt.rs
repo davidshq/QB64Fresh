@@ -1071,6 +1071,36 @@ pub enum StatementKind {
         right: Option<Expr>,
     },
 
+    /// `_SNDPLAYFILE filename$[, volume!][, x!][, y!][, z!]` - Play a sound file directly
+    SndPlayFile {
+        /// The filename to play
+        filename: Expr,
+        /// Optional volume (0.0 to 1.0)
+        volume: Option<Expr>,
+        /// Optional 3D x position
+        x: Option<Expr>,
+        /// Optional 3D y position
+        y: Option<Expr>,
+        /// Optional 3D z position
+        z: Option<Expr>,
+    },
+
+    /// `_SNDPLAYCOPY handle&[, volume!]` - Play a copy of a sound
+    SndPlayCopy {
+        /// Sound handle to copy and play
+        handle: Expr,
+        /// Optional volume
+        volume: Option<Expr>,
+    },
+
+    /// `_SNDSETPOS handle&, position!` - Set playback position
+    SndSetPos {
+        /// Sound handle
+        handle: Expr,
+        /// Position in seconds
+        position: Expr,
+    },
+
     // ==================== System Integration Statements ====================
     /// `KILL filename$` - Delete a file
     Kill {

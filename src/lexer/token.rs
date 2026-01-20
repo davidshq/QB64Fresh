@@ -704,6 +704,38 @@ pub enum TokenKind {
     #[token("_SNDRAW", ignore(ascii_case))]
     SndRaw,
 
+    /// _SNDPLAYFILE statement - play sound file directly
+    #[token("_SNDPLAYFILE", ignore(ascii_case))]
+    SndPlayFile,
+
+    /// _SNDPLAYCOPY statement - play a copy of a sound
+    #[token("_SNDPLAYCOPY", ignore(ascii_case))]
+    SndPlayCopy,
+
+    /// _SNDSETPOS statement - set playback position
+    #[token("_SNDSETPOS", ignore(ascii_case))]
+    SndSetPos,
+
+    /// _SNDCOPY function - copy sound handle
+    #[token("_SNDCOPY", ignore(ascii_case))]
+    SndCopy,
+
+    /// _SNDPLAYING function - check if sound is playing
+    #[token("_SNDPLAYING", ignore(ascii_case))]
+    SndPlaying,
+
+    /// _SNDGETPOS function - get playback position
+    #[token("_SNDGETPOS", ignore(ascii_case))]
+    SndGetPos,
+
+    /// _SNDLEN function - get sound length
+    #[token("_SNDLEN", ignore(ascii_case))]
+    SndLen,
+
+    /// _SNDPAUSED function - check if sound is paused
+    #[token("_SNDPAUSED", ignore(ascii_case))]
+    SndPaused,
+
     // ==================== System Integration Keywords ====================
     /// KILL statement - delete file
     #[token("KILL", ignore(ascii_case))]

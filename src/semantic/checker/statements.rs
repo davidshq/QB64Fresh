@@ -1932,6 +1932,54 @@ impl<'a> TypeChecker<'a> {
                 )
             }
 
+            StatementKind::SndPlayFile {
+                filename,
+                volume,
+                x,
+                y,
+                z,
+            } => {
+                let typed_filename = self.check_expr(filename);
+                let typed_volume = volume.as_ref().map(|e| self.check_expr(e));
+                let typed_x = x.as_ref().map(|e| self.check_expr(e));
+                let typed_y = y.as_ref().map(|e| self.check_expr(e));
+                let typed_z = z.as_ref().map(|e| self.check_expr(e));
+                TypedStatement::new(
+                    TypedStatementKind::SndPlayFile {
+                        filename: typed_filename,
+                        volume: typed_volume,
+                        x: typed_x,
+                        y: typed_y,
+                        z: typed_z,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::SndPlayCopy { handle, volume } => {
+                let typed_handle = self.check_expr(handle);
+                let typed_volume = volume.as_ref().map(|e| self.check_expr(e));
+                TypedStatement::new(
+                    TypedStatementKind::SndPlayCopy {
+                        handle: typed_handle,
+                        volume: typed_volume,
+                    },
+                    stmt.span,
+                )
+            }
+
+            StatementKind::SndSetPos { handle, position } => {
+                let typed_handle = self.check_expr(handle);
+                let typed_position = self.check_expr(position);
+                TypedStatement::new(
+                    TypedStatementKind::SndSetPos {
+                        handle: typed_handle,
+                        position: typed_position,
+                    },
+                    stmt.span,
+                )
+            }
+
             // ==================== System Integration Statements ====================
             StatementKind::Kill { filename } => {
                 let typed_filename = self.check_expr(filename);

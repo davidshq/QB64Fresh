@@ -2687,6 +2687,37 @@ fn emit_audio_functions(output: &mut String) {
     writeln!(output, "    return 44100;").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
+
+    // _SNDPLAYFILE - play a sound file directly
+    writeln!(
+        output,
+        "void qb_sndplayfile(const char* filename, double volume, double x, double y, double z) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    (void)filename; (void)volume; (void)x; (void)y; (void)z;"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _SNDPLAYCOPY - play a copy of a sound
+    writeln!(
+        output,
+        "void qb_sndplaycopy(int32_t handle, double volume) {{"
+    )
+    .unwrap();
+    writeln!(output, "    (void)handle; (void)volume;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _SNDCOPY - copy a sound handle (returns 0)
+    writeln!(output, "int32_t qb_sndcopy(int32_t handle) {{").unwrap();
+    writeln!(output, "    (void)handle;").unwrap();
+    writeln!(output, "    return 0;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
 }
 
 /// Emits graphics operation stubs for the inline runtime.

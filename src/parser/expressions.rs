@@ -133,6 +133,11 @@ impl<'a> Parser<'a> {
             // QB64 Sound functions (return handles or values)
             TokenKind::SndOpen => self.parse_builtin_function("_SNDOPEN"),
             TokenKind::SndOpenRaw => self.parse_builtin_function("_SNDOPENRAW"),
+            TokenKind::SndCopy => self.parse_builtin_function("_SNDCOPY"),
+            TokenKind::SndPlaying => self.parse_builtin_function("_SNDPLAYING"),
+            TokenKind::SndGetPos => self.parse_builtin_function("_SNDGETPOS"),
+            TokenKind::SndLen => self.parse_builtin_function("_SNDLEN"),
+            TokenKind::SndPaused => self.parse_builtin_function("_SNDPAUSED"),
 
             // Keywords that can be used as variable names in expression context
             // In BASIC, keywords like NAME, INPUT, OUTPUT can be used as variable names

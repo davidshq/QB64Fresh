@@ -1059,6 +1059,36 @@ pub enum TypedStatementKind {
         right: Option<TypedExpr>,
     },
 
+    /// _SNDPLAYFILE statement.
+    SndPlayFile {
+        /// The filename to play.
+        filename: TypedExpr,
+        /// Optional volume.
+        volume: Option<TypedExpr>,
+        /// Optional 3D x position.
+        x: Option<TypedExpr>,
+        /// Optional 3D y position.
+        y: Option<TypedExpr>,
+        /// Optional 3D z position.
+        z: Option<TypedExpr>,
+    },
+
+    /// _SNDPLAYCOPY statement.
+    SndPlayCopy {
+        /// Sound handle.
+        handle: TypedExpr,
+        /// Optional volume.
+        volume: Option<TypedExpr>,
+    },
+
+    /// _SNDSETPOS statement.
+    SndSetPos {
+        /// Sound handle.
+        handle: TypedExpr,
+        /// Position in seconds.
+        position: TypedExpr,
+    },
+
     // ==================== System Integration Statements ====================
     /// KILL statement - delete a file.
     Kill {
