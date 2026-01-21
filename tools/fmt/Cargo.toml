@@ -1,0 +1,29 @@
+[package]
+name = "qb64fresh-fmt"
+version = "0.1.0"
+edition = "2021"
+description = "Code formatter for QB64Fresh BASIC source files"
+authors = ["QB64Fresh Contributors"]
+license = "MIT"
+
+[[bin]]
+name = "qb64fresh-fmt"
+path = "src/main.rs"
+
+[lib]
+name = "qb64fresh_fmt"
+path = "src/lib.rs"
+
+[dependencies]
+# Use the main compiler library for lexing and parsing
+qb64fresh = { path = "../.." }
+
+# CLI argument parsing
+clap = { version = "4", features = ["derive"] }
+
+# Error handling
+thiserror = "1.0"
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+tempfile = "3"
