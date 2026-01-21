@@ -4,6 +4,7 @@
 //! Currently it supports:
 //!
 //! - `$INCLUDE: 'filename'` - File inclusion (recursive)
+//! - Line continuation with ` _` (space underscore at end of line)
 //!
 //! # Design
 //!
@@ -174,6 +175,120 @@ impl PreprocessContext {
     }
 }
 
+/// Joins lines that end with ` _` (space underscore) continuation character.
+///
+/// In QB64/BASIC, a line ending with ` _` indicates that the statement continues
+/// on the next line. This function joins such lines into single logical lines
+/// before further processing.
+///
+/// **Important**: Line continuation is NOT active inside comments or strings.
+/// A `_` inside a comment (after `'` or `REM`) does not trigger continuation.
+///
+/// # Example
+///
+/// ```text
+/// IF condition OR _
+///    condition2 THEN
+/// ```
+///
+/// Becomes:
+///
+/// ```text
+/// IF condition OR    condition2 THEN
+/// ```
+fn join_continued_lines(source: &str) -> String {
+    let mut result = String::with_capacity(source.len());
+    let mut continuation_buffer = String::new();
+    let mut in_continuation = false;
+
+    for line in source.lines() {
+        // Check if line ends with ` _` (space underscore) for continuation
+        // BUT NOT if that `_` is inside a comment
+        let is_continuation = is_line_continuation(line);
+
+        if in_continuation {
+            // Append to continuation buffer (without the previous ` _`)
+            continuation_buffer.push_str(line.trim_start());
+
+            if is_continuation {
+                // Remove the trailing ` _` and continue accumulating
+                let trimmed = continuation_buffer.trim_end();
+                let without_underscore = trimmed.strip_suffix('_').unwrap_or(trimmed);
+                continuation_buffer = without_underscore.to_string();
+                continuation_buffer.push(' '); // Replace with space
+            } else {
+                // End of continuation - output the joined line
+                result.push_str(&continuation_buffer);
+                result.push('\n');
+                continuation_buffer.clear();
+                in_continuation = false;
+            }
+        } else if is_continuation {
+            // Start of a continuation
+            let trimmed = line.trim_end();
+            let without_underscore = trimmed.strip_suffix('_').unwrap_or(trimmed);
+            continuation_buffer = without_underscore.to_string();
+            continuation_buffer.push(' '); // Replace ` _` with space
+            in_continuation = true;
+        } else {
+            // Normal line - output as-is
+            result.push_str(line);
+            result.push('\n');
+        }
+    }
+
+    // Handle any remaining continuation at end of file
+    if !continuation_buffer.is_empty() {
+        result.push_str(&continuation_buffer);
+        result.push('\n');
+    }
+
+    result
+}
+
+/// Checks if a line ends with a valid line continuation (` _` not in a comment).
+///
+/// A line continuation is valid when:
+/// 1. The line ends with ` _` (space/tab followed by underscore)
+/// 2. That underscore is NOT inside a comment (after `'`)
+/// 3. That underscore is NOT inside a string literal
+fn is_line_continuation(line: &str) -> bool {
+    let trimmed = line.trim_end();
+
+    // First check: does it even end with ` _`?
+    let ends_with_continuation = trimmed
+        .strip_suffix('_')
+        .map(|s| s.ends_with(' ') || s.ends_with('\t'))
+        .unwrap_or(false);
+
+    if !ends_with_continuation {
+        return false;
+    }
+
+    // Find the position of the trailing `_`
+    let underscore_pos = trimmed.len() - 1;
+
+    // Now check if that position is inside a comment or string
+    let mut in_string = false;
+    let chars: Vec<char> = trimmed.chars().collect();
+
+    for (i, &c) in chars.iter().enumerate() {
+        if c == '"' {
+            in_string = !in_string;
+        } else if !in_string && c == '\'' {
+            // Found a comment marker - everything after is a comment
+            // If the underscore is after this point, it's not a continuation
+            if underscore_pos > i {
+                return false;
+            }
+            break;
+        }
+    }
+
+    // If we're still in a string at the underscore position, it's not a continuation
+    !in_string
+}
+
 /// Preprocesses BASIC source code, expanding `$INCLUDE` directives.
 ///
 /// This function recursively processes include directives, replacing them with
@@ -197,9 +312,12 @@ impl PreprocessContext {
 /// let result = preprocess("$INCLUDE: 'header.bi'", Path::new("."));
 /// ```
 pub fn preprocess(source: &str, base_path: &Path) -> Result<String, PreprocessorError> {
+    // First, join continued lines (lines ending with ` _`)
+    let joined = join_continued_lines(source);
+
     let initial_file = base_path.join("main.bas");
     let mut context = PreprocessContext::new(initial_file);
-    preprocess_internal(source, base_path, &mut context)
+    preprocess_internal(&joined, base_path, &mut context)
 }
 
 /// Preprocesses a file by path.
@@ -222,11 +340,14 @@ pub fn preprocess_file(path: &Path) -> Result<String, PreprocessorError> {
     })?;
     let source = String::from_utf8_lossy(&bytes).into_owned();
 
+    // Join continued lines (lines ending with ` _`)
+    let joined = join_continued_lines(&source);
+
     let base_path = path.parent().unwrap_or(Path::new("."));
     let canonical = path.canonicalize().unwrap_or(path.to_path_buf());
     let mut context = PreprocessContext::new(canonical);
 
-    preprocess_internal(&source, base_path, &mut context)
+    preprocess_internal(&joined, base_path, &mut context)
 }
 
 /// Internal preprocessing function with context tracking.
@@ -265,6 +386,9 @@ fn preprocess_internal(
                     message: e.to_string(),
                 })?;
             let include_source = String::from_utf8_lossy(&include_bytes).into_owned();
+
+            // Join continued lines in the included file
+            let include_source = join_continued_lines(&include_source);
 
             // Get the include file's directory for nested includes
             let include_base = include_full_path.parent().unwrap_or(Path::new("."));

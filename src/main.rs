@@ -52,6 +52,10 @@ struct Args {
     /// Verbose output
     #[arg(short, long)]
     verbose: bool,
+
+    /// Write preprocessed source to file (for debugging)
+    #[arg(long)]
+    write_preprocessed: Option<PathBuf>,
 }
 
 fn main() {
@@ -108,6 +112,19 @@ fn main() {
             }
         }
     };
+
+    // Write preprocessed source if requested
+    if let Some(preproc_path) = &args.write_preprocessed {
+        if let Err(e) = fs::write(preproc_path, &source) {
+            eprintln!(
+                "Error writing preprocessed source to '{}': {}",
+                preproc_path.display(),
+                e
+            );
+        } else if args.verbose {
+            println!("Wrote preprocessed source to: {}", preproc_path.display());
+        }
+    }
 
     // Lexer phase
     let tokens = lex(&source);

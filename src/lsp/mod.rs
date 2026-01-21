@@ -28,7 +28,7 @@ use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer};
 
 use crate::ast::Span;
-use crate::lexer::{lex, TokenKind};
+use crate::lexer::{TokenKind, lex};
 use crate::parser::Parser;
 use crate::semantic::{DocumentSymbolKind, SemanticAnalyzer};
 
@@ -256,7 +256,10 @@ impl QbLanguageServer {
             ("FOR", "FOR var = start TO end\n\nNEXT var"),
             ("WHILE", "WHILE condition\n\nWEND"),
             ("DO", "DO WHILE condition\n\nLOOP"),
-            ("SELECT CASE", "SELECT CASE expression\n    CASE value\n\nEND SELECT"),
+            (
+                "SELECT CASE",
+                "SELECT CASE expression\n    CASE value\n\nEND SELECT",
+            ),
             ("SUB", "SUB name()\n\nEND SUB"),
             ("FUNCTION", "FUNCTION name()\n\nEND FUNCTION"),
             ("DIM", "DIM variable AS type"),
@@ -397,7 +400,15 @@ impl QbLanguageServer {
         let func_name = text_before_paren
             .chars()
             .rev()
-            .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '$' || *c == '%' || *c == '&' || *c == '!' || *c == '#')
+            .take_while(|c| {
+                c.is_alphanumeric()
+                    || *c == '_'
+                    || *c == '$'
+                    || *c == '%'
+                    || *c == '&'
+                    || *c == '!'
+                    || *c == '#'
+            })
             .collect::<String>()
             .chars()
             .rev()
@@ -524,10 +535,7 @@ impl QbLanguageServer {
                 label: InlayHintLabel::String(format!(": {}", type_str)),
                 kind: Some(InlayHintKind::TYPE),
                 text_edits: None,
-                tooltip: Some(InlayHintTooltip::String(format!(
-                    "Type of '{}'",
-                    sym.name
-                ))),
+                tooltip: Some(InlayHintTooltip::String(format!("Type of '{}'", sym.name))),
                 padding_left: Some(false),
                 padding_right: Some(true),
                 data: None,
@@ -721,10 +729,7 @@ impl LanguageServer for QbLanguageServer {
         Ok(None)
     }
 
-    async fn completion(
-        &self,
-        params: CompletionParams,
-    ) -> Result<Option<CompletionResponse>> {
+    async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
         let uri = &params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
 
@@ -745,10 +750,7 @@ impl LanguageServer for QbLanguageServer {
         Ok(None)
     }
 
-    async fn references(
-        &self,
-        params: ReferenceParams,
-    ) -> Result<Option<Vec<Location>>> {
+    async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
         let uri = &params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
 
@@ -776,10 +778,7 @@ impl LanguageServer for QbLanguageServer {
         Ok(None)
     }
 
-    async fn signature_help(
-        &self,
-        params: SignatureHelpParams,
-    ) -> Result<Option<SignatureHelp>> {
+    async fn signature_help(&self, params: SignatureHelpParams) -> Result<Option<SignatureHelp>> {
         let uri = &params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
 
@@ -796,10 +795,7 @@ impl LanguageServer for QbLanguageServer {
         Ok(None)
     }
 
-    async fn inlay_hint(
-        &self,
-        params: InlayHintParams,
-    ) -> Result<Option<Vec<InlayHint>>> {
+    async fn inlay_hint(&self, params: InlayHintParams) -> Result<Option<Vec<InlayHint>>> {
         let uri = &params.text_document.uri;
         let range = params.range;
 
@@ -1201,8 +1197,15 @@ fn format_basic_type(ty: &BasicType) -> String {
         BasicType::UnsignedBit => "_UNSIGNED _BIT".to_string(),
         BasicType::UserDefined(name) => name.clone(),
         BasicType::FixedString(len) => format!("STRING * {}", len),
-        BasicType::Array { element_type, dimensions } => {
-            format!("{}({})", format_basic_type(element_type), "...".repeat(*dimensions))
+        BasicType::Array {
+            element_type,
+            dimensions,
+        } => {
+            format!(
+                "{}({})",
+                format_basic_type(element_type),
+                "...".repeat(*dimensions)
+            )
         }
         BasicType::Mem => "_MEM".to_string(),
         BasicType::Void => "VOID".to_string(),
@@ -1792,11 +1795,7 @@ END SUB
         // implementation details of get_completions
         let expected_keywords = ["IF", "FOR", "WHILE", "SUB", "FUNCTION", "DIM"];
         for keyword in expected_keywords {
-            assert!(
-                keyword.len() > 0,
-                "Keyword {} should be non-empty",
-                keyword
-            );
+            assert!(keyword.len() > 0, "Keyword {} should be non-empty", keyword);
         }
     }
 
@@ -1807,7 +1806,11 @@ END SUB
             "ABS", "ASC", "CHR$", "LEN", "LEFT$", "RIGHT$", "MID$", "STR$", "VAL",
         ];
         for builtin in expected_builtins {
-            assert!(builtin.len() > 0, "Built-in {} should be non-empty", builtin);
+            assert!(
+                builtin.len() > 0,
+                "Built-in {} should be non-empty",
+                builtin
+            );
         }
     }
 
@@ -1918,7 +1921,11 @@ END TYPE
         let hover = analyzer.get_hover_info("Person");
         assert!(hover.is_some(), "Should get hover info for Person");
         let info = hover.unwrap();
-        assert!(info.contains("TYPE"), "Hover should show TYPE, got: {}", info);
+        assert!(
+            info.contains("TYPE"),
+            "Hover should show TYPE, got: {}",
+            info
+        );
         assert!(
             info.contains("name") && info.contains("STRING"),
             "Hover should show name AS STRING, got: {}",
