@@ -132,13 +132,36 @@ impl<'a> Parser<'a> {
     /// - `x = 1: y = 2` (colon separator on same line)
     ///
     /// Comments can also appear between statements and should be skipped.
+    ///
+    /// This function also updates `at_line_start` to track whether we're at the
+    /// beginning of a physical line (after newline) or mid-line (after colon only).
+    /// This is important for distinguishing label definitions from procedure calls.
     pub(super) fn skip_statement_separators(&mut self) {
+        // Track what separators we see
+        let mut saw_newline = false;
+        let mut saw_colon = false;
         while self.check(&TokenKind::Newline)
             || self.check(&TokenKind::Colon)
             || self.check(&TokenKind::Comment)
         {
+            if self.check(&TokenKind::Newline) {
+                saw_newline = true;
+            } else if self.check(&TokenKind::Colon) {
+                saw_colon = true;
+            }
+            // Comments don't affect line start status
             self.advance();
         }
+        // We're at line start if:
+        // 1. We saw a newline (regardless of colons - newline resets line start)
+        // 2. We saw nothing and were already at line start (e.g., file start)
+        if saw_newline {
+            self.at_line_start = true;
+        } else if saw_colon {
+            // Only colon(s) - we're mid-line
+            self.at_line_start = false;
+        }
+        // If we saw nothing, at_line_start stays unchanged (preserves file start state)
     }
 
     /// Attempts to recover from an error by skipping to a synchronization point.

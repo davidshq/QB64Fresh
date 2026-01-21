@@ -1207,23 +1207,38 @@ impl<'a> TypeChecker<'a> {
 
             StatementKind::SharedStmt { variables } => {
                 // SHARED statement inside SUB/FUNCTION declares access to module-level variables.
-                // This enables procedures to access variables declared at module scope.
+                // In classic BASIC, SHARED can also implicitly create variables at module level
+                // if they don't already exist.
 
                 // Must be inside a procedure
                 if !self.symbols.in_procedure() {
                     self.errors
                         .push(SemanticError::SharedOutsideProcedure { span: stmt.span });
                 } else {
-                    // For each variable, verify it exists at module level and register as shared
+                    // For each variable, check if it exists at module level
+                    // If not, implicitly declare it (classic BASIC behavior)
                     for var_name in variables {
                         if self.symbols.lookup_global_symbol(var_name).is_some() {
-                            // Register this variable as accessible in the current procedure scope
+                            // Variable exists at module level - register as shared
                             self.symbols.add_shared_var(var_name.clone());
                         } else {
-                            self.errors.push(SemanticError::SharedVariableNotFound {
+                            // Classic BASIC: implicitly declare at module level
+                            // Determine type from name suffix or default
+                            let basic_type = type_from_suffix(var_name)
+                                .unwrap_or_else(|| self.symbols.default_type_for(var_name));
+
+                            let symbol = Symbol {
                                 name: var_name.clone(),
+                                kind: SymbolKind::Variable,
+                                basic_type,
                                 span: stmt.span,
-                            });
+                                is_mutable: true,
+                            };
+
+                            // Define at global scope and mark as module-shared
+                            self.symbols.define_shared_symbol(symbol);
+                            // Also register for this procedure's SHARED access
+                            self.symbols.add_shared_var(var_name.clone());
                         }
                     }
                 }
@@ -2567,12 +2582,20 @@ impl<'a> TypeChecker<'a> {
         // Build parameter type list for the symbol
         let param_types: Vec<BasicType> = typed_params.iter().map(|p| p.typ.clone()).collect();
 
+        // Strip type suffix from function name for symbol lookup
+        // e.g., "myabs&" -> "myabs" so calls can omit the suffix
+        use crate::semantic::types::strip_suffix;
+        let base_name = strip_suffix(&decl.name).to_string();
+
+        // For C name, use ALIAS if provided, otherwise strip BASIC suffix
+        // (C doesn't have type suffixes like & % $ in identifiers)
+        let c_name = decl.alias.clone().unwrap_or_else(|| base_name.clone());
+
         // Register the function in the symbol table
-        let c_name = decl.alias.clone().unwrap_or_else(|| decl.name.clone());
         // Note: We use define_symbol which may fail if symbol already exists,
         // but we'll ignore duplicates for external functions (they can be redeclared)
         let _ = self.symbols.define_symbol(Symbol {
-            name: decl.name.clone(),
+            name: base_name.clone(),
             kind: SymbolKind::ExternalFunction {
                 c_name: c_name.clone(),
                 params: param_types,
@@ -2584,7 +2607,7 @@ impl<'a> TypeChecker<'a> {
         });
 
         TypedExternalDeclaration {
-            name: decl.name.clone(),
+            name: base_name,
             c_name,
             params: typed_params,
             return_type,

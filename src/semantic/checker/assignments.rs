@@ -10,7 +10,7 @@
 use crate::ast::{Expr, PrintItem};
 use crate::semantic::{
     error::SemanticError,
-    symbols::{Symbol, SymbolKind},
+    symbols::{ArrayDimInfo, Symbol, SymbolKind},
     typed_ir::*,
     types::{BasicType, type_from_suffix},
 };
@@ -120,12 +120,48 @@ impl<'a> TypeChecker<'a> {
             };
 
             (symbol.basic_type.clone(), typed_dims)
-        } else {
+        } else if self.symbols.lookup_symbol(name).is_some() {
+            // Scalar variable exists but is not an array
             self.errors.push(SemanticError::NotAnArray {
                 name: name.to_string(),
                 span,
             });
             (BasicType::Unknown, Vec::new())
+        } else {
+            // Classic BASIC: implicitly declare array on first use with default bounds (0-10)
+            // Determine type from name suffix (e.g., A$ -> String, X% -> Integer)
+            let element_type = type_from_suffix(name).unwrap_or(BasicType::Single);
+
+            // Create dimensions with default bounds (0 TO 10) for each index
+            let dim_info: Vec<ArrayDimInfo> = indices
+                .iter()
+                .map(|_| ArrayDimInfo {
+                    lower_bound: 0,
+                    upper_bound: 10,
+                })
+                .collect();
+
+            // Define the implicit array
+            let implicit_array = Symbol {
+                name: name.to_string(),
+                kind: SymbolKind::ArrayVariable {
+                    dimensions: dim_info.clone(),
+                },
+                basic_type: element_type.clone(),
+                span,
+                is_mutable: true,
+            };
+            self.symbols.update_or_define_symbol(implicit_array);
+
+            let typed_dims: Vec<TypedArrayDimension> = dim_info
+                .iter()
+                .map(|d| TypedArrayDimension {
+                    lower: d.lower_bound,
+                    upper: d.upper_bound,
+                })
+                .collect();
+
+            (element_type, typed_dims)
         };
 
         // Check and type the indices

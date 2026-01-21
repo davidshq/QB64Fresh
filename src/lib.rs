@@ -45,6 +45,13 @@ pub mod parser;
 pub mod preprocessor;
 pub mod semantic;
 
+/// C header parsing for automatic DECLARE LIBRARY support.
+///
+/// This module is optional and provides the ability to parse C header files
+/// to automatically extract function signatures for use with DECLARE LIBRARY.
+#[cfg(feature = "header-parsing")]
+pub mod header_parser;
+
 /// Re-export commonly used types for convenience
 pub mod prelude {
     pub use crate::ast::{Expr, ExprKind, Program, Span, Statement, StatementKind};

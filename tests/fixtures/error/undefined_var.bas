@@ -1,2 +1,2 @@
-' This should fail because we're calling an undefined function
-PRINT UndefinedFunction(1)
+' This should fail because we're calling an undefined SUB
+CALL UndefinedSub

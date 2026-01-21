@@ -56,6 +56,42 @@ impl<'a> TypeChecker<'a> {
             ExprKind::FieldAccess { object, field } => {
                 self.check_field_access(object, field, expr.span)
             }
+
+            ExprKind::ProcPtr { name } => {
+                // _PROCPTR returns the address of a procedure as an _OFFSET
+                // Look up the procedure to get its full name (including type suffix)
+                if let Some(proc) = self.symbols.lookup_procedure(name) {
+                    // Use the actual procedure name from the symbol table
+                    // This includes any type suffix (e.g., "MyCompare&")
+                    let actual_name = proc.name.clone();
+                    // Generate wrapper function name for C callback
+                    let wrapper_name = format!(
+                        "qb_callback_{}",
+                        actual_name
+                            .to_lowercase()
+                            .replace(['&', '%', '$', '!', '#'], "")
+                    );
+                    TypedExpr::new(
+                        TypedExprKind::ProcPtr {
+                            name: actual_name,
+                            wrapper_name,
+                        },
+                        BasicType::Offset, // Function pointers are pointer-sized
+                        expr.span,
+                    )
+                } else {
+                    self.errors.push(SemanticError::UndefinedProcedure {
+                        name: name.clone(),
+                        span: expr.span,
+                    });
+                    // Return a placeholder expression on error
+                    TypedExpr::new(
+                        TypedExprKind::IntegerLiteral(0),
+                        BasicType::Offset,
+                        expr.span,
+                    )
+                }
+            }
         }
     }
 
@@ -313,35 +349,89 @@ impl<'a> TypeChecker<'a> {
         span: crate::ast::Span,
     ) -> TypedExpr {
         // First check if it's an array access
-        if let Some(symbol) = self.symbols.lookup_symbol(name)
-            && let SymbolKind::ArrayVariable { dimensions } = &symbol.kind
-        {
-            return self.check_array_access(
-                name,
-                args,
-                dimensions.clone(),
-                symbol.basic_type.clone(),
-                span,
-            );
+        if let Some(symbol) = self.symbols.lookup_symbol(name) {
+            match &symbol.kind {
+                SymbolKind::ArrayVariable { dimensions } => {
+                    return self.check_array_access(
+                        name,
+                        args,
+                        dimensions.clone(),
+                        symbol.basic_type.clone(),
+                        span,
+                    );
+                }
+                SymbolKind::ExternalFunction {
+                    c_name,
+                    params,
+                    return_type,
+                } => {
+                    // External function from DECLARE LIBRARY
+                    return self.check_external_function_call(
+                        name,
+                        c_name.clone(),
+                        args,
+                        params.clone(),
+                        return_type.clone(),
+                        span,
+                    );
+                }
+                _ => {}
+            }
         }
 
         // Look up procedure
         let proc = match self.symbols.lookup_procedure(name) {
             Some(p) => p.clone(),
             None => {
-                self.errors.push(SemanticError::UndefinedProcedure {
-                    name: name.to_string(),
-                    span,
-                });
-                // Return Unknown type to continue checking
-                return TypedExpr::new(
-                    TypedExprKind::FunctionCall {
+                // Check if there's a scalar variable with this name (NotAnArray error)
+                // Clone the type early to avoid borrow issues
+                if let Some(basic_type) = self
+                    .symbols
+                    .lookup_symbol(name)
+                    .map(|s| s.basic_type.clone())
+                {
+                    self.errors.push(SemanticError::NotAnArray {
                         name: name.to_string(),
-                        args: args.iter().map(|a| self.check_expr(a)).collect(),
+                        span,
+                    });
+                    return TypedExpr::new(
+                        TypedExprKind::FunctionCall {
+                            name: name.to_string(),
+                            args: args.iter().map(|a| self.check_expr(a)).collect(),
+                        },
+                        basic_type,
+                        span,
+                    );
+                }
+
+                // Classic BASIC: implicitly declare array on first use with default bounds (0-10)
+                // Determine type from name suffix (e.g., A$ -> String, X% -> Integer)
+                let element_type = type_from_suffix(name).unwrap_or(BasicType::Single);
+
+                // Create dimensions with default bounds (0 TO 10) for each index
+                let dimensions: Vec<ArrayDimInfo> = args
+                    .iter()
+                    .map(|_| ArrayDimInfo {
+                        lower_bound: 0,
+                        upper_bound: 10,
+                    })
+                    .collect();
+
+                // Define the implicit array
+                let implicit_array = Symbol {
+                    name: name.to_string(),
+                    kind: SymbolKind::ArrayVariable {
+                        dimensions: dimensions.clone(),
                     },
-                    BasicType::Unknown,
+                    basic_type: element_type.clone(),
                     span,
-                );
+                    is_mutable: true,
+                };
+                // Use update_or_define to handle any race conditions
+                self.symbols.update_or_define_symbol(implicit_array);
+
+                // Now treat as array access
+                return self.check_array_access(name, args, dimensions, element_type, span);
             }
         };
 
@@ -512,6 +602,75 @@ impl<'a> TypeChecker<'a> {
                 dimensions: typed_dimensions,
             },
             element_type,
+            span,
+        )
+    }
+
+    /// Type checks an external function call (from DECLARE LIBRARY).
+    ///
+    /// External functions need special handling because:
+    /// - The C function name may differ from the BASIC name (ALIAS)
+    /// - String arguments need marshalling (qb_string* -> char*)
+    /// - BYVAL parameters pass by value
+    fn check_external_function_call(
+        &mut self,
+        name: &str,
+        c_name: String,
+        args: &[Expr],
+        params: Vec<BasicType>,
+        return_type: BasicType,
+        span: crate::ast::Span,
+    ) -> TypedExpr {
+        // Check argument count
+        if args.len() != params.len() {
+            self.errors.push(SemanticError::ArgumentCountMismatch {
+                name: name.to_string(),
+                expected_min: params.len(),
+                expected_max: params.len(),
+                found: args.len(),
+                span,
+            });
+        }
+
+        // Type-check arguments
+        let mut typed_args = Vec::new();
+        for (i, arg) in args.iter().enumerate() {
+            let typed_arg = self.check_expr(arg);
+
+            if i < params.len() {
+                let expected_type = &params[i];
+                if !typed_arg.basic_type.is_convertible_to(expected_type) {
+                    self.errors.push(SemanticError::ArgumentTypeMismatch {
+                        position: i + 1,
+                        expected: expected_type.to_string(),
+                        found: typed_arg.basic_type.to_string(),
+                        span: arg.span,
+                    });
+                }
+            }
+
+            typed_args.push(typed_arg);
+        }
+
+        // Build parameter info for codegen marshalling
+        // Note: We don't have is_byval info stored in SymbolKind::ExternalFunction
+        // For now, assume all external params are BYVAL (required for C interop)
+        let param_info: Vec<ExternalParamInfo> = params
+            .iter()
+            .map(|typ| ExternalParamInfo {
+                typ: typ.clone(),
+                is_byval: true, // External functions default to BYVAL for C compatibility
+            })
+            .collect();
+
+        TypedExpr::new(
+            TypedExprKind::ExternalFunctionCall {
+                name: name.to_string(),
+                c_name,
+                args: typed_args,
+                params: param_info,
+            },
+            return_type,
             span,
         )
     }

@@ -106,6 +106,45 @@ pub enum TypedExprKind {
         /// The field name.
         field: String,
     },
+
+    /// External function call (from DECLARE LIBRARY).
+    ///
+    /// Distinguished from regular `FunctionCall` because:
+    /// - Uses the C function name directly (from ALIAS or same as BASIC name)
+    /// - String arguments need marshalling (qb_string* -> char*)
+    /// - Parameter passing modes (BYVAL) are significant
+    ExternalFunctionCall {
+        /// The BASIC name (for error messages).
+        name: String,
+        /// The C function name to call.
+        c_name: String,
+        /// Typed arguments.
+        args: Vec<TypedExpr>,
+        /// Parameter info for marshalling (types and BYVAL flags).
+        params: Vec<ExternalParamInfo>,
+    },
+
+    /// Procedure pointer: `_PROCPTR(procedureName)`
+    ///
+    /// Returns the address of a BASIC SUB or FUNCTION as an _OFFSET.
+    /// Used for passing callbacks to C functions (e.g., qsort comparator).
+    ProcPtr {
+        /// The name of the procedure.
+        name: String,
+        /// The C wrapper function name that will be generated.
+        wrapper_name: String,
+    },
+}
+
+/// Parameter information for external function calls.
+///
+/// Used to determine how arguments should be marshalled at the FFI boundary.
+#[derive(Debug, Clone)]
+pub struct ExternalParamInfo {
+    /// The expected C type.
+    pub typ: BasicType,
+    /// Whether BYVAL was specified (pass by value).
+    pub is_byval: bool,
 }
 
 impl TypedExpr {

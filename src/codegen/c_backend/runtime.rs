@@ -148,6 +148,12 @@ fn emit_string_functions(output: &mut String) {
     writeln!(output, "    return result;").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
+
+    // String data accessor - returns char* for C interop
+    writeln!(output, "const char* qb_string_data(qb_string* s) {{").unwrap();
+    writeln!(output, "    return s ? s->data : \"\";").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
 }
 
 /// Emits PRINT functions for different data types.

@@ -61,7 +61,7 @@ use crate::codegen::error::CodeGenError;
 use crate::codegen::{CodeGenerator, GeneratedOutput};
 use crate::semantic::typed_ir::{TypedProgram, TypedStatementKind};
 
-use self::analysis::collect_data_values;
+use self::analysis::{collect_callback_wrappers, collect_data_values};
 use self::runtime::emit_header;
 use self::stmt::{StmtEmitter, emit_params};
 
@@ -180,6 +180,31 @@ impl CodeGenerator for CBackend {
                     emitter.emit_stmt(stmt, &mut output)?;
                 }
                 _ => {}
+            }
+        }
+
+        // Callback wrappers for _PROCPTR (emit after SUB/FUNCTION definitions)
+        let callback_wrappers = collect_callback_wrappers(program);
+        if !callback_wrappers.is_empty() {
+            writeln!(output, "/* Callback Wrappers for _PROCPTR */").unwrap();
+            for wrapper in &callback_wrappers {
+                // Generate a simple thunk wrapper that calls the BASIC function
+                // For now, we generate a generic int(const void*, const void*) signature
+                // which is compatible with qsort and similar C library functions
+                writeln!(
+                    output,
+                    "static int {}(const void* a, const void* b) {{",
+                    wrapper.wrapper_name
+                )
+                .unwrap();
+                writeln!(
+                    output,
+                    "    return {}((int32_t*)a, (int32_t*)b);",
+                    wrapper.c_func_name
+                )
+                .unwrap();
+                writeln!(output, "}}").unwrap();
+                writeln!(output).unwrap();
             }
         }
 

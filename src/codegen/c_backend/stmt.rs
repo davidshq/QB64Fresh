@@ -2186,6 +2186,11 @@ impl StmtEmitter {
     }
 
     /// Emits an extern declaration for a C library function.
+    ///
+    /// For external C functions, we need to emit C types, not BASIC types:
+    /// - BYVAL STRING → const char* (not qb_string*)
+    /// - STRING (by reference) → qb_string** (pointer to pointer for output)
+    /// - Return STRING → char* (caller must handle with qb_string_new)
     fn emit_extern_declaration(
         &self,
         indent: &str,
@@ -2193,13 +2198,31 @@ impl StmtEmitter {
         output: &mut String,
     ) {
         use super::types::c_type;
+        use crate::semantic::types::BasicType;
 
-        let return_type = c_type(&decl.return_type);
+        // For external functions returning STRING, use char*
+        let return_type = if decl.return_type == BasicType::String {
+            "char*".to_string()
+        } else {
+            c_type(&decl.return_type)
+        };
+
         let params: Vec<String> = decl
             .params
             .iter()
             .map(|p| {
-                let param_type = c_type(&p.typ);
+                // For external functions, STRING params need special handling:
+                // - BYVAL STRING → const char* (C string)
+                // - BYREF STRING → qb_string** (pointer to BASIC string pointer)
+                let param_type = if p.typ == BasicType::String {
+                    if p.is_byval {
+                        "const char*".to_string()
+                    } else {
+                        "qb_string**".to_string()
+                    }
+                } else {
+                    c_type(&p.typ)
+                };
                 format!("{} {}", param_type, p.name)
             })
             .collect();

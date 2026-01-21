@@ -478,11 +478,36 @@ impl SymbolTable {
 
     /// Defines a procedure (SUB or FUNCTION).
     ///
-    /// Returns `Err(existing)` if a procedure with this name already exists.
+    /// Returns `Err(existing)` if a procedure with this name already exists
+    /// and it's a true redefinition (not a DECLARE followed by definition).
+    ///
+    /// If `allow_redefinition` is true (for actual SUB/FUNCTION definitions),
+    /// it will overwrite an existing entry (which was from a DECLARE).
     pub fn define_procedure(&mut self, entry: ProcedureEntry) -> Result<(), ProcedureEntry> {
+        self.define_procedure_impl(entry, false)
+    }
+
+    /// Defines a procedure, allowing redefinition if specified.
+    ///
+    /// `allow_redefinition` should be true for actual SUB/FUNCTION definitions
+    /// that may follow a DECLARE statement.
+    pub fn define_procedure_allow_redef(
+        &mut self,
+        entry: ProcedureEntry,
+    ) -> Result<(), ProcedureEntry> {
+        self.define_procedure_impl(entry, true)
+    }
+
+    fn define_procedure_impl(
+        &mut self,
+        entry: ProcedureEntry,
+        allow_redefinition: bool,
+    ) -> Result<(), ProcedureEntry> {
         let name_upper = entry.name.to_uppercase();
 
-        if let Some(existing) = self.procedures.get(&name_upper) {
+        if let Some(existing) = self.procedures.get(&name_upper)
+            && !allow_redefinition
+        {
             return Err(existing.clone());
         }
 
@@ -491,8 +516,41 @@ impl SymbolTable {
     }
 
     /// Looks up a procedure by name.
+    ///
+    /// In BASIC, type suffixes (`%`, `$`, `&`, `!`, `#`) are part of the procedure
+    /// name but optional when calling. If exact match fails, tries with common
+    /// suffixes to support calling `ACCEPT` when declared as `ACCEPT%`.
     pub fn lookup_procedure(&self, name: &str) -> Option<&ProcedureEntry> {
-        self.procedures.get(&name.to_uppercase())
+        let name_upper = name.to_uppercase();
+
+        // Try exact match first
+        if let Some(proc) = self.procedures.get(&name_upper) {
+            return Some(proc);
+        }
+
+        // If not found and name doesn't already have a suffix, try with suffixes
+        let last_char = name_upper.chars().last();
+        let has_suffix = matches!(last_char, Some('%' | '$' | '&' | '!' | '#' | '`'));
+
+        if !has_suffix {
+            // Try with common type suffixes
+            for suffix in ['%', '&', '!', '#', '$', '`'] {
+                let name_with_suffix = format!("{}{}", name_upper, suffix);
+                if let Some(proc) = self.procedures.get(&name_with_suffix) {
+                    return Some(proc);
+                }
+            }
+
+            // Also try QB64 extended suffixes
+            for suffix in ["%%", "&&", "##"] {
+                let name_with_suffix = format!("{}{}", name_upper, suffix);
+                if let Some(proc) = self.procedures.get(&name_with_suffix) {
+                    return Some(proc);
+                }
+            }
+        }
+
+        None
     }
 
     /// Registers a SHARED variable for the current scope.

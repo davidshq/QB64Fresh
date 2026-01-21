@@ -48,6 +48,10 @@ qb_string* qb_string_concat(qb_string* a, qb_string* b) {
     return result;
 }
 
+const char* qb_string_data(qb_string* s) {
+    return s ? s->data : "";
+}
+
 void qb_print_int(int64_t n) {
     printf("%lld", (long long)n);
 }
@@ -1388,6 +1392,19 @@ int32_t qb_sndpaused(int32_t handle) {
 
 int32_t qb_sndrate(void) {
     return 44100;
+}
+
+void qb_sndplayfile(const char* filename, double volume, double x, double y, double z) {
+    (void)filename; (void)volume; (void)x; (void)y; (void)z;
+}
+
+void qb_sndplaycopy(int32_t handle, double volume) {
+    (void)handle; (void)volume;
+}
+
+int32_t qb_sndcopy(int32_t handle) {
+    (void)handle;
+    return 0;
 }
 
 /* Graphics Stubs (Inline Runtime) */

@@ -68,3 +68,8 @@ path = "src/lsp/main.rs"
 [lib]
 name = "qb64fresh"
 path = "src/lib.rs"
+
+[features]
+default = []
+# Enable C header parsing for automatic DECLARE LIBRARY support
+header-parsing = []

@@ -139,6 +139,9 @@ impl<'a> Parser<'a> {
             TokenKind::SndLen => self.parse_builtin_function("_SNDLEN"),
             TokenKind::SndPaused => self.parse_builtin_function("_SNDPAUSED"),
 
+            // QB64 Procedure pointer (for callbacks)
+            TokenKind::ProcPtr => self.parse_procptr(),
+
             // Keywords that can be used as variable names in expression context
             // In BASIC, keywords like NAME, INPUT, OUTPUT can be used as variable names
             // when context makes it unambiguous that an identifier is expected.
@@ -398,6 +401,24 @@ impl<'a> Parser<'a> {
             },
             span,
         ))
+    }
+
+    /// Parses _PROCPTR(procedureName) expression.
+    ///
+    /// Returns a pointer to a BASIC procedure for use as a C callback.
+    fn parse_procptr(&mut self) -> Result<Expr, ()> {
+        let start = self.advance().expect("_PROCPTR token").span.start;
+
+        self.expect(&TokenKind::LeftParen, "(")?;
+
+        // Get the procedure name
+        let name_token = self.expect(&TokenKind::Identifier, "procedure name")?;
+        let name = name_token.text.to_string();
+
+        self.expect(&TokenKind::RightParen, ")")?;
+
+        let span = self.span_from(start);
+        Ok(Expr::new(ExprKind::ProcPtr { name }, span))
     }
 
     /// Parses a comma-separated argument list.

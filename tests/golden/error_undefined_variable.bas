@@ -1,1 +1,1 @@
-PRINT UndefinedFunction(1)
+CALL UndefinedSub

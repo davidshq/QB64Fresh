@@ -105,7 +105,54 @@ pub(super) fn emit_expr(expr: &TypedExpr) -> Result<String, CodeGenError> {
             // In C, the array name decays to a pointer when passed.
             Ok(c_identifier(name))
         }
+
+        TypedExprKind::ExternalFunctionCall {
+            c_name,
+            args,
+            params,
+            ..
+        } => emit_external_function_call(c_name, args, params),
+
+        TypedExprKind::ProcPtr { wrapper_name, .. } => {
+            // Return the address of the C wrapper function as an intptr_t
+            Ok(format!("((intptr_t)&{})", wrapper_name))
+        }
     }
+}
+
+/// Emits an external function call with proper argument marshalling.
+///
+/// External functions (from DECLARE LIBRARY) need special handling:
+/// - STRING arguments are converted to char* via qb_string_data()
+/// - The C function name is used directly (not prefixed with qb_)
+fn emit_external_function_call(
+    c_name: &str,
+    args: &[TypedExpr],
+    params: &[crate::semantic::typed_ir::ExternalParamInfo],
+) -> Result<String, CodeGenError> {
+    let mut marshalled_args = Vec::new();
+
+    for (i, arg) in args.iter().enumerate() {
+        let arg_code = emit_expr(arg)?;
+
+        // Check if this argument needs string marshalling
+        let needs_marshalling = if i < params.len() {
+            // String arg to non-string C param needs marshalling
+            arg.basic_type.is_string() && !params[i].typ.is_string()
+        } else {
+            false
+        };
+
+        if needs_marshalling || arg.basic_type.is_string() {
+            // Convert qb_string* to const char* for C interop
+            // qb_string_data() returns the internal char* buffer
+            marshalled_args.push(format!("qb_string_data({})", arg_code));
+        } else {
+            marshalled_args.push(arg_code);
+        }
+    }
+
+    Ok(format!("{}({})", c_name, marshalled_args.join(", ")))
 }
 
 /// Emits a binary expression.

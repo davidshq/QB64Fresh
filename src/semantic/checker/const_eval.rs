@@ -27,10 +27,10 @@ use super::TypeChecker;
 //
 // Evaluates condition strings from $IF/$ELSEIF metacommands.
 // Supports expressions like:
-//   - Simple identifiers: WIN, LINUX, MAC
-//   - Comparisons: WIN = -1, 64BIT <> 0
-//   - Boolean operators: WIN AND 64BIT, NOT LINUX, WIN OR MAC
-//   - Parentheses: (WIN OR MAC) AND 64BIT
+//   - Simple identifiers: _WIN, _LINUX, _MAC
+//   - Comparisons: _WIN = -1, _64BIT <> 0
+//   - Boolean operators: _WIN AND _64BIT, NOT _LINUX, _WIN OR _MAC
+//   - Parentheses: (_WIN OR _MAC) AND _64BIT
 //
 // All identifiers are looked up as constants in the symbol table.
 // In BASIC convention: -1 = TRUE, 0 = FALSE
@@ -82,11 +82,13 @@ impl<'a> TypeChecker<'a> {
                 self.convert_const_value(inner_val, to_type)
             }
 
-            // Function calls, array access, array refs, and field access are not constant
+            // Function calls, array access, array refs, field access, external calls, and procptr are not constant
             TypedExprKind::FunctionCall { .. }
             | TypedExprKind::ArrayAccess { .. }
             | TypedExprKind::ArrayRef { .. }
-            | TypedExprKind::FieldAccess { .. } => None,
+            | TypedExprKind::FieldAccess { .. }
+            | TypedExprKind::ExternalFunctionCall { .. }
+            | TypedExprKind::ProcPtr { .. } => None,
         }
     }
 
@@ -282,22 +284,22 @@ impl<'a> TypeChecker<'a> {
     /// `false` otherwise. Returns `false` for unparseable conditions.
     ///
     /// # Supported syntax
-    /// - Identifiers: `WIN`, `LINUX`, `64BIT` (looked up as constants)
-    /// - Comparisons: `WIN = -1`, `64BIT <> 0`
-    /// - NOT operator: `NOT LINUX`
-    /// - AND/OR: `WIN AND 64BIT`, `WIN OR MAC`
-    /// - Parentheses: `(WIN OR MAC) AND 64BIT`
+    /// - Identifiers: `_WIN`, `_LINUX`, `_64BIT` (looked up as constants)
+    /// - Comparisons: `_WIN = -1`, `_64BIT <> 0`
+    /// - NOT operator: `NOT _LINUX`
+    /// - AND/OR: `_WIN AND _64BIT`, `_WIN OR _MAC`
+    /// - Parentheses: `(_WIN OR _MAC) AND _64BIT`
     ///
     /// # Examples
     /// ```ignore
-    /// // $IF WIN THEN
-    /// evaluator.evaluate_meta_condition("WIN") // true on Windows
+    /// // $IF _WIN THEN
+    /// evaluator.evaluate_meta_condition("_WIN") // true on Windows
     ///
-    /// // $IF NOT LINUX THEN
-    /// evaluator.evaluate_meta_condition("NOT LINUX") // true on non-Linux
+    /// // $IF NOT _LINUX THEN
+    /// evaluator.evaluate_meta_condition("NOT _LINUX") // true on non-Linux
     ///
-    /// // $IF 64BIT AND (WIN OR MAC) THEN
-    /// evaluator.evaluate_meta_condition("64BIT AND (WIN OR MAC)")
+    /// // $IF _64BIT AND (_WIN OR _MAC) THEN
+    /// evaluator.evaluate_meta_condition("_64BIT AND (_WIN OR _MAC)")
     /// ```
     pub fn evaluate_meta_condition(&self, condition: &str) -> bool {
         match self.parse_and_eval_condition(condition.trim()) {
@@ -919,13 +921,13 @@ mod tests {
                 let _ = symbols.define_symbol(sym);
             };
 
-        // Set up a test scenario: LINUX = TRUE, WIN = FALSE, 64BIT = TRUE
-        define_const(&mut symbols, "LINUX", -1);
-        define_const(&mut symbols, "WIN", 0);
-        define_const(&mut symbols, "WINDOWS", 0);
-        define_const(&mut symbols, "MAC", 0);
-        define_const(&mut symbols, "64BIT", -1);
-        define_const(&mut symbols, "32BIT", 0);
+        // Set up a test scenario: _LINUX = TRUE, _WIN = FALSE, _64BIT = TRUE
+        define_const(&mut symbols, "_LINUX", -1);
+        define_const(&mut symbols, "_WIN", 0);
+        define_const(&mut symbols, "_WINDOWS", 0);
+        define_const(&mut symbols, "_MAC", 0);
+        define_const(&mut symbols, "_64BIT", -1);
+        define_const(&mut symbols, "_32BIT", 0);
         define_const(&mut symbols, "_TRUE", -1);
         define_const(&mut symbols, "_FALSE", 0);
 
@@ -937,69 +939,69 @@ mod tests {
     #[test]
     fn test_meta_condition_simple_true() {
         let tc = checker_with_platform_constants();
-        assert!(tc.evaluate_meta_condition("LINUX"));
-        assert!(tc.evaluate_meta_condition("64BIT"));
+        assert!(tc.evaluate_meta_condition("_LINUX"));
+        assert!(tc.evaluate_meta_condition("_64BIT"));
         assert!(tc.evaluate_meta_condition("_TRUE"));
     }
 
     #[test]
     fn test_meta_condition_simple_false() {
         let tc = checker_with_platform_constants();
-        assert!(!tc.evaluate_meta_condition("WIN"));
-        assert!(!tc.evaluate_meta_condition("MAC"));
-        assert!(!tc.evaluate_meta_condition("32BIT"));
+        assert!(!tc.evaluate_meta_condition("_WIN"));
+        assert!(!tc.evaluate_meta_condition("_MAC"));
+        assert!(!tc.evaluate_meta_condition("_32BIT"));
         assert!(!tc.evaluate_meta_condition("_FALSE"));
     }
 
     #[test]
     fn test_meta_condition_not_operator() {
         let tc = checker_with_platform_constants();
-        assert!(tc.evaluate_meta_condition("NOT WIN"));
-        assert!(tc.evaluate_meta_condition("NOT MAC"));
-        assert!(!tc.evaluate_meta_condition("NOT LINUX"));
-        assert!(!tc.evaluate_meta_condition("NOT 64BIT"));
+        assert!(tc.evaluate_meta_condition("NOT _WIN"));
+        assert!(tc.evaluate_meta_condition("NOT _MAC"));
+        assert!(!tc.evaluate_meta_condition("NOT _LINUX"));
+        assert!(!tc.evaluate_meta_condition("NOT _64BIT"));
     }
 
     #[test]
     fn test_meta_condition_and_operator() {
         let tc = checker_with_platform_constants();
-        assert!(tc.evaluate_meta_condition("LINUX AND 64BIT"));
-        assert!(!tc.evaluate_meta_condition("LINUX AND WIN"));
-        assert!(!tc.evaluate_meta_condition("WIN AND MAC"));
+        assert!(tc.evaluate_meta_condition("_LINUX AND _64BIT"));
+        assert!(!tc.evaluate_meta_condition("_LINUX AND _WIN"));
+        assert!(!tc.evaluate_meta_condition("_WIN AND _MAC"));
     }
 
     #[test]
     fn test_meta_condition_or_operator() {
         let tc = checker_with_platform_constants();
-        assert!(tc.evaluate_meta_condition("LINUX OR WIN"));
-        assert!(tc.evaluate_meta_condition("WIN OR MAC OR LINUX"));
-        assert!(!tc.evaluate_meta_condition("WIN OR MAC"));
+        assert!(tc.evaluate_meta_condition("_LINUX OR _WIN"));
+        assert!(tc.evaluate_meta_condition("_WIN OR _MAC OR _LINUX"));
+        assert!(!tc.evaluate_meta_condition("_WIN OR _MAC"));
     }
 
     #[test]
     fn test_meta_condition_comparison() {
         let tc = checker_with_platform_constants();
-        assert!(tc.evaluate_meta_condition("LINUX = -1"));
-        assert!(tc.evaluate_meta_condition("WIN = 0"));
-        assert!(tc.evaluate_meta_condition("WIN <> -1"));
-        assert!(!tc.evaluate_meta_condition("LINUX = 0"));
+        assert!(tc.evaluate_meta_condition("_LINUX = -1"));
+        assert!(tc.evaluate_meta_condition("_WIN = 0"));
+        assert!(tc.evaluate_meta_condition("_WIN <> -1"));
+        assert!(!tc.evaluate_meta_condition("_LINUX = 0"));
     }
 
     #[test]
     fn test_meta_condition_parentheses() {
         let tc = checker_with_platform_constants();
-        assert!(tc.evaluate_meta_condition("(LINUX OR WIN) AND 64BIT"));
-        assert!(!tc.evaluate_meta_condition("(WIN OR MAC) AND 64BIT"));
-        assert!(tc.evaluate_meta_condition("LINUX AND (64BIT OR 32BIT)"));
+        assert!(tc.evaluate_meta_condition("(_LINUX OR _WIN) AND _64BIT"));
+        assert!(!tc.evaluate_meta_condition("(_WIN OR _MAC) AND _64BIT"));
+        assert!(tc.evaluate_meta_condition("_LINUX AND (_64BIT OR _32BIT)"));
     }
 
     #[test]
     fn test_meta_condition_complex() {
         let tc = checker_with_platform_constants();
         // Complex expression: 64-bit Linux or any Mac
-        assert!(tc.evaluate_meta_condition("(LINUX AND 64BIT) OR MAC"));
+        assert!(tc.evaluate_meta_condition("(_LINUX AND _64BIT) OR _MAC"));
         // Complex expression: NOT Windows and 64-bit
-        assert!(tc.evaluate_meta_condition("NOT WIN AND 64BIT"));
+        assert!(tc.evaluate_meta_condition("NOT _WIN AND _64BIT"));
     }
 
     #[test]
@@ -1007,24 +1009,24 @@ mod tests {
         let tc = checker_with_platform_constants();
         // Unknown identifiers should be treated as 0 (FALSE)
         assert!(!tc.evaluate_meta_condition("UNKNOWN_CONSTANT"));
-        assert!(tc.evaluate_meta_condition("LINUX OR UNKNOWN"));
+        assert!(tc.evaluate_meta_condition("_LINUX OR UNKNOWN"));
     }
 
     #[test]
     fn test_meta_condition_case_insensitive() {
         let tc = checker_with_platform_constants();
-        assert!(tc.evaluate_meta_condition("linux"));
-        assert!(tc.evaluate_meta_condition("Linux"));
-        assert!(tc.evaluate_meta_condition("LINUX"));
-        assert!(tc.evaluate_meta_condition("not win"));
+        assert!(tc.evaluate_meta_condition("_linux"));
+        assert!(tc.evaluate_meta_condition("_Linux"));
+        assert!(tc.evaluate_meta_condition("_LINUX"));
+        assert!(tc.evaluate_meta_condition("not _win"));
     }
 
     #[test]
     fn test_meta_condition_whitespace() {
         let tc = checker_with_platform_constants();
-        assert!(tc.evaluate_meta_condition("  LINUX  "));
-        assert!(tc.evaluate_meta_condition("LINUX  AND  64BIT"));
-        assert!(tc.evaluate_meta_condition("  NOT  WIN  "));
+        assert!(tc.evaluate_meta_condition("  _LINUX  "));
+        assert!(tc.evaluate_meta_condition("_LINUX  AND  _64BIT"));
+        assert!(tc.evaluate_meta_condition("  NOT  _WIN  "));
     }
 
     #[test]
@@ -1032,7 +1034,7 @@ mod tests {
         let tc = checker_with_platform_constants();
         assert!(tc.evaluate_meta_condition("-1"));
         assert!(!tc.evaluate_meta_condition("0"));
-        assert!(tc.evaluate_meta_condition("LINUX = -1"));
-        assert!(tc.evaluate_meta_condition("64BIT <> 0"));
+        assert!(tc.evaluate_meta_condition("_LINUX = -1"));
+        assert!(tc.evaluate_meta_condition("_64BIT <> 0"));
     }
 }

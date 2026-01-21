@@ -47,7 +47,7 @@ pub use types::BasicType;
 
 use crate::ast::{Program, Statement, StatementKind};
 use checker::TypeChecker;
-use types::from_type_spec;
+use types::{from_type_spec, type_from_name};
 
 /// Main entry point for semantic analysis.
 ///
@@ -131,6 +131,16 @@ impl SemanticAnalyzer {
                     }
                 }
 
+                // DECLARE SUB - forward declaration of a subroutine
+                StatementKind::DeclareSub { name, params } => {
+                    self.register_declared_sub(name, params, stmt.span);
+                }
+
+                // DECLARE FUNCTION - forward declaration of a function
+                StatementKind::DeclareFunction { name, params } => {
+                    self.register_declared_function(name, params, stmt.span);
+                }
+
                 // Recursively collect from nested blocks
                 StatementKind::If {
                     then_branch,
@@ -206,7 +216,8 @@ impl SemanticAnalyzer {
             is_static,
         };
 
-        if let Err(existing) = self.symbols.define_procedure(entry) {
+        // Use allow_redef since a DECLARE SUB may have come first
+        if let Err(existing) = self.symbols.define_procedure_allow_redef(entry) {
             self.errors.push(SemanticError::DuplicateProcedure {
                 name: name.to_string(),
                 original_span: existing.span,
@@ -260,7 +271,8 @@ impl SemanticAnalyzer {
             is_static,
         };
 
-        if let Err(existing) = self.symbols.define_procedure(entry) {
+        // Use allow_redef since a DECLARE FUNCTION may have come first
+        if let Err(existing) = self.symbols.define_procedure_allow_redef(entry) {
             self.errors.push(SemanticError::DuplicateProcedure {
                 name: name.to_string(),
                 original_span: existing.span,
@@ -269,14 +281,105 @@ impl SemanticAnalyzer {
         }
     }
 
+    /// Registers a DECLARE SUB in the symbol table.
+    ///
+    /// This handles forward declarations from `DECLARE SUB name (params)`.
+    /// The params come as `DeclareParam` which has string type names.
+    fn register_declared_sub(
+        &mut self,
+        name: &str,
+        params: &[crate::ast::DeclareParam],
+        span: crate::ast::Span,
+    ) {
+        let param_infos: Vec<ParameterInfo> = params
+            .iter()
+            .map(|p| {
+                let basic_type = p
+                    .param_type
+                    .as_ref()
+                    .and_then(|t| type_from_name(t))
+                    .or_else(|| types::type_from_suffix(&p.name))
+                    .unwrap_or_else(|| self.symbols.default_type_for(&p.name));
+
+                ParameterInfo {
+                    name: p.name.clone(),
+                    basic_type,
+                    by_val: false, // DECLARE doesn't specify BYVAL
+                    is_optional: false,
+                    is_array: p.is_array,
+                }
+            })
+            .collect();
+
+        let entry = ProcedureEntry {
+            name: name.to_string(),
+            kind: ProcedureKind::Sub,
+            params: param_infos,
+            return_type: None,
+            span,
+            is_static: false,
+        };
+
+        // For DECLARE, we don't error on duplicates - the actual definition
+        // will be registered later and should match
+        let _ = self.symbols.define_procedure(entry);
+    }
+
+    /// Registers a DECLARE FUNCTION in the symbol table.
+    ///
+    /// This handles forward declarations from `DECLARE FUNCTION name (params)`.
+    fn register_declared_function(
+        &mut self,
+        name: &str,
+        params: &[crate::ast::DeclareParam],
+        span: crate::ast::Span,
+    ) {
+        let param_infos: Vec<ParameterInfo> = params
+            .iter()
+            .map(|p| {
+                let basic_type = p
+                    .param_type
+                    .as_ref()
+                    .and_then(|t| type_from_name(t))
+                    .or_else(|| types::type_from_suffix(&p.name))
+                    .unwrap_or_else(|| self.symbols.default_type_for(&p.name));
+
+                ParameterInfo {
+                    name: p.name.clone(),
+                    basic_type,
+                    by_val: false,
+                    is_optional: false,
+                    is_array: p.is_array,
+                }
+            })
+            .collect();
+
+        // Return type from name suffix or default
+        let ret_type =
+            types::type_from_suffix(name).unwrap_or_else(|| self.symbols.default_type_for(name));
+
+        let entry = ProcedureEntry {
+            name: name.to_string(),
+            kind: ProcedureKind::Function,
+            params: param_infos,
+            return_type: Some(ret_type),
+            span,
+            is_static: false,
+        };
+
+        // For DECLARE, we don't error on duplicates
+        let _ = self.symbols.define_procedure(entry);
+    }
+
     /// Registers all built-in functions.
     fn register_builtins(&mut self) {
         // Register built-in constants first
         self.register_builtin_constants();
 
-        // String functions
+        // String/UDT functions
         // Note: Using Long for integer parameters since integer literals default to Long in QB64
-        self.register_builtin_function("LEN", &[("s", BasicType::String)], BasicType::Long);
+        // LEN() can return the length of a string OR the size of a UDT/fixed-length type
+        self.register_builtin_function("LEN", &[("s", BasicType::Unknown)], BasicType::Long);
         self.register_builtin_function("CHR$", &[("n", BasicType::Long)], BasicType::String);
         self.register_builtin_function("ASC", &[("s", BasicType::String)], BasicType::Long);
         self.register_builtin_function(
@@ -550,6 +653,19 @@ impl SemanticAnalyzer {
         self.register_builtin_function("SPC", &[("n", BasicType::Long)], BasicType::String);
         self.register_builtin_function("POS", &[("n", BasicType::Long)], BasicType::Integer);
         self.register_builtin_function("CSRLIN", &[], BasicType::Integer);
+
+        // SCREEN function - read character/attribute from text screen
+        // SCREEN(row, col) - returns ASCII value of character
+        // SCREEN(row, col, flag) - if flag<>0, returns color attribute instead
+        self.register_builtin_function_with_optionals(
+            "SCREEN",
+            &[
+                ("row", BasicType::Integer, false),
+                ("col", BasicType::Integer, false),
+                ("flag", BasicType::Integer, true), // optional - if non-zero, return color attribute
+            ],
+            BasicType::Integer,
+        );
 
         // File I/O functions
         self.register_builtin_function("EOF", &[("fnum", BasicType::Integer)], BasicType::Integer);
@@ -1255,17 +1371,21 @@ impl SemanticAnalyzer {
             let _ = self.symbols.define_symbol(symbol);
         };
 
-        // Operating system constants
+        // Operating system constants (QB64 convention: underscore prefix)
         // These are determined at compile time based on the host platform
-        define_platform("WIN", cfg!(target_os = "windows"));
-        define_platform("WINDOWS", cfg!(target_os = "windows"));
-        define_platform("LINUX", cfg!(target_os = "linux"));
-        define_platform("MAC", cfg!(target_os = "macos"));
+        define_platform("_WIN", cfg!(target_os = "windows"));
+        define_platform(
+            "_WIN64",
+            cfg!(target_os = "windows") && cfg!(target_pointer_width = "64"),
+        );
+        define_platform("_WINDOWS", cfg!(target_os = "windows"));
+        define_platform("_LINUX", cfg!(target_os = "linux"));
+        define_platform("_MAC", cfg!(target_os = "macos"));
 
         // Architecture constants
         // 32-bit vs 64-bit based on pointer width
-        define_platform("32BIT", cfg!(target_pointer_width = "32"));
-        define_platform("64BIT", cfg!(target_pointer_width = "64"));
+        define_platform("_32BIT", cfg!(target_pointer_width = "32"));
+        define_platform("_64BIT", cfg!(target_pointer_width = "64"));
     }
 }
 

@@ -84,6 +84,15 @@ pub enum ExprKind {
         /// The field name being accessed.
         field: String,
     },
+
+    /// Procedure pointer: `_PROCPTR(procedureName)`
+    ///
+    /// Returns a pointer-sized integer (_OFFSET) that can be passed to C functions
+    /// expecting a callback function pointer. Used for qsort, event handlers, etc.
+    ProcPtr {
+        /// The name of the SUB or FUNCTION to get a pointer to.
+        name: String,
+    },
 }
 
 /// Binary operators.

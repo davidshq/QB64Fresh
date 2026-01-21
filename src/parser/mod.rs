@@ -67,6 +67,9 @@ pub struct Parser<'a> {
     current: usize,
     /// Collected parse errors.
     errors: Vec<ParseError>,
+    /// Whether we're at the start of a logical line (after newline, not after colon).
+    /// This is used to distinguish label definitions from procedure calls.
+    at_line_start: bool,
 }
 
 impl<'a> Parser<'a> {
@@ -76,6 +79,7 @@ impl<'a> Parser<'a> {
             tokens,
             current: 0,
             errors: Vec::new(),
+            at_line_start: true, // Start of file is start of line
         }
     }
 

@@ -1,1 +1,1 @@
-Semantic error: [UndefinedProcedure { name: "UndefinedFunction", span: Span { start: 6, end: 26 } }]
+Semantic error: [UndefinedProcedure { name: "UndefinedSub", span: Span { start: 0, end: 17 } }]

@@ -229,6 +229,182 @@ fn collect_data_from_stmt(
     }
 }
 
+/// Information about a procedure that needs a callback wrapper.
+#[derive(Debug, Clone)]
+pub(super) struct CallbackWrapperInfo {
+    /// The C wrapper function name (e.g., "qb_callback_mycompare").
+    pub wrapper_name: String,
+    /// The C function name of the BASIC procedure (e.g., "qb_mycompare_lng").
+    pub c_func_name: String,
+}
+
+/// Collects all procedures that need callback wrappers (used with _PROCPTR).
+///
+/// Scans the program for ProcPtr expressions and returns information needed
+/// to generate C wrapper functions that can be passed to C libraries.
+pub(super) fn collect_callback_wrappers(program: &TypedProgram) -> Vec<CallbackWrapperInfo> {
+    use crate::semantic::typed_ir::TypedExprKind;
+    use std::collections::HashSet;
+
+    let mut wrappers = Vec::new();
+    let mut seen = HashSet::new();
+
+    // Scan all expressions for ProcPtr usages
+    fn scan_expr(
+        expr: &crate::semantic::typed_ir::TypedExpr,
+        wrappers: &mut Vec<CallbackWrapperInfo>,
+        seen: &mut HashSet<String>,
+    ) {
+        match &expr.kind {
+            TypedExprKind::ProcPtr { name, wrapper_name } => {
+                if !seen.contains(name) {
+                    seen.insert(name.clone());
+                    // Generate the C function name for the BASIC procedure
+                    let c_func_name = c_function_name(name);
+                    wrappers.push(CallbackWrapperInfo {
+                        wrapper_name: wrapper_name.clone(),
+                        c_func_name,
+                    });
+                }
+            }
+            TypedExprKind::Binary { left, right, .. } => {
+                scan_expr(left, wrappers, seen);
+                scan_expr(right, wrappers, seen);
+            }
+            TypedExprKind::Unary { operand, .. } => {
+                scan_expr(operand, wrappers, seen);
+            }
+            TypedExprKind::Grouped(inner) => {
+                scan_expr(inner, wrappers, seen);
+            }
+            TypedExprKind::FunctionCall { args, .. } => {
+                for arg in args {
+                    scan_expr(arg, wrappers, seen);
+                }
+            }
+            TypedExprKind::ExternalFunctionCall { args, .. } => {
+                for arg in args {
+                    scan_expr(arg, wrappers, seen);
+                }
+            }
+            TypedExprKind::ArrayAccess { indices, .. } => {
+                for idx in indices {
+                    scan_expr(idx, wrappers, seen);
+                }
+            }
+            TypedExprKind::Convert { expr, .. } => {
+                scan_expr(expr, wrappers, seen);
+            }
+            TypedExprKind::FieldAccess { object, .. } => {
+                scan_expr(object, wrappers, seen);
+            }
+            _ => {}
+        }
+    }
+
+    fn scan_stmt(
+        stmt: &TypedStatement,
+        wrappers: &mut Vec<CallbackWrapperInfo>,
+        seen: &mut HashSet<String>,
+    ) {
+        use crate::semantic::typed_ir::TypedStatementKind;
+
+        match &stmt.kind {
+            TypedStatementKind::Assignment { value, .. } => {
+                scan_expr(value, wrappers, seen);
+            }
+            TypedStatementKind::ArrayAssignment { indices, value, .. } => {
+                for idx in indices {
+                    scan_expr(idx, wrappers, seen);
+                }
+                scan_expr(value, wrappers, seen);
+            }
+            TypedStatementKind::Print { items, .. } => {
+                for item in items {
+                    scan_expr(&item.expr, wrappers, seen);
+                }
+            }
+            TypedStatementKind::If {
+                condition,
+                then_branch,
+                elseif_branches,
+                else_branch,
+            } => {
+                scan_expr(condition, wrappers, seen);
+                for s in then_branch {
+                    scan_stmt(s, wrappers, seen);
+                }
+                for (cond, branch) in elseif_branches {
+                    scan_expr(cond, wrappers, seen);
+                    for s in branch {
+                        scan_stmt(s, wrappers, seen);
+                    }
+                }
+                if let Some(else_stmts) = else_branch {
+                    for s in else_stmts {
+                        scan_stmt(s, wrappers, seen);
+                    }
+                }
+            }
+            TypedStatementKind::For {
+                start,
+                end,
+                step,
+                body,
+                ..
+            } => {
+                scan_expr(start, wrappers, seen);
+                scan_expr(end, wrappers, seen);
+                if let Some(s) = step {
+                    scan_expr(s, wrappers, seen);
+                }
+                for s in body {
+                    scan_stmt(s, wrappers, seen);
+                }
+            }
+            TypedStatementKind::While { condition, body } => {
+                scan_expr(condition, wrappers, seen);
+                for s in body {
+                    scan_stmt(s, wrappers, seen);
+                }
+            }
+            TypedStatementKind::DoLoop {
+                pre_condition,
+                body,
+                post_condition,
+            } => {
+                if let Some(cond) = pre_condition {
+                    scan_expr(&cond.condition, wrappers, seen);
+                }
+                for s in body {
+                    scan_stmt(s, wrappers, seen);
+                }
+                if let Some(cond) = post_condition {
+                    scan_expr(&cond.condition, wrappers, seen);
+                }
+            }
+            TypedStatementKind::SubDefinition { body, .. }
+            | TypedStatementKind::FunctionDefinition { body, .. } => {
+                for s in body {
+                    scan_stmt(s, wrappers, seen);
+                }
+            }
+            TypedStatementKind::Call { args, .. } => {
+                for arg in args {
+                    scan_expr(arg, wrappers, seen);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    for stmt in &program.statements {
+        scan_stmt(stmt, &mut wrappers, &mut seen);
+    }
+
+    wrappers
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

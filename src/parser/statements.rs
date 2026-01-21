@@ -448,7 +448,12 @@ impl<'a> Parser<'a> {
         let start = self.peek().expect("identifier token").span.start;
 
         // Check for label: identifier followed by colon (e.g., "myLabel:")
-        if let Some(next) = self.peek_ahead(1)
+        // Labels can ONLY be defined at the start of a line, not after a colon separator.
+        // This distinguishes:
+        //   myLabel:           <- label definition at line start
+        //   CASE 1: MySub: x=1 <- MySub is a procedure call, not a label
+        if self.at_line_start
+            && let Some(next) = self.peek_ahead(1)
             && next.kind == TokenKind::Colon
         {
             let name_token = self.advance().expect("identifier");
@@ -1260,6 +1265,24 @@ impl<'a> Parser<'a> {
                     let text = &str_token.text[1..str_token.text.len() - 1];
                     Ok(DataValue::String(text.to_string()))
                 }
+                // Unterminated strings in DATA are allowed in QB64 - the string runs
+                // from the opening quote to the end of the line (without closing quote).
+                // Example: DATA "frame information at 1635 integers per frame. For
+                // This is valid and the string value is the content without closing quote.
+                TokenKind::UnterminatedString => {
+                    if negative {
+                        let span: Span = token.span.clone().into();
+                        self.errors.push(ParseError::syntax(
+                            "unexpected `-` before string literal",
+                            span,
+                        ));
+                        return Err(());
+                    }
+                    let str_token = self.advance().expect("unterminated string");
+                    // Remove opening quote only (no closing quote)
+                    let text = &str_token.text[1..];
+                    Ok(DataValue::String(text.to_string()))
+                }
                 // Unquoted strings in DATA - collect all tokens until comma or end of line
                 // This handles cases like: DATA o3e-o2b-ge-  (PLAY strings)
                 TokenKind::Identifier => self.parse_data_unquoted_string(negative),
@@ -1411,13 +1434,20 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses a RESTORE statement.
+    ///
+    /// Syntax: `RESTORE [label]` where label can be an identifier or a line number.
     pub(super) fn parse_restore(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("RESTORE keyword").span.start; // consume RESTORE
 
-        // Optional label
+        // Optional label - can be identifier or line number
         let label = if self.check(&TokenKind::Identifier) {
             let token = self.advance().expect("label");
             Some(token.text.to_string())
+        } else if self.check(&TokenKind::IntegerLiteral) || self.check(&TokenKind::FloatLiteral) {
+            // Line number reference (e.g., RESTORE 230)
+            let token = self.advance().expect("line number");
+            // Convert to label format: 230 -> _line_230
+            Some(format!("_line_{}", token.text.replace('.', "_")))
         } else {
             None
         };

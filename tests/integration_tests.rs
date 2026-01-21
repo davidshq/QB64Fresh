@@ -880,15 +880,21 @@ mod shared_variables {
     }
 
     #[test]
-    fn shared_variable_undefined_error() {
-        // SHARED variable must exist at module level
+    fn shared_variable_implicit_declaration() {
+        // In classic BASIC, SHARED can implicitly declare module-level variables
+        // if they don't already exist. This is QB64PE compatible behavior.
         let source = r#"
             SUB Test
-                SHARED nonexistent
-                nonexistent = 1
+                SHARED implicitVar
+                implicitVar = 42
             END SUB
+
+            Test
+            PRINT implicitVar
         "#;
-        assert_compile_error(source, "SharedVariableNotFound");
+        let code = compile_to_c(source).unwrap();
+        // The variable should be declared at module level
+        assert!(code.contains("implicitVar"));
     }
 
     #[test]
@@ -1637,11 +1643,12 @@ mod error_detection {
     use super::*;
 
     #[test]
-    fn undefined_procedure() {
-        // Note: BASIC allows implicit variable declaration, so undefined_var doesn't error
-        // But calling an undefined function/sub does cause an error
+    fn undefined_sub_call() {
+        // Note: BASIC allows implicit array declaration, so `x(1)` might be an array.
+        // But CALL explicitly requires a SUB to exist.
+        // We test with a name that can't be interpreted as an implicit variable.
         let source = r#"
-            PRINT UndefinedFunction(1)
+            CALL UndefinedSub
         "#;
         assert_compile_error(source, "UndefinedProcedure");
     }
@@ -3618,7 +3625,7 @@ mod conditional_compilation {
     fn if_linux_on_linux() {
         // On Linux, the LINUX branch should be selected
         let source = r#"
-$IF LINUX THEN
+$IF _LINUX THEN
     PRINT "Linux"
 $ELSE
     PRINT "Other"
@@ -3656,7 +3663,7 @@ $END IF
     #[test]
     fn if_win_on_platform() {
         let source = r#"
-$IF WIN THEN
+$IF _WIN THEN
     PRINT "Windows"
 $ELSE
     PRINT "Not Windows"
@@ -3680,9 +3687,9 @@ $END IF
     #[test]
     fn if_64bit_architecture() {
         let source = r#"
-$IF 64BIT THEN
+$IF _64BIT THEN
     PRINT "64-bit"
-$ELSEIF 32BIT THEN
+$ELSEIF _32BIT THEN
     PRINT "32-bit"
 $END IF
 "#;
@@ -3704,7 +3711,7 @@ $END IF
     #[test]
     fn if_not_operator() {
         let source = r#"
-$IF NOT WIN THEN
+$IF NOT _WIN THEN
     PRINT "Not Windows"
 $END IF
 "#;
@@ -3724,7 +3731,7 @@ $END IF
     #[test]
     fn if_and_operator() {
         let source = r#"
-$IF LINUX AND 64BIT THEN
+$IF _LINUX AND _64BIT THEN
     PRINT "64-bit Linux"
 $END IF
 "#;
@@ -3744,7 +3751,7 @@ $END IF
     #[test]
     fn if_or_operator() {
         let source = r#"
-$IF WIN OR LINUX OR MAC THEN
+$IF _WIN OR _LINUX OR _MAC THEN
     PRINT "Desktop OS"
 $END IF
 "#;
@@ -3760,7 +3767,7 @@ $END IF
     #[test]
     fn if_comparison_operator() {
         let source = r#"
-$IF LINUX = -1 THEN
+$IF _LINUX = -1 THEN
     PRINT "Linux is TRUE"
 $END IF
 "#;
@@ -3780,7 +3787,7 @@ $END IF
     #[test]
     fn if_with_parentheses() {
         let source = r#"
-$IF (WIN OR MAC) AND 64BIT THEN
+$IF (_WIN OR _MAC) AND _64BIT THEN
     PRINT "64-bit Windows or Mac"
 $END IF
 "#;
@@ -3806,11 +3813,11 @@ $END IF
     #[test]
     fn elseif_chain() {
         let source = r#"
-$IF WIN THEN
+$IF _WIN THEN
     PRINT "Windows"
-$ELSEIF MAC THEN
+$ELSEIF _MAC THEN
     PRINT "macOS"
-$ELSEIF LINUX THEN
+$ELSEIF _LINUX THEN
     PRINT "Linux"
 $ELSE
     PRINT "Unknown"
@@ -3837,7 +3844,7 @@ $END IF
     fn conditional_with_multiple_statements() {
         let source = r#"
 DIM x AS INTEGER
-$IF LINUX THEN
+$IF _LINUX THEN
     x = 1
     PRINT "Linux"
     x = x + 1
@@ -3885,7 +3892,7 @@ $END IF
     fn windows_alias() {
         // WINDOWS should be an alias for WIN
         let source = r#"
-$IF WINDOWS THEN
+$IF _WINDOWS THEN
     PRINT "Windows"
 $END IF
 "#;

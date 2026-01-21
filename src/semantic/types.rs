@@ -328,6 +328,31 @@ pub fn strip_suffix(name: &str) -> &str {
     name
 }
 
+/// Converts a type name string (e.g., "INTEGER", "STRING") to `BasicType`.
+///
+/// This is used for DECLARE statement parameter types which are stored as strings.
+/// Returns `None` if the type name is not recognized.
+pub fn type_from_name(name: &str) -> Option<BasicType> {
+    match name.to_uppercase().as_str() {
+        "INTEGER" => Some(BasicType::Integer),
+        "LONG" => Some(BasicType::Long),
+        "SINGLE" => Some(BasicType::Single),
+        "DOUBLE" => Some(BasicType::Double),
+        "STRING" => Some(BasicType::String),
+        "BYTE" => Some(BasicType::Byte),
+        "_BIT" => Some(BasicType::Bit),
+        "_INTEGER64" => Some(BasicType::Integer64),
+        "_FLOAT" => Some(BasicType::Float),
+        "_OFFSET" => Some(BasicType::Offset),
+        "_UNSIGNED BYTE" | "_UBYTE" => Some(BasicType::UnsignedByte),
+        "_UNSIGNED INTEGER" | "_UINTEGER" => Some(BasicType::UnsignedInteger),
+        "_UNSIGNED LONG" | "_ULONG" => Some(BasicType::UnsignedLong),
+        "_UNSIGNED _INTEGER64" | "_UINTEGER64" => Some(BasicType::UnsignedInteger64),
+        "ANY" => Some(BasicType::Unknown), // ANY is used in DECLARE for type-agnostic params
+        _ => Some(BasicType::UserDefined(name.to_string())), // Treat unknown as UDT
+    }
+}
+
 /// Converts an AST `TypeSpec` to the internal `BasicType`.
 ///
 /// This bridges the parser's type representation with the semantic analyzer's.

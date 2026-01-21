@@ -442,6 +442,10 @@ pub enum TokenKind {
     #[token("_UNSIGNED", ignore(ascii_case))]
     Unsigned,
 
+    /// _PROCPTR function (QB64 - get procedure pointer for callbacks)
+    #[token("_PROCPTR", ignore(ascii_case))]
+    ProcPtr,
+
     // ==================== I/O Keywords ====================
     /// PRINT statement (also recognized as ? for shorthand)
     #[token("PRINT", ignore(ascii_case))]
