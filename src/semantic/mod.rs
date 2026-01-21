@@ -1136,6 +1136,277 @@ impl SemanticAnalyzer {
         self.register_builtin_function("_SNDRATE", &[("handle", BasicType::Long)], BasicType::Long);
         // _SNDRAWLEN returns the amount of queued raw sound data in seconds
         self.register_builtin_function("_SNDRAWLEN", &[], BasicType::Double);
+        // _SNDRAWDONE returns -1 if raw sound buffer is empty, 0 otherwise
+        self.register_builtin_function("_SNDRAWDONE", &[], BasicType::Integer);
+
+        // ==========================================
+        // QB64 Extension Functions (Session 031+)
+        // ==========================================
+
+        // Color component extraction functions
+        // _RED, _GREEN, _BLUE, _ALPHA extract color components (0-255)
+        self.register_builtin_function("_RED", &[("color", BasicType::Long)], BasicType::Long);
+        self.register_builtin_function("_GREEN", &[("color", BasicType::Long)], BasicType::Long);
+        self.register_builtin_function("_BLUE", &[("color", BasicType::Long)], BasicType::Long);
+        self.register_builtin_function("_ALPHA", &[("color", BasicType::Long)], BasicType::Long);
+        // 32-bit variants (same functionality, for explicitness)
+        self.register_builtin_function("_RED32", &[("color", BasicType::Long)], BasicType::Long);
+        self.register_builtin_function("_GREEN32", &[("color", BasicType::Long)], BasicType::Long);
+        self.register_builtin_function("_BLUE32", &[("color", BasicType::Long)], BasicType::Long);
+        self.register_builtin_function("_ALPHA32", &[("color", BasicType::Long)], BasicType::Long);
+
+        // _PIXELSIZE returns bytes per pixel for current screen/image
+        // 0 = text mode, 1 = 256 color, 4 = 32-bit color
+        self.register_builtin_function_with_optionals(
+            "_PIXELSIZE",
+            &[("handle", BasicType::Long, true)],
+            BasicType::Long,
+        );
+
+        // _SCREENEXISTS returns -1 if graphics window exists, 0 otherwise
+        self.register_builtin_function("_SCREENEXISTS", &[], BasicType::Integer);
+
+        // _EXIT - exit program with specific return code
+        self.register_builtin_sub("_EXIT", &[("code", BasicType::Long)]);
+
+        // _FULLPATH$ returns the full absolute path of a file/directory
+        self.register_builtin_function(
+            "_FULLPATH$",
+            &[("path", BasicType::String)],
+            BasicType::String,
+        );
+
+        // _FPS returns/sets frame rate limit (when called as function, returns current FPS)
+        self.register_builtin_function("_FPS", &[], BasicType::Double);
+
+        // Hash and encoding functions
+        self.register_builtin_function("_CRC32", &[("data", BasicType::String)], BasicType::Long);
+        self.register_builtin_function("_MD5$", &[("data", BasicType::String)], BasicType::String);
+        self.register_builtin_function("_ADLER32", &[("data", BasicType::String)], BasicType::Long);
+
+        // Base64 encoding/decoding
+        self.register_builtin_function(
+            "_BASE64ENCODE$",
+            &[("data", BasicType::String)],
+            BasicType::String,
+        );
+        self.register_builtin_function(
+            "_BASE64DECODE$",
+            &[("data", BasicType::String)],
+            BasicType::String,
+        );
+
+        // URL encoding/decoding
+        self.register_builtin_function(
+            "_ENCODEURL$",
+            &[("url", BasicType::String)],
+            BasicType::String,
+        );
+        self.register_builtin_function(
+            "_DECODEURL$",
+            &[("url", BasicType::String)],
+            BasicType::String,
+        );
+
+        // Compression (zlib deflate/inflate)
+        self.register_builtin_function(
+            "_DEFLATE$",
+            &[("data", BasicType::String)],
+            BasicType::String,
+        );
+        self.register_builtin_function(
+            "_INFLATE$",
+            &[("data", BasicType::String)],
+            BasicType::String,
+        );
+
+        // Memory extended functions
+        self.register_builtin_function(
+            "_MEMEXISTS",
+            &[("mem", BasicType::Offset)],
+            BasicType::Integer,
+        );
+
+        // Default color functions
+        self.register_builtin_function_with_optionals(
+            "_DEFAULTCOLOR",
+            &[("handle", BasicType::Long, true)],
+            BasicType::Long,
+        );
+        self.register_builtin_function_with_optionals(
+            "_BACKGROUNDCOLOR",
+            &[("handle", BasicType::Long, true)],
+            BasicType::Long,
+        );
+
+        // Short-circuit logical operators (functions)
+        // _ANDALSO returns second argument only if first is true
+        self.register_builtin_function(
+            "_ANDALSO",
+            &[("a", BasicType::Long), ("b", BasicType::Long)],
+            BasicType::Long,
+        );
+        // _ORELSE returns second argument only if first is false
+        self.register_builtin_function(
+            "_ORELSE",
+            &[("a", BasicType::Long), ("b", BasicType::Long)],
+            BasicType::Long,
+        );
+
+        // _FREETIMER - free a timer resource
+        self.register_builtin_function("_FREETIMER", &[], BasicType::Long);
+
+        // Console mode functions
+        self.register_builtin_function("_CONSOLEINPUT", &[], BasicType::Long);
+        self.register_builtin_function("_ECHO", &[("text", BasicType::String)], BasicType::Long);
+
+        // Mouse extended
+        self.register_builtin_function("_MOUSEHIDDEN", &[], BasicType::Integer);
+
+        // Clipboard extended - get image from clipboard
+        self.register_builtin_function("_CLIPBOARDIMAGE", &[], BasicType::Long);
+
+        // Device input functions (gamepad/joystick)
+        self.register_builtin_function("_DEVICES", &[], BasicType::Long);
+        self.register_builtin_function("_DEVICE$", &[("n", BasicType::Long)], BasicType::String);
+        self.register_builtin_function("_DEVICEINPUT", &[], BasicType::Long);
+        self.register_builtin_function(
+            "_LASTAXIS",
+            &[("device", BasicType::Long)],
+            BasicType::Long,
+        );
+        self.register_builtin_function(
+            "_LASTBUTTON",
+            &[("device", BasicType::Long)],
+            BasicType::Long,
+        );
+        self.register_builtin_function(
+            "_LASTWHEEL",
+            &[("device", BasicType::Long)],
+            BasicType::Long,
+        );
+        self.register_builtin_function(
+            "_AXIS",
+            &[("device", BasicType::Long), ("axis", BasicType::Long)],
+            BasicType::Single,
+        );
+        self.register_builtin_function(
+            "_BUTTON",
+            &[("device", BasicType::Long), ("button", BasicType::Long)],
+            BasicType::Integer,
+        );
+        self.register_builtin_function(
+            "_BUTTONCHANGE",
+            &[("device", BasicType::Long), ("button", BasicType::Long)],
+            BasicType::Integer,
+        );
+        self.register_builtin_function(
+            "_WHEEL",
+            &[("device", BasicType::Long), ("wheel", BasicType::Long)],
+            BasicType::Single,
+        );
+
+        // Drag and drop functions
+        self.register_builtin_function("_TOTALDROPPEDFILES", &[], BasicType::Long);
+        self.register_builtin_function(
+            "_DROPPEDFILE",
+            &[("index", BasicType::Long)],
+            BasicType::Long,
+        );
+        self.register_builtin_function(
+            "_DROPPEDFILE$",
+            &[("index", BasicType::Long)],
+            BasicType::String,
+        );
+
+        // Resize event functions
+        self.register_builtin_function("_RESIZE", &[], BasicType::Integer);
+        self.register_builtin_function("_RESIZEWIDTH", &[], BasicType::Long);
+        self.register_builtin_function("_RESIZEHEIGHT", &[], BasicType::Long);
+        self.register_builtin_function("_SCALEDWIDTH", &[], BasicType::Long);
+        self.register_builtin_function("_SCALEDHEIGHT", &[], BasicType::Long);
+
+        // Dialog extended
+        self.register_builtin_function(
+            "_COLORCHOOSERDIALOG",
+            &[("initialColor", BasicType::Long)],
+            BasicType::Long,
+        );
+        self.register_builtin_function(
+            "_NOTIFYPOPUP",
+            &[("title", BasicType::String), ("message", BasicType::String)],
+            BasicType::Long,
+        );
+
+        // ==========================================
+        // QB64 Extension SUBs (statements)
+        // ==========================================
+
+        // Drag and drop control
+        self.register_builtin_sub("_ACCEPTFILEDROP", &[("enable", BasicType::Integer)]);
+        self.register_builtin_sub("_FINISHDROP", &[]);
+
+        // Console mode statements
+        self.register_builtin_sub("_CONSOLECURSOR", &[("visible", BasicType::Integer)]);
+        self.register_builtin_sub(
+            "_CONSOLEFONT",
+            &[("font", BasicType::String), ("size", BasicType::Long)],
+        );
+        self.register_builtin_sub("_CONTROLCHR", &[("mode", BasicType::Integer)]);
+
+        // Graphics alpha/blending
+        self.register_builtin_sub(
+            "_SETALPHA",
+            &[
+                ("alpha", BasicType::Long),
+                ("color1", BasicType::Long),
+                ("color2", BasicType::Long),
+            ],
+        );
+        self.register_builtin_sub(
+            "_PALETTECOLOR",
+            &[("index", BasicType::Long), ("color", BasicType::Long)],
+        );
+        self.register_builtin_sub(
+            "_COPYPALETTE",
+            &[
+                ("srcHandle", BasicType::Long),
+                ("destHandle", BasicType::Long),
+            ],
+        );
+        self.register_builtin_sub("_BLEND", &[("handle", BasicType::Long)]);
+        self.register_builtin_sub("_DONTBLEND", &[("handle", BasicType::Long)]);
+        self.register_builtin_sub(
+            "_CLEARCOLOR",
+            &[("color", BasicType::Long), ("handle", BasicType::Long)],
+        );
+        self.register_builtin_sub("_DEPTHBUFFER", &[("mode", BasicType::Integer)]);
+        self.register_builtin_sub(
+            "_DISPLAYORDER",
+            &[
+                ("layer1", BasicType::Long),
+                ("layer2", BasicType::Long),
+                ("layer3", BasicType::Long),
+                ("layer4", BasicType::Long),
+            ],
+        );
+
+        // Sound extended statement
+        self.register_builtin_sub(
+            "_SNDLIMIT",
+            &[("handle", BasicType::Long), ("seconds", BasicType::Single)],
+        );
+
+        // Icon statement (set window icon)
+        self.register_builtin_sub("_ICON", &[("handle", BasicType::Long)]);
+
+        // Window visibility
+        self.register_builtin_sub("_HIDE", &[]);
+        self.register_builtin_sub("_SHOW", &[]);
+        self.register_builtin_sub("_ONTOP", &[("mode", BasicType::Integer)]);
+
+        // Print mode
+        self.register_builtin_sub("_PRINTMODE", &[("mode", BasicType::Integer)]);
     }
 
     /// Registers a single built-in function.

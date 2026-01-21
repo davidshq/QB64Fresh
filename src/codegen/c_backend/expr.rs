@@ -588,6 +588,91 @@ pub(super) fn c_function_name(name: &str) -> String {
         "MKSMBF$" => "qb_mksmbf".to_string(),
         "MKDMBF$" => "qb_mkdmbf".to_string(),
 
+        // QB64 Extension Functions (Session 031+)
+        // Color component extraction
+        "_RED" => "qb_red".to_string(),
+        "_GREEN" => "qb_green".to_string(),
+        "_BLUE" => "qb_blue".to_string(),
+        "_ALPHA" => "qb_alpha".to_string(),
+        "_RED32" => "qb_red32".to_string(),
+        "_GREEN32" => "qb_green32".to_string(),
+        "_BLUE32" => "qb_blue32".to_string(),
+        "_ALPHA32" => "qb_alpha32".to_string(),
+
+        // Screen/pixel info
+        "_PIXELSIZE" => "qb_pixelsize".to_string(),
+        "_SCREENEXISTS" => "qb_screenexists".to_string(),
+        "_FPS" => "qb_fps".to_string(),
+
+        // Path functions
+        "_FULLPATH$" => "qb_fullpath".to_string(),
+
+        // Hash and encoding functions
+        "_CRC32" => "qb_crc32".to_string(),
+        "_MD5$" => "qb_md5".to_string(),
+        "_ADLER32" => "qb_adler32".to_string(),
+        "_BASE64ENCODE$" => "qb_base64encode".to_string(),
+        "_BASE64DECODE$" => "qb_base64decode".to_string(),
+        "_ENCODEURL$" => "qb_encodeurl".to_string(),
+        "_DECODEURL$" => "qb_decodeurl".to_string(),
+        "_DEFLATE$" => "qb_deflate".to_string(),
+        "_INFLATE$" => "qb_inflate".to_string(),
+
+        // Memory extended
+        "_MEMEXISTS" => "qb_memexists".to_string(),
+
+        // Color defaults
+        "_DEFAULTCOLOR" => "qb_defaultcolor".to_string(),
+        "_BACKGROUNDCOLOR" => "qb_backgroundcolor".to_string(),
+
+        // Short-circuit operators
+        "_ANDALSO" => "qb_andalso".to_string(),
+        "_ORELSE" => "qb_orelse".to_string(),
+
+        // Timer
+        "_FREETIMER" => "qb_freetimer".to_string(),
+
+        // Console
+        "_CONSOLEINPUT" => "qb_consoleinput".to_string(),
+        "_ECHO" => "qb_echo".to_string(),
+
+        // Mouse extended
+        "_MOUSEHIDDEN" => "qb_mousehidden".to_string(),
+
+        // Clipboard extended
+        "_CLIPBOARDIMAGE" => "qb_clipboardimage".to_string(),
+
+        // Device input (gamepad/joystick)
+        "_DEVICES" => "qb_devices".to_string(),
+        "_DEVICE$" => "qb_device_name".to_string(),
+        "_DEVICEINPUT" => "qb_deviceinput".to_string(),
+        "_LASTAXIS" => "qb_lastaxis".to_string(),
+        "_LASTBUTTON" => "qb_lastbutton".to_string(),
+        "_LASTWHEEL" => "qb_lastwheel".to_string(),
+        "_AXIS" => "qb_axis".to_string(),
+        "_BUTTON" => "qb_button".to_string(),
+        "_BUTTONCHANGE" => "qb_buttonchange".to_string(),
+        "_WHEEL" => "qb_wheel".to_string(),
+
+        // Drag and drop
+        "_TOTALDROPPEDFILES" => "qb_totaldroppedfiles".to_string(),
+        "_DROPPEDFILE" => "qb_droppedfile".to_string(),
+        "_DROPPEDFILE$" => "qb_droppedfile_str".to_string(),
+
+        // Resize events
+        "_RESIZE" => "qb_resize".to_string(),
+        "_RESIZEWIDTH" => "qb_resizewidth".to_string(),
+        "_RESIZEHEIGHT" => "qb_resizeheight".to_string(),
+        "_SCALEDWIDTH" => "qb_scaledwidth".to_string(),
+        "_SCALEDHEIGHT" => "qb_scaledheight".to_string(),
+
+        // Dialogs extended
+        "_COLORCHOOSERDIALOG" => "qb_colorchooserdialog".to_string(),
+        "_NOTIFYPOPUP" => "qb_notifypopup".to_string(),
+
+        // Sound extended
+        "_SNDRAWDONE" => "qb_sndrawdone".to_string(),
+
         // Default: prefix with qb_ for user functions
         _ => format!("qb_{}", c_identifier(name).to_lowercase()),
     }

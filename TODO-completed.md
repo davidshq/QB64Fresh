@@ -425,13 +425,13 @@
 
 ## Statistics
 
-- **Total source code:** ~29,500+ lines of Rust
-- **Unit tests:** 205
-- **Integration tests:** 409
-- **Total tests:** 690+
+- **Total source code:** ~30,000+ lines of Rust
+- **Unit tests:** 217
+- **Integration tests:** 454
+- **Total tests:** 750+
 - **Line coverage:** 81.63% ✅
 - **Statement types:** 60+
-- **Built-in functions:** 35+
+- **Built-in functions:** 85+ (includes QB64 extensions)
 
 ---
 
@@ -608,6 +608,35 @@
 - [x] Automatic header parsing (optional feature flag `header-parsing`)
   - Parses C header files to auto-generate DECLARE LIBRARY bindings
 
+### QB64 Extension Functions (Batch Implementation)
+- [x] Color component functions: `_RED`, `_GREEN`, `_BLUE`, `_ALPHA`, `_RED32`, `_GREEN32`, `_BLUE32`, `_ALPHA32`
+- [x] Screen info: `_PIXELSIZE`, `_SCREENEXISTS`, `_FPS`
+- [x] Color defaults: `_DEFAULTCOLOR`, `_BACKGROUNDCOLOR`
+- [x] Window control: `_ICON`, `_HIDE`, `_SHOW`, `_ONTOP`
+- [x] Hash functions: `_CRC32`, `_MD5$`, `_ADLER32`
+- [x] Encoding: `_BASE64ENCODE$`, `_BASE64DECODE$`, `_ENCODEURL$`, `_DECODEURL$`
+- [x] Compression: `_DEFLATE$`, `_INFLATE$`
+- [x] Path functions: `_FULLPATH$`
+- [x] Memory: `_MEMEXISTS`
+- [x] Device input: `_DEVICES`, `_DEVICE$`, `_DEVICEINPUT`, `_LASTAXIS`, `_LASTBUTTON`, `_LASTWHEEL`, `_AXIS`, `_BUTTON`, `_BUTTONCHANGE`, `_WHEEL`
+- [x] Drag and drop: `_TOTALDROPPEDFILES`, `_DROPPEDFILE`, `_DROPPEDFILE$`
+- [x] Resize events: `_RESIZE`, `_RESIZEWIDTH`, `_RESIZEHEIGHT`, `_SCALEDWIDTH`, `_SCALEDHEIGHT`
+- [x] Dialogs: `_COLORCHOOSERDIALOG`, `_NOTIFYPOPUP`
+- [x] Mouse: `_MOUSEHIDDEN`
+- [x] Clipboard: `_CLIPBOARDIMAGE`
+- [x] Console: `_CONSOLEINPUT`, `_ECHO`
+- [x] Logic operators: `_ANDALSO`, `_ORELSE`
+- [x] Timer: `_FREETIMER`
+- [x] Sound: `_SNDRAWDONE`
+- [x] Exit: `_EXIT` statement
+
+### QB64 Extension Statements (Batch Implementation)
+- [x] Drag and drop: `_ACCEPTFILEDROP`, `_FINISHDROP`
+- [x] Console: `_CONSOLECURSOR`, `_CONSOLEFONT`, `_CONTROLCHR`
+- [x] Graphics alpha: `_SETALPHA`, `_PALETTECOLOR`, `_COPYPALETTE`, `_BLEND`, `_DONTBLEND`, `_CLEARCOLOR`, `_DEPTHBUFFER`, `_DISPLAYORDER`
+- [x] Sound: `_SNDLIMIT`
+- [x] Print: `_PRINTMODE`
+
 ### Test Results Improvement
 - QB4.5 test case compatibility: **117/141 → 114/115** (83.0% → 99.1%, excluding open_gl)
   - pete: 42/42 (100%) - up from 62/68
@@ -616,3 +645,4 @@
   - qb45com: 5/5 (100%)
   - n54: 3/3 (100%)
 - Only remaining failure: frog.bas (bug in original code: `SCORE > HISCORE` where HISCORE is a UDT array)
+- Integration tests: 409 → 454 tests

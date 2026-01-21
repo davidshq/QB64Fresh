@@ -4480,3 +4480,311 @@ END SUB
         assert!(code.contains("static"));
     }
 }
+
+/// Tests for QB64 extension functions added in Session 031+
+mod qb64_extension_functions {
+    use super::*;
+
+    // Color component extraction
+    #[test]
+    fn red_function() {
+        let code = compile_to_c("DIM r AS LONG: r = _RED(&HFF8040)").unwrap();
+        assert!(code.contains("qb_red("));
+    }
+
+    #[test]
+    fn green_function() {
+        let code = compile_to_c("DIM g AS LONG: g = _GREEN(&HFF8040)").unwrap();
+        assert!(code.contains("qb_green("));
+    }
+
+    #[test]
+    fn blue_function() {
+        let code = compile_to_c("DIM b AS LONG: b = _BLUE(&HFF8040)").unwrap();
+        assert!(code.contains("qb_blue("));
+    }
+
+    #[test]
+    fn alpha_function() {
+        let code = compile_to_c("DIM a AS LONG: a = _ALPHA(&HFF8040FF)").unwrap();
+        assert!(code.contains("qb_alpha("));
+    }
+
+    #[test]
+    fn color32_variants() {
+        let code = compile_to_c(
+            "DIM r AS LONG, g AS LONG, b AS LONG, a AS LONG
+             r = _RED32(&HFF8040FF)
+             g = _GREEN32(&HFF8040FF)
+             b = _BLUE32(&HFF8040FF)
+             a = _ALPHA32(&HFF8040FF)",
+        )
+        .unwrap();
+        assert!(code.contains("qb_red32("));
+        assert!(code.contains("qb_green32("));
+        assert!(code.contains("qb_blue32("));
+        assert!(code.contains("qb_alpha32("));
+    }
+
+    // Screen info functions
+    #[test]
+    fn pixelsize_function() {
+        let code = compile_to_c("DIM ps AS LONG: ps = _PIXELSIZE()").unwrap();
+        assert!(code.contains("qb_pixelsize("));
+    }
+
+    #[test]
+    fn screenexists_function() {
+        let code = compile_to_c("IF _SCREENEXISTS THEN PRINT \"Window exists\"").unwrap();
+        assert!(code.contains("qb_screenexists("));
+    }
+
+    #[test]
+    fn fps_function() {
+        let code = compile_to_c("DIM f AS DOUBLE: f = _FPS").unwrap();
+        assert!(code.contains("qb_fps("));
+    }
+
+    // Path function
+    #[test]
+    fn fullpath_function() {
+        let code = compile_to_c("DIM p AS STRING: p = _FULLPATH$(\".\")").unwrap();
+        assert!(code.contains("qb_fullpath("));
+    }
+
+    // Hash functions
+    #[test]
+    fn crc32_function() {
+        let code = compile_to_c("DIM c AS LONG: c = _CRC32(\"test\")").unwrap();
+        assert!(code.contains("qb_crc32("));
+    }
+
+    #[test]
+    fn md5_function() {
+        let code = compile_to_c("DIM h AS STRING: h = _MD5$(\"test\")").unwrap();
+        assert!(code.contains("qb_md5("));
+    }
+
+    #[test]
+    fn adler32_function() {
+        let code = compile_to_c("DIM a AS LONG: a = _ADLER32(\"test\")").unwrap();
+        assert!(code.contains("qb_adler32("));
+    }
+
+    // Base64 encoding
+    #[test]
+    fn base64_encode_function() {
+        let code = compile_to_c("DIM e AS STRING: e = _BASE64ENCODE$(\"Hello\")").unwrap();
+        assert!(code.contains("qb_base64encode("));
+    }
+
+    #[test]
+    fn base64_decode_function() {
+        let code = compile_to_c("DIM d AS STRING: d = _BASE64DECODE$(\"SGVsbG8=\")").unwrap();
+        assert!(code.contains("qb_base64decode("));
+    }
+
+    // URL encoding
+    #[test]
+    fn encodeurl_function() {
+        let code = compile_to_c("DIM u AS STRING: u = _ENCODEURL$(\"hello world\")").unwrap();
+        assert!(code.contains("qb_encodeurl("));
+    }
+
+    #[test]
+    fn decodeurl_function() {
+        let code = compile_to_c("DIM u AS STRING: u = _DECODEURL$(\"hello%20world\")").unwrap();
+        assert!(code.contains("qb_decodeurl("));
+    }
+
+    // Compression
+    #[test]
+    fn deflate_function() {
+        let code = compile_to_c("DIM c AS STRING: c = _DEFLATE$(\"test data\")").unwrap();
+        assert!(code.contains("qb_deflate("));
+    }
+
+    #[test]
+    fn inflate_function() {
+        let code = compile_to_c("DIM d AS STRING: d = _INFLATE$(compressed$)").unwrap();
+        assert!(code.contains("qb_inflate("));
+    }
+
+    // Device input
+    #[test]
+    fn devices_function() {
+        let code = compile_to_c("DIM n AS LONG: n = _DEVICES").unwrap();
+        assert!(code.contains("qb_devices("));
+    }
+
+    #[test]
+    fn device_name_function() {
+        let code = compile_to_c("DIM d AS STRING: d = _DEVICE$(1)").unwrap();
+        assert!(code.contains("qb_device_name("));
+    }
+
+    #[test]
+    fn axis_function() {
+        let code = compile_to_c("DIM a AS SINGLE: a = _AXIS(1, 1)").unwrap();
+        assert!(code.contains("qb_axis("));
+    }
+
+    #[test]
+    fn button_function() {
+        let code = compile_to_c("IF _BUTTON(1, 1) THEN PRINT \"Button pressed\"").unwrap();
+        assert!(code.contains("qb_button("));
+    }
+
+    // Resize events
+    #[test]
+    fn resize_function() {
+        let code = compile_to_c("IF _RESIZE THEN PRINT \"Window resized\"").unwrap();
+        assert!(code.contains("qb_resize("));
+    }
+
+    #[test]
+    fn resize_dimensions() {
+        let code =
+            compile_to_c("DIM w AS LONG, h AS LONG: w = _RESIZEWIDTH: h = _RESIZEHEIGHT").unwrap();
+        assert!(code.contains("qb_resizewidth("));
+        assert!(code.contains("qb_resizeheight("));
+    }
+
+    // Short-circuit operators
+    #[test]
+    fn andalso_function() {
+        let code = compile_to_c("DIM r AS LONG: r = _ANDALSO(1, 2)").unwrap();
+        assert!(code.contains("qb_andalso("));
+    }
+
+    #[test]
+    fn orelse_function() {
+        let code = compile_to_c("DIM r AS LONG: r = _ORELSE(0, 1)").unwrap();
+        assert!(code.contains("qb_orelse("));
+    }
+
+    // Exit statement
+    #[test]
+    fn exit_statement() {
+        let code = compile_to_c("_EXIT 1").unwrap();
+        assert!(code.contains("qb_exit("));
+    }
+
+    // Sound extended
+    #[test]
+    fn sndrawdone_function() {
+        let code = compile_to_c("IF _SNDRAWDONE THEN PRINT \"Buffer empty\"").unwrap();
+        assert!(code.contains("qb_sndrawdone("));
+    }
+
+    // Dialog functions
+    #[test]
+    fn colorchooserdialog_function() {
+        let code = compile_to_c("DIM c AS LONG: c = _COLORCHOOSERDIALOG(&HFFFFFF)").unwrap();
+        assert!(code.contains("qb_colorchooserdialog("));
+    }
+
+    // Drag and drop
+    #[test]
+    fn totaldroppedfiles_function() {
+        let code = compile_to_c("DIM n AS LONG: n = _TOTALDROPPEDFILES").unwrap();
+        assert!(code.contains("qb_totaldroppedfiles("));
+    }
+
+    #[test]
+    fn droppedfile_function() {
+        let code = compile_to_c("DIM f AS STRING: f = _DROPPEDFILE$(1)").unwrap();
+        assert!(code.contains("qb_droppedfile_str("));
+    }
+
+    // Color defaults
+    #[test]
+    fn defaultcolor_function() {
+        let code = compile_to_c("DIM c AS LONG: c = _DEFAULTCOLOR()").unwrap();
+        assert!(code.contains("qb_defaultcolor("));
+    }
+
+    #[test]
+    fn backgroundcolor_function() {
+        let code = compile_to_c("DIM c AS LONG: c = _BACKGROUNDCOLOR()").unwrap();
+        assert!(code.contains("qb_backgroundcolor("));
+    }
+}
+
+/// Tests for QB64 extension statements added in Session 031+
+mod qb64_extension_statements {
+    use super::*;
+
+    #[test]
+    fn acceptfiledrop_statement() {
+        let code = compile_to_c("_ACCEPTFILEDROP -1").unwrap();
+        assert!(code.contains("qb_acceptfiledrop("));
+    }
+
+    #[test]
+    fn finishdrop_statement() {
+        let code = compile_to_c("_FINISHDROP").unwrap();
+        assert!(code.contains("qb_finishdrop("));
+    }
+
+    #[test]
+    fn blend_statement() {
+        let code = compile_to_c("_BLEND 0").unwrap();
+        assert!(code.contains("qb_blend("));
+    }
+
+    #[test]
+    fn dontblend_statement() {
+        let code = compile_to_c("_DONTBLEND 0").unwrap();
+        assert!(code.contains("qb_dontblend("));
+    }
+
+    #[test]
+    fn setalpha_statement() {
+        let code = compile_to_c("_SETALPHA 128, 0, 255").unwrap();
+        assert!(code.contains("qb_setalpha("));
+    }
+
+    #[test]
+    fn clearcolor_statement() {
+        let code = compile_to_c("_CLEARCOLOR &HFF00FF, 0").unwrap();
+        assert!(code.contains("qb_clearcolor("));
+    }
+
+    #[test]
+    fn palettecolor_statement() {
+        let code = compile_to_c("_PALETTECOLOR 1, &HFF0000").unwrap();
+        assert!(code.contains("qb_palettecolor("));
+    }
+
+    #[test]
+    fn sndlimit_statement() {
+        let code = compile_to_c("_SNDLIMIT handle&, 5.0").unwrap();
+        assert!(code.contains("qb_sndlimit("));
+    }
+
+    #[test]
+    fn icon_statement() {
+        let code = compile_to_c("_ICON 0").unwrap();
+        assert!(code.contains("qb_icon("));
+    }
+
+    #[test]
+    fn hide_show_statements() {
+        let code = compile_to_c("_HIDE\n_SHOW").unwrap();
+        assert!(code.contains("qb_hide("));
+        assert!(code.contains("qb_show("));
+    }
+
+    #[test]
+    fn ontop_statement() {
+        let code = compile_to_c("_ONTOP -1").unwrap();
+        assert!(code.contains("qb_ontop("));
+    }
+
+    #[test]
+    fn printmode_statement() {
+        let code = compile_to_c("_PRINTMODE 1").unwrap();
+        assert!(code.contains("qb_printmode("));
+    }
+}

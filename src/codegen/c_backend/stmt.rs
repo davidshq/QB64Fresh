@@ -448,6 +448,26 @@ impl StmtEmitter {
                 // Check for built-in SUBs with special C function names
                 let c_name = match name.to_uppercase().as_str() {
                     "_WRITEFILE" => "qb_writefile".to_string(),
+                    "_EXIT" => "qb_exit".to_string(),
+                    "_ACCEPTFILEDROP" => "qb_acceptfiledrop".to_string(),
+                    "_FINISHDROP" => "qb_finishdrop".to_string(),
+                    "_CONSOLECURSOR" => "qb_consolecursor".to_string(),
+                    "_CONSOLEFONT" => "qb_consolefont".to_string(),
+                    "_CONTROLCHR" => "qb_controlchr".to_string(),
+                    "_SETALPHA" => "qb_setalpha".to_string(),
+                    "_PALETTECOLOR" => "qb_palettecolor".to_string(),
+                    "_COPYPALETTE" => "qb_copypalette".to_string(),
+                    "_BLEND" => "qb_blend".to_string(),
+                    "_DONTBLEND" => "qb_dontblend".to_string(),
+                    "_CLEARCOLOR" => "qb_clearcolor".to_string(),
+                    "_DEPTHBUFFER" => "qb_depthbuffer".to_string(),
+                    "_DISPLAYORDER" => "qb_displayorder".to_string(),
+                    "_SNDLIMIT" => "qb_sndlimit".to_string(),
+                    "_ICON" => "qb_icon".to_string(),
+                    "_HIDE" => "qb_hide".to_string(),
+                    "_SHOW" => "qb_show".to_string(),
+                    "_ONTOP" => "qb_ontop".to_string(),
+                    "_PRINTMODE" => "qb_printmode".to_string(),
                     // Default: user-defined SUBs use qb_sub_ prefix
                     _ => format!("qb_sub_{}", c_identifier(name).to_lowercase()),
                 };
