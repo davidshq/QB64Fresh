@@ -374,7 +374,9 @@ impl SymbolTable {
     /// `x%`, `x$`, and `x&` are three separate variables. However, lookups are
     /// case-insensitive, so `X$` and `x$` are the same variable.
     pub fn define_symbol(&mut self, symbol: Symbol) -> Result<(), Box<(Symbol, Symbol)>> {
-        let scope = self.scopes.get_mut(&self.current_scope)
+        let scope = self
+            .scopes
+            .get_mut(&self.current_scope)
             .expect("current_scope must always exist in scopes map");
         // Use the FULL name (including suffix) for uniqueness, but case-insensitive
         let name_upper = symbol.name.to_uppercase();
@@ -392,7 +394,9 @@ impl SymbolTable {
     /// This is used for REDIM which can resize an existing array (including
     /// array parameters) or create a new dynamic array.
     pub fn update_or_define_symbol(&mut self, symbol: Symbol) {
-        let scope = self.scopes.get_mut(&self.current_scope)
+        let scope = self
+            .scopes
+            .get_mut(&self.current_scope)
             .expect("current_scope must always exist in scopes map");
         let name_upper = symbol.name.to_uppercase();
         scope.symbols.insert(name_upper, symbol);
@@ -457,7 +461,9 @@ impl SymbolTable {
     ///
     /// Returns `Err(existing)` if a label with this name already exists.
     pub fn define_label(&mut self, name: String, span: Span) -> Result<(), LabelEntry> {
-        let scope = self.scopes.get_mut(&self.current_scope)
+        let scope = self
+            .scopes
+            .get_mut(&self.current_scope)
             .expect("current_scope must always exist in scopes map");
         let name_upper = name.to_uppercase();
 
@@ -590,7 +596,9 @@ impl SymbolTable {
     pub fn define_shared_symbol(&mut self, symbol: Symbol) {
         let name_upper = symbol.name.to_uppercase();
         // Always define in global scope
-        let global = self.scopes.get_mut(&ScopeId::GLOBAL)
+        let global = self
+            .scopes
+            .get_mut(&ScopeId::GLOBAL)
             .expect("global scope must always exist");
         global.symbols.insert(name_upper.clone(), symbol);
         // Mark as module-shared

@@ -993,6 +993,14 @@ pub enum TokenKind {
     #[token("IMP", ignore(ascii_case))]
     Imp,
 
+    /// _ANDALSO operator (short-circuit AND - QB64)
+    #[token("_ANDALSO", ignore(ascii_case))]
+    AndAlso,
+
+    /// _ORELSE operator (short-circuit OR - QB64)
+    #[token("_ORELSE", ignore(ascii_case))]
+    OrElse,
+
     /// MOD operator
     #[token("MOD", ignore(ascii_case))]
     Mod,
@@ -1156,9 +1164,18 @@ pub enum TokenKind {
     /// Identifier (variable, function, or label name)
     /// Must start with letter, can contain letters, digits, underscores, and dots.
     /// Dots are allowed in classic BASIC for naming procedures (e.g., `player.move`)
-    /// May end with type suffix ($, %, &, !, #)
+    ///
+    /// May end with type suffix:
+    /// - Single char: $, %, &, !, #, `
+    /// - Two char: %%, &&, ##, %& (QB64 extended types)
+    /// - Unsigned: ~%, ~&, ~`, ~%%, ~&& (QB64 unsigned types)
+    ///
     /// Priority 3 ensures type suffixes are captured as part of the identifier.
-    #[regex(r"[A-Za-z_][A-Za-z0-9_.]*[$%&!#]?", priority = 3)]
+    /// Note: Multi-char suffixes (&&, %%, etc.) must come before single-char alternatives.
+    #[regex(
+        r"[A-Za-z_][A-Za-z0-9_.]*(&&|%%|##|%&|~&&|~%%|~##|~%&|~%|~&|~`|[$%&!#`])?",
+        priority = 3
+    )]
     Identifier,
 
     // ==================== Special Tokens ====================
@@ -1204,8 +1221,8 @@ pub enum TokenKind {
     #[token("$CHECKING", ignore(ascii_case))]
     MetaChecking,
 
-    /// $CONSOLE - enable console window (must be before generic MetaCommand)
-    #[regex(r"\$CONSOLE\s*:\s*ONLY", ignore(ascii_case))]
+    /// $CONSOLE:ONLY - enable console window only
+    #[regex(r"(?i:\$CONSOLE\s*:\s*ONLY)")]
     MetaConsoleOnly,
 
     /// $CONSOLE - enable console window
@@ -1257,7 +1274,8 @@ pub enum TokenKind {
     MetaExeIcon,
 
     /// $VERSIONINFO - set version info (captures key=value)
-    #[regex(r"\$VERSIONINFO\s*:\s*[A-Za-z]+\s*=\s*[^\r\n]+", ignore(ascii_case))]
+    /// Note: Key may include # suffix (e.g., FILEVERSION#, PRODUCTVERSION#)
+    #[regex(r"\$VERSIONINFO\s*:\s*[A-Za-z]+#?\s*=\s*[^\r\n]+", ignore(ascii_case))]
     MetaVersionInfo,
 
     /// $ERROR - compiler error message

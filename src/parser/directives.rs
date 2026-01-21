@@ -72,6 +72,20 @@ impl<'a> Parser<'a> {
             return Err(());
         }
 
+        // Handle $CONSOLE / $CONSOLE:ONLY that may come through as MetaCommand
+        // due to lexer issues (workaround for logos bug with exact "$CONSOLE" string)
+        if command == "CONSOLE" {
+            return Ok(Statement::new(
+                StatementKind::MetaConsole { only: false },
+                span,
+            ));
+        }
+        if let Some(rest) = command.strip_prefix("CONSOLE:") {
+            let arg = rest.trim().to_uppercase();
+            let only = arg == "ONLY";
+            return Ok(Statement::new(StatementKind::MetaConsole { only }, span));
+        }
+
         // Other meta-commands (e.g., $DYNAMIC, $STATIC, $ERROR)
         // Parse any arguments on the rest of the line
         let args = self.parse_meta_command_args();

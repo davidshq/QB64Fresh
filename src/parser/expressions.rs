@@ -342,9 +342,10 @@ impl<'a> Parser<'a> {
         };
 
         // Handle field access chain: obj.field.subfield
+        // Use expect_name to allow keywords as field names (e.g., .name, .type)
         while self.check(&TokenKind::Dot) {
             self.advance(); // consume .
-            let field_token = self.expect(&TokenKind::Identifier, "field name after `.`")?;
+            let field_token = self.expect_name("field name after `.`")?;
             let field = field_token.text.to_string();
             let span = self.span_from(start_span.start);
             expr = Expr::new(
@@ -587,8 +588,8 @@ impl<'a> Parser<'a> {
             | TokenKind::GreaterThan
             | TokenKind::GreaterEquals
             | TokenKind::GreaterEqualsLegacy => Precedence::Comparison,
-            TokenKind::And => Precedence::And,
-            TokenKind::Or | TokenKind::Xor => Precedence::Or,
+            TokenKind::And | TokenKind::AndAlso => Precedence::And,
+            TokenKind::Or | TokenKind::Xor | TokenKind::OrElse => Precedence::Or,
             TokenKind::Eqv | TokenKind::Imp => Precedence::EqvImp,
             _ => Precedence::Lowest,
         }
@@ -613,7 +614,9 @@ impl<'a> Parser<'a> {
                 Some(BinaryOp::GreaterEqual)
             }
             TokenKind::And => Some(BinaryOp::And),
+            TokenKind::AndAlso => Some(BinaryOp::AndAlso),
             TokenKind::Or => Some(BinaryOp::Or),
+            TokenKind::OrElse => Some(BinaryOp::OrElse),
             TokenKind::Xor => Some(BinaryOp::Xor),
             TokenKind::Eqv => Some(BinaryOp::Eqv),
             TokenKind::Imp => Some(BinaryOp::Imp),

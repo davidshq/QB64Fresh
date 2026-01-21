@@ -118,6 +118,20 @@ impl<'a> TypeChecker<'a> {
                     BinaryOp::Xor => l ^ r,
                     BinaryOp::Eqv => !(l ^ r),
                     BinaryOp::Imp => !l | r,
+                    BinaryOp::AndAlso => {
+                        if l != 0 && r != 0 {
+                            -1
+                        } else {
+                            0
+                        }
+                    }
+                    BinaryOp::OrElse => {
+                        if l != 0 || r != 0 {
+                            -1
+                        } else {
+                            0
+                        }
+                    }
                     BinaryOp::Equal => {
                         if l == r {
                             -1

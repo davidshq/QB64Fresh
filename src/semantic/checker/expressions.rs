@@ -273,6 +273,20 @@ impl<'a> TypeChecker<'a> {
                     .unwrap_or(BasicType::Long)
             }
 
+            // Short-circuit logical operators (QB64)
+            // _ANDALSO and _ORELSE always return Integer (boolean result)
+            BinaryOp::AndAlso | BinaryOp::OrElse => {
+                if !left_typed.basic_type.is_numeric() || !right_typed.basic_type.is_numeric() {
+                    self.errors.push(SemanticError::InvalidBinaryOp {
+                        op: op.as_str().to_string(),
+                        left_type: left_typed.basic_type.to_string(),
+                        right_type: right_typed.basic_type.to_string(),
+                        span,
+                    });
+                }
+                BasicType::Integer
+            }
+
             // String concatenation with +
             BinaryOp::Add
                 if left_typed.basic_type.is_string() && right_typed.basic_type.is_string() =>

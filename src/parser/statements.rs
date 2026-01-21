@@ -245,6 +245,34 @@ impl<'a> Parser<'a> {
                 self.parse_line_number_statement()
             }
 
+            // Handle Error tokens that might be $CONSOLE (logos lexer bug workaround)
+            TokenKind::Error => {
+                let text = token.text.trim().to_uppercase();
+                if text == "$CONSOLE" {
+                    let span: Span = token.span.clone().into();
+                    self.advance();
+                    return Ok(Statement::new(
+                        StatementKind::MetaConsole { only: false },
+                        span,
+                    ));
+                }
+                if let Some(rest) = text.strip_prefix("$CONSOLE:") {
+                    let span: Span = token.span.clone().into();
+                    let arg = rest.trim();
+                    let only = arg.eq_ignore_ascii_case("ONLY");
+                    self.advance();
+                    return Ok(Statement::new(StatementKind::MetaConsole { only }, span));
+                }
+                // Not a $CONSOLE, fall through to error
+                let span: Span = token.span.clone().into();
+                self.errors.push(ParseError::InvalidStatement {
+                    span,
+                    message: format!("unexpected token {:?}", token.kind),
+                });
+                self.advance();
+                Err(())
+            }
+
             _ => {
                 let span: Span = token.span.clone().into();
                 self.errors.push(ParseError::InvalidStatement {
@@ -618,6 +646,7 @@ impl<'a> Parser<'a> {
     /// Parses DIM statement(s).
     ///
     /// Syntax: `DIM [SHARED] var1[(dims)][AS type], var2[(dims)][AS type], ...`
+    /// Also supports QB64 alternate syntax: `DIM [SHARED] AS type var1[(dims)], var2[(dims)], ...`
     pub(super) fn parse_dim(&mut self) -> Result<Statement, ()> {
         use crate::ast::DimVariable;
 
@@ -627,35 +656,68 @@ impl<'a> Parser<'a> {
 
         let mut variables = Vec::new();
 
-        loop {
-            let name_token = self.expect(&TokenKind::Identifier, "variable name")?;
-            let name = name_token.text.to_string();
+        // Check for QB64 alternate syntax: DIM [SHARED] AS type var1, var2, ...
+        if self.check(&TokenKind::As) {
+            self.advance(); // consume AS
+            let common_type = self.parse_type_spec()?;
 
-            // Check for array dimensions
-            let dimensions = if self.match_token(&TokenKind::LeftParen) {
-                let dims = self.parse_array_dimensions()?;
-                self.expect(&TokenKind::RightParen, ")")?;
-                dims
-            } else {
-                Vec::new()
-            };
+            // Parse variable names (all share the same type)
+            loop {
+                let name_token = self.expect(&TokenKind::Identifier, "variable name")?;
+                let name = name_token.text.to_string();
 
-            // Check for AS type
-            let type_spec = if self.match_token(&TokenKind::As) {
-                Some(self.parse_type_spec()?)
-            } else {
-                None
-            };
+                // Check for array dimensions
+                let dimensions = if self.match_token(&TokenKind::LeftParen) {
+                    let dims = self.parse_array_dimensions()?;
+                    self.expect(&TokenKind::RightParen, ")")?;
+                    dims
+                } else {
+                    Vec::new()
+                };
 
-            variables.push(DimVariable {
-                name,
-                dimensions,
-                type_spec,
-            });
+                variables.push(DimVariable {
+                    name,
+                    dimensions,
+                    type_spec: Some(common_type.clone()),
+                });
 
-            // Check for more variables on the same line
-            if !self.match_token(&TokenKind::Comma) {
-                break;
+                // Check for more variables on the same line
+                if !self.match_token(&TokenKind::Comma) {
+                    break;
+                }
+            }
+        } else {
+            // Standard syntax: DIM var1 AS type, var2 AS type, ...
+            loop {
+                let name_token = self.expect(&TokenKind::Identifier, "variable name")?;
+                let name = name_token.text.to_string();
+
+                // Check for array dimensions
+                let dimensions = if self.match_token(&TokenKind::LeftParen) {
+                    let dims = self.parse_array_dimensions()?;
+                    self.expect(&TokenKind::RightParen, ")")?;
+                    dims
+                } else {
+                    Vec::new()
+                };
+
+                // Check for AS type
+                let type_spec = if self.match_token(&TokenKind::As) {
+                    Some(self.parse_type_spec()?)
+                } else {
+                    None
+                };
+
+                variables.push(DimVariable {
+                    name,
+                    dimensions,
+                    type_spec,
+                });
+
+                // Check for more variables on the same line
+                if !self.match_token(&TokenKind::Comma) {
+                    break;
+                }
             }
         }
 
@@ -2569,6 +2631,8 @@ impl<'a> Parser<'a> {
     /// Parses a REDIM statement.
     ///
     /// Syntax: `REDIM [SHARED] [_PRESERVE] array1(dims) [AS type], array2(dims) [AS type], ...`
+    /// Also supports QB64 alternate syntax: `REDIM [SHARED] AS type var1(dims), var2, ...`
+    /// Also allows scalar variables without parentheses: `REDIM arr(100), scalar AS LONG`
     /// Note: SHARED and _PRESERVE can appear in either order for compatibility.
     pub(super) fn parse_redim(&mut self) -> Result<Statement, ()> {
         use crate::ast::DimVariable;
@@ -2585,28 +2649,66 @@ impl<'a> Parser<'a> {
 
         let mut variables = Vec::new();
 
-        loop {
-            let name_token = self.expect(&TokenKind::Identifier, "array name")?;
-            let name = name_token.text.to_string();
+        // Check for QB64 alternate syntax: REDIM [SHARED] AS type var1, var2, ...
+        if self.check(&TokenKind::As) {
+            self.advance(); // consume AS
+            let common_type = self.parse_type_spec()?;
 
-            self.expect(&TokenKind::LeftParen, "(")?;
-            let dimensions = self.parse_array_dimensions()?;
-            self.expect(&TokenKind::RightParen, ")")?;
+            // Parse variable names (all share the same type)
+            loop {
+                let name_token = self.expect(&TokenKind::Identifier, "array name")?;
+                let name = name_token.text.to_string();
 
-            let type_spec = if self.match_token(&TokenKind::As) {
-                Some(self.parse_type_spec()?)
-            } else {
-                None
-            };
+                // Array dimensions are optional (scalar variables allowed)
+                let dimensions = if self.match_token(&TokenKind::LeftParen) {
+                    let dims = self.parse_array_dimensions()?;
+                    self.expect(&TokenKind::RightParen, ")")?;
+                    dims
+                } else {
+                    Vec::new()
+                };
 
-            variables.push(DimVariable {
-                name,
-                dimensions,
-                type_spec,
-            });
+                variables.push(DimVariable {
+                    name,
+                    dimensions,
+                    type_spec: Some(common_type.clone()),
+                });
 
-            if !self.match_token(&TokenKind::Comma) {
-                break;
+                if !self.match_token(&TokenKind::Comma) {
+                    break;
+                }
+            }
+        } else {
+            // Standard syntax: REDIM arr(dims) AS type, ...
+            // Also allows scalar variables without parentheses
+            loop {
+                let name_token = self.expect(&TokenKind::Identifier, "array name")?;
+                let name = name_token.text.to_string();
+
+                // Array dimensions are optional (scalar variables allowed in REDIM)
+                let dimensions = if self.match_token(&TokenKind::LeftParen) {
+                    let dims = self.parse_array_dimensions()?;
+                    self.expect(&TokenKind::RightParen, ")")?;
+                    dims
+                } else {
+                    Vec::new()
+                };
+
+                let type_spec = if self.match_token(&TokenKind::As) {
+                    Some(self.parse_type_spec()?)
+                } else {
+                    None
+                };
+
+                variables.push(DimVariable {
+                    name,
+                    dimensions,
+                    type_spec,
+                });
+
+                if !self.match_token(&TokenKind::Comma) {
+                    break;
+                }
             }
         }
 
@@ -2737,7 +2839,11 @@ impl<'a> Parser<'a> {
 
         let span = self.span_from(start);
         Ok(Statement::new(
-            StatementKind::DeclareFunction { name, params, return_type },
+            StatementKind::DeclareFunction {
+                name,
+                params,
+                return_type,
+            },
             span,
         ))
     }

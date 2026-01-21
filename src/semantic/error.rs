@@ -48,7 +48,6 @@ pub enum SemanticError {
     // ========================================================================
     // Variable/Symbol Errors
     // ========================================================================
-
     /// Reference to a variable that hasn't been declared.
     ///
     /// In QB64, variables can be implicitly declared by assignment, but referencing
@@ -173,7 +172,6 @@ pub enum SemanticError {
     // ========================================================================
     // Type Errors
     // ========================================================================
-
     /// Expected one type but found another.
     ///
     /// This occurs when an expression's type doesn't match what's required.
@@ -247,7 +245,6 @@ pub enum SemanticError {
     // ========================================================================
     // Procedure/Function Errors
     // ========================================================================
-
     /// Function or SUB called with wrong number of arguments.
     ///
     /// Check the procedure definition for the correct number of parameters.
@@ -322,7 +319,6 @@ pub enum SemanticError {
     // ========================================================================
     // Control Flow Errors
     // ========================================================================
-
     /// EXIT statement used outside its corresponding construct.
     ///
     /// EXIT FOR must be inside a FOR loop, EXIT DO inside a DO loop, etc.
@@ -381,7 +377,6 @@ pub enum SemanticError {
     // ========================================================================
     // Array Errors
     // ========================================================================
-
     /// Trying to index something that isn't an array.
     ///
     /// Array subscript syntax can only be used on arrays. Make sure the
@@ -430,7 +425,6 @@ pub enum SemanticError {
     // ========================================================================
     // Constant Errors
     // ========================================================================
-
     /// Attempting to assign a new value to a CONST.
     ///
     /// Constants cannot be modified after declaration. Use a variable instead
@@ -462,7 +456,6 @@ pub enum SemanticError {
     // ========================================================================
     // SHARED Errors
     // ========================================================================
-
     /// SHARED statement used outside a SUB or FUNCTION.
     ///
     /// SHARED is used inside procedures to access module-level variables.
@@ -494,7 +487,6 @@ pub enum SemanticError {
     // ========================================================================
     // OPTION Errors
     // ========================================================================
-
     /// OPTION BASE value is not 0 or 1.
     ///
     /// OPTION BASE sets the default lower bound for arrays. Only 0 and 1

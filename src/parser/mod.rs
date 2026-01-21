@@ -966,10 +966,7 @@ PRINT x
             assert_eq!(program.statements.len(), 1);
             assert!(matches!(
                 &program.statements[0].kind,
-                StatementKind::Width {
-                    rows: Some(_),
-                    ..
-                }
+                StatementKind::Width { rows: Some(_), .. }
             ));
         }
 
@@ -1120,10 +1117,7 @@ PRINT x
             assert_eq!(program.statements.len(), 1);
             assert!(matches!(
                 &program.statements[0].kind,
-                StatementKind::Circle {
-                    color: Some(_),
-                    ..
-                }
+                StatementKind::Circle { color: Some(_), .. }
             ));
         }
 
@@ -1607,10 +1601,7 @@ PRINT x
             assert_eq!(program.statements.len(), 1);
             assert!(matches!(
                 &program.statements[0].kind,
-                StatementKind::SndRaw {
-                    right: Some(_),
-                    ..
-                }
+                StatementKind::SndRaw { right: Some(_), .. }
             ));
         }
 
@@ -1925,8 +1916,7 @@ PRINT x
 
         #[test]
         fn test_parse_open_with_lock_read_write() {
-            let program =
-                parse(r#"OPEN "file.txt" FOR BINARY LOCK READ WRITE AS #1"#).unwrap();
+            let program = parse(r#"OPEN "file.txt" FOR BINARY LOCK READ WRITE AS #1"#).unwrap();
             assert_eq!(program.statements.len(), 1);
             if let StatementKind::OpenFile { lock, .. } = &program.statements[0].kind {
                 assert_eq!(*lock, Some(FileLock::LockReadWrite));
@@ -1950,7 +1940,11 @@ PRINT x
                 let source = format!(r#"OPEN "file.txt" FOR {} AS #1"#, mode_str);
                 let program = parse(&source).unwrap();
                 if let StatementKind::OpenFile { mode, .. } = &program.statements[0].kind {
-                    assert_eq!(*mode, expected_mode, "Mode {} should parse correctly", mode_str);
+                    assert_eq!(
+                        *mode, expected_mode,
+                        "Mode {} should parse correctly",
+                        mode_str
+                    );
                 } else {
                     panic!("Expected OpenFile statement for mode {}", mode_str);
                 }
@@ -2327,8 +2321,7 @@ PRINT x
         fn test_parse_putimage_with_smooth() {
             // Note: The lexer recognizes SMOOTH (not _SMOOTH) as a keyword
             let program =
-                parse("_PUTIMAGE (0, 0)-(100, 100), src&, dest&, (0, 0)-(50, 50), SMOOTH")
-                    .unwrap();
+                parse("_PUTIMAGE (0, 0)-(100, 100), src&, dest&, (0, 0)-(50, 50), SMOOTH").unwrap();
             assert_eq!(program.statements.len(), 1);
             if let StatementKind::PutImage { scale_mode, .. } = &program.statements[0].kind {
                 assert_eq!(*scale_mode, ImageScaleMode::Smooth);

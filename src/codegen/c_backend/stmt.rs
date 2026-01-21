@@ -2560,7 +2560,12 @@ impl StmtEmitter {
                 indent, value_code, c_name, field_chain, len, c_name, field_chain, len
             ).unwrap();
         } else {
-            writeln!(output, "{}{}{} = {};", indent, c_name, field_chain, value_code).unwrap();
+            writeln!(
+                output,
+                "{}{}{} = {};",
+                indent, c_name, field_chain, value_code
+            )
+            .unwrap();
         }
 
         Ok(())

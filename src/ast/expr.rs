@@ -173,6 +173,12 @@ pub enum BinaryOp {
     Eqv,
     /// `IMP` - Logical implication
     Imp,
+
+    // Short-circuit logical (QB64)
+    /// `_ANDALSO` - Short-circuit AND (QB64)
+    AndAlso,
+    /// `_ORELSE` - Short-circuit OR (QB64)
+    OrElse,
 }
 
 impl BinaryOp {
@@ -205,6 +211,8 @@ impl BinaryOp {
             BinaryOp::Xor => "XOR",
             BinaryOp::Eqv => "EQV",
             BinaryOp::Imp => "IMP",
+            BinaryOp::AndAlso => "_ANDALSO",
+            BinaryOp::OrElse => "_ORELSE",
         }
     }
 }

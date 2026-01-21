@@ -43,16 +43,11 @@ impl<'a> TypeChecker<'a> {
             let field_part = &name[dot_pos + 1..];
 
             // Check if the object is a UDT variable
-            if let Some(symbol) = self.symbols.lookup_symbol(object_name) {
-                if let BasicType::UserDefined(_) = &symbol.basic_type {
-                    // This is a UDT field assignment
-                    return self.check_udt_field_assignment(
-                        object_name,
-                        field_part,
-                        value,
-                        span,
-                    );
-                }
+            if let Some(symbol) = self.symbols.lookup_symbol(object_name)
+                && let BasicType::UserDefined(_) = &symbol.basic_type
+            {
+                // This is a UDT field assignment
+                return self.check_udt_field_assignment(object_name, field_part, value, span);
             }
         }
 

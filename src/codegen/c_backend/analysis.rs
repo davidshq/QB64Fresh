@@ -64,8 +64,8 @@ pub(super) fn collect_globals(
     program: &TypedProgram,
     emit_params_fn: impl Fn(&[TypedParameter]) -> String,
 ) -> (Vec<String>, Vec<String>) {
-    use std::collections::HashSet;
     use crate::semantic::types::BasicType;
+    use std::collections::HashSet;
 
     let mut globals = Vec::new();
     let mut forward_decls = Vec::new();
@@ -75,7 +75,10 @@ pub(super) fn collect_globals(
     // Helper to add a global variable if not already declared
     // Note: For strings, we initialize to NULL since qb_string_new() is not a constant
     // expression in C. The generated code should handle NULL strings safely.
-    let add_global = |name: &str, basic_type: &BasicType, declared_vars: &mut HashSet<String>, globals: &mut Vec<String>| {
+    let add_global = |name: &str,
+                      basic_type: &BasicType,
+                      declared_vars: &mut HashSet<String>,
+                      globals: &mut Vec<String>| {
         let c_name = c_identifier(name);
         if !declared_vars.contains(&c_name) {
             let c_ty = c_type(basic_type);
@@ -148,7 +151,10 @@ fn collect_implicit_vars_from_stmt(
 ) {
     // Helper to add a variable
     // For strings, use NULL since function calls aren't valid global initializers in C
-    let add_var = |name: &str, basic_type: &crate::semantic::types::BasicType, declared_vars: &mut std::collections::HashSet<String>, globals: &mut Vec<String>| {
+    let add_var = |name: &str,
+                   basic_type: &crate::semantic::types::BasicType,
+                   declared_vars: &mut std::collections::HashSet<String>,
+                   globals: &mut Vec<String>| {
         use crate::semantic::types::BasicType;
         let c_name = c_identifier(name);
         if !declared_vars.contains(&c_name) {
@@ -164,19 +170,27 @@ fn collect_implicit_vars_from_stmt(
 
     match &stmt.kind {
         // Skip SUB/FUNCTION bodies - local variables don't need global declarations
-        TypedStatementKind::SubDefinition { .. } | TypedStatementKind::FunctionDefinition { .. } => {
+        TypedStatementKind::SubDefinition { .. }
+        | TypedStatementKind::FunctionDefinition { .. } => {
             // Don't recurse into procedures - their variables are local
         }
 
         // Assignment introduces an implicit variable at module level
-        TypedStatementKind::Assignment { name, target_type, .. } => {
+        TypedStatementKind::Assignment {
+            name, target_type, ..
+        } => {
             if !inside_procedure {
                 add_var(name, target_type, declared_vars, globals);
             }
         }
 
         // FOR loop counter variable
-        TypedStatementKind::For { variable, var_type, body, .. } => {
+        TypedStatementKind::For {
+            variable,
+            var_type,
+            body,
+            ..
+        } => {
             if !inside_procedure {
                 add_var(variable, var_type, declared_vars, globals);
             }
@@ -187,7 +201,12 @@ fn collect_implicit_vars_from_stmt(
         }
 
         // Recurse into compound statements
-        TypedStatementKind::If { then_branch, elseif_branches, else_branch, .. } => {
+        TypedStatementKind::If {
+            then_branch,
+            elseif_branches,
+            else_branch,
+            ..
+        } => {
             for s in then_branch {
                 collect_implicit_vars_from_stmt(s, declared_vars, globals, inside_procedure);
             }
@@ -209,8 +228,12 @@ fn collect_implicit_vars_from_stmt(
             }
         }
 
-        TypedStatementKind::SelectCase { cases, case_else, .. }
-        | TypedStatementKind::SelectEveryCase { cases, case_else, .. } => {
+        TypedStatementKind::SelectCase {
+            cases, case_else, ..
+        }
+        | TypedStatementKind::SelectEveryCase {
+            cases, case_else, ..
+        } => {
             for case in cases {
                 for s in &case.body {
                     collect_implicit_vars_from_stmt(s, declared_vars, globals, inside_procedure);

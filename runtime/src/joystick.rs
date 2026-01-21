@@ -76,12 +76,12 @@ pub extern "C" fn qb_stick(axis: i32) -> i32 {
 
         // Map classic STICK arguments to joystick/axis
         let (joy_idx, axis_idx) = match axis {
-            0 => (0, 0), // Joy A, X
-            1 => (0, 1), // Joy A, Y
-            2 => (1, 0), // Joy B, X
-            3 => (1, 1), // Joy B, Y
+            0 => (0, 0),                          // Joy A, X
+            1 => (0, 1),                          // Joy A, Y
+            2 => (1, 0),                          // Joy B, X
+            3 => (1, 1),                          // Joy B, Y
             n if n >= 4 => (0, (n - 4) as usize), // Extended axes
-            _ => return 127, // Invalid, return center
+            _ => return 127,                      // Invalid, return center
         };
 
         if joy_idx < state.axes.len() && axis_idx < state.axes[joy_idx].len() {

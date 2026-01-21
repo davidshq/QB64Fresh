@@ -2180,7 +2180,12 @@ mod tests {
         let true_sym = true_sym.unwrap();
         assert!(!true_sym.is_mutable, "_TRUE should be immutable");
         assert!(
-            matches!(&true_sym.kind, SymbolKind::Constant { value: ConstValue::Integer(-1) }),
+            matches!(
+                &true_sym.kind,
+                SymbolKind::Constant {
+                    value: ConstValue::Integer(-1)
+                }
+            ),
             "_TRUE should be an integer constant with value -1, got {:?}",
             true_sym.kind
         );
@@ -2194,7 +2199,12 @@ mod tests {
         let false_sym = false_sym.unwrap();
         assert!(!false_sym.is_mutable, "_FALSE should be immutable");
         assert!(
-            matches!(&false_sym.kind, SymbolKind::Constant { value: ConstValue::Integer(0) }),
+            matches!(
+                &false_sym.kind,
+                SymbolKind::Constant {
+                    value: ConstValue::Integer(0)
+                }
+            ),
             "_FALSE should be an integer constant with value 0, got {:?}",
             false_sym.kind
         );
@@ -2217,12 +2227,20 @@ mod tests {
             let sym = sym.unwrap();
             assert!(!sym.is_mutable, "{} should be immutable", name);
             assert!(
-                matches!(&sym.kind, SymbolKind::Constant { value: ConstValue::Integer(_) }),
+                matches!(
+                    &sym.kind,
+                    SymbolKind::Constant {
+                        value: ConstValue::Integer(_)
+                    }
+                ),
                 "{} should be an integer constant, got {:?}",
                 name,
                 sym.kind
             );
-            if let SymbolKind::Constant { value: ConstValue::Integer(v) } = &sym.kind {
+            if let SymbolKind::Constant {
+                value: ConstValue::Integer(v),
+            } = &sym.kind
+            {
                 assert_eq!(*v, expected_value, "{} should be {}", name, expected_value);
             }
         };

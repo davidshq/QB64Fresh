@@ -169,6 +169,7 @@ impl<'a> Parser<'a> {
     /// Synchronization points are:
     /// - Newlines (statement boundaries)
     /// - Statement-starting keywords (PRINT, IF, FOR, etc.)
+    /// - Block-ending keywords (NEXT, WEND, LOOP, CASE, etc.)
     pub(super) fn synchronize(&mut self) {
         self.advance();
 
@@ -181,6 +182,7 @@ impl<'a> Parser<'a> {
             // Statement-starting keywords are synchronization points
             match self.peek_kind() {
                 Some(
+                    // Statement starters
                     TokenKind::Print
                     | TokenKind::If
                     | TokenKind::For
@@ -191,7 +193,41 @@ impl<'a> Parser<'a> {
                     | TokenKind::Sub
                     | TokenKind::Function
                     | TokenKind::Select
-                    | TokenKind::End,
+                    | TokenKind::End
+                    // Block enders (important for reducing cascading errors)
+                    | TokenKind::Next
+                    | TokenKind::Wend
+                    | TokenKind::Loop
+                    | TokenKind::Case
+                    | TokenKind::Else
+                    | TokenKind::ElseIf
+                    | TokenKind::EndIf
+                    // Other common statements
+                    | TokenKind::Goto
+                    | TokenKind::Gosub
+                    | TokenKind::Return
+                    | TokenKind::Exit
+                    | TokenKind::Type
+                    | TokenKind::Const
+                    | TokenKind::Static
+                    | TokenKind::Shared
+                    | TokenKind::Redim
+                    | TokenKind::Input
+                    | TokenKind::Line
+                    | TokenKind::Open
+                    | TokenKind::Close
+                    | TokenKind::On
+                    | TokenKind::Resume
+                    | TokenKind::ErrorKw
+                    | TokenKind::Data
+                    | TokenKind::Read
+                    | TokenKind::Restore
+                    | TokenKind::Call
+                    | TokenKind::Declare
+                    // Metacommands
+                    | TokenKind::MetaCommand
+                    | TokenKind::MetaIf
+                    | TokenKind::IncludeDirective,
                 ) => return,
                 _ => {
                     self.advance();
@@ -310,6 +346,10 @@ impl<'a> Parser<'a> {
             | TokenKind::Library // LIBRARY keyword
             | TokenKind::Dynamic // DYNAMIC keyword
             | TokenKind::Return  // RETURN keyword (valid as var name in some contexts)
+            | TokenKind::Console // _CONSOLE also a function that returns console handle
+            | TokenKind::Dest    // _DEST also a function that returns current dest handle
+            | TokenKind::Source  // _SOURCE also a function that returns current source handle
+            | TokenKind::Display // _DISPLAY is both a statement and function
             => true,
 
             // These are NOT valid as names (control flow, type specifiers, operators)

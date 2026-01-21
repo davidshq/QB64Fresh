@@ -265,11 +265,22 @@ pub fn type_from_suffix(name: &str) -> Option<BasicType> {
         return None;
     }
 
-    // Check for two-character QB64 suffixes first
     // Use byte slicing - suffixes are all ASCII so this is safe and O(1)
     let bytes = name.as_bytes();
     let len = bytes.len();
 
+    // Check for three-character QB64 unsigned suffixes first (~%%, ~&&)
+    // Note: ~## is not valid - floats cannot be unsigned
+    if len >= 3 {
+        let last_three = &bytes[len - 3..];
+        match last_three {
+            b"~%%" => return Some(BasicType::UnsignedByte),
+            b"~&&" => return Some(BasicType::UnsignedInteger64),
+            _ => {}
+        }
+    }
+
+    // Check for two-character QB64 suffixes
     if len >= 2 {
         // Get last two bytes directly (no allocation needed)
         let last_two = &bytes[len - 2..];
@@ -309,7 +320,15 @@ pub fn type_from_suffix(name: &str) -> Option<BasicType> {
 /// assert_eq!(strip_suffix("total"), "total");
 /// ```
 pub fn strip_suffix(name: &str) -> &str {
-    // Two-character suffixes (must check first)
+    // Three-character suffixes (must check first)
+    let three_char_suffixes = ["~%%", "~&&"];
+    for suffix in &three_char_suffixes {
+        if let Some(stripped) = name.strip_suffix(suffix) {
+            return stripped;
+        }
+    }
+
+    // Two-character suffixes
     let two_char_suffixes = ["%%", "&&", "##", "%&", "~%", "~&", "~`"];
     for suffix in &two_char_suffixes {
         if let Some(stripped) = name.strip_suffix(suffix) {

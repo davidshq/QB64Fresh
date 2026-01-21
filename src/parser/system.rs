@@ -74,9 +74,39 @@ impl<'a> Parser<'a> {
 
     /// Parses SHELL statement.
     ///
-    /// Syntax: `SHELL [command$]`
+    /// Syntax: `SHELL [_HIDE] [_DONTWAIT] [command$]`
+    /// Options can be combined, e.g., `SHELL _HIDE _DONTWAIT "cmd"`
     pub(super) fn parse_shell(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("SHELL keyword").span.start;
+
+        // Parse options (can have multiple in any order)
+        let mut hide = false;
+        let mut _dontwait = false;
+        let mut _dontclose = false;
+
+        loop {
+            if let Some(token) = self.peek()
+                && token.kind == TokenKind::Identifier
+            {
+                let text = &token.text;
+                if text.eq_ignore_ascii_case("_HIDE") {
+                    self.advance();
+                    hide = true;
+                    continue;
+                }
+                if text.eq_ignore_ascii_case("_DONTWAIT") {
+                    self.advance();
+                    _dontwait = true;
+                    continue;
+                }
+                if text.eq_ignore_ascii_case("_DONTCLOSE") {
+                    self.advance();
+                    _dontclose = true;
+                    continue;
+                }
+            }
+            break;
+        }
 
         let command = if self.is_at_end_of_statement() {
             None
@@ -85,7 +115,24 @@ impl<'a> Parser<'a> {
         };
 
         let span = self.span_from(start);
-        Ok(Statement::new(StatementKind::ShellCmd { command }, span))
+
+        // If hidden, use ShellHide variant; otherwise ShellCmd
+        if hide {
+            if let Some(cmd) = command {
+                Ok(Statement::new(
+                    StatementKind::ShellHide { command: cmd },
+                    span,
+                ))
+            } else {
+                // SHELL _HIDE without command - treat as error or empty command
+                Ok(Statement::new(
+                    StatementKind::ShellCmd { command: None },
+                    span,
+                ))
+            }
+        } else {
+            Ok(Statement::new(StatementKind::ShellCmd { command }, span))
+        }
     }
 
     /// Parses _SHELLHIDE statement.

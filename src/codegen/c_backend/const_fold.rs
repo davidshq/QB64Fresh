@@ -97,6 +97,8 @@ fn fold_binary(op: BinaryOp, left: FoldedValue, right: FoldedValue) -> Option<Fo
                 BinaryOp::Xor => l ^ r,
                 BinaryOp::Eqv => !(l ^ r),
                 BinaryOp::Imp => !l | r,
+                BinaryOp::AndAlso => basic_bool(l != 0 && r != 0),
+                BinaryOp::OrElse => basic_bool(l != 0 || r != 0),
                 BinaryOp::Equal => basic_bool(l == r),
                 BinaryOp::NotEqual => basic_bool(l != r),
                 BinaryOp::LessThan => basic_bool(l < r),
@@ -220,28 +222,60 @@ fn try_fold_builtin(name: &str, args: &[TypedExpr]) -> Option<FoldedValue> {
         },
 
         // Trigonometric functions (operate on floats)
-        "SIN" if folded_args.len() == 1 => get_float(&folded_args[0]).map(|v| FoldedValue::Float(v.sin())),
-        "COS" if folded_args.len() == 1 => get_float(&folded_args[0]).map(|v| FoldedValue::Float(v.cos())),
-        "TAN" if folded_args.len() == 1 => get_float(&folded_args[0]).map(|v| FoldedValue::Float(v.tan())),
-        "ATN" if folded_args.len() == 1 => get_float(&folded_args[0]).map(|v| FoldedValue::Float(v.atan())),
-        "SQR" if folded_args.len() == 1 => {
-            get_float(&folded_args[0]).and_then(|v| if v >= 0.0 { Some(FoldedValue::Float(v.sqrt())) } else { None })
+        "SIN" if folded_args.len() == 1 => {
+            get_float(&folded_args[0]).map(|v| FoldedValue::Float(v.sin()))
         }
-        "LOG" if folded_args.len() == 1 => {
-            get_float(&folded_args[0]).and_then(|v| if v > 0.0 { Some(FoldedValue::Float(v.ln())) } else { None })
+        "COS" if folded_args.len() == 1 => {
+            get_float(&folded_args[0]).map(|v| FoldedValue::Float(v.cos()))
         }
-        "EXP" if folded_args.len() == 1 => get_float(&folded_args[0]).map(|v| FoldedValue::Float(v.exp())),
+        "TAN" if folded_args.len() == 1 => {
+            get_float(&folded_args[0]).map(|v| FoldedValue::Float(v.tan()))
+        }
+        "ATN" if folded_args.len() == 1 => {
+            get_float(&folded_args[0]).map(|v| FoldedValue::Float(v.atan()))
+        }
+        "SQR" if folded_args.len() == 1 => get_float(&folded_args[0]).and_then(|v| {
+            if v >= 0.0 {
+                Some(FoldedValue::Float(v.sqrt()))
+            } else {
+                None
+            }
+        }),
+        "LOG" if folded_args.len() == 1 => get_float(&folded_args[0]).and_then(|v| {
+            if v > 0.0 {
+                Some(FoldedValue::Float(v.ln()))
+            } else {
+                None
+            }
+        }),
+        "EXP" if folded_args.len() == 1 => {
+            get_float(&folded_args[0]).map(|v| FoldedValue::Float(v.exp()))
+        }
 
         // QB64 extended trig
-        "_ASIN" if folded_args.len() == 1 => {
-            get_float(&folded_args[0]).and_then(|v| if (-1.0..=1.0).contains(&v) { Some(FoldedValue::Float(v.asin())) } else { None })
+        "_ASIN" if folded_args.len() == 1 => get_float(&folded_args[0]).and_then(|v| {
+            if (-1.0..=1.0).contains(&v) {
+                Some(FoldedValue::Float(v.asin()))
+            } else {
+                None
+            }
+        }),
+        "_ACOS" if folded_args.len() == 1 => get_float(&folded_args[0]).and_then(|v| {
+            if (-1.0..=1.0).contains(&v) {
+                Some(FoldedValue::Float(v.acos()))
+            } else {
+                None
+            }
+        }),
+        "_SINH" if folded_args.len() == 1 => {
+            get_float(&folded_args[0]).map(|v| FoldedValue::Float(v.sinh()))
         }
-        "_ACOS" if folded_args.len() == 1 => {
-            get_float(&folded_args[0]).and_then(|v| if (-1.0..=1.0).contains(&v) { Some(FoldedValue::Float(v.acos())) } else { None })
+        "_COSH" if folded_args.len() == 1 => {
+            get_float(&folded_args[0]).map(|v| FoldedValue::Float(v.cosh()))
         }
-        "_SINH" if folded_args.len() == 1 => get_float(&folded_args[0]).map(|v| FoldedValue::Float(v.sinh())),
-        "_COSH" if folded_args.len() == 1 => get_float(&folded_args[0]).map(|v| FoldedValue::Float(v.cosh())),
-        "_TANH" if folded_args.len() == 1 => get_float(&folded_args[0]).map(|v| FoldedValue::Float(v.tanh())),
+        "_TANH" if folded_args.len() == 1 => {
+            get_float(&folded_args[0]).map(|v| FoldedValue::Float(v.tanh()))
+        }
 
         // Two-argument functions
         "_ATAN2" if folded_args.len() == 2 => {
@@ -364,7 +398,9 @@ fn try_fold_builtin(name: &str, args: &[TypedExpr]) -> Option<FoldedValue> {
         }
 
         "LEFT$" if folded_args.len() == 2 => {
-            if let (FoldedValue::String(s), FoldedValue::Integer(n)) = (&folded_args[0], &folded_args[1]) {
+            if let (FoldedValue::String(s), FoldedValue::Integer(n)) =
+                (&folded_args[0], &folded_args[1])
+            {
                 if *n >= 0 {
                     let n = (*n as usize).min(s.len());
                     Some(FoldedValue::String(s.chars().take(n).collect()))
@@ -377,7 +413,9 @@ fn try_fold_builtin(name: &str, args: &[TypedExpr]) -> Option<FoldedValue> {
         }
 
         "RIGHT$" if folded_args.len() == 2 => {
-            if let (FoldedValue::String(s), FoldedValue::Integer(n)) = (&folded_args[0], &folded_args[1]) {
+            if let (FoldedValue::String(s), FoldedValue::Integer(n)) =
+                (&folded_args[0], &folded_args[1])
+            {
                 if *n >= 0 {
                     let n = (*n as usize).min(s.len());
                     let skip = s.len().saturating_sub(n);
@@ -394,12 +432,10 @@ fn try_fold_builtin(name: &str, args: &[TypedExpr]) -> Option<FoldedValue> {
             // INSTR([start,] string, search)
             let (start, haystack, needle) = if folded_args.len() == 2 {
                 (1i64, &folded_args[0], &folded_args[1])
+            } else if let FoldedValue::Integer(s) = &folded_args[0] {
+                (*s, &folded_args[1], &folded_args[2])
             } else {
-                if let FoldedValue::Integer(s) = &folded_args[0] {
-                    (*s, &folded_args[1], &folded_args[2])
-                } else {
-                    return None;
-                }
+                return None;
             };
 
             if let (FoldedValue::String(h), FoldedValue::String(n)) = (haystack, needle) {
@@ -445,7 +481,9 @@ fn try_fold_builtin(name: &str, args: &[TypedExpr]) -> Option<FoldedValue> {
 
         // Bit manipulation
         "_SHL" if folded_args.len() == 2 => {
-            if let (FoldedValue::Integer(v), FoldedValue::Integer(bits)) = (&folded_args[0], &folded_args[1]) {
+            if let (FoldedValue::Integer(v), FoldedValue::Integer(bits)) =
+                (&folded_args[0], &folded_args[1])
+            {
                 if *bits >= 0 && *bits < 64 {
                     Some(FoldedValue::Integer(v << bits))
                 } else {
@@ -457,7 +495,9 @@ fn try_fold_builtin(name: &str, args: &[TypedExpr]) -> Option<FoldedValue> {
         }
 
         "_SHR" if folded_args.len() == 2 => {
-            if let (FoldedValue::Integer(v), FoldedValue::Integer(bits)) = (&folded_args[0], &folded_args[1]) {
+            if let (FoldedValue::Integer(v), FoldedValue::Integer(bits)) =
+                (&folded_args[0], &folded_args[1])
+            {
                 if *bits >= 0 && *bits < 64 {
                     Some(FoldedValue::Integer(v >> bits))
                 } else {
@@ -469,7 +509,9 @@ fn try_fold_builtin(name: &str, args: &[TypedExpr]) -> Option<FoldedValue> {
         }
 
         "_READBIT" if folded_args.len() == 2 => {
-            if let (FoldedValue::Integer(v), FoldedValue::Integer(bit)) = (&folded_args[0], &folded_args[1]) {
+            if let (FoldedValue::Integer(v), FoldedValue::Integer(bit)) =
+                (&folded_args[0], &folded_args[1])
+            {
                 if *bit >= 0 && *bit < 64 {
                     Some(FoldedValue::Integer((v >> bit) & 1))
                 } else {
@@ -481,7 +523,9 @@ fn try_fold_builtin(name: &str, args: &[TypedExpr]) -> Option<FoldedValue> {
         }
 
         "_SETBIT" if folded_args.len() == 2 => {
-            if let (FoldedValue::Integer(v), FoldedValue::Integer(bit)) = (&folded_args[0], &folded_args[1]) {
+            if let (FoldedValue::Integer(v), FoldedValue::Integer(bit)) =
+                (&folded_args[0], &folded_args[1])
+            {
                 if *bit >= 0 && *bit < 64 {
                     Some(FoldedValue::Integer(v | (1 << bit)))
                 } else {
@@ -493,7 +537,9 @@ fn try_fold_builtin(name: &str, args: &[TypedExpr]) -> Option<FoldedValue> {
         }
 
         "_RESETBIT" if folded_args.len() == 2 => {
-            if let (FoldedValue::Integer(v), FoldedValue::Integer(bit)) = (&folded_args[0], &folded_args[1]) {
+            if let (FoldedValue::Integer(v), FoldedValue::Integer(bit)) =
+                (&folded_args[0], &folded_args[1])
+            {
                 if *bit >= 0 && *bit < 64 {
                     Some(FoldedValue::Integer(v & !(1 << bit)))
                 } else {
@@ -505,7 +551,9 @@ fn try_fold_builtin(name: &str, args: &[TypedExpr]) -> Option<FoldedValue> {
         }
 
         "_TOGGLEBIT" if folded_args.len() == 2 => {
-            if let (FoldedValue::Integer(v), FoldedValue::Integer(bit)) = (&folded_args[0], &folded_args[1]) {
+            if let (FoldedValue::Integer(v), FoldedValue::Integer(bit)) =
+                (&folded_args[0], &folded_args[1])
+            {
                 if *bit >= 0 && *bit < 64 {
                     Some(FoldedValue::Integer(v ^ (1 << bit)))
                 } else {
@@ -785,13 +833,22 @@ mod tests {
     #[test]
     fn test_fold_bitwise() {
         let expr = binary(int_lit(0b1100), BinaryOp::And, int_lit(0b1010));
-        assert!(matches!(try_fold(&expr), Some(FoldedValue::Integer(0b1000))));
+        assert!(matches!(
+            try_fold(&expr),
+            Some(FoldedValue::Integer(0b1000))
+        ));
     }
 
     #[test]
     fn test_emit_folded() {
         assert_eq!(emit_folded(&FoldedValue::Integer(42)), "42LL");
-        assert_eq!(emit_folded(&FoldedValue::Float(3.14)), "3.14000000000000012");
-        assert_eq!(emit_folded(&FoldedValue::String("test".to_string())), "qb_string_new(\"test\")");
+        assert_eq!(
+            emit_folded(&FoldedValue::Float(3.14)),
+            "3.14000000000000012"
+        );
+        assert_eq!(
+            emit_folded(&FoldedValue::String("test".to_string())),
+            "qb_string_new(\"test\")"
+        );
     }
 }

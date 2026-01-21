@@ -259,12 +259,11 @@ fn preprocess_internal(
             context.enter_include(include_full_path.clone())?;
 
             // Read the included file (using lossy UTF-8 for legacy encoding support)
-            let include_bytes = fs::read(&include_full_path).map_err(|e| {
-                PreprocessorError::ReadError {
+            let include_bytes =
+                fs::read(&include_full_path).map_err(|e| PreprocessorError::ReadError {
                     path: include_full_path.clone(),
                     message: e.to_string(),
-                }
-            })?;
+                })?;
             let include_source = String::from_utf8_lossy(&include_bytes).into_owned();
 
             // Get the include file's directory for nested includes
@@ -395,7 +394,9 @@ mod tests {
             Some("global/version.bas".to_string())
         );
         assert_eq!(
-            parse_include_directive("$INCLUDE: 'subs_functions\\extensions\\opengl\\opengl_global.bas'"),
+            parse_include_directive(
+                "$INCLUDE: 'subs_functions\\extensions\\opengl\\opengl_global.bas'"
+            ),
             Some("subs_functions/extensions/opengl/opengl_global.bas".to_string())
         );
     }

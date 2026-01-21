@@ -16,16 +16,16 @@ libc = "0.2"
 
 # For graphics support
 # Note: "ttf" feature requires SDL2_ttf library installed on the system
-sdl2 = { version = "0.37", optional = true }
+sdl2 = { version = "0.38", optional = true }
 
 # For image loading (_LOADIMAGE support)
 image = { version = "0.25", optional = true, default-features = false, features = ["png", "jpeg", "bmp", "gif"] }
 
 # For audio support (pure Rust audio library)
-rodio = { version = "0.19", optional = true }
+rodio = { version = "0.21", optional = true }
 
 # For native file dialogs (_OPENFILEDIALOG$, _SAVEFILEDIALOG$, etc.)
-rfd = { version = "0.14", optional = true }
+rfd = { version = "0.17", optional = true }
 
 [features]
 default = ["graphics-sdl2", "audio-rodio", "dialogs"]

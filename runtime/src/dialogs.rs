@@ -329,11 +329,8 @@ mod tests {
     fn test_null_safety() {
         unsafe {
             // Should return empty string, not crash
-            let result = super::qb_openfiledialog(
-                std::ptr::null(),
-                std::ptr::null(),
-                std::ptr::null(),
-            );
+            let result =
+                super::qb_openfiledialog(std::ptr::null(), std::ptr::null(), std::ptr::null());
             assert!(!result.is_null());
 
             let result = super::qb_savefiledialog(

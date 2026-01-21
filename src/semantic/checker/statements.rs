@@ -2178,7 +2178,11 @@ impl<'a> TypeChecker<'a> {
                 stmt.span,
             ),
 
-            StatementKind::DeclareFunction { name, params: _, return_type: _ } => TypedStatement::new(
+            StatementKind::DeclareFunction {
+                name,
+                params: _,
+                return_type: _,
+            } => TypedStatement::new(
                 TypedStatementKind::DeclareFunction { name: name.clone() },
                 stmt.span,
             ),

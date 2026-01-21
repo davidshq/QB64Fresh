@@ -826,7 +826,10 @@ mod recursion {
         "#;
         let code = compile_to_c(source).unwrap();
         // Verify the function calls itself recursively
-        assert!(code.contains("factorial("), "Generated code should contain recursive call");
+        assert!(
+            code.contains("factorial("),
+            "Generated code should contain recursive call"
+        );
     }
 
     #[test]
@@ -846,7 +849,10 @@ mod recursion {
         "#;
         let code = compile_to_c(source).unwrap();
         // Should have two recursive calls in the else branch
-        assert!(code.contains("fibonacci("), "Generated code should contain recursive calls");
+        assert!(
+            code.contains("fibonacci("),
+            "Generated code should contain recursive calls"
+        );
     }
 
     #[test]
@@ -918,8 +924,14 @@ mod recursion {
         "#;
         let code = compile_to_c(source).unwrap();
         // Both functions should call each other
-        assert!(code.contains("iseven("), "Generated code should have iseven function");
-        assert!(code.contains("isodd("), "Generated code should have isodd function");
+        assert!(
+            code.contains("iseven("),
+            "Generated code should have iseven function"
+        );
+        assert!(
+            code.contains("isodd("),
+            "Generated code should have isodd function"
+        );
     }
 
     #[test]
@@ -1004,7 +1016,10 @@ mod recursion {
             END SUB
         "#;
         let code = compile_to_c(source).unwrap();
-        assert!(code.contains("qb_sub_countdownsub("), "Generated code should contain recursive SUB call");
+        assert!(
+            code.contains("qb_sub_countdownsub("),
+            "Generated code should contain recursive SUB call"
+        );
     }
 
     #[test]
@@ -1426,7 +1441,10 @@ mod recursion {
         "#;
         let code = compile_to_c(source).unwrap();
         // Ackermann function should have nested recursive calls
-        assert!(code.contains("ack("), "Generated code should contain recursive calls");
+        assert!(
+            code.contains("ack("),
+            "Generated code should contain recursive calls"
+        );
     }
 
     // ==================== Recursion with SELECT CASE ====================

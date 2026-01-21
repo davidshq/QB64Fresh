@@ -181,18 +181,42 @@ impl<'a> Parser<'a> {
                 continue;
             }
 
-            // Parse member: name AS type
-            let member_name_token = self.expect(&TokenKind::Identifier, "member name")?;
-            let member_name = member_name_token.text.to_string();
+            // Check for QB64 alternate syntax: AS type member1, member2, ...
+            if self.check(&TokenKind::As) {
+                self.advance(); // consume AS
+                let type_spec = self.parse_type_spec()?;
 
-            self.expect(&TokenKind::As, "AS in type member definition")?;
+                // Parse one or more member names separated by commas
+                // Use expect_name to allow keywords as member names (e.g., name, type)
+                loop {
+                    let member_name_token = self.expect_name("member name")?;
+                    let member_name = member_name_token.text.to_string();
 
-            let type_spec = self.parse_type_spec()?;
+                    members.push(TypeMember {
+                        name: member_name,
+                        type_spec: type_spec.clone(),
+                    });
 
-            members.push(TypeMember {
-                name: member_name,
-                type_spec,
-            });
+                    // Continue if comma, otherwise break
+                    if !self.match_token(&TokenKind::Comma) {
+                        break;
+                    }
+                }
+            } else {
+                // Standard syntax: member AS type
+                // Use expect_name to allow keywords as member names (e.g., name, type)
+                let member_name_token = self.expect_name("member name")?;
+                let member_name = member_name_token.text.to_string();
+
+                self.expect(&TokenKind::As, "AS in type member definition")?;
+
+                let type_spec = self.parse_type_spec()?;
+
+                members.push(TypeMember {
+                    name: member_name,
+                    type_spec,
+                });
+            }
 
             // Skip newline after member
             if self.check(&TokenKind::Newline) {
@@ -338,6 +362,14 @@ impl<'a> Parser<'a> {
             TokenKind::Float => {
                 self.advance();
                 TypeSpec::Float
+            }
+            TokenKind::Offset => {
+                self.advance();
+                TypeSpec::Offset
+            }
+            TokenKind::BitType => {
+                self.advance();
+                TypeSpec::Bit
             }
             TokenKind::Identifier => {
                 let name = token.text.to_string();

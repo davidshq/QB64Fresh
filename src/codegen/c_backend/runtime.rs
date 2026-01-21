@@ -127,11 +127,7 @@ fn emit_string_functions(output: &mut String) {
     writeln!(output).unwrap();
 
     // String creation with specified length (for FIELD statement)
-    writeln!(
-        output,
-        "qb_string* qb_string_new_len(size_t len) {{"
-    )
-    .unwrap();
+    writeln!(output, "qb_string* qb_string_new_len(size_t len) {{").unwrap();
     writeln!(output, "    qb_string* str = malloc(sizeof(qb_string));").unwrap();
     writeln!(output, "    str->len = len;").unwrap();
     writeln!(output, "    str->capacity = len + 1;").unwrap();
@@ -1544,11 +1540,7 @@ fn emit_file_io_functions(output: &mut String) {
     writeln!(output).unwrap();
 
     // qb_field_start - Begin a FIELD statement, allocate buffer
-    writeln!(
-        output,
-        "void qb_field_start(int32_t fnum) {{"
-    )
-    .unwrap();
+    writeln!(output, "void qb_field_start(int32_t fnum) {{").unwrap();
     writeln!(output, "    if (fnum < 1 || fnum >= QB_MAX_FILES) return;").unwrap();
     writeln!(output, "    if (!_qb_field_buffer[fnum]) {{").unwrap();
     writeln!(
@@ -1569,9 +1561,21 @@ fn emit_file_io_functions(output: &mut String) {
     )
     .unwrap();
     writeln!(output, "    /* Note: FIELD requires special handling").unwrap();
-    writeln!(output, "       In classic BASIC, FIELD maps string variables directly").unwrap();
-    writeln!(output, "       to the file buffer. This is complex with ref-counted strings.").unwrap();
-    writeln!(output, "       For now, we create a fixed-length string. */").unwrap();
+    writeln!(
+        output,
+        "       In classic BASIC, FIELD maps string variables directly"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "       to the file buffer. This is complex with ref-counted strings."
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "       For now, we create a fixed-length string. */"
+    )
+    .unwrap();
     writeln!(output, "    if (*var) qb_string_release(*var);").unwrap();
     writeln!(output, "    *var = qb_string_new_len(width);").unwrap();
     writeln!(output, "    memset((*var)->data, ' ', width);").unwrap();
@@ -1586,7 +1590,11 @@ fn emit_file_io_functions(output: &mut String) {
     writeln!(output, "    /* Fill with spaces first */").unwrap();
     writeln!(output, "    memset((*var)->data, ' ', var_len);").unwrap();
     writeln!(output, "    /* Copy value left-justified */").unwrap();
-    writeln!(output, "    int32_t copy_len = val_len < var_len ? val_len : var_len;").unwrap();
+    writeln!(
+        output,
+        "    int32_t copy_len = val_len < var_len ? val_len : var_len;"
+    )
+    .unwrap();
     writeln!(output, "    memcpy((*var)->data, value->data, copy_len);").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
@@ -1599,9 +1607,17 @@ fn emit_file_io_functions(output: &mut String) {
     writeln!(output, "    /* Fill with spaces first */").unwrap();
     writeln!(output, "    memset((*var)->data, ' ', var_len);").unwrap();
     writeln!(output, "    /* Copy value right-justified */").unwrap();
-    writeln!(output, "    int32_t copy_len = val_len < var_len ? val_len : var_len;").unwrap();
+    writeln!(
+        output,
+        "    int32_t copy_len = val_len < var_len ? val_len : var_len;"
+    )
+    .unwrap();
     writeln!(output, "    int32_t offset = var_len - copy_len;").unwrap();
-    writeln!(output, "    memcpy((*var)->data + offset, value->data, copy_len);").unwrap();
+    writeln!(
+        output,
+        "    memcpy((*var)->data + offset, value->data, copy_len);"
+    )
+    .unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 }
@@ -2272,7 +2288,11 @@ fn emit_memory_functions(output: &mut String) {
     writeln!(output, "#define QB_CMEM_SIZE 1114099").unwrap();
     writeln!(output, "#define QB_DBLOCK_OFFSET 1280").unwrap();
     writeln!(output, "static uint8_t qb_cmem[QB_CMEM_SIZE];").unwrap();
-    writeln!(output, "static uint8_t *qb_defseg = &qb_cmem[QB_DBLOCK_OFFSET];").unwrap();
+    writeln!(
+        output,
+        "static uint8_t *qb_defseg = &qb_cmem[QB_DBLOCK_OFFSET];"
+    )
+    .unwrap();
     writeln!(output, "static int32_t qb_current_segment = -1;").unwrap();
     writeln!(output).unwrap();
 
@@ -2283,8 +2303,16 @@ fn emit_memory_functions(output: &mut String) {
     writeln!(output, "    qb_current_segment = segment;").unwrap();
     writeln!(output, "    if (segment == -1) {{").unwrap();
     writeln!(output, "        qb_defseg = &qb_cmem[QB_DBLOCK_OFFSET];").unwrap();
-    writeln!(output, "    }} else if (segment >= -65536 && segment <= 65535) {{").unwrap();
-    writeln!(output, "        qb_defseg = &qb_cmem[0] + ((uint16_t)segment) * 16;").unwrap();
+    writeln!(
+        output,
+        "    }} else if (segment >= -65536 && segment <= 65535) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "        qb_defseg = &qb_cmem[0] + ((uint16_t)segment) * 16;"
+    )
+    .unwrap();
     writeln!(output, "    }}").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
@@ -3037,14 +3065,30 @@ fn emit_graphics_stubs(output: &mut String) {
     writeln!(output, "    int32_t top = y1 <= y2 ? y1 : y2;").unwrap();
     writeln!(output, "    int32_t bottom = y1 > y2 ? y1 : y2;").unwrap();
     writeln!(output, "    uint16_t width = (uint16_t)(right - left + 1);").unwrap();
-    writeln!(output, "    uint16_t height = (uint16_t)(bottom - top + 1);").unwrap();
+    writeln!(
+        output,
+        "    uint16_t height = (uint16_t)(bottom - top + 1);"
+    )
+    .unwrap();
     writeln!(output, "    /* Write header */").unwrap();
     writeln!(output, "    uint16_t* header = (uint16_t*)arr;").unwrap();
     writeln!(output, "    header[0] = width;").unwrap();
     writeln!(output, "    header[1] = height;").unwrap();
-    writeln!(output, "    /* In standalone mode, fill with zeros (no real backend) */").unwrap();
-    writeln!(output, "    uint32_t* pixels = (uint32_t*)((uint8_t*)arr + 4);").unwrap();
-    writeln!(output, "    for (int i = 0; i < width * height; i++) pixels[i] = 0;").unwrap();
+    writeln!(
+        output,
+        "    /* In standalone mode, fill with zeros (no real backend) */"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    uint32_t* pixels = (uint32_t*)((uint8_t*)arr + 4);"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    for (int i = 0; i < width * height; i++) pixels[i] = 0;"
+    )
+    .unwrap();
     writeln!(output, "    return 0;").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
@@ -3055,7 +3099,11 @@ fn emit_graphics_stubs(output: &mut String) {
     )
     .unwrap();
     writeln!(output, "    /* STEP variant: w,h are relative offsets */").unwrap();
-    writeln!(output, "    return qb_gfx_get(x1, y1, x1 + w, y1 + h, arr);").unwrap();
+    writeln!(
+        output,
+        "    return qb_gfx_get(x1, y1, x1 + w, y1 + h, arr);"
+    )
+    .unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
@@ -3073,7 +3121,11 @@ fn emit_graphics_stubs(output: &mut String) {
     writeln!(output, "    uint16_t width = header[0];").unwrap();
     writeln!(output, "    uint16_t height = header[1];").unwrap();
     writeln!(output, "    (void)width; (void)height;").unwrap();
-    writeln!(output, "    /* In standalone mode, no-op (no real backend) */").unwrap();
+    writeln!(
+        output,
+        "    /* In standalone mode, no-op (no real backend) */"
+    )
+    .unwrap();
     writeln!(output, "    return 0;").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();

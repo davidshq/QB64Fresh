@@ -140,8 +140,14 @@ fn main() {
         Ok(p) => p,
         Err(errors) => {
             eprintln!("Parse errors:");
-            for err in errors {
-                eprintln!("  {}", err);
+            for err in &errors {
+                // Compute line number from span if available
+                if let Some(span) = err.span() {
+                    let line = source[..span.start].chars().filter(|&c| c == '\n').count() + 1;
+                    eprintln!("  line {}: {}", line, err);
+                } else {
+                    eprintln!("  {}", err);
+                }
             }
             std::process::exit(1);
         }

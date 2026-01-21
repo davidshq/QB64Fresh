@@ -42,10 +42,9 @@ pub(super) fn emit_expr(expr: &TypedExpr) -> Result<String, CodeGenError> {
             | TypedExprKind::Unary { .. }
             | TypedExprKind::FunctionCall { .. }
             | TypedExprKind::Grouped(_)
-    ) {
-        if let Some(folded) = try_fold(expr) {
-            return Ok(emit_folded(&folded));
-        }
+    ) && let Some(folded) = try_fold(expr)
+    {
+        return Ok(emit_folded(&folded));
     }
 
     match &expr.kind {
@@ -322,6 +321,8 @@ fn c_binary_op(op: &BinaryOp) -> Result<String, CodeGenError> {
         BinaryOp::And => "&".to_string(), // Bitwise AND in BASIC
         BinaryOp::Or => "|".to_string(),  // Bitwise OR
         BinaryOp::Xor => "^".to_string(), // Bitwise XOR
+        BinaryOp::AndAlso => "&&".to_string(), // Short-circuit AND (QB64)
+        BinaryOp::OrElse => "||".to_string(), // Short-circuit OR (QB64)
         BinaryOp::Eqv => {
             // Handled specially in emit_binary_expr as ~(a ^ b)
             unreachable!("EQV operator should be handled in emit_binary_expr")

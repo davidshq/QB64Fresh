@@ -1,7 +1,7 @@
 # Plan: Compiling QB64pe Using QB64Fresh
 
 *Created: 2026-01-20*
-*Updated: 2026-01-20 (Initial gap analysis completed)*
+*Updated: 2026-01-21 (Phase B implementation in progress - 47% error reduction)*
 
 This document outlines the strategy for compiling the QB64pe compiler using QB64Fresh, achieving a form of cross-compilation where a Rust-based BASIC compiler builds a C++-targeting BASIC compiler.
 
@@ -15,7 +15,7 @@ This document outlines the strategy for compiling the QB64pe compiler using QB64
 
 **Approach:** Systematic gap analysis, incremental feature implementation, and progressive testing.
 
-**Current Status (2026-01-20):** Initial gap analysis completed. 992 parse errors identified across the preprocessed source. Key blockers identified.
+**Current Status (2026-01-21):** Phase B implementation in progress. Parse errors reduced from 992 → ~520 (47% reduction). Key syntax features implemented.
 
 ---
 
@@ -90,6 +90,57 @@ constval~&&                    ' Unsigned LONGLONG
 - ✅ Windows path separators in `$INCLUDE`
 - ✅ Non-UTF-8 source file encoding
 - ✅ `FieldAssignment` code generation (unrelated compile fix)
+
+---
+
+## 0.5 Phase B Implementation Progress (2026-01-21)
+
+### Features Implemented
+
+| Feature | Status | Impact |
+|---------|--------|--------|
+| TYPE alternate syntax (`AS LONG x, y, z`) | ✅ Done | ~200 errors fixed |
+| Extended type suffixes (`&&`, `%%`, `~&&`, etc.) | ✅ Done | Proper LONGLONG parsing |
+| `_ORELSE` / `_ANDALSO` operators | ✅ Done | ~58 errors fixed |
+| Keywords as field names (`.name`, `.type`) | ✅ Done | ~13 errors fixed |
+| `_OFFSET` and `_BIT` in type specs | ✅ Done | Type parsing complete |
+| `$VERSIONINFO` with `#` suffix | ✅ Done | Minor fix |
+| Line numbers in error messages | ✅ Done | Easier debugging |
+| `$CONSOLE` lexer workaround | ✅ Done | Parser handles Error tokens |
+| `DIM AS type var1, var2` syntax | ✅ Done | Type-first declarations |
+| `REDIM` with scalar variables | ✅ Done | No parentheses required |
+| Keywords as TYPE member names | ✅ Done | `.name`, `.type` fields |
+| `SHELL _HIDE _DONTWAIT` syntax | ✅ Done | Combined options |
+| `_CONSOLE`/`_DEST` as expressions | ✅ Done | Function/statement duality |
+| Type suffix tokenization (`i2&&`) | ✅ Done | Fix multi-char suffixes |
+| Improved parser error recovery | ✅ Done | Reduced cascading |
+
+### Current Error Count
+
+```
+Parse errors (with $INCLUDE): 162 (was 992) - 84% reduction
+Parse errors (main file only): 27 (was ~150) - 82% reduction
+```
+
+### Remaining Parse Error Categories
+
+| Error | Count | Analysis |
+|-------|-------|----------|
+| `invalid expression` | 69 | Cascade from earlier errors |
+| `unexpected token Case` | 38 | SELECT CASE block issues |
+| `unexpected token Else` | 15 | Cascade |
+| `expected FUNCTION name` | 12 | Procedure parsing |
+| `invalid statement: unexpected token Dot` | 7 | Field access syntax |
+| `expected FOR, found Comma` | 5 | FOR loop with multiple vars? |
+
+**Key Finding:** Individual include files parse successfully! The errors are cascading effects from earlier parse failures causing the parser to lose synchronization.
+
+### Next Steps
+
+1. ✅ ~~Add line numbers to error messages for better debugging~~
+2. ✅ ~~Improve parser error recovery to reduce cascading~~
+3. Investigate remaining root causes (162 errors)
+4. Target: reduce to <100 errors
 
 ---
 
