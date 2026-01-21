@@ -1647,6 +1647,108 @@ impl SemanticAnalyzer {
 
         // OpenGL render mode (stub - we use SDL2)
         self.register_builtin_sub("_GLRENDER", &[("mode", BasicType::Long)]);
+
+        // ==========================================
+        // QB64 Extension Functions (Session 034+)
+        // ==========================================
+
+        // Graphics keyword constants (used as mode flags)
+        self.register_builtin_function("_CLIP", &[], BasicType::Long);
+        self.register_builtin_function("_STRETCH", &[], BasicType::Long);
+        self.register_builtin_function("_SEAMLESS", &[], BasicType::Long);
+        self.register_builtin_function("_SQUAREPIXELS", &[], BasicType::Long);
+        self.register_builtin_function("_BEHIND", &[], BasicType::Long);
+
+        // Type/mode keywords as functions
+        self.register_builtin_function("_ALL", &[], BasicType::Long);
+        self.register_builtin_function("_BLINK", &[], BasicType::Long);
+        self.register_builtin_function("_OFF", &[], BasicType::Long);
+        self.register_builtin_function("_ONLY", &[], BasicType::Long);
+
+        // Sound keyword
+        self.register_builtin_function("_WAVE", &[], BasicType::Long);
+
+        // Network keyword
+        self.register_builtin_function("_DONTWAIT", &[], BasicType::Long);
+
+        // Console functions
+        self.register_builtin_function("_CONSOLEINPUT", &[], BasicType::Long);
+        self.register_builtin_function("_CINP", &[], BasicType::Long);
+        self.register_builtin_function("_CONSOLETITLE$", &[], BasicType::String);
+        self.register_builtin_function("_CONSOLE", &[], BasicType::Long);
+
+        // Environment functions
+        self.register_builtin_function("_SHELLHIDE", &[], BasicType::Long);
+        self.register_builtin_function("_STARTDIR$", &[], BasicType::String);
+        self.register_builtin_function("_ACCEPTFILEDROP", &[], BasicType::Long);
+        self.register_builtin_function("_TOTALDROPPEDFILES", &[], BasicType::Long);
+        self.register_builtin_function("_DROPPEDFILE$", &[], BasicType::String);
+        self.register_builtin_function(
+            "_DROPPEDFILE",
+            &[("index", BasicType::Long)],
+            BasicType::String,
+        );
+        self.register_builtin_function("_FINISHDROP", &[], BasicType::Long);
+
+        // Graphics info functions
+        self.register_builtin_function("_DEPTHBUFFER", &[], BasicType::Long);
+        self.register_builtin_function("_ANTIALIASING", &[], BasicType::Long);
+        self.register_builtin_function("_DISPLAYORDER", &[], BasicType::Long);
+        self.register_builtin_function("_GLCOMPAT", &[], BasicType::Long);
+
+        // Debug/assert functions
+        self.register_builtin_function(
+            "_ASSERT",
+            &[("condition", BasicType::Long)],
+            BasicType::Long,
+        );
+        self.register_builtin_function("_ASSERTERROR$", &[], BasicType::String);
+
+        // Input functions
+        self.register_builtin_function(
+            "_KEYDOWN",
+            &[("keycode", BasicType::Long)],
+            BasicType::Long,
+        );
+        self.register_builtin_function("_KEYHIT", &[], BasicType::Long);
+        self.register_builtin_function("_KEYCLEAR", &[], BasicType::Long);
+
+        // Clipboard functions
+        self.register_builtin_function("_CLIPBOARD$", &[], BasicType::String);
+        self.register_builtin_function("_CLIPBOARDIMAGE", &[], BasicType::Long);
+
+        // Display extended functions
+        self.register_builtin_function("_FULLSCREENSMOOTH", &[], BasicType::Long);
+        self.register_builtin_function("_ALLOWFULLSCREEN", &[], BasicType::Long);
+        self.register_builtin_function("_DISPLAYWIDTH", &[], BasicType::Long);
+        self.register_builtin_function("_DISPLAYHEIGHT", &[], BasicType::Long);
+
+        // Color utility functions
+        self.register_builtin_function(
+            "_PALETTECOLOR",
+            &[("attr", BasicType::Long)],
+            BasicType::Long,
+        );
+        self.register_builtin_function("_DEFAULTCOLOR", &[], BasicType::Long);
+        self.register_builtin_function("_BACKGROUNDCOLOR", &[], BasicType::Long);
+
+        // Timer extended functions
+        self.register_builtin_function("_FREETIMER", &[], BasicType::Long);
+
+        // ==========================================
+        // QB64 Extension SUBs (Session 034+)
+        // Note: Only new SUBs not already registered earlier
+        // ==========================================
+
+        // Console statements (NEW)
+        self.register_builtin_sub("_ECHO", &[("text", BasicType::String)]);
+        self.register_builtin_sub("_CONSOLETITLE", &[("title", BasicType::String)]);
+
+        // Clipboard write statement (NEW - _CLIPBOARD$ for read is a function)
+        self.register_builtin_sub("_CLIPBOARD", &[("text", BasicType::String)]);
+
+        // Delay/timing statements (NEW)
+        self.register_builtin_sub("_DELAY", &[("seconds", BasicType::Single)]);
     }
 
     /// Registers a single built-in function.

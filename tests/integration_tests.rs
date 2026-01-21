@@ -5151,3 +5151,147 @@ mod qb64_extension_statements_session033 {
         assert!(code.contains("qb_glrender("));
     }
 }
+
+/// Tests for QB64 extension functions added in Session 034+
+/// Note: Only includes tests for NEW functions not already tested in previous sessions
+/// Some QB64 keywords (like _CONSOLE, _SHELLHIDE) are special tokens in the lexer
+/// and can't be tested as simple function calls
+mod qb64_extension_functions_session034 {
+    use super::*;
+
+    // Graphics keyword constants (NEW)
+    #[test]
+    fn stretch_function() {
+        let code = compile_to_c("DIM m AS LONG: m = _STRETCH").unwrap();
+        assert!(code.contains("qb_stretch("));
+    }
+
+    #[test]
+    fn seamless_function() {
+        let code = compile_to_c("DIM m AS LONG: m = _SEAMLESS").unwrap();
+        assert!(code.contains("qb_seamless("));
+    }
+
+    #[test]
+    fn squarepixels_function() {
+        let code = compile_to_c("DIM m AS LONG: m = _SQUAREPIXELS").unwrap();
+        assert!(code.contains("qb_squarepixels("));
+    }
+
+    #[test]
+    fn behind_function() {
+        let code = compile_to_c("DIM m AS LONG: m = _BEHIND").unwrap();
+        assert!(code.contains("qb_behind("));
+    }
+
+    // Type/mode keywords (NEW)
+    #[test]
+    fn all_function() {
+        let code = compile_to_c("DIM m AS LONG: m = _ALL").unwrap();
+        assert!(code.contains("qb_all("));
+    }
+
+    #[test]
+    fn blink_function() {
+        let code = compile_to_c("DIM m AS LONG: m = _BLINK").unwrap();
+        assert!(code.contains("qb_blink("));
+    }
+
+    #[test]
+    fn off_function() {
+        let code = compile_to_c("DIM m AS LONG: m = _OFF").unwrap();
+        assert!(code.contains("qb_off("));
+    }
+
+    #[test]
+    fn only_function() {
+        let code = compile_to_c("DIM m AS LONG: m = _ONLY").unwrap();
+        assert!(code.contains("qb_only("));
+    }
+
+    // Sound/network keywords (NEW)
+    #[test]
+    fn wave_function() {
+        let code = compile_to_c("DIM m AS LONG: m = _WAVE").unwrap();
+        assert!(code.contains("qb_wave("));
+    }
+
+    #[test]
+    fn dontwait_function() {
+        let code = compile_to_c("DIM m AS LONG: m = _DONTWAIT").unwrap();
+        assert!(code.contains("qb_dontwait("));
+    }
+
+    // Console functions (NEW)
+    #[test]
+    fn consoletitle_str_function() {
+        let code = compile_to_c("DIM s AS STRING: s = _CONSOLETITLE$").unwrap();
+        assert!(code.contains("qb_consoletitle_str("));
+    }
+
+    // Graphics info functions (NEW)
+    #[test]
+    fn glcompat_function() {
+        let code = compile_to_c("DIM n AS LONG: n = _GLCOMPAT").unwrap();
+        assert!(code.contains("qb_glcompat("));
+    }
+
+    // Debug/assert functions (NEW)
+    #[test]
+    fn asserterror_function() {
+        let code = compile_to_c("DIM s AS STRING: s = _ASSERTERROR$").unwrap();
+        assert!(code.contains("qb_asserterror("));
+    }
+
+    // Display extended functions (NEW)
+    #[test]
+    fn fullscreensmooth_function() {
+        let code = compile_to_c("DIM n AS LONG: n = _FULLSCREENSMOOTH").unwrap();
+        assert!(code.contains("qb_fullscreensmooth("));
+    }
+
+    #[test]
+    fn displaywidth_function() {
+        let code = compile_to_c("DIM n AS LONG: n = _DISPLAYWIDTH").unwrap();
+        assert!(code.contains("qb_displaywidth("));
+    }
+
+    #[test]
+    fn displayheight_function() {
+        let code = compile_to_c("DIM n AS LONG: n = _DISPLAYHEIGHT").unwrap();
+        assert!(code.contains("qb_displayheight("));
+    }
+}
+
+/// Tests for QB64 extension statements added in Session 034+
+/// Note: Only includes tests for NEW statements not already tested in previous sessions
+mod qb64_extension_statements_session034 {
+    use super::*;
+
+    // Console statements (NEW)
+    #[test]
+    fn echo_statement() {
+        let code = compile_to_c("_ECHO \"Hello\"").unwrap();
+        assert!(code.contains("qb_echo("));
+    }
+
+    #[test]
+    fn consoletitle_statement() {
+        let code = compile_to_c("_CONSOLETITLE \"My App\"").unwrap();
+        assert!(code.contains("qb_consoletitle("));
+    }
+
+    // Clipboard statements (NEW)
+    #[test]
+    fn clipboard_statement() {
+        let code = compile_to_c("_CLIPBOARD \"text\"").unwrap();
+        assert!(code.contains("qb_clipboard_set("));
+    }
+
+    // Delay/timing statements (NEW)
+    #[test]
+    fn delay_statement() {
+        let code = compile_to_c("_DELAY 0.5").unwrap();
+        assert!(code.contains("qb_delay("));
+    }
+}

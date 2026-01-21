@@ -1,7 +1,7 @@
 # Testing Infrastructure Plan
 
 **Created:** 2026-01-18
-**Updated:** 2026-01-20 (Session 033)
+**Updated:** 2026-01-20 (Session 034)
 **Purpose:** Comprehensive plan for building out QB64Fresh testing infrastructure
 **Based On:** QB64PE testing framework analysis + codebase review findings
 
@@ -9,16 +9,16 @@
 
 ## Executive Summary
 
-**UPDATE:** As of 2026-01-20 (Session 033), the testing infrastructure has been substantially implemented:
+**UPDATE:** As of 2026-01-20 (Session 034), the testing infrastructure has been substantially implemented:
 - **217 unit tests** in source modules
-- **506 integration tests** (0 ignored)
+- **526 integration tests** (0 ignored)
 - **10 golden tests** for C code generation snapshots
 - **16 compatibility test fixtures** (12 success + 4 error, auto-discovered)
 - **19 property-based tests** using proptest (thousands of iterations)
 - **30 benchmarks** measuring compiler performance
 - **44 runtime tests** (all passing)
 
-Total: **700+ tests** across the main compiler (11 doc-test ignored for setup requirements).
+Total: **720+ tests** across the main compiler (11 doc-test ignored for setup requirements).
 **QB64PE Compatibility:** 99.1% (114/115 files compile successfully, excluding open_gl)
 **Fuzz testing:** 3 fuzz targets verified (~4.6M inputs, 0 crashes)
 
@@ -39,7 +39,7 @@ All 44 runtime tests now pass.
 ### What We Have (Updated 2026-01-20)
 - Unit tests integrated into source files using `#[cfg(test)]` modules
 - **217 passing unit tests** across compiler modules
-- **506 integration tests** covering full compilation pipeline
+- **526 integration tests** covering full compilation pipeline
 - **10 golden tests** for codegen snapshot verification
 - **16 compatibility test fixtures** in QB64pe-style format
 - **30 criterion benchmarks** for performance tracking
@@ -483,3 +483,4 @@ cargo llvm-cov --workspace --html      # HTML report in target/llvm-cov/html
 *Updated: 2026-01-20 - Session 031: QB4.5 compatibility improved to 99.1% (114/115, excluding open_gl); platform constants renamed to _WIN, _LINUX, _MAC etc.; SHARED implicit declaration; label parsing at line start only; UnterminatedString in DATA; LEN() accepts UDTs; SCREEN function added*
 *Updated: 2026-01-20 - Session 032: Added 32 QB64 extension functions (error handling, HSB colors, memory, sound, unicode, logging); 486 integration tests*
 *Updated: 2026-01-20 - Session 033: Added 20 QB64 extension functions (rendering modes, direction constants, print modes, _MAPTRIANGLE, _NONE constant); 506 integration tests*
+*Updated: 2026-01-20 - Session 034: Added 28 QB64 extension keywords/functions (graphics mode constants, type/mode keywords, console/display/debug functions); 526 integration tests*

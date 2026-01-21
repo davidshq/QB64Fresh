@@ -739,6 +739,44 @@ pub(super) fn c_function_name(name: &str) -> String {
         // Auto display
         "_AUTO" => "qb_auto".to_string(),
 
+        // QB64 Extension Functions (Session 034+)
+        // Graphics keyword constants
+        "_CLIP" => "qb_clip".to_string(),
+        "_STRETCH" => "qb_stretch".to_string(),
+        "_SEAMLESS" => "qb_seamless".to_string(),
+        "_SQUAREPIXELS" => "qb_squarepixels".to_string(),
+        "_BEHIND" => "qb_behind".to_string(),
+
+        // Type/mode keywords
+        "_ALL" => "qb_all".to_string(),
+        "_BLINK" => "qb_blink".to_string(),
+        "_OFF" => "qb_off".to_string(),
+        "_ONLY" => "qb_only".to_string(),
+
+        // Sound/network keywords (Session 034)
+        "_WAVE" => "qb_wave".to_string(),
+        "_DONTWAIT" => "qb_dontwait".to_string(),
+
+        // Console title (Session 034)
+        "_CONSOLETITLE$" => "qb_consoletitle_str".to_string(),
+        "_CONSOLE" => "qb_console".to_string(),
+
+        // Environment functions (Session 034)
+        "_SHELLHIDE" => "qb_shellhide".to_string(),
+
+        // Graphics info functions (Session 034)
+        "_GLCOMPAT" => "qb_glcompat".to_string(),
+
+        // Debug/assert functions (Session 034)
+        "_ASSERT" => "qb_assert".to_string(),
+        "_ASSERTERROR$" => "qb_asserterror".to_string(),
+
+        // Display extended functions (Session 034)
+        "_FULLSCREENSMOOTH" => "qb_fullscreensmooth".to_string(),
+        "_ALLOWFULLSCREEN" => "qb_allowfullscreen".to_string(),
+        "_DISPLAYWIDTH" => "qb_displaywidth".to_string(),
+        "_DISPLAYHEIGHT" => "qb_displayheight".to_string(),
+
         // Default: prefix with qb_ for user functions
         _ => format!("qb_{}", c_identifier(name).to_lowercase()),
     }

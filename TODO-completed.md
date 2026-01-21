@@ -427,15 +427,15 @@
 
 - **Total source code:** ~30,000+ lines of Rust
 - **Unit tests:** 217
-- **Integration tests:** 506
-- **Total tests:** 820+
+- **Integration tests:** 526
+- **Total tests:** 840+
 - **Line coverage:** 81.63% ✅
 - **Statement types:** 60+
-- **Built-in functions:** 200+ (includes QB64 extensions)
+- **Built-in functions:** 230+ (includes QB64 extensions)
 
 ---
 
-*Last updated: 2026-01-20 (Session 033 - 99.1% QB4.5 compatibility excluding open_gl)*
+*Last updated: 2026-01-20 (Session 034 - 99.1% QB4.5 compatibility excluding open_gl)*
 
 ---
 
@@ -756,3 +756,57 @@
 
 ### Test Results
 - Integration tests: 486 → 506 tests (+20 new tests)
+
+---
+
+## Phase 7: QB64 Extension Functions ✅ (Session 034)
+
+### Graphics Keyword Constants
+- [x] `_CLIP` function - clipping mode constant for _PUTIMAGE
+- [x] `_STRETCH` function - stretch mode constant for _PUTIMAGE
+- [x] `_SEAMLESS` function - seamless image tiling constant
+- [x] `_SQUAREPIXELS` function - square pixels mode constant
+- [x] `_BEHIND` function - draw behind existing content constant
+
+### Type/Mode Keyword Constants
+- [x] `_ALL` function - all items/modes modifier constant
+- [x] `_BLINK` function - text blinking mode constant
+- [x] `_OFF` function - off state for toggles constant
+- [x] `_ONLY` function - exclusive mode modifier constant
+
+### Sound/Network Keywords
+- [x] `_WAVE` function - waveform type constant for sound synthesis
+- [x] `_DONTWAIT` function - non-blocking network operations constant
+
+### Console Functions
+- [x] `_CONSOLETITLE$` function - get console window title
+- [x] `_CONSOLE` function - get console handle/state
+
+### Environment Functions
+- [x] `_SHELLHIDE` function - hidden shell constant
+
+### Graphics Info Functions
+- [x] `_GLCOMPAT` function - OpenGL compatibility mode constant
+
+### Debug/Assert Functions
+- [x] `_ASSERT(condition)` function - assert condition
+- [x] `_ASSERTERROR$` function - get last assertion error message
+
+### Display Extended Functions
+- [x] `_FULLSCREENSMOOTH` function - fullscreen smooth mode constant
+- [x] `_ALLOWFULLSCREEN` function - get allow fullscreen state
+- [x] `_DISPLAYWIDTH` function - get display width in pixels
+- [x] `_DISPLAYHEIGHT` function - get display height in pixels
+
+### Console Statements
+- [x] `_ECHO text$` statement - echo text to console
+- [x] `_CONSOLETITLE title$` statement - set console window title
+
+### Clipboard Statements
+- [x] `_CLIPBOARD text$` statement - set clipboard text content
+
+### Timing Statements
+- [x] `_DELAY seconds` statement - delay execution
+
+### Test Results
+- Integration tests: 506 → 526 tests (+20 new tests)

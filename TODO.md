@@ -1,6 +1,6 @@
 # QB64Fresh TODO
 
-*Last updated: 2026-01-20 (Session 033)*
+*Last updated: 2026-01-20 (Session 034)*
 
 A prioritized roadmap for QB64Fresh development. For completed features, see [TODO-completed.md](TODO-completed.md).
 
@@ -103,19 +103,19 @@ All C Library Integration items completed - see TODO-completed.md.
 - [ ] `_DEFINE` statement - define default variable types by letter range
 
 #### Networking (Extended)
-- [ ] `_DONTWAIT` keyword - non-blocking network operations
+- [x] `_DONTWAIT` keyword - non-blocking network operations ✅ (Session 034)
 
 ### Lower Priority - QB64 Advanced Extensions
 
 #### Graphics (Extended)
-- [ ] `_CLIP` keyword - clipping mode for _PUTIMAGE
-- [ ] `_SQUAREPIXELS` keyword - square pixels mode
-- [ ] `_SEAMLESS` keyword - seamless image tiling
-- [ ] `_STRETCH` keyword - stretch mode for _PUTIMAGE
-- [ ] `_BEHIND` keyword - draw behind existing content
+- [x] `_CLIP` keyword - clipping mode for _PUTIMAGE ✅ (Session 034)
+- [x] `_SQUAREPIXELS` keyword - square pixels mode ✅ (Session 034)
+- [x] `_SEAMLESS` keyword - seamless image tiling ✅ (Session 034)
+- [x] `_STRETCH` keyword - stretch mode for _PUTIMAGE ✅ (Session 034)
+- [x] `_BEHIND` keyword - draw behind existing content ✅ (Session 034)
 
 #### Sound (Extended)
-- [ ] `_WAVE` keyword - waveform type for sound synthesis
+- [x] `_WAVE` keyword - waveform type for sound synthesis ✅ (Session 034)
 
 #### Console Mode
 - [ ] `$CONSOLE` / `$CONSOLE:ONLY` metacommands
@@ -146,12 +146,12 @@ All C Library Integration items completed - see TODO-completed.md.
 - [ ] `$SCREENHIDE` / `$SCREENSHOW` - hide/show window on startup
 - [ ] `$USELIBRARY` - use external library
 
-### Type Modifiers & Keywords (Not Yet Implemented)
+### Type Modifiers & Keywords (Partially Implemented)
 - [ ] `_BIT` type - single bit type modifier
-- [ ] `_ALL` keyword - all items/modes modifier
-- [ ] `_BLINK` keyword - text blinking mode
-- [ ] `_OFF` keyword - off state for toggles
-- [ ] `_ONLY` keyword - exclusive mode modifier
+- [x] `_ALL` keyword - all items/modes modifier ✅ (Session 034)
+- [x] `_BLINK` keyword - text blinking mode ✅ (Session 034)
+- [x] `_OFF` keyword - off state for toggles ✅ (Session 034)
+- [x] `_ONLY` keyword - exclusive mode modifier ✅ (Session 034)
 
 ### OpenGL Commands (Intentionally Excluded)
 
