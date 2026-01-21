@@ -30,6 +30,13 @@ impl<'a> Parser<'a> {
         self.tokens.get(self.current + n)
     }
 
+    /// Checks if the next token (after current) is ON or OFF.
+    /// Used for keywords like _RESIZE that can be both statements and functions.
+    pub(super) fn peek_is_on_or_off(&self) -> bool {
+        self.peek_ahead(1)
+            .is_some_and(|t| t.kind == TokenKind::On || t.kind == TokenKind::Off)
+    }
+
     /// Consumes and returns the current token.
     pub(super) fn advance(&mut self) -> Option<&crate::lexer::Token> {
         if !self.is_at_end() {
@@ -279,11 +286,13 @@ impl<'a> Parser<'a> {
         let Some(kind) = self.peek_kind() else {
             return false;
         };
-        Self::token_kind_is_name(kind)
+        Self::is_name_kind(kind)
     }
 
     /// Checks if a token kind can be used as an identifier name.
-    fn token_kind_is_name(kind: &TokenKind) -> bool {
+    ///
+    /// This is used both for direct name checking and for lookahead in is_array_assignment.
+    pub(super) fn is_name_kind(kind: &TokenKind) -> bool {
         match kind {
             // Actual identifiers are always valid names
             TokenKind::Identifier => true,

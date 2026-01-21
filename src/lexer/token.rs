@@ -610,6 +610,18 @@ pub enum TokenKind {
     #[token("_DISPLAY", ignore(ascii_case))]
     Display,
 
+    /// _CONTROLCHR statement - control printing of control characters
+    #[token("_CONTROLCHR", ignore(ascii_case))]
+    ControlChr,
+
+    /// _MAPUNICODE statement - map Unicode codepoint to character position
+    #[token("_MAPUNICODE", ignore(ascii_case))]
+    MapUnicode,
+
+    /// _RESIZE statement - enable/disable window resizing at runtime
+    #[token("_RESIZE", ignore(ascii_case))]
+    Resize,
+
     /// WIDTH statement - set screen width/columns
     #[token("WIDTH", ignore(ascii_case))]
     Width,
@@ -1122,30 +1134,34 @@ pub enum TokenKind {
     // ==================== Literals ====================
 
     /// Integer literal (decimal) with optional type suffix
-    /// Examples: 123, 0, 999999, 2000&, 100%, 50!
+    /// Examples: 123, 0, 999999, 2000&, 100%, 50!, 1##, 5&&
     /// Suffixes: % (INTEGER), & (LONG), ! (SINGLE), # (DOUBLE)
-    #[regex(r"[0-9]+[%&!#]?", priority = 2)]
+    ///           %% (INTEGER16/BYTE), && (INTEGER64), ## (DOUBLE)
+    ///           ~% (UNSIGNED INTEGER), ~& (UNSIGNED LONG), ~%%, ~&&, etc.
+    /// Note: Multi-char suffixes must come before single-char in alternation
+    #[regex(r"[0-9]+(~?&&|~?%%|~?##|~?%&|~?[%&!#`])?", priority = 2)]
     IntegerLiteral,
 
-    /// Hexadecimal literal
-    /// Examples: &H1F, &HFF00
-    #[regex(r"&[Hh][0-9A-Fa-f]+")]
+    /// Hexadecimal literal with optional type suffix
+    /// Examples: &H1F, &HFF00, &HE0~%%, &HFFFFFFFF&&
+    /// Suffixes same as integer literals: ~%%, ~&&, ~%, ~&, etc.
+    #[regex(r"&[Hh][0-9A-Fa-f]+(~?&&|~?%%|~?##|~?%&|~?[%&!#`])?")]
     HexLiteral,
 
-    /// Octal literal
-    /// Examples: &O17, &O777
-    #[regex(r"&[Oo][0-7]+")]
+    /// Octal literal with optional type suffix
+    /// Examples: &O17, &O777, &O377~%%
+    #[regex(r"&[Oo][0-7]+(~?&&|~?%%|~?##|~?%&|~?[%&!#`])?")]
     OctalLiteral,
 
-    /// Binary literal (QB64 extension)
-    /// Examples: &B1010, &B11110000
-    #[regex(r"&[Bb][01]+")]
+    /// Binary literal (QB64 extension) with optional type suffix
+    /// Examples: &B1010, &B11110000, &B11111111~%%
+    #[regex(r"&[Bb][01]+(~?&&|~?%%|~?##|~?%&|~?[%&!#`])?")]
     BinaryLiteral,
 
     /// Floating point literal with optional type suffix
-    /// Examples: 1.5, .5, 1., 1.5E10, 1.5D-3, 3.14!, 2.71828#
-    /// Suffixes: ! (SINGLE), # (DOUBLE)
-    #[regex(r"([0-9]*\.[0-9]+([EeDd][+-]?[0-9]+)?|[0-9]+[EeDd][+-]?[0-9]+)[!#]?")]
+    /// Examples: 1.5, .5, 1., 1.5E10, 1.5D-3, 3.14!, 2.71828#, 1.0##
+    /// Suffixes: ! (SINGLE), # (DOUBLE), ## (DOUBLE explicit)
+    #[regex(r"([0-9]*\.[0-9]+([EeDd][+-]?[0-9]+)?|[0-9]+[EeDd][+-]?[0-9]+)(##|[!#])?")]
     FloatLiteral,
 
     /// String literal
@@ -1163,7 +1179,8 @@ pub enum TokenKind {
     // ==================== Identifiers ====================
     /// Identifier (variable, function, or label name)
     /// Must start with letter, can contain letters, digits, underscores, and dots.
-    /// Dots are allowed in classic BASIC for naming procedures (e.g., `player.move`)
+    /// Dots are allowed in classic BASIC for naming conventions (e.g., `path.exe$`).
+    /// Field access is disambiguated at the semantic level based on UDT declarations.
     ///
     /// May end with type suffix:
     /// - Single char: $, %, &, !, #, `
@@ -1222,11 +1239,15 @@ pub enum TokenKind {
     MetaChecking,
 
     /// $CONSOLE:ONLY - enable console window only
-    #[regex(r"(?i:\$CONSOLE\s*:\s*ONLY)")]
+    /// NOTE: Due to a logos bug, $CONSOLE patterns cause Error tokens instead of matching.
+    /// The parser has a workaround that handles Error tokens containing "$CONSOLE".
+    /// See parser/statements.rs parse_statement() for the workaround.
+    // #[regex(r"\$CONSOLE\s*:\s*ONLY", ignore(ascii_case))]  // Disabled - causes logos bug
     MetaConsoleOnly,
 
     /// $CONSOLE - enable console window
-    #[token("$CONSOLE", ignore(ascii_case))]
+    /// NOTE: Disabled due to logos bug - see MetaConsoleOnly comment above.
+    // #[regex(r"\$CONSOLE", ignore(ascii_case))]  // Disabled - causes logos bug
     MetaConsole,
 
     /// $SCREENHIDE - hide graphics window on startup

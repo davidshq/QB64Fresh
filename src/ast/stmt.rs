@@ -61,6 +61,18 @@ pub enum StatementKind {
     /// Assignment statement. The LET keyword is optional in modern BASIC.
     Let { name: String, value: Expr },
 
+    /// `variable.field = expression` or `variable.field.subfield = expression`
+    ///
+    /// Assignment to a field of a UDT variable.
+    FieldAssignment {
+        /// Variable name.
+        name: String,
+        /// Field access chain (e.g., ["R"] for `.R` or ["pos", "x"] for `.pos.x`).
+        fields: Vec<String>,
+        /// Value to assign.
+        value: Expr,
+    },
+
     /// `array(indices) = expression`
     ///
     /// Array element assignment statement.
@@ -102,6 +114,21 @@ pub enum StatementKind {
         /// Optional length to replace.
         length: Option<Expr>,
         /// Replacement value.
+        value: Expr,
+    },
+
+    /// `ASC(string$, position) = value` - Set character at position in string
+    ///
+    /// This statement modifies a character in a string by setting its ASCII value.
+    /// The position is 1-based, and value should be an ASCII code (0-255).
+    ///
+    /// Example: `ASC(name$, 1) = 65` sets first character to 'A'
+    AscAssignment {
+        /// Target string expression (variable, array element, or field access).
+        target: Expr,
+        /// Position in string (1-based).
+        position: Expr,
+        /// ASCII value to set (0-255).
         value: Expr,
     },
 
@@ -324,6 +351,8 @@ pub enum StatementKind {
 
     /// `LINE INPUT [;]["prompt";] variable$`
     LineInput {
+        /// If true, suppress the newline after user presses Enter (the leading semicolon).
+        suppress_newline: bool,
         /// Optional prompt string.
         prompt: Option<String>,
         /// Target to read into (variable or array element, must be string type).
@@ -474,6 +503,21 @@ pub enum StatementKind {
         record_len: Option<Expr>,
     },
 
+    /// Legacy `OPEN mode$, [#]filenum, filename[, reclen]` syntax
+    ///
+    /// Opens a file using the GW-BASIC shorthand syntax.
+    /// mode$ is a string: "O" (OUTPUT), "I" (INPUT), "A" (APPEND), "R" (RANDOM), "B" (BINARY)
+    OpenFileLegacy {
+        /// The mode expression (typically a string literal like "O").
+        mode_expr: Expr,
+        /// The file number expression (1-511).
+        file_num: Expr,
+        /// The filename expression.
+        filename: Expr,
+        /// Optional record length for random access files.
+        record_len: Option<Expr>,
+    },
+
     /// `CLOSE [[#]filenum [, [#]filenum]...]`
     ///
     /// Closes one or more files. If no file numbers specified, closes all files.
@@ -532,10 +576,8 @@ pub enum StatementKind {
         file_num: Expr,
         /// Optional position (record number for random, byte position for binary).
         position: Option<Expr>,
-        /// Variable to read into.
-        variable: String,
-        /// Optional array index (for `GET #1, , arr(i)`).
-        index: Option<Expr>,
+        /// Target to read into (variable, array element, or field).
+        target: InputTarget,
     },
 
     /// `PUT [#]filenum, [position], variable` or `PUT #filenum, , variable`
@@ -546,10 +588,8 @@ pub enum StatementKind {
         file_num: Expr,
         /// Optional position (record number for random, byte position for binary).
         position: Option<Expr>,
-        /// Variable containing data to write.
-        variable: String,
-        /// Optional array index (for `PUT #1, , arr(i)`).
-        index: Option<Expr>,
+        /// Target variable containing data to write.
+        target: InputTarget,
     },
 
     /// `SEEK [#]filenum, position`
@@ -868,6 +908,34 @@ pub enum StatementKind {
 
     /// `_DISPLAY` - Update screen (for double-buffered graphics)
     GfxDisplay,
+
+    /// `_CONTROLCHR ON|OFF` - Control printing of control characters
+    ///
+    /// When OFF, CHR$(0-31) values are printed as characters instead of
+    /// performing their control functions (like cursor movement).
+    ControlChr {
+        /// True for ON (normal behavior), false for OFF
+        enabled: bool,
+    },
+
+    /// `_MAPUNICODE unicode_code TO character_position` - Map Unicode codepoint
+    ///
+    /// Maps a Unicode codepoint to a position in the current font's character set.
+    MapUnicode {
+        /// Unicode codepoint value
+        unicode_value: Expr,
+        /// Character position (0-255)
+        char_position: Expr,
+    },
+
+    /// `_RESIZE ON|OFF` - Enable/disable window resizing at runtime
+    ///
+    /// Controls whether the user can resize the graphics window.
+    /// Unlike `$RESIZE:ON` which is compile-time, this is runtime control.
+    GfxResize {
+        /// True for ON (enable resizing), false for OFF (disable)
+        enabled: bool,
+    },
 
     /// `PALETTE [attribute, color]` - Set palette colors
     ///
@@ -1990,9 +2058,14 @@ pub enum ExitType {
 /// Continue statement type (QB64 _CONTINUE).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ContinueType {
+    /// Continue the innermost FOR loop
     For,
+    /// Continue the innermost WHILE loop
     While,
+    /// Continue the innermost DO loop
     Do,
+    /// Continue the innermost loop of any type (bare _CONTINUE)
+    Innermost,
 }
 
 /// Target for READ statement - can be a variable or array element.

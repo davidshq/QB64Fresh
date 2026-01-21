@@ -13,11 +13,25 @@ use super::{ParseError, Parser};
 impl<'a> Parser<'a> {
     /// Parses an OPEN statement.
     ///
-    /// Syntax: `OPEN filename FOR mode [ACCESS access] [lock] AS [#]filenum [LEN=reclen]`
+    /// Modern syntax: `OPEN filename FOR mode [ACCESS access] [lock] AS [#]filenum [LEN=reclen]`
+    /// Legacy syntax: `OPEN mode$, [#]filenum, filename[, reclen]`
+    ///   - mode$ = "O" (OUTPUT), "I" (INPUT), "A" (APPEND), "R" (RANDOM), "B" (BINARY)
     pub(super) fn parse_open(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("OPEN keyword").span.start;
 
-        let filename = self.parse_expression()?;
+        // Parse the first expression (could be filename or mode string)
+        let first_expr = self.parse_expression()?;
+
+        // Check if this is legacy syntax (comma follows first expression)
+        if self.match_token(&TokenKind::Comma) {
+            // Legacy syntax: OPEN mode$, [#]filenum, filename[, reclen]
+            // first_expr is the mode string
+            return self.parse_open_legacy(start, first_expr);
+        }
+
+        // Modern syntax: OPEN filename FOR mode ...
+        // first_expr is the filename
+        let filename = first_expr;
         self.expect(&TokenKind::For, "FOR")?;
         let mode = self.parse_file_mode()?;
 
@@ -49,6 +63,43 @@ impl<'a> Parser<'a> {
                 access,
                 lock,
                 file_num,
+                record_len,
+            },
+            span,
+        ))
+    }
+
+    /// Parses the legacy OPEN syntax: `OPEN mode$, [#]filenum, filename[, reclen]`
+    fn parse_open_legacy(
+        &mut self,
+        start: usize,
+        mode_expr: crate::ast::Expr,
+    ) -> Result<Statement, ()> {
+        // The mode_expr should be a string literal like "O", "I", "A", "R", "B"
+        // For now, we'll store it as-is and let semantic analysis validate it
+
+        // Parse [#]filenum
+        self.match_token(&TokenKind::Hash);
+        let file_num = self.parse_expression()?;
+
+        self.expect(&TokenKind::Comma, "`,`")?;
+
+        // Parse filename
+        let filename = self.parse_expression()?;
+
+        // Optional record length
+        let record_len = if self.match_token(&TokenKind::Comma) {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::OpenFileLegacy {
+                mode_expr,
+                file_num,
+                filename,
                 record_len,
             },
             span,
@@ -213,25 +264,15 @@ impl<'a> Parser<'a> {
 
         self.expect(&TokenKind::Comma, "`,` before variable")?;
 
-        let var_token = self.expect(&TokenKind::Identifier, "variable name")?;
-        let variable = var_token.text.to_string();
-
-        // Optional array index (for `GET #1, , arr(i)`)
-        let index = if self.match_token(&TokenKind::LeftParen) {
-            let idx = self.parse_expression()?;
-            self.expect(&TokenKind::RightParen, "`)` after array index")?;
-            Some(idx)
-        } else {
-            None
-        };
+        // Parse the target (variable, array element, or field)
+        let target = self.parse_input_target()?;
 
         let span = self.span_from(start);
         Ok(Statement::new(
             StatementKind::FileGet {
                 file_num,
                 position,
-                variable,
-                index,
+                target,
             },
             span,
         ))
@@ -324,24 +365,15 @@ impl<'a> Parser<'a> {
 
         self.expect(&TokenKind::Comma, "`,` before variable")?;
 
-        let var_token = self.expect(&TokenKind::Identifier, "variable name")?;
-        let variable = var_token.text.to_string();
-
-        let index = if self.match_token(&TokenKind::LeftParen) {
-            let idx = self.parse_expression()?;
-            self.expect(&TokenKind::RightParen, "`)` after array index")?;
-            Some(idx)
-        } else {
-            None
-        };
+        // Parse the target (variable, array element, or field)
+        let target = self.parse_input_target()?;
 
         let span = self.span_from(start);
         Ok(Statement::new(
             StatementKind::FilePut {
                 file_num,
                 position,
-                variable,
-                index,
+                target,
             },
             span,
         ))

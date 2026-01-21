@@ -150,6 +150,19 @@ impl<'a> Parser<'a> {
             TokenKind::Palette => self.parse_palette(),
             TokenKind::Pcopy => self.parse_pcopy(),
             TokenKind::Display => self.parse_display(),
+            TokenKind::ControlChr => self.parse_controlchr(),
+            // _MAPUNICODE is both a statement (value TO position) and a function (returns codepoint)
+            // Only parse as statement if NOT followed by ( (function call syntax)
+            TokenKind::MapUnicode
+                if !self
+                    .peek_ahead(1)
+                    .is_some_and(|t| t.kind == TokenKind::LeftParen) =>
+            {
+                self.parse_mapunicode()
+            }
+            // _RESIZE is both a statement (ON/OFF) and a function (returns bool)
+            // Only parse as statement if followed by ON or OFF
+            TokenKind::Resize if self.peek_is_on_or_off() => self.parse_resize(),
             TokenKind::Width => self.parse_width(),
             TokenKind::View => self.parse_view(),
             TokenKind::Window => self.parse_window(),
@@ -329,6 +342,12 @@ impl<'a> Parser<'a> {
             return self.parse_mid_statement(start);
         }
 
+        // Check for ASC statement: ASC(str$, position) = value
+        // This modifies a character in a string by its ASCII value
+        if name.eq_ignore_ascii_case("ASC") {
+            return self.parse_asc_statement(start);
+        }
+
         self.parse_array_assignment_with_name(start, name)
     }
 
@@ -416,6 +435,63 @@ impl<'a> Parser<'a> {
         ))
     }
 
+    /// Parses an ASC statement: `ASC(str$, position) = value`
+    /// This modifies a character in a string by setting its ASCII value.
+    fn parse_asc_statement(&mut self, start: usize) -> Result<Statement, ()> {
+        self.expect(&TokenKind::LeftParen, "(")?;
+
+        // Parse target string expression
+        let target_token = self.expect(&TokenKind::Identifier, "string variable")?;
+        let target_name = target_token.text.to_string();
+        let target_start = target_token.span.start;
+
+        // Check for array index: varname$(index, ...)
+        let target = if self.match_token(&TokenKind::LeftParen) {
+            let mut args = Vec::new();
+            loop {
+                args.push(self.parse_expression()?);
+                if !self.match_token(&TokenKind::Comma) {
+                    break;
+                }
+            }
+            self.expect(&TokenKind::RightParen, "`)` after array indices")?;
+
+            let array_span = self.span_from(target_start);
+            Expr::new(
+                ExprKind::FunctionCall {
+                    name: target_name,
+                    args,
+                },
+                array_span,
+            )
+        } else {
+            // Simple variable
+            let span = self.span_from(target_start);
+            Expr::new(ExprKind::Identifier(target_name), span)
+        };
+
+        self.expect(&TokenKind::Comma, ",")?;
+
+        // Parse position expression
+        let position = self.parse_expression()?;
+
+        self.expect(&TokenKind::RightParen, ")")?;
+        self.expect(&TokenKind::Equals, "=")?;
+
+        // Parse ASCII value
+        let value = self.parse_expression()?;
+        let span = self.span_from(start);
+
+        Ok(Statement::new(
+            StatementKind::AscAssignment {
+                target,
+                position,
+                value,
+            },
+            span,
+        ))
+    }
+
     /// Parses array assignment when the name has already been consumed.
     fn parse_array_assignment_with_name(
         &mut self,
@@ -438,9 +514,10 @@ impl<'a> Parser<'a> {
         self.expect(&TokenKind::RightParen, ")")?;
 
         // Check for field access chain: .field.subfield...
+        // Use expect_name to allow keywords as field names (e.g., .name, .type)
         let mut fields = Vec::new();
         while self.match_token(&TokenKind::Dot) {
-            let field_token = self.expect(&TokenKind::Identifier, "field name")?;
+            let field_token = self.expect_name("field name")?;
             fields.push(field_token.text.to_string());
         }
 
@@ -513,6 +590,17 @@ impl<'a> Parser<'a> {
             && next.kind == TokenKind::Equals
         {
             return self.parse_assignment(start);
+        }
+
+        // Check for field assignment: identifier.field = value
+        // or chained: identifier.field.subfield = value
+        if let Some(next) = self.peek_ahead(1)
+            && next.kind == TokenKind::Dot
+        {
+            // This might be a field assignment. Try to parse it.
+            if self.is_field_assignment() {
+                return self.parse_field_assignment(start);
+            }
         }
 
         // Check for array assignment: identifier(...)  = value
@@ -618,9 +706,10 @@ impl<'a> Parser<'a> {
                         pos += 1;
 
                         // Skip any .field chains
+                        // Field names can be keywords (e.g., .name, .type) so check is_name_kind
                         while pos + 1 < self.tokens.len()
                             && self.tokens[pos].kind == TokenKind::Dot
-                            && self.tokens[pos + 1].kind == TokenKind::Identifier
+                            && Self::is_name_kind(&self.tokens[pos + 1].kind)
                         {
                             pos += 2; // skip . and field name
                         }
@@ -638,6 +727,61 @@ impl<'a> Parser<'a> {
             pos += 1;
         }
         false
+    }
+
+    /// Checks if the current tokens form a field assignment pattern:
+    /// - `id.field = value`
+    /// - `id.field.subfield = value`
+    fn is_field_assignment(&self) -> bool {
+        // Start at the identifier (current position)
+        let mut pos = self.current;
+
+        // Skip the initial identifier
+        if pos >= self.tokens.len() || self.tokens[pos].kind != TokenKind::Identifier {
+            return false;
+        }
+        pos += 1;
+
+        // Now we expect one or more .field chains
+        while pos + 1 < self.tokens.len()
+            && self.tokens[pos].kind == TokenKind::Dot
+            && Self::is_name_kind(&self.tokens[pos + 1].kind)
+        {
+            pos += 2; // skip . and field name
+        }
+
+        // Check if we have at least one .field and now have =
+        pos > self.current + 1
+            && pos < self.tokens.len()
+            && self.tokens[pos].kind == TokenKind::Equals
+    }
+
+    /// Parses a field assignment: `id.field = value` or `id.field.subfield = value`
+    fn parse_field_assignment(&mut self, start: usize) -> Result<Statement, ()> {
+        // Parse the base identifier
+        let name_token = self.expect(&TokenKind::Identifier, "variable name")?;
+        let name = name_token.text.to_string();
+
+        // Collect field names
+        let mut fields = Vec::new();
+        while self.match_token(&TokenKind::Dot) {
+            let field_token = self.expect_name("field name after `.`")?;
+            fields.push(field_token.text.to_string());
+        }
+
+        // Expect = and value
+        self.expect(&TokenKind::Equals, "=")?;
+        let value = self.parse_expression()?;
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::FieldAssignment {
+                name,
+                fields,
+                value,
+            },
+            span,
+        ))
     }
 
     // ==================== DIM Statement ====================
@@ -1350,8 +1494,8 @@ impl<'a> Parser<'a> {
         } else if self.match_token(&TokenKind::Do) {
             ContinueType::Do
         } else {
-            // Default to innermost loop - use Do as a generic marker
-            ContinueType::Do
+            // Bare _CONTINUE - continue innermost loop of any type
+            ContinueType::Innermost
         };
 
         let span = self.span_from(start);
@@ -2052,7 +2196,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses a single input target (variable, array element, or field access).
-    fn parse_input_target(&mut self) -> Result<crate::ast::InputTarget, ()> {
+    pub(super) fn parse_input_target(&mut self) -> Result<crate::ast::InputTarget, ()> {
         use crate::ast::InputTarget;
 
         let name_token = self.expect(&TokenKind::Identifier, "variable name")?;
@@ -2133,6 +2277,10 @@ impl<'a> Parser<'a> {
         }
 
         // Console LINE INPUT
+        // Optional leading semicolon suppresses newline after input
+        // LINE INPUT ; "prompt"; var$
+        let suppress_newline = self.match_token(&TokenKind::Semicolon);
+
         let mut prompt = None;
 
         if self.check(&TokenKind::StringLiteral) {
@@ -2150,7 +2298,11 @@ impl<'a> Parser<'a> {
 
         let span = self.span_from(start);
         Ok(Statement::new(
-            StatementKind::LineInput { prompt, target },
+            StatementKind::LineInput {
+                suppress_newline,
+                prompt,
+                target,
+            },
             span,
         ))
     }
@@ -2536,6 +2688,13 @@ impl<'a> Parser<'a> {
 
         let mut variables = Vec::new();
 
+        // Check for QB64 "AS type variable [, variable]..." syntax
+        let shared_type = if self.match_token(&TokenKind::As) {
+            Some(self.parse_type_spec()?)
+        } else {
+            None
+        };
+
         loop {
             let name_token = self.expect(&TokenKind::Identifier, "variable name")?;
             let name = name_token.text.to_string();
@@ -2549,11 +2708,11 @@ impl<'a> Parser<'a> {
                 Vec::new()
             };
 
-            // Optional AS type
-            let type_spec = if self.match_token(&TokenKind::As) {
+            // Optional AS type (only if we didn't have a shared type)
+            let type_spec = if shared_type.is_none() && self.match_token(&TokenKind::As) {
                 Some(self.parse_type_spec()?)
             } else {
-                None
+                shared_type.clone()
             };
 
             variables.push(DimVariable {

@@ -125,6 +125,17 @@ pub enum ExprKind {
         /// The value expression to cast.
         value: Box<Expr>,
     },
+
+    /// VAL function with type specifier: `VAL(string$, type)` (QB64)
+    ///
+    /// Converts a string to a number of the specified type.
+    /// The type argument is a type keyword like `_INTEGER64` or `_UNSIGNED _INTEGER64`.
+    ValWithType {
+        /// The string expression to convert.
+        value: Box<Expr>,
+        /// The target numeric type (as a string like "_INTEGER64", "_UNSIGNED _INTEGER64").
+        target_type: String,
+    },
 }
 
 /// Binary operators.

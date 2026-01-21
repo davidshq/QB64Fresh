@@ -119,6 +119,15 @@ impl<'a> Parser<'a> {
             // Text metrics function
             TokenKind::PrintWidth => self.parse_builtin_function("_PRINTWIDTH"),
 
+            // QB64 Window/Display functions (that are also statements)
+            TokenKind::Resize => self.parse_builtin_function("_RESIZE"),
+
+            // QB64 Shell functions (also statements, but return exit code as function)
+            TokenKind::ShellHide => self.parse_builtin_function("_SHELLHIDE"),
+
+            // QB64 Unicode functions (also statements for setting, functions for getting)
+            TokenKind::MapUnicode => self.parse_builtin_function("_MAPUNICODE"),
+
             // QB4.5 Event Handling / Input Functions (keywords that are also functions)
             TokenKind::Timer => self.parse_builtin_function("TIMER"),
             TokenKind::Stick => self.parse_builtin_function("STICK"),
@@ -248,13 +257,18 @@ impl<'a> Parser<'a> {
         Ok(Expr::new(ExprKind::FloatLiteral(value), span))
     }
 
-    /// Parses a hexadecimal literal (&HFF).
+    /// Parses a hexadecimal literal (&HFF, &HE0~%%, etc.).
     fn parse_hex_literal(&mut self) -> Result<Expr, ()> {
         let token = self.advance().expect("hex literal token");
         let span: Span = token.span.clone().into();
 
-        // Skip the &H prefix
-        let hex_str = &token.text[2..];
+        // Skip the &H prefix, find where hex digits end (type suffix starts)
+        let after_prefix = &token.text[2..];
+        let digit_end = after_prefix
+            .find(|c: char| !c.is_ascii_hexdigit())
+            .unwrap_or(after_prefix.len());
+        let hex_str = &after_prefix[..digit_end];
+
         let value = i64::from_str_radix(hex_str, 16).map_err(|e| {
             self.errors.push(ParseError::InvalidNumber {
                 span,
@@ -265,13 +279,18 @@ impl<'a> Parser<'a> {
         Ok(Expr::new(ExprKind::IntegerLiteral(value), span))
     }
 
-    /// Parses an octal literal (&O77).
+    /// Parses an octal literal (&O77, &O377~%%, etc.).
     fn parse_octal_literal(&mut self) -> Result<Expr, ()> {
         let token = self.advance().expect("octal literal token");
         let span: Span = token.span.clone().into();
 
-        // Skip the &O prefix
-        let oct_str = &token.text[2..];
+        // Skip the &O prefix, find where octal digits end (type suffix starts)
+        let after_prefix = &token.text[2..];
+        let digit_end = after_prefix
+            .find(|c: char| !matches!(c, '0'..='7'))
+            .unwrap_or(after_prefix.len());
+        let oct_str = &after_prefix[..digit_end];
+
         let value = i64::from_str_radix(oct_str, 8).map_err(|e| {
             self.errors.push(ParseError::InvalidNumber {
                 span,
@@ -282,13 +301,18 @@ impl<'a> Parser<'a> {
         Ok(Expr::new(ExprKind::IntegerLiteral(value), span))
     }
 
-    /// Parses a binary literal (&B1010).
+    /// Parses a binary literal (&B1010, &B11111111~%%, etc.).
     fn parse_binary_literal(&mut self) -> Result<Expr, ()> {
         let token = self.advance().expect("binary literal token");
         let span: Span = token.span.clone().into();
 
-        // Skip the &B prefix
-        let bin_str = &token.text[2..];
+        // Skip the &B prefix, find where binary digits end (type suffix starts)
+        let after_prefix = &token.text[2..];
+        let digit_end = after_prefix
+            .find(|c: char| !matches!(c, '0' | '1'))
+            .unwrap_or(after_prefix.len());
+        let bin_str = &after_prefix[..digit_end];
+
         let value = i64::from_str_radix(bin_str, 2).map_err(|e| {
             self.errors.push(ParseError::InvalidNumber {
                 span,
@@ -325,6 +349,7 @@ impl<'a> Parser<'a> {
     /// - Function calls / array access: `func(args)` / `arr(i)`
     /// - Field access: `obj.field`
     /// - Chained access: `obj.field.subfield`, `arr(i).field`
+    /// - VAL with type specifier: `VAL(string$, _INTEGER64)`
     fn parse_identifier_or_call(&mut self) -> Result<Expr, ()> {
         let token = self.advance().expect("identifier token");
         let name = token.text.to_string();
@@ -333,10 +358,57 @@ impl<'a> Parser<'a> {
         // Check for function call (identifier followed by parenthesis)
         let mut expr = if self.check(&TokenKind::LeftParen) {
             self.advance(); // consume (
-            let args = self.parse_argument_list()?;
-            self.expect(&TokenKind::RightParen, ")")?;
-            let span = self.span_from(start_span.start);
-            Expr::new(ExprKind::FunctionCall { name, args }, span)
+
+            // Special handling for VAL with type specifier: VAL(string$, _INTEGER64)
+            if name.eq_ignore_ascii_case("VAL") {
+                // Parse first argument (the string expression)
+                let value = self.parse_expression()?;
+
+                // Check if there's a comma and a type specifier
+                if self.check(&TokenKind::Comma) {
+                    self.advance(); // consume comma
+
+                    // Check if next token looks like a type (type keyword or _UNSIGNED)
+                    if self.is_type_specifier_token() {
+                        let type_name = self.parse_type_name()?;
+                        self.expect(&TokenKind::RightParen, ")")?;
+                        let span = self.span_from(start_span.start);
+                        Expr::new(
+                            ExprKind::ValWithType {
+                                value: Box::new(value),
+                                target_type: type_name,
+                            },
+                            span,
+                        )
+                    } else {
+                        // Second argument is an expression, not a type - regular VAL call
+                        let second_arg = self.parse_expression()?;
+                        let mut args = vec![value, second_arg];
+                        while self.match_token(&TokenKind::Comma) {
+                            args.push(self.parse_expression()?);
+                        }
+                        self.expect(&TokenKind::RightParen, ")")?;
+                        let span = self.span_from(start_span.start);
+                        Expr::new(ExprKind::FunctionCall { name, args }, span)
+                    }
+                } else {
+                    // Single-argument VAL - regular function call
+                    self.expect(&TokenKind::RightParen, ")")?;
+                    let span = self.span_from(start_span.start);
+                    Expr::new(
+                        ExprKind::FunctionCall {
+                            name,
+                            args: vec![value],
+                        },
+                        span,
+                    )
+                }
+            } else {
+                let args = self.parse_argument_list()?;
+                self.expect(&TokenKind::RightParen, ")")?;
+                let span = self.span_from(start_span.start);
+                Expr::new(ExprKind::FunctionCall { name, args }, span)
+            }
         } else {
             Expr::new(ExprKind::Identifier(name), start_span)
         };
@@ -512,7 +584,31 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    /// Parses a type name for _CV, _MK$, _CAST functions.
+    /// Checks if the current token could be the start of a type specifier.
+    ///
+    /// Used to distinguish between `VAL(string$, expression)` and `VAL(string$, _INTEGER64)`.
+    fn is_type_specifier_token(&self) -> bool {
+        if let Some(token) = self.peek() {
+            matches!(
+                &token.kind,
+                TokenKind::Unsigned
+                    | TokenKind::Integer
+                    | TokenKind::Long
+                    | TokenKind::Single
+                    | TokenKind::Double
+                    | TokenKind::String_
+                    | TokenKind::Byte
+                    | TokenKind::BitType
+                    | TokenKind::Integer64
+                    | TokenKind::Float
+                    | TokenKind::Offset
+            )
+        } else {
+            false
+        }
+    }
+
+    /// Parses a type name for _CV, _MK$, _CAST, VAL functions.
     ///
     /// Returns the type name as a string (e.g., "INTEGER", "SINGLE", "_INTEGER64").
     fn parse_type_name(&mut self) -> Result<String, ()> {

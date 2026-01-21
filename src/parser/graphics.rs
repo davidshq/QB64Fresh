@@ -625,6 +625,70 @@ impl<'a> Parser<'a> {
         Ok(Statement::new(StatementKind::GfxDisplay, span))
     }
 
+    /// Parses _CONTROLCHR statement.
+    ///
+    /// Syntax: `_CONTROLCHR ON | OFF`
+    pub(super) fn parse_controlchr(&mut self) -> Result<Statement, ()> {
+        let start = self.advance_start("_CONTROLCHR keyword")?;
+
+        let enabled = if self.match_token(&TokenKind::On) {
+            true
+        } else if self.match_token(&TokenKind::Off) {
+            false
+        } else {
+            self.errors.push(super::ParseError::syntax(
+                "expected ON or OFF",
+                self.current_span(),
+            ));
+            return Err(());
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::ControlChr { enabled }, span))
+    }
+
+    /// Parses _MAPUNICODE statement.
+    ///
+    /// Syntax: `_MAPUNICODE unicode_value TO char_position`
+    pub(super) fn parse_mapunicode(&mut self) -> Result<Statement, ()> {
+        let start = self.advance_start("_MAPUNICODE keyword")?;
+
+        let unicode_value = self.parse_expression()?;
+        self.expect(&TokenKind::To, "TO")?;
+        let char_position = self.parse_expression()?;
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::MapUnicode {
+                unicode_value,
+                char_position,
+            },
+            span,
+        ))
+    }
+
+    /// Parses _RESIZE statement.
+    ///
+    /// Syntax: `_RESIZE ON | OFF`
+    pub(super) fn parse_resize(&mut self) -> Result<Statement, ()> {
+        let start = self.advance_start("_RESIZE keyword")?;
+
+        let enabled = if self.match_token(&TokenKind::On) {
+            true
+        } else if self.match_token(&TokenKind::Off) {
+            false
+        } else {
+            self.errors.push(super::ParseError::syntax(
+                "expected ON or OFF",
+                self.current_span(),
+            ));
+            return Err(());
+        };
+
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::GfxResize { enabled }, span))
+    }
+
     /// Parses PALETTE statement.
     ///
     /// Syntax: `PALETTE [attribute, color]`
