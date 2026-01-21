@@ -138,11 +138,16 @@ impl<'a> TypeChecker<'a> {
                 // In classic BASIC, DIM can re-dimension a simple variable as an array.
                 // This is common when a FOR loop implicitly creates a variable, and then
                 // DIM is used later to declare an array with the same name.
-                let is_array_replacing_simple =
+                // Also, local DIM can shadow function parameters (e.g., args AS STRING parameter
+                // shadowed by DIM args(5) AS ParseNum).
+                let is_array_replacing_simple_or_param =
                     matches!(new.kind, SymbolKind::ArrayVariable { .. })
-                        && matches!(existing.kind, SymbolKind::Variable);
+                        && matches!(
+                            existing.kind,
+                            SymbolKind::Variable | SymbolKind::Parameter { .. }
+                        );
 
-                if is_array_replacing_simple {
+                if is_array_replacing_simple_or_param {
                     // Allow the redefinition by updating the symbol
                     self.symbols.update_or_define_symbol(new);
                 } else {

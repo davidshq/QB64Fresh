@@ -132,18 +132,44 @@ impl<'a> TypeChecker<'a> {
                     expr.span,
                 )
             }
+
+            ExprKind::ValWithType { value, target_type } => {
+                let typed_value = self.check_expr(value);
+                let basic_type = self.parse_type_name(target_type);
+                // VAL with type spec returns the specified numeric type
+                TypedExpr::new(
+                    TypedExprKind::ValWithType {
+                        value: Box::new(typed_value),
+                        target_type: basic_type.clone(),
+                    },
+                    basic_type,
+                    expr.span,
+                )
+            }
         }
     }
 
     /// Type checks an identifier (variable reference).
+    ///
+    /// This handles both regular identifiers and dotted identifiers.
+    /// For dotted identifiers (e.g., `id.field`), we check if the prefix is a UDT variable.
+    /// If so, we treat it as field access. Otherwise, it's a dotted variable name.
     fn check_identifier(&mut self, name: &str, span: crate::ast::Span) -> TypedExpr {
-        // Check if it's an existing variable
+        // Check if it's an existing variable (exact match)
         if let Some(symbol) = self.symbols.lookup_symbol(name) {
             return TypedExpr::new(
                 TypedExprKind::Variable(name.to_string()),
                 symbol.basic_type.clone(),
                 span,
             );
+        }
+
+        // If the name contains dots, check if any prefix is a UDT variable
+        // This allows distinguishing `id.field` (field access) from `path.exe$` (dotted var name)
+        if name.contains('.')
+            && let Some(result) = self.try_resolve_dotted_field_access(name, span)
+        {
+            return result;
         }
 
         // Check if it's a parameterless function call
@@ -176,6 +202,60 @@ impl<'a> TypeChecker<'a> {
         let _ = self.symbols.define_symbol(symbol);
 
         TypedExpr::new(TypedExprKind::Variable(name.to_string()), basic_type, span)
+    }
+
+    /// Tries to resolve a dotted identifier as field access on a UDT variable.
+    /// Returns Some(TypedExpr) if successful, None if the identifier is a plain dotted name.
+    fn try_resolve_dotted_field_access(
+        &mut self,
+        name: &str,
+        span: crate::ast::Span,
+    ) -> Option<TypedExpr> {
+        let parts: Vec<&str> = name.split('.').collect();
+
+        // Try each prefix to see if it's a UDT variable
+        for i in 1..parts.len() {
+            let prefix = parts[..i].join(".");
+            if let Some(symbol) = self.symbols.lookup_symbol(&prefix) {
+                // Check if it's a UDT type
+                if let BasicType::UserDefined(_) = &symbol.basic_type {
+                    // This is a UDT variable, treat remaining parts as field access
+                    // Build nested FieldAccess expressions for the chain
+                    let fields: Vec<String> = parts[i..].iter().map(|s| s.to_string()).collect();
+
+                    // Start with the base variable
+                    let mut result = TypedExpr::new(
+                        TypedExprKind::Variable(prefix),
+                        symbol.basic_type.clone(),
+                        span,
+                    );
+
+                    // Build nested FieldAccess for each field in the chain
+                    let mut current_type = symbol.basic_type.clone();
+                    for field_name in &fields {
+                        // Get the field type for this level
+                        let this_field_type = self.resolve_field_chain_type(
+                            &current_type,
+                            std::slice::from_ref(field_name),
+                        );
+                        result = TypedExpr::new(
+                            TypedExprKind::FieldAccess {
+                                object: Box::new(result),
+                                field: field_name.clone(),
+                            },
+                            this_field_type.clone(),
+                            span,
+                        );
+                        current_type = this_field_type;
+                    }
+
+                    return Some(result);
+                }
+            }
+        }
+
+        // No UDT prefix found, it's a plain dotted variable name
+        None
     }
 
     /// Type checks a field access expression (e.g., `person.name`).
@@ -287,10 +367,27 @@ impl<'a> TypeChecker<'a> {
                 BasicType::Integer
             }
 
-            // String concatenation with +
+            // String concatenation with + (both strings)
             BinaryOp::Add
                 if left_typed.basic_type.is_string() && right_typed.basic_type.is_string() =>
             {
+                BasicType::String
+            }
+
+            // String + numeric: implicit STR$() conversion (BASIC allows this)
+            BinaryOp::Add
+                if left_typed.basic_type.is_string() && right_typed.basic_type.is_numeric() =>
+            {
+                // Convert right operand to string implicitly via STR$()
+                // The code generator will emit: qb_string_concat(left, qb_str(right))
+                BasicType::String
+            }
+
+            // Numeric + string: implicit STR$() conversion (BASIC allows this)
+            BinaryOp::Add
+                if left_typed.basic_type.is_numeric() && right_typed.basic_type.is_string() =>
+            {
+                // Convert left operand to string implicitly via STR$()
                 BasicType::String
             }
 

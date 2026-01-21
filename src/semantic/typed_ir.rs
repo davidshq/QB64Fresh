@@ -158,6 +158,16 @@ pub enum TypedExprKind {
         /// The value expression.
         value: Box<TypedExpr>,
     },
+
+    /// VAL function with type specifier: `VAL(string$, _INTEGER64)`.
+    ///
+    /// Converts a string to a number of the specified type.
+    ValWithType {
+        /// The string expression to convert.
+        value: Box<TypedExpr>,
+        /// The target numeric type.
+        target_type: BasicType,
+    },
 }
 
 /// Parameter information for external function calls.
@@ -283,6 +293,18 @@ pub enum TypedStatementKind {
         /// Optional length to replace.
         length: Option<TypedExpr>,
         /// Replacement value.
+        value: TypedExpr,
+    },
+
+    /// ASC assignment - set character at position in string.
+    /// `ASC(str$, position) = ascii_value`
+    /// The target can be a simple variable, array element, or UDT field.
+    AscAssignment {
+        /// Target string expression (variable, array element, or field access).
+        target: TypedExpr,
+        /// Position in string (1-based).
+        position: TypedExpr,
+        /// ASCII value to set (0-255).
         value: TypedExpr,
     },
 
@@ -642,6 +664,18 @@ pub enum TypedStatementKind {
         record_len: Option<TypedExpr>,
     },
 
+    /// Legacy OPEN syntax: OPEN mode$, [#]filenum, filename[, reclen]
+    OpenFileLegacy {
+        /// The mode expression (string like "O", "I", "A", "R", "B").
+        mode_expr: TypedExpr,
+        /// The file number.
+        file_num: TypedExpr,
+        /// The filename expression.
+        filename: TypedExpr,
+        /// Optional record length.
+        record_len: Option<TypedExpr>,
+    },
+
     /// CLOSE statement.
     CloseFile {
         /// File numbers to close (empty = close all).
@@ -688,12 +722,8 @@ pub enum TypedStatementKind {
         file_num: TypedExpr,
         /// Optional position.
         position: Option<TypedExpr>,
-        /// Variable to read into.
-        variable: String,
-        /// Variable type.
-        var_type: BasicType,
-        /// Optional array index (for `GET #1, , arr(i)`).
-        index: Option<TypedExpr>,
+        /// Target to read into (variable, array element, or field).
+        target: TypedInputTarget,
     },
 
     /// PUT statement (binary/random file write).
@@ -702,12 +732,8 @@ pub enum TypedStatementKind {
         file_num: TypedExpr,
         /// Optional position.
         position: Option<TypedExpr>,
-        /// Variable to write.
-        variable: String,
-        /// Variable type.
-        var_type: BasicType,
-        /// Optional array index for `PUT #1, , arr(i)`.
-        index: Option<TypedExpr>,
+        /// Target variable to write from (variable, array element, or field).
+        target: TypedInputTarget,
     },
 
     /// SEEK statement (set file position).
@@ -929,6 +955,26 @@ pub enum TypedStatementKind {
 
     /// _DISPLAY statement - updates the screen.
     GfxDisplay,
+
+    /// _CONTROLCHR statement - control printing of control characters.
+    ControlChr {
+        /// True for ON (normal behavior), false for OFF.
+        enabled: bool,
+    },
+
+    /// _MAPUNICODE statement - maps Unicode codepoint to character position.
+    MapUnicode {
+        /// Unicode codepoint value.
+        unicode_value: TypedExpr,
+        /// Character position (0-255).
+        char_position: TypedExpr,
+    },
+
+    /// _RESIZE statement - enables/disables window resizing at runtime.
+    GfxResize {
+        /// True for ON (enable), false for OFF (disable).
+        enabled: bool,
+    },
 
     /// PALETTE statement - sets palette colors.
     Palette {

@@ -200,7 +200,10 @@ impl SemanticAnalyzer {
                     .as_ref()
                     .map(format_type)
                     .unwrap_or_else(|| "SINGLE".to_string());
-                format!("```basic\n{} {}({}) AS {}\n```\n\n", kind, proc.name, params_str, ret)
+                format!(
+                    "```basic\n{} {}({}) AS {}\n```\n\n",
+                    kind, proc.name, params_str, ret
+                )
             } else {
                 format!("```basic\n{} {}({})\n```\n\n", kind, proc.name, params_str)
             };
@@ -610,7 +613,17 @@ impl SemanticAnalyzer {
         // LEN() can return the length of a string OR the size of a UDT/fixed-length type
         self.register_builtin_function("LEN", &[("s", BasicType::Unknown)], BasicType::Long);
         self.register_builtin_function("CHR$", &[("n", BasicType::Long)], BasicType::String);
-        self.register_builtin_function("ASC", &[("s", BasicType::String)], BasicType::Long);
+        // ASC can be called with 1 or 2 arguments:
+        // ASC(s$) - returns ASCII of first character
+        // ASC(s$, position%) - returns ASCII of character at position
+        self.register_builtin_function_with_optionals(
+            "ASC",
+            &[
+                ("s", BasicType::String, false),
+                ("position", BasicType::Long, true),
+            ],
+            BasicType::Long,
+        );
         self.register_builtin_function(
             "LEFT$",
             &[("s", BasicType::String), ("n", BasicType::Long)],
@@ -868,11 +881,35 @@ impl SemanticAnalyzer {
         );
 
         // Array functions
-        self.register_builtin_function("LBOUND", &[("arr", BasicType::Unknown)], BasicType::Long);
-        self.register_builtin_function("UBOUND", &[("arr", BasicType::Unknown)], BasicType::Long);
+        // LBOUND/UBOUND can be called with 1 or 2 arguments:
+        // LBOUND(arr) - returns lower bound of first dimension
+        // LBOUND(arr, dimension) - returns lower bound of specified dimension
+        self.register_builtin_function_with_optionals(
+            "LBOUND",
+            &[
+                ("arr", BasicType::Unknown, false),
+                ("dimension", BasicType::Long, true),
+            ],
+            BasicType::Long,
+        );
+        self.register_builtin_function_with_optionals(
+            "UBOUND",
+            &[
+                ("arr", BasicType::Unknown, false),
+                ("dimension", BasicType::Long, true),
+            ],
+            BasicType::Long,
+        );
 
         // Timer/Date
-        self.register_builtin_function("TIMER", &[], BasicType::Single);
+        // TIMER can be called with 0 or 1 argument:
+        // TIMER - returns seconds since midnight as single
+        // TIMER(accuracy!) - QB64 extension with optional accuracy parameter
+        self.register_builtin_function_with_optionals(
+            "TIMER",
+            &[("accuracy", BasicType::Single, true)],
+            BasicType::Single,
+        );
         self.register_builtin_function("DATE$", &[], BasicType::String);
         self.register_builtin_function("TIME$", &[], BasicType::String);
 
@@ -944,15 +981,29 @@ impl SemanticAnalyzer {
             &[("var", BasicType::String)],
             BasicType::String,
         );
-        self.register_builtin_function("COMMAND$", &[], BasicType::String);
+        // COMMAND$ can be called with 0 or 1 argument:
+        // COMMAND$ - returns entire command line
+        // COMMAND$(n) - returns nth command line argument
+        self.register_builtin_function_with_optionals(
+            "COMMAND$",
+            &[("index", BasicType::Long, true)],
+            BasicType::String,
+        );
         self.register_builtin_function("_CWD$", &[], BasicType::String);
         self.register_builtin_function("_OS$", &[], BasicType::String);
         self.register_builtin_function("_STARTDIR$", &[], BasicType::String);
 
         // Phase 2: String Enhancements
-        self.register_builtin_function(
+        // _INSTRREV can be called with 2 or 3 arguments:
+        // _INSTRREV(source$, search$) - search from end
+        // _INSTRREV(start, source$, search$) - search from position
+        self.register_builtin_function_with_optionals(
             "_INSTRREV",
-            &[("source", BasicType::String), ("search", BasicType::String)],
+            &[
+                ("start_or_source", BasicType::Unknown, false), // can be Long or String
+                ("source_or_search", BasicType::String, false),
+                ("search", BasicType::String, true),
+            ],
             BasicType::Long,
         );
         self.register_builtin_function("_TRIM$", &[("s", BasicType::String)], BasicType::String);
@@ -1089,9 +1140,16 @@ impl SemanticAnalyzer {
         );
 
         // Font support
-        self.register_builtin_function(
+        // _LOADFONT can be called with 2 or 3 arguments:
+        // _LOADFONT(file$, size%) - load font
+        // _LOADFONT(file$, size%, style$) - load font with style ("BOLD,ITALIC,etc")
+        self.register_builtin_function_with_optionals(
             "_LOADFONT",
-            &[("file", BasicType::String), ("size", BasicType::Long)],
+            &[
+                ("file", BasicType::String, false),
+                ("size", BasicType::Long, false),
+                ("style", BasicType::String, true),
+            ],
             BasicType::Long,
         );
         self.register_builtin_function("_FONTHEIGHT", &[], BasicType::Long);
@@ -1114,6 +1172,22 @@ impl SemanticAnalyzer {
         self.register_builtin_function("_SCREENX", &[], BasicType::Long);
         self.register_builtin_function("_SCREENY", &[], BasicType::Long);
         self.register_builtin_function("_TITLE$", &[], BasicType::String);
+        // _TITLE as function can take an optional string argument:
+        // _TITLE - no effect as expression, exists for statement dual-use
+        // _TITLE(title$) - sets the window title (returns void)
+        self.register_builtin_function_with_optionals(
+            "_TITLE",
+            &[("title", BasicType::String, true)],
+            BasicType::Long, // Returns 0 as placeholder
+        );
+        // _ICON as function can take 0 or 1 argument:
+        // _ICON - returns current icon handle
+        // _ICON(handle&) - sets window icon (also a statement)
+        self.register_builtin_function_with_optionals(
+            "_ICON",
+            &[("handle", BasicType::Long, true)],
+            BasicType::Long,
+        );
         self.register_builtin_function("_WINDOWHANDLE", &[], BasicType::Long);
         self.register_builtin_function("_WINDOWHASFOCUS", &[], BasicType::Long);
 
@@ -1129,9 +1203,18 @@ impl SemanticAnalyzer {
         self.register_builtin_function("_SCREENCLICK", &[], BasicType::Long);
 
         // Dialog boxes
-        self.register_builtin_function(
+        // _MESSAGEBOX can be called with 2-4 arguments:
+        // _MESSAGEBOX(title$, message$) - simple message box
+        // _MESSAGEBOX(title$, message$, type$) - with OK/Cancel etc.
+        // _MESSAGEBOX(title$, message$, type$, default%) - with default button
+        self.register_builtin_function_with_optionals(
             "_MESSAGEBOX",
-            &[("title", BasicType::String), ("message", BasicType::String)],
+            &[
+                ("title", BasicType::String, false),
+                ("message", BasicType::String, false),
+                ("type", BasicType::String, true),
+                ("default", BasicType::Long, true),
+            ],
             BasicType::Long,
         );
         self.register_builtin_function(
@@ -1139,14 +1222,27 @@ impl SemanticAnalyzer {
             &[("prompt", BasicType::String), ("title", BasicType::String)],
             BasicType::String,
         );
-        self.register_builtin_function(
+        // _OPENFILEDIALOG$ can take 2-5 arguments
+        self.register_builtin_function_with_optionals(
             "_OPENFILEDIALOG$",
-            &[("title", BasicType::String), ("filter", BasicType::String)],
+            &[
+                ("title", BasicType::String, false),
+                ("filter", BasicType::String, false),
+                ("defaultDir", BasicType::String, true),
+                ("defaultFile", BasicType::String, true),
+                ("flags", BasicType::Long, true),
+            ],
             BasicType::String,
         );
-        self.register_builtin_function(
+        // _SAVEFILEDIALOG$ can take 2-4 arguments
+        self.register_builtin_function_with_optionals(
             "_SAVEFILEDIALOG$",
-            &[("title", BasicType::String), ("filter", BasicType::String)],
+            &[
+                ("title", BasicType::String, false),
+                ("filter", BasicType::String, false),
+                ("defaultDir", BasicType::String, true),
+                ("defaultFile", BasicType::String, true),
+            ],
             BasicType::String,
         );
         self.register_builtin_function(
@@ -1194,8 +1290,20 @@ impl SemanticAnalyzer {
             BasicType::Long,
         );
         // Image dimension functions (take handle, return dimension)
-        self.register_builtin_function("_WIDTH", &[("handle", BasicType::Long)], BasicType::Long);
-        self.register_builtin_function("_HEIGHT", &[("handle", BasicType::Long)], BasicType::Long);
+        // _WIDTH can be called with 0 or 1 argument:
+        // _WIDTH - returns width of current screen/image
+        // _WIDTH(handle&) - returns width of specified image
+        self.register_builtin_function_with_optionals(
+            "_WIDTH",
+            &[("handle", BasicType::Long, true)],
+            BasicType::Long,
+        );
+        // _HEIGHT can take 0 or 1 argument: _HEIGHT or _HEIGHT(handle)
+        self.register_builtin_function_with_optionals(
+            "_HEIGHT",
+            &[("handle", BasicType::Long, true)],
+            BasicType::Long,
+        );
 
         // Coordinate mapping function
         // PMAP(coordinate, function_code)
@@ -1379,15 +1487,72 @@ impl SemanticAnalyzer {
 
         // Color component extraction functions
         // _RED, _GREEN, _BLUE, _ALPHA extract color components (0-255)
-        self.register_builtin_function("_RED", &[("color", BasicType::Long)], BasicType::Long);
-        self.register_builtin_function("_GREEN", &[("color", BasicType::Long)], BasicType::Long);
-        self.register_builtin_function("_BLUE", &[("color", BasicType::Long)], BasicType::Long);
-        self.register_builtin_function("_ALPHA", &[("color", BasicType::Long)], BasicType::Long);
+        // Can take 1 or 2 arguments: _RED(color) or _RED(color, imagehandle)
+        self.register_builtin_function_with_optionals(
+            "_RED",
+            &[
+                ("color", BasicType::Long, false),
+                ("handle", BasicType::Long, true),
+            ],
+            BasicType::Long,
+        );
+        self.register_builtin_function_with_optionals(
+            "_GREEN",
+            &[
+                ("color", BasicType::Long, false),
+                ("handle", BasicType::Long, true),
+            ],
+            BasicType::Long,
+        );
+        self.register_builtin_function_with_optionals(
+            "_BLUE",
+            &[
+                ("color", BasicType::Long, false),
+                ("handle", BasicType::Long, true),
+            ],
+            BasicType::Long,
+        );
+        self.register_builtin_function_with_optionals(
+            "_ALPHA",
+            &[
+                ("color", BasicType::Long, false),
+                ("handle", BasicType::Long, true),
+            ],
+            BasicType::Long,
+        );
         // 32-bit variants (same functionality, for explicitness)
-        self.register_builtin_function("_RED32", &[("color", BasicType::Long)], BasicType::Long);
-        self.register_builtin_function("_GREEN32", &[("color", BasicType::Long)], BasicType::Long);
-        self.register_builtin_function("_BLUE32", &[("color", BasicType::Long)], BasicType::Long);
-        self.register_builtin_function("_ALPHA32", &[("color", BasicType::Long)], BasicType::Long);
+        self.register_builtin_function_with_optionals(
+            "_RED32",
+            &[
+                ("color", BasicType::Long, false),
+                ("handle", BasicType::Long, true),
+            ],
+            BasicType::Long,
+        );
+        self.register_builtin_function_with_optionals(
+            "_GREEN32",
+            &[
+                ("color", BasicType::Long, false),
+                ("handle", BasicType::Long, true),
+            ],
+            BasicType::Long,
+        );
+        self.register_builtin_function_with_optionals(
+            "_BLUE32",
+            &[
+                ("color", BasicType::Long, false),
+                ("handle", BasicType::Long, true),
+            ],
+            BasicType::Long,
+        );
+        self.register_builtin_function_with_optionals(
+            "_ALPHA32",
+            &[
+                ("color", BasicType::Long, false),
+                ("handle", BasicType::Long, true),
+            ],
+            BasicType::Long,
+        );
 
         // _PIXELSIZE returns bytes per pixel for current screen/image
         // 0 = text mode, 1 = 256 color, 4 = 32-bit color
@@ -1597,10 +1762,8 @@ impl SemanticAnalyzer {
                 ("color2", BasicType::Long),
             ],
         );
-        self.register_builtin_sub(
-            "_PALETTECOLOR",
-            &[("index", BasicType::Long), ("color", BasicType::Long)],
-        );
+        // _PALETTECOLOR SUB form is handled by the FUNCTION registration with optionals
+        // (registered in the function section with 1-3 optional args)
         self.register_builtin_sub(
             "_COPYPALETTE",
             &[
@@ -1651,7 +1814,12 @@ impl SemanticAnalyzer {
         self.register_builtin_function("_INCLERRORLINE", &[], BasicType::Long);
 
         // Utility function - status code from last operation
-        self.register_builtin_function("_STATUSCODE", &[], BasicType::Long);
+        // Can take 0 or 1 argument: _STATUSCODE or _STATUSCODE(handle)
+        self.register_builtin_function_with_optionals(
+            "_STATUSCODE",
+            &[("handle", BasicType::Long, true)],
+            BasicType::Long,
+        );
 
         // Networking extended - connection address info
         self.register_builtin_function(
@@ -1788,8 +1956,8 @@ impl SemanticAnalyzer {
         self.register_builtin_function_with_optionals(
             "_MAPUNICODE",
             &[
-                ("charcode", BasicType::Long, false),      // required
-                ("codepoint_set", BasicType::Long, true),  // optional (only for statement form)
+                ("charcode", BasicType::Long, false),     // required
+                ("codepoint_set", BasicType::Long, true), // optional (only for statement form)
             ],
             BasicType::Long,
         );
@@ -1924,7 +2092,14 @@ impl SemanticAnalyzer {
             BasicType::Long,
         );
         self.register_builtin_function("_STARTDIR$", &[], BasicType::String);
-        self.register_builtin_function("_ACCEPTFILEDROP", &[], BasicType::Long);
+        // _ACCEPTFILEDROP can be called with 0 or 1 argument:
+        // _ACCEPTFILEDROP - returns whether drop was accepted
+        // _ACCEPTFILEDROP(mode) - QB64 extension (enable=ON/OFF)
+        self.register_builtin_function_with_optionals(
+            "_ACCEPTFILEDROP",
+            &[("mode", BasicType::Long, true)],
+            BasicType::Long,
+        );
         self.register_builtin_function("_TOTALDROPPEDFILES", &[], BasicType::Long);
         self.register_builtin_function("_DROPPEDFILE$", &[], BasicType::String);
         self.register_builtin_function(
@@ -1968,9 +2143,17 @@ impl SemanticAnalyzer {
         self.register_builtin_function("_DISPLAYHEIGHT", &[], BasicType::Long);
 
         // Color utility functions
-        self.register_builtin_function(
+        // _PALETTECOLOR can be called with 1-3 arguments (as function):
+        // _PALETTECOLOR(attr) - get palette color from current screen
+        // _PALETTECOLOR(attr, handle&) - get palette color from specified image
+        // _PALETTECOLOR(attr, value, handle&) - set palette color (also a statement)
+        self.register_builtin_function_with_optionals(
             "_PALETTECOLOR",
-            &[("attr", BasicType::Long)],
+            &[
+                ("attr", BasicType::Long, false),
+                ("value_or_handle", BasicType::Long, true),
+                ("handle", BasicType::Long, true),
+            ],
             BasicType::Long,
         );
         self.register_builtin_function("_DEFAULTCOLOR", &[], BasicType::Long);
@@ -2363,7 +2546,10 @@ fn format_type(typ: &BasicType) -> String {
         BasicType::UnsignedLong => "_UNSIGNED LONG".to_string(),
         BasicType::UnsignedInteger64 => "_UNSIGNED _INTEGER64".to_string(),
         BasicType::UserDefined(name) => name.clone(),
-        BasicType::Array { element_type, dimensions } => {
+        BasicType::Array {
+            element_type,
+            dimensions,
+        } => {
             format!("{}() x {}", format_type(element_type), dimensions)
         }
         BasicType::Mem => "_MEM".to_string(),
@@ -2378,7 +2564,10 @@ fn format_symbol_hover(sym: &Symbol) -> String {
 
     match &sym.kind {
         symbols::SymbolKind::Variable => {
-            format!("```basic\nDIM {} AS {}\n```\n\n**Variable**", sym.name, type_str)
+            format!(
+                "```basic\nDIM {} AS {}\n```\n\n**Variable**",
+                sym.name, type_str
+            )
         }
         symbols::SymbolKind::Constant { value } => {
             let val_str = match value {
@@ -2415,7 +2604,11 @@ fn format_symbol_hover(sym: &Symbol) -> String {
                 sym.name, dims_str, type_str
             )
         }
-        symbols::SymbolKind::ExternalFunction { c_name, params, return_type } => {
+        symbols::SymbolKind::ExternalFunction {
+            c_name,
+            params,
+            return_type,
+        } => {
             let param_types: Vec<String> = params.iter().map(format_type).collect();
             let params_str = param_types.join(", ");
             let ret_str = format_type(return_type);

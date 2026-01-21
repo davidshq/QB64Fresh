@@ -710,6 +710,31 @@ impl SymbolTable {
         }
         None
     }
+
+    /// Returns an iterator over all procedures (SUBs and FUNCTIONs).
+    ///
+    /// Used by the LSP server for document symbols/outline.
+    pub fn iter_procedures(&self) -> impl Iterator<Item = &ProcedureEntry> {
+        self.procedures.values()
+    }
+
+    /// Returns an iterator over all user-defined TYPEs.
+    ///
+    /// Used by the LSP server for document symbols/outline.
+    pub fn iter_user_types(&self) -> impl Iterator<Item = &UserTypeDefinition> {
+        self.user_types.values()
+    }
+
+    /// Returns an iterator over all global symbols (variables at module level).
+    ///
+    /// Used by the LSP server for document symbols/outline.
+    pub fn iter_global_symbols(&self) -> impl Iterator<Item = &Symbol> {
+        self.scopes
+            .get(&ScopeId::GLOBAL)
+            .map(|s| s.symbols.values())
+            .into_iter()
+            .flatten()
+    }
 }
 
 impl Default for SymbolTable {

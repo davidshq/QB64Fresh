@@ -281,6 +281,60 @@ impl<'a> TypeChecker<'a> {
         )
     }
 
+    /// Type checks a field assignment statement: `variable.field = value`
+    pub(super) fn check_field_assignment(
+        &mut self,
+        name: &str,
+        fields: &[String],
+        value: &Expr,
+        span: crate::ast::Span,
+    ) -> TypedStatement {
+        // Look up the variable
+        let var_type = if let Some(symbol) = self.symbols.lookup_symbol(name) {
+            symbol.basic_type.clone()
+        } else {
+            // Implicit declaration with default type
+            let default_type = self.symbols.default_type_for(name);
+            self.symbols
+                .define_symbol(Symbol {
+                    name: name.to_string(),
+                    kind: SymbolKind::Variable,
+                    basic_type: default_type.clone(),
+                    span,
+                    is_mutable: true,
+                })
+                .ok();
+            default_type
+        };
+
+        // Resolve field type by walking through the UDT definition
+        let field_type = self.resolve_field_chain_type(&var_type, fields);
+
+        // Check the value
+        let typed_value = self.check_expr(value);
+
+        // Type compatibility check
+        if field_type != BasicType::Unknown
+            && !typed_value.basic_type.is_convertible_to(&field_type)
+        {
+            self.errors.push(SemanticError::TypeMismatch {
+                expected: field_type.to_string(),
+                found: typed_value.basic_type.to_string(),
+                span: value.span,
+            });
+        }
+
+        TypedStatement::new(
+            TypedStatementKind::FieldAssignment {
+                name: name.to_string(),
+                fields: fields.to_vec(),
+                value: typed_value,
+                field_type,
+            },
+            span,
+        )
+    }
+
     /// Type checks an array field assignment statement: `array(i).field = value`
     pub(super) fn check_array_field_assignment(
         &mut self,
@@ -441,6 +495,61 @@ impl<'a> TypeChecker<'a> {
                 target: typed_target,
                 start: typed_start,
                 length: typed_length,
+                value: typed_value,
+            },
+            span,
+        )
+    }
+
+    /// Type checks an ASC assignment statement: `ASC(str$, position) = value`
+    ///
+    /// This sets a character at a specific position in a string.
+    /// The target can be a simple variable, array element, or UDT field.
+    pub(super) fn check_asc_assignment(
+        &mut self,
+        target: &Expr,
+        position: &Expr,
+        value: &Expr,
+        span: crate::ast::Span,
+    ) -> TypedStatement {
+        // Type check the target expression - it must be a string lvalue
+        let typed_target = self.check_expr(target);
+        if typed_target.basic_type != BasicType::String
+            && typed_target.basic_type != BasicType::Unknown
+        {
+            self.errors.push(SemanticError::TypeMismatch {
+                expected: "STRING".to_string(),
+                found: typed_target.basic_type.to_string(),
+                span: target.span,
+            });
+        }
+
+        // Type check position - must be numeric
+        let typed_position = self.check_expr(position);
+        if !typed_position.basic_type.is_numeric()
+            && typed_position.basic_type != BasicType::Unknown
+        {
+            self.errors.push(SemanticError::TypeMismatch {
+                expected: "numeric".to_string(),
+                found: typed_position.basic_type.to_string(),
+                span: position.span,
+            });
+        }
+
+        // Type check value - must be numeric (ASCII value 0-255)
+        let typed_value = self.check_expr(value);
+        if !typed_value.basic_type.is_numeric() && typed_value.basic_type != BasicType::Unknown {
+            self.errors.push(SemanticError::TypeMismatch {
+                expected: "numeric".to_string(),
+                found: typed_value.basic_type.to_string(),
+                span: value.span,
+            });
+        }
+
+        TypedStatement::new(
+            TypedStatementKind::AscAssignment {
+                target: typed_target,
+                position: typed_position,
                 value: typed_value,
             },
             span,
