@@ -102,20 +102,7 @@ All C Library Integration items completed - see TODO-completed.md.
 - [ ] `_CAST(type, value)` function - explicit type cast
 - [ ] `_DEFINE` statement - define default variable types by letter range
 
-#### Networking (Extended)
-- [x] `_DONTWAIT` keyword - non-blocking network operations ✅ (Session 034)
-
 ### Lower Priority - QB64 Advanced Extensions
-
-#### Graphics (Extended)
-- [x] `_CLIP` keyword - clipping mode for _PUTIMAGE ✅ (Session 034)
-- [x] `_SQUAREPIXELS` keyword - square pixels mode ✅ (Session 034)
-- [x] `_SEAMLESS` keyword - seamless image tiling ✅ (Session 034)
-- [x] `_STRETCH` keyword - stretch mode for _PUTIMAGE ✅ (Session 034)
-- [x] `_BEHIND` keyword - draw behind existing content ✅ (Session 034)
-
-#### Sound (Extended)
-- [x] `_WAVE` keyword - waveform type for sound synthesis ✅ (Session 034)
 
 #### Console Mode
 - [ ] `$CONSOLE` / `$CONSOLE:ONLY` metacommands
@@ -146,12 +133,8 @@ All C Library Integration items completed - see TODO-completed.md.
 - [ ] `$SCREENHIDE` / `$SCREENSHOW` - hide/show window on startup
 - [ ] `$USELIBRARY` - use external library
 
-### Type Modifiers & Keywords (Partially Implemented)
+### Type Modifiers & Keywords (Not Yet Implemented)
 - [ ] `_BIT` type - single bit type modifier
-- [x] `_ALL` keyword - all items/modes modifier ✅ (Session 034)
-- [x] `_BLINK` keyword - text blinking mode ✅ (Session 034)
-- [x] `_OFF` keyword - off state for toggles ✅ (Session 034)
-- [x] `_ONLY` keyword - exclusive mode modifier ✅ (Session 034)
 
 ### OpenGL Commands (Intentionally Excluded)
 
