@@ -82,13 +82,16 @@ impl<'a> TypeChecker<'a> {
                 self.convert_const_value(inner_val, to_type)
             }
 
-            // Function calls, array access, array refs, field access, external calls, and procptr are not constant
+            // Function calls, array access, array refs, field access, external calls, procptr, and type conversion funcs are not constant
             TypedExprKind::FunctionCall { .. }
             | TypedExprKind::ArrayAccess { .. }
             | TypedExprKind::ArrayRef { .. }
             | TypedExprKind::FieldAccess { .. }
             | TypedExprKind::ExternalFunctionCall { .. }
-            | TypedExprKind::ProcPtr { .. } => None,
+            | TypedExprKind::ProcPtr { .. }
+            | TypedExprKind::CvFunc { .. }
+            | TypedExprKind::MkDollarFunc { .. }
+            | TypedExprKind::CastFunc { .. } => None,
         }
     }
 

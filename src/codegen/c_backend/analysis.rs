@@ -205,6 +205,9 @@ fn collect_data_from_stmt(
 
         TypedStatementKind::SelectCase {
             cases, case_else, ..
+        }
+        | TypedStatementKind::SelectEveryCase {
+            cases, case_else, ..
         } => {
             for case in cases {
                 for s in &case.body {

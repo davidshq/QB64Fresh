@@ -1,7 +1,7 @@
 # Testing Infrastructure Plan
 
 **Created:** 2026-01-18
-**Updated:** 2026-01-20 (Session 034)
+**Updated:** 2026-01-20 (Session 036)
 **Purpose:** Comprehensive plan for building out QB64Fresh testing infrastructure
 **Based On:** QB64PE testing framework analysis + codebase review findings
 
@@ -9,16 +9,16 @@
 
 ## Executive Summary
 
-**UPDATE:** As of 2026-01-20 (Session 034), the testing infrastructure has been substantially implemented:
+**UPDATE:** As of 2026-01-20 (Session 036), the testing infrastructure has been substantially implemented:
 - **217 unit tests** in source modules
-- **526 integration tests** (0 ignored)
+- **558 integration tests** (0 ignored)
 - **10 golden tests** for C code generation snapshots
 - **16 compatibility test fixtures** (12 success + 4 error, auto-discovered)
 - **19 property-based tests** using proptest (thousands of iterations)
 - **30 benchmarks** measuring compiler performance
 - **44 runtime tests** (all passing)
 
-Total: **720+ tests** across the main compiler (11 doc-test ignored for setup requirements).
+Total: **749+ tests** across the main compiler (11 doc-test ignored for setup requirements).
 **QB64PE Compatibility:** 99.1% (114/115 files compile successfully, excluding open_gl)
 **Fuzz testing:** 3 fuzz targets verified (~4.6M inputs, 0 crashes)
 
@@ -36,16 +36,16 @@ All 44 runtime tests now pass.
 
 ## Current State Analysis
 
-### What We Have (Updated 2026-01-20)
+### What We Have (Updated 2026-01-20, Session 036)
 - Unit tests integrated into source files using `#[cfg(test)]` modules
 - **217 passing unit tests** across compiler modules
-- **526 integration tests** covering full compilation pipeline
+- **539 integration tests** covering full compilation pipeline
 - **10 golden tests** for codegen snapshot verification
 - **16 compatibility test fixtures** in QB64pe-style format
 - **30 criterion benchmarks** for performance tracking
 - Good lexer, parser, and semantic test coverage
 - Comprehensive codegen testing via integration tests
-- **58 test modules** covering different language features
+- **59 test modules** covering different language features
 
 ### Test Modules by Category
 
@@ -107,7 +107,7 @@ src/
 ### Tier 2: Integration Tests ✅ IMPLEMENTED
 **Location:** `tests/integration_tests.rs`
 **Purpose:** Test complete compiler pipeline end-to-end
-**Status:** 506 tests passing, 0 ignored
+**Status:** 539 tests passing, 0 ignored
 
 Tests cover:
 - Basic programs (hello world, comments, END)
@@ -422,7 +422,7 @@ Verified with ~4.6M total inputs, 0 crashes found.
 cargo test
 
 # Run specific test suites
-cargo test -p qb64fresh --test integration_tests    # 506 integration tests
+cargo test -p qb64fresh --test integration_tests    # 539 integration tests
 cargo test -p qb64fresh --test golden_tests         # 10 golden tests
 cargo test -p qb64fresh --test compatibility        # 16 local fixture tests
 cargo test -p qb64fresh --test proptest_tests       # 19 property-based tests
@@ -484,3 +484,4 @@ cargo llvm-cov --workspace --html      # HTML report in target/llvm-cov/html
 *Updated: 2026-01-20 - Session 032: Added 32 QB64 extension functions (error handling, HSB colors, memory, sound, unicode, logging); 486 integration tests*
 *Updated: 2026-01-20 - Session 033: Added 20 QB64 extension functions (rendering modes, direction constants, print modes, _MAPTRIANGLE, _NONE constant); 506 integration tests*
 *Updated: 2026-01-20 - Session 034: Added 28 QB64 extension keywords/functions (graphics mode constants, type/mode keywords, console/display/debug functions); 526 integration tests*
+*Updated: 2026-01-20 - Session 035: Added date/time functions (_YEAR, _MONTH, _DAY, _WEEKDAY, _HOUR, _MINUTE, _SECOND), console functions (_SCREENBUFFER, _SCINKEY$), memory SUBs (_MEMPUT, _MEMFILL, _MEMCOPY, _MEMFREE), _TRIM$, _SCREENICON; 539 integration tests*

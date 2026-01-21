@@ -257,6 +257,59 @@ impl<'a> TypeChecker<'a> {
         TypedStatement::new(TypedStatementKind::DefType, span)
     }
 
+    /// Type checks a _DEFINE statement (QB64).
+    pub(super) fn check_define(
+        &mut self,
+        type_spec: &str,
+        ranges: &[(char, char)],
+        span: crate::ast::Span,
+    ) -> TypedStatement {
+        use crate::semantic::types::BasicType;
+
+        // Parse the type specification string into a BasicType
+        let upper = type_spec.to_uppercase();
+        let (is_unsigned, base) = if upper.starts_with("_UNSIGNED ") {
+            (true, upper.trim_start_matches("_UNSIGNED "))
+        } else {
+            (false, upper.as_str())
+        };
+
+        let base_type = match base {
+            "INTEGER" => BasicType::Integer,
+            "LONG" => BasicType::Long,
+            "SINGLE" => BasicType::Single,
+            "DOUBLE" => BasicType::Double,
+            "STRING" => BasicType::String,
+            "_BYTE" => BasicType::Byte,
+            "_BIT" => BasicType::Bit,
+            "_INTEGER64" => BasicType::Integer64,
+            "_FLOAT" => BasicType::Float,
+            "_OFFSET" => BasicType::Offset,
+            _ => BasicType::Integer, // Default fallback
+        };
+
+        let basic_type = if is_unsigned {
+            match base_type {
+                BasicType::Integer => BasicType::UnsignedInteger,
+                BasicType::Long => BasicType::UnsignedLong,
+                BasicType::Byte => BasicType::UnsignedByte,
+                BasicType::Integer64 => BasicType::UnsignedInteger64,
+                _ => base_type,
+            }
+        } else {
+            base_type
+        };
+
+        // Apply the type defaults to the symbol table
+        for &(start, end) in ranges {
+            self.symbols
+                .set_default_type(start, end, basic_type.clone());
+        }
+
+        // _DEFINE doesn't generate code - it only affects the symbol table
+        TypedStatement::new(TypedStatementKind::Define, span)
+    }
+
     /// Type checks an OPTION BASE statement.
     ///
     /// OPTION BASE sets the default lower bound for array subscripts.

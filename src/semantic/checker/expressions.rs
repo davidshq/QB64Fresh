@@ -92,6 +92,46 @@ impl<'a> TypeChecker<'a> {
                     )
                 }
             }
+
+            ExprKind::CvFunc { target_type, value } => {
+                let typed_value = self.check_expr(value);
+                let basic_type = self.parse_type_name(target_type);
+                TypedExpr::new(
+                    TypedExprKind::CvFunc {
+                        target_type: basic_type.clone(),
+                        value: Box::new(typed_value),
+                    },
+                    basic_type,
+                    expr.span,
+                )
+            }
+
+            ExprKind::MkDollarFunc { source_type, value } => {
+                let typed_value = self.check_expr(value);
+                let basic_type = self.parse_type_name(source_type);
+                // _MK$ always returns a String
+                TypedExpr::new(
+                    TypedExprKind::MkDollarFunc {
+                        source_type: basic_type,
+                        value: Box::new(typed_value),
+                    },
+                    BasicType::String,
+                    expr.span,
+                )
+            }
+
+            ExprKind::CastFunc { target_type, value } => {
+                let typed_value = self.check_expr(value);
+                let basic_type = self.parse_type_name(target_type);
+                TypedExpr::new(
+                    TypedExprKind::CastFunc {
+                        target_type: basic_type.clone(),
+                        value: Box::new(typed_value),
+                    },
+                    basic_type,
+                    expr.span,
+                )
+            }
         }
     }
 
@@ -673,5 +713,45 @@ impl<'a> TypeChecker<'a> {
             return_type,
             span,
         )
+    }
+
+    /// Parses a type name string into a BasicType.
+    ///
+    /// Handles type names like "INTEGER", "_INTEGER64", "_UNSIGNED INTEGER", etc.
+    fn parse_type_name(&self, type_name: &str) -> BasicType {
+        let upper = type_name.to_uppercase();
+
+        // Check for _UNSIGNED prefix
+        let (is_unsigned, base) = if upper.starts_with("_UNSIGNED ") {
+            (true, upper.trim_start_matches("_UNSIGNED "))
+        } else {
+            (false, upper.as_str())
+        };
+
+        let base_type = match base {
+            "INTEGER" => BasicType::Integer,
+            "LONG" => BasicType::Long,
+            "SINGLE" => BasicType::Single,
+            "DOUBLE" => BasicType::Double,
+            "STRING" => BasicType::String,
+            "_BYTE" => BasicType::Byte,
+            "_BIT" => BasicType::Bit,
+            "_INTEGER64" => BasicType::Integer64,
+            "_FLOAT" => BasicType::Float,
+            "_OFFSET" => BasicType::Offset,
+            _ => BasicType::Integer, // Default fallback
+        };
+
+        if is_unsigned {
+            match base_type {
+                BasicType::Integer => BasicType::UnsignedInteger,
+                BasicType::Long => BasicType::UnsignedLong,
+                BasicType::Byte => BasicType::UnsignedByte,
+                BasicType::Integer64 => BasicType::UnsignedInteger64,
+                _ => base_type, // No unsigned variant
+            }
+        } else {
+            base_type
+        }
     }
 }

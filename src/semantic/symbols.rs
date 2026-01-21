@@ -271,6 +271,12 @@ pub struct SymbolTable {
     /// OPTION BASE setting (0 or 1, default 0).
     option_base: i64,
 
+    /// OPTION _EXPLICIT mode - requires all variables to be declared.
+    explicit_mode: bool,
+
+    /// OPTION _EXPLICITARRAY mode - requires all arrays to be declared.
+    explicit_array_mode: bool,
+
     /// User-defined TYPE definitions (globally scoped).
     user_types: HashMap<String, UserTypeDefinition>,
 }
@@ -301,6 +307,8 @@ impl SymbolTable {
             default_types: std::array::from_fn(|_| BasicType::Single),
             user_types: HashMap::new(),
             option_base: 0,
+            explicit_mode: false,
+            explicit_array_mode: false,
         }
     }
 
@@ -632,6 +640,26 @@ impl SymbolTable {
     /// Sets the OPTION BASE (0 or 1).
     pub fn set_option_base(&mut self, base: i64) {
         self.option_base = base;
+    }
+
+    /// Gets the OPTION _EXPLICIT mode.
+    pub fn explicit_mode(&self) -> bool {
+        self.explicit_mode
+    }
+
+    /// Sets the OPTION _EXPLICIT mode.
+    pub fn set_explicit_mode(&mut self, enabled: bool) {
+        self.explicit_mode = enabled;
+    }
+
+    /// Gets the OPTION _EXPLICITARRAY mode.
+    pub fn explicit_array_mode(&self) -> bool {
+        self.explicit_array_mode
+    }
+
+    /// Sets the OPTION _EXPLICITARRAY mode.
+    pub fn set_explicit_array_mode(&mut self, enabled: bool) {
+        self.explicit_array_mode = enabled;
     }
 
     /// Defines a user-defined TYPE.

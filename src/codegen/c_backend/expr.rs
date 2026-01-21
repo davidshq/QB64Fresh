@@ -14,6 +14,7 @@
 use crate::ast::BinaryOp;
 use crate::codegen::error::CodeGenError;
 use crate::semantic::typed_ir::{TypedArrayDimension, TypedExpr, TypedExprKind};
+use crate::semantic::types::BasicType;
 
 use super::types::{c_identifier, c_type};
 
@@ -116,6 +117,41 @@ pub(super) fn emit_expr(expr: &TypedExpr) -> Result<String, CodeGenError> {
         TypedExprKind::ProcPtr { wrapper_name, .. } => {
             // Return the address of the C wrapper function as an intptr_t
             Ok(format!("((intptr_t)&{})", wrapper_name))
+        }
+
+        TypedExprKind::CvFunc { target_type, value } => {
+            let value_code = emit_expr(value)?;
+            // Use the appropriate qb_cv* function based on target type
+            let func = match target_type {
+                BasicType::Integer => "qb_cvi",
+                BasicType::Long => "qb_cvl",
+                BasicType::Single => "qb_cvs",
+                BasicType::Double => "qb_cvd",
+                BasicType::Integer64 => "qb_cvq",
+                _ => "qb_cvi", // Default fallback
+            };
+            Ok(format!("{}({})", func, value_code))
+        }
+
+        TypedExprKind::MkDollarFunc { source_type, value } => {
+            let value_code = emit_expr(value)?;
+            // Use the appropriate qb_mk*$ function based on source type
+            let func = match source_type {
+                BasicType::Integer => "qb_mki",
+                BasicType::Long => "qb_mkl",
+                BasicType::Single => "qb_mks",
+                BasicType::Double => "qb_mkd",
+                BasicType::Integer64 => "qb_mkq",
+                _ => "qb_mki", // Default fallback
+            };
+            Ok(format!("{}({})", func, value_code))
+        }
+
+        TypedExprKind::CastFunc { target_type, value } => {
+            let value_code = emit_expr(value)?;
+            // Explicit cast to the target C type
+            let c_ty = c_type(target_type);
+            Ok(format!("(({})({})", c_ty, value_code))
         }
     }
 }
@@ -776,6 +812,23 @@ pub(super) fn c_function_name(name: &str) -> String {
         "_ALLOWFULLSCREEN" => "qb_allowfullscreen".to_string(),
         "_DISPLAYWIDTH" => "qb_displaywidth".to_string(),
         "_DISPLAYHEIGHT" => "qb_displayheight".to_string(),
+
+        // QB64 Extension Functions (Session 035+)
+        // Console extended
+        "_SCREENBUFFER" => "qb_screenbuffer".to_string(),
+        "_SCINKEY$" => "qb_scinkey".to_string(),
+
+        // Date/time extended
+        "_YEAR" => "qb_year".to_string(),
+        "_MONTH" => "qb_month".to_string(),
+        "_DAY" => "qb_day".to_string(),
+        "_WEEKDAY" => "qb_weekday".to_string(),
+        "_HOUR" => "qb_hour".to_string(),
+        "_MINUTE" => "qb_minute".to_string(),
+        "_SECOND" => "qb_second".to_string(),
+
+        // Screen functions
+        "_SCREENICON" => "qb_screenicon".to_string(),
 
         // Default: prefix with qb_ for user functions
         _ => format!("qb_{}", c_identifier(name).to_lowercase()),

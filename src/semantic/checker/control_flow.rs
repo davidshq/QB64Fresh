@@ -80,12 +80,13 @@ impl<'a> TypeChecker<'a> {
     // SELECT CASE Statement
     // ========================================================================
 
-    /// Type checks a SELECT CASE statement.
+    /// Type checks a SELECT CASE or SELECT EVERYCASE statement.
     pub(super) fn check_select_case(
         &mut self,
         test_expr: &Expr,
         cases: &[crate::ast::CaseClause],
         case_else: &Option<Vec<Statement>>,
+        is_everycase: bool,
         span: crate::ast::Span,
     ) -> TypedStatement {
         let typed_test = self.check_expr(test_expr);
@@ -104,14 +105,25 @@ impl<'a> TypeChecker<'a> {
 
         let typed_else = case_else.as_ref().map(|stmts| self.check_statements(stmts));
 
-        TypedStatement::new(
-            TypedStatementKind::SelectCase {
-                test_expr: typed_test,
-                cases: typed_cases,
-                case_else: typed_else,
-            },
-            span,
-        )
+        if is_everycase {
+            TypedStatement::new(
+                TypedStatementKind::SelectEveryCase {
+                    test_expr: typed_test,
+                    cases: typed_cases,
+                    case_else: typed_else,
+                },
+                span,
+            )
+        } else {
+            TypedStatement::new(
+                TypedStatementKind::SelectCase {
+                    test_expr: typed_test,
+                    cases: typed_cases,
+                    case_else: typed_else,
+                },
+                span,
+            )
+        }
     }
 
     /// Type checks a CASE match.

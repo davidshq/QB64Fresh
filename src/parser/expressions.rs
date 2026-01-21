@@ -142,6 +142,11 @@ impl<'a> Parser<'a> {
             // QB64 Procedure pointer (for callbacks)
             TokenKind::ProcPtr => self.parse_procptr(),
 
+            // QB64 type conversion functions
+            TokenKind::CvFunc => self.parse_cv_func(),
+            TokenKind::MkDollarFunc => self.parse_mk_func(),
+            TokenKind::CastFunc => self.parse_cast_func(),
+
             // Keywords that can be used as variable names in expression context
             // In BASIC, keywords like NAME, INPUT, OUTPUT can be used as variable names
             // when context makes it unambiguous that an identifier is expected.
@@ -419,6 +424,134 @@ impl<'a> Parser<'a> {
 
         let span = self.span_from(start);
         Ok(Expr::new(ExprKind::ProcPtr { name }, span))
+    }
+
+    /// Parses _CV(type, string$) expression.
+    ///
+    /// Converts a string's raw bytes to a value of the specified type.
+    fn parse_cv_func(&mut self) -> Result<Expr, ()> {
+        let start = self.advance().expect("_CV token").span.start;
+
+        self.expect(&TokenKind::LeftParen, "(")?;
+
+        // Get the type name (can be INTEGER, SINGLE, DOUBLE, etc.)
+        let type_name = self.parse_type_name()?;
+
+        self.expect(&TokenKind::Comma, ",")?;
+
+        // Get the string expression
+        let value = self.parse_expression()?;
+
+        self.expect(&TokenKind::RightParen, ")")?;
+
+        let span = self.span_from(start);
+        Ok(Expr::new(
+            ExprKind::CvFunc {
+                target_type: type_name,
+                value: Box::new(value),
+            },
+            span,
+        ))
+    }
+
+    /// Parses _MK$(type, value) expression.
+    ///
+    /// Converts a value to a string of raw bytes.
+    fn parse_mk_func(&mut self) -> Result<Expr, ()> {
+        let start = self.advance().expect("_MK$ token").span.start;
+
+        self.expect(&TokenKind::LeftParen, "(")?;
+
+        // Get the type name
+        let type_name = self.parse_type_name()?;
+
+        self.expect(&TokenKind::Comma, ",")?;
+
+        // Get the value expression
+        let value = self.parse_expression()?;
+
+        self.expect(&TokenKind::RightParen, ")")?;
+
+        let span = self.span_from(start);
+        Ok(Expr::new(
+            ExprKind::MkDollarFunc {
+                source_type: type_name,
+                value: Box::new(value),
+            },
+            span,
+        ))
+    }
+
+    /// Parses _CAST(type, value) expression.
+    ///
+    /// Explicitly converts a value to the specified type.
+    fn parse_cast_func(&mut self) -> Result<Expr, ()> {
+        let start = self.advance().expect("_CAST token").span.start;
+
+        self.expect(&TokenKind::LeftParen, "(")?;
+
+        // Get the type name
+        let type_name = self.parse_type_name()?;
+
+        self.expect(&TokenKind::Comma, ",")?;
+
+        // Get the value expression
+        let value = self.parse_expression()?;
+
+        self.expect(&TokenKind::RightParen, ")")?;
+
+        let span = self.span_from(start);
+        Ok(Expr::new(
+            ExprKind::CastFunc {
+                target_type: type_name,
+                value: Box::new(value),
+            },
+            span,
+        ))
+    }
+
+    /// Parses a type name for _CV, _MK$, _CAST functions.
+    ///
+    /// Returns the type name as a string (e.g., "INTEGER", "SINGLE", "_INTEGER64").
+    fn parse_type_name(&mut self) -> Result<String, ()> {
+        // Check for _UNSIGNED modifier
+        let mut prefix = String::new();
+        if self.match_token(&TokenKind::Unsigned) {
+            prefix = "_UNSIGNED ".to_string();
+        }
+
+        // Parse the base type
+        let type_str = if let Some(token) = self.peek() {
+            let type_name = match &token.kind {
+                TokenKind::Integer => "INTEGER",
+                TokenKind::Long => "LONG",
+                TokenKind::Single => "SINGLE",
+                TokenKind::Double => "DOUBLE",
+                TokenKind::String_ => "STRING",
+                TokenKind::Byte => "_BYTE",
+                TokenKind::BitType => "_BIT",
+                TokenKind::Integer64 => "_INTEGER64",
+                TokenKind::Float => "_FLOAT",
+                TokenKind::Offset => "_OFFSET",
+                _ => {
+                    let span = self.current_span();
+                    self.errors.push(ParseError::syntax(
+                        "expected type name (INTEGER, SINGLE, DOUBLE, etc.)".to_string(),
+                        span,
+                    ));
+                    return Err(());
+                }
+            };
+            self.advance();
+            type_name.to_string()
+        } else {
+            let span = self.current_span();
+            self.errors
+                .push(ParseError::syntax("expected type name".to_string(), span));
+            return Err(());
+        };
+
+        Ok(format!("{}{}", prefix, type_str))
     }
 
     /// Parses a comma-separated argument list.

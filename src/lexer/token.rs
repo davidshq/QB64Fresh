@@ -119,6 +119,10 @@ pub enum TokenKind {
     #[token("CASE", ignore(ascii_case))]
     Case,
 
+    /// EVERYCASE keyword (QB64) - used in SELECT EVERYCASE
+    #[token("EVERYCASE", ignore(ascii_case))]
+    EveryCase,
+
     /// GOTO keyword - unconditional jump
     #[token("GOTO", ignore(ascii_case))]
     Goto,
@@ -422,6 +426,10 @@ pub enum TokenKind {
     String_, // Underscore to avoid conflict with Rust's String
 
     // QB64 extended types
+    /// _BIT type (QB64 - single bit integer)
+    #[token("_BIT", ignore(ascii_case))]
+    BitType,
+
     /// _BYTE type (QB64)
     #[token("_BYTE", ignore(ascii_case))]
     Byte,
@@ -441,6 +449,22 @@ pub enum TokenKind {
     /// _UNSIGNED modifier (QB64)
     #[token("_UNSIGNED", ignore(ascii_case))]
     Unsigned,
+
+    /// _CV function (QB64 - generic convert string to type)
+    #[token("_CV", ignore(ascii_case))]
+    CvFunc,
+
+    /// _MK$ function (QB64 - generic convert value to string)
+    #[regex(r"(?i:_MK\$)", priority = 4)]
+    MkDollarFunc,
+
+    /// _CAST function (QB64 - explicit type conversion)
+    #[token("_CAST", ignore(ascii_case))]
+    CastFunc,
+
+    /// _DEFINE statement (QB64 - define default variable types)
+    #[token("_DEFINE", ignore(ascii_case))]
+    Define,
 
     /// _PROCPTR function (QB64 - get procedure pointer for callbacks)
     #[token("_PROCPTR", ignore(ascii_case))]
@@ -920,6 +944,14 @@ pub enum TokenKind {
     #[token("BASE", ignore(ascii_case))]
     Base,
 
+    /// _EXPLICIT keyword (QB64) - requires explicit variable declarations
+    #[token("_EXPLICIT", ignore(ascii_case))]
+    Explicit,
+
+    /// _EXPLICITARRAY keyword (QB64) - requires explicit array declarations
+    #[token("_EXPLICITARRAY", ignore(ascii_case))]
+    ExplicitArray,
+
     /// DEF keyword - used in DEF FN
     #[token("DEF", ignore(ascii_case))]
     Def,
@@ -1187,6 +1219,54 @@ pub enum TokenKind {
     /// $SCREENSHOW - show graphics window on startup
     #[token("$SCREENSHOW", ignore(ascii_case))]
     MetaScreenShow,
+
+    /// $RESIZE:ON - enable window resize events
+    #[regex(r"\$RESIZE\s*:\s*ON", ignore(ascii_case))]
+    MetaResizeOn,
+
+    /// $RESIZE:OFF - disable window resize events
+    #[regex(r"\$RESIZE\s*:\s*OFF", ignore(ascii_case))]
+    MetaResizeOff,
+
+    /// $RESIZE:STRETCH - stretch graphics when resizing
+    #[regex(r"\$RESIZE\s*:\s*STRETCH", ignore(ascii_case))]
+    MetaResizeStretch,
+
+    /// $RESIZE:SMOOTH - smooth scaling when resizing
+    #[regex(r"\$RESIZE\s*:\s*SMOOTH", ignore(ascii_case))]
+    MetaResizeSmooth,
+
+    /// $STATIC - use static arrays
+    #[token("$STATIC", ignore(ascii_case))]
+    MetaStatic,
+
+    /// $DYNAMIC - use dynamic arrays
+    #[token("$DYNAMIC", ignore(ascii_case))]
+    MetaDynamic,
+
+    /// $DEBUG - enable debug mode
+    #[token("$DEBUG", ignore(ascii_case))]
+    MetaDebug,
+
+    /// $INCLUDEONCE - include file only once
+    #[token("$INCLUDEONCE", ignore(ascii_case))]
+    MetaIncludeOnce,
+
+    /// $EXEICON - set executable icon (captures filename)
+    #[regex(r"\$EXEICON\s*:\s*'[^']*'", ignore(ascii_case))]
+    MetaExeIcon,
+
+    /// $VERSIONINFO - set version info (captures key=value)
+    #[regex(r"\$VERSIONINFO\s*:\s*[A-Za-z]+\s*=\s*[^\r\n]+", ignore(ascii_case))]
+    MetaVersionInfo,
+
+    /// $ERROR - compiler error message
+    #[regex(r"\$ERROR\s+[^\r\n]+", ignore(ascii_case))]
+    MetaError,
+
+    /// $EMBED - embed a file into the executable
+    #[regex(r"\$EMBED\s*:\s*'[^']*'", ignore(ascii_case))]
+    MetaEmbed,
 
     /// Other $ directives (catch-all for unrecognized metacommands)
     #[regex(r"\$[A-Za-z][A-Za-z0-9]*")]

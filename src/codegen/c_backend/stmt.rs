@@ -314,7 +314,15 @@ impl StmtEmitter {
                 cases,
                 case_else,
             } => {
-                self.emit_select_case(&indent, test_expr, cases, case_else, output)?;
+                self.emit_select_case(&indent, test_expr, cases, case_else, false, output)?;
+            }
+
+            TypedStatementKind::SelectEveryCase {
+                test_expr,
+                cases,
+                case_else,
+            } => {
+                self.emit_select_case(&indent, test_expr, cases, case_else, true, output)?;
             }
 
             TypedStatementKind::For {
@@ -495,6 +503,12 @@ impl StmtEmitter {
                     "_ALLOWFULLSCREEN" => "qb_allowfullscreen".to_string(),
                     "_FULLSCREEN" => "qb_fullscreen".to_string(),
                     "_DELAY" => "qb_delay".to_string(),
+                    // Session 035+ SUBs (memory operations)
+                    "_MEMPUT" => "qb_memput".to_string(),
+                    "_MEMFILL" => "qb_memfill".to_string(),
+                    "_MEMCOPY" => "qb_memcopy".to_string(),
+                    "_MEMFREE" => "qb_memfree".to_string(),
+                    "_SCREENICON" => "qb_screenicon".to_string(),
                     // Default: user-defined SUBs use qb_sub_ prefix
                     _ => format!("qb_sub_{}", c_identifier(name).to_lowercase()),
                 };
@@ -549,8 +563,20 @@ impl StmtEmitter {
                 // DEFxxx statements affect type inference but generate no C code
             }
 
+            TypedStatementKind::Define => {
+                // _DEFINE affects type inference but generates no C code
+            }
+
             TypedStatementKind::OptionBase => {
                 // OPTION BASE affects array bounds but generates no C code
+            }
+
+            TypedStatementKind::OptionExplicit => {
+                // OPTION _EXPLICIT affects semantic checking but generates no C code
+            }
+
+            TypedStatementKind::OptionExplicitArray => {
+                // OPTION _EXPLICITARRAY affects semantic checking but generates no C code
             }
 
             TypedStatementKind::DefSeg { segment } => {
@@ -2227,6 +2253,57 @@ impl StmtEmitter {
                     writeln!(output, "{}/* $COLOR:0 */", indent).unwrap();
                 }
             }
+
+            TypedStatementKind::MetaResize { enabled } => {
+                if *enabled {
+                    writeln!(output, "{}/* $RESIZE:ON */", indent).unwrap();
+                } else {
+                    writeln!(output, "{}/* $RESIZE:OFF */", indent).unwrap();
+                }
+            }
+
+            TypedStatementKind::MetaResizeStretch => {
+                writeln!(output, "{}/* $RESIZE:STRETCH */", indent).unwrap();
+            }
+
+            TypedStatementKind::MetaResizeSmooth => {
+                writeln!(output, "{}/* $RESIZE:SMOOTH */", indent).unwrap();
+            }
+
+            TypedStatementKind::MetaStatic => {
+                writeln!(output, "{}/* $STATIC */", indent).unwrap();
+            }
+
+            TypedStatementKind::MetaDynamic => {
+                writeln!(output, "{}/* $DYNAMIC */", indent).unwrap();
+            }
+
+            TypedStatementKind::MetaDebug => {
+                writeln!(output, "{}/* $DEBUG */", indent).unwrap();
+            }
+
+            TypedStatementKind::MetaIncludeOnce => {
+                writeln!(output, "{}/* $INCLUDEONCE */", indent).unwrap();
+            }
+
+            TypedStatementKind::MetaExeIcon { filename } => {
+                writeln!(output, "{}/* $EXEICON:'{}' */", indent, filename).unwrap();
+            }
+
+            TypedStatementKind::MetaVersionInfo { key, value } => {
+                writeln!(output, "{}/* $VERSIONINFO:{}={} */", indent, key, value).unwrap();
+            }
+
+            TypedStatementKind::MetaErrorDirective { message } => {
+                // $ERROR should ideally stop compilation, but we'll emit a warning comment
+                writeln!(output, "{}#error \"{}\"", indent, message).unwrap();
+            }
+
+            TypedStatementKind::MetaEmbed { filename } => {
+                // $EMBED embeds a file into the executable - emit as comment
+                // Runtime function _EMBEDDED$ can retrieve embedded content
+                writeln!(output, "{}/* $EMBED:'{}' */", indent, filename).unwrap();
+            }
         }
 
         Ok(())
@@ -2582,6 +2659,7 @@ impl StmtEmitter {
         test_expr: &crate::semantic::typed_ir::TypedExpr,
         cases: &[crate::semantic::typed_ir::TypedCaseClause],
         case_else: &Option<Vec<TypedStatement>>,
+        is_everycase: bool,
         output: &mut String,
     ) -> Result<(), CodeGenError> {
         let test_var = self.next_label("select");
@@ -2590,36 +2668,69 @@ impl StmtEmitter {
 
         writeln!(output, "{}{} {} = {};", indent, c_ty, test_var, test_code).unwrap();
 
-        let mut first = true;
-        for case in cases {
-            let condition = self.emit_case_condition(&test_var, &case.matches)?;
+        if is_everycase {
+            // SELECT EVERYCASE: evaluate ALL cases and execute ALL matching ones
+            // Also track if any case matched for CASE ELSE
+            let matched_var = self.next_label("matched");
+            writeln!(output, "{}int {} = 0;", indent, matched_var).unwrap();
 
-            if first {
+            for case in cases {
+                let condition = self.emit_case_condition(&test_var, &case.matches)?;
                 writeln!(output, "{}if ({}) {{", indent, condition).unwrap();
-                first = false;
-            } else {
-                writeln!(output, "{}}} else if ({}) {{", indent, condition).unwrap();
+                writeln!(output, "{}    {} = 1;", indent, matched_var).unwrap();
+
+                self.indent += 1;
+                for stmt in &case.body {
+                    self.emit_stmt(stmt, output)?;
+                }
+                self.indent -= 1;
+                writeln!(output, "{}}}", indent).unwrap();
             }
 
-            self.indent += 1;
-            for stmt in &case.body {
-                self.emit_stmt(stmt, output)?;
+            // CASE ELSE: only execute if no cases matched
+            if let Some(else_body) = case_else {
+                writeln!(output, "{}if (!{}) {{", indent, matched_var).unwrap();
+
+                self.indent += 1;
+                for stmt in else_body {
+                    self.emit_stmt(stmt, output)?;
+                }
+                self.indent -= 1;
+                writeln!(output, "{}}}", indent).unwrap();
             }
-            self.indent -= 1;
-        }
+        } else {
+            // Standard SELECT CASE: execute first matching case only
+            let mut first = true;
+            for case in cases {
+                let condition = self.emit_case_condition(&test_var, &case.matches)?;
 
-        if let Some(else_body) = case_else {
-            writeln!(output, "{}}} else {{", indent).unwrap();
+                if first {
+                    writeln!(output, "{}if ({}) {{", indent, condition).unwrap();
+                    first = false;
+                } else {
+                    writeln!(output, "{}}} else if ({}) {{", indent, condition).unwrap();
+                }
 
-            self.indent += 1;
-            for stmt in else_body {
-                self.emit_stmt(stmt, output)?;
+                self.indent += 1;
+                for stmt in &case.body {
+                    self.emit_stmt(stmt, output)?;
+                }
+                self.indent -= 1;
             }
-            self.indent -= 1;
-        }
 
-        if !first {
-            writeln!(output, "{}}}", indent).unwrap();
+            if let Some(else_body) = case_else {
+                writeln!(output, "{}}} else {{", indent).unwrap();
+
+                self.indent += 1;
+                for stmt in else_body {
+                    self.emit_stmt(stmt, output)?;
+                }
+                self.indent -= 1;
+            }
+
+            if !first {
+                writeln!(output, "{}}}", indent).unwrap();
+            }
         }
         Ok(())
     }

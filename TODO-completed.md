@@ -427,15 +427,15 @@
 
 - **Total source code:** ~30,000+ lines of Rust
 - **Unit tests:** 217
-- **Integration tests:** 526
-- **Total tests:** 840+
+- **Integration tests:** 539
+- **Total tests:** 850+
 - **Line coverage:** 81.63% ✅
 - **Statement types:** 60+
-- **Built-in functions:** 230+ (includes QB64 extensions)
+- **Built-in functions:** 240+ (includes QB64 extensions)
 
 ---
 
-*Last updated: 2026-01-20 (Session 034 - 99.1% QB4.5 compatibility excluding open_gl)*
+*Last updated: 2026-01-20 (Session 035 - 99.1% QB4.5 compatibility excluding open_gl)*
 
 ---
 
@@ -810,3 +810,90 @@
 
 ### Test Results
 - Integration tests: 506 → 526 tests (+20 new tests)
+
+---
+
+## Phase 7: QB64 Extension Functions ✅ (Session 035)
+
+### Memory Functions
+- [x] `_MEMGET(block, offset)` function - get value from memory block
+- [x] `_MEMEXISTS(block)` function - check if memory block exists
+
+### String Utility Functions
+- [x] `_TRIM$(text$)` function - trim whitespace from both ends
+
+### Console Extended Functions
+- [x] `_SCREENBUFFER` function - get console screen buffer handle
+- [x] `_SCINKEY$` function - get console keyboard input
+
+### Date/Time Extended Functions
+- [x] `_YEAR` function - get current year
+- [x] `_MONTH` function - get current month (1-12)
+- [x] `_DAY` function - get current day of month (1-31)
+- [x] `_WEEKDAY` function - get current day of week (0-6, Sunday=0)
+- [x] `_HOUR` function - get current hour (0-23)
+- [x] `_MINUTE` function - get current minute (0-59)
+- [x] `_SECOND` function - get current second (0-59)
+
+### Image Functions
+- [x] `_PIXELSIZE(handle)` function - get pixel size in bytes (already existed, mapped)
+
+### Window Functions
+- [x] `_SCREENICON` function - get window minimized state
+
+### Memory Statements
+- [x] `_MEMPUT block, offset, value` statement - put value into memory block
+- [x] `_MEMFILL block, offset, size, value` statement - fill memory block
+- [x] `_MEMCOPY src, srcoff, bytes, dst, dstoff` statement - copy memory block
+- [x] `_MEMFREE block` statement - free memory block
+
+### Window Statements
+- [x] `_SCREENICON` statement - minimize window
+
+### Test Results
+- Integration tests: 526 → 539 tests (+13 new tests)
+
+---
+
+## Phase 7: Previously Implemented (Discovered Session 035)
+
+The following items were discovered to already be implemented during a TODO audit:
+
+### Metacommands
+- [x] `$CONSOLE` / `$CONSOLE:ONLY` metacommands - enable console window
+- [x] `$SCREENHIDE` / `$SCREENSHOW` metacommands - hide/show window on startup
+- [x] `$NOPREFIX` metacommand - allow keywords without underscore prefix
+- [x] `$COLOR:0` / `$COLOR:32` metacommand - color mode
+
+### Type Modifiers
+- [x] `_BIT` type - single bit type modifier (0 or -1)
+
+---
+
+## Phase 7: Session 036 Additions
+
+### Metacommands
+- [x] `$RESIZE:ON` / `$RESIZE:OFF` - enable/disable window resize events
+- [x] `$RESIZE:STRETCH` / `$RESIZE:SMOOTH` - resize scaling modes
+- [x] `$STATIC` / `$DYNAMIC` - array allocation mode
+- [x] `$DEBUG` - enable debug mode
+- [x] `$INCLUDEONCE` - include file only once
+- [x] `$EXEICON:'file.ico'` - set executable icon
+- [x] `$VERSIONINFO:key=value` - set version information
+- [x] `$ERROR message` - compiler error directive
+- [x] `$EMBED:'filename'` - embed file in executable
+
+### Control Flow
+- [x] `OPTION _EXPLICIT` / `OPTION _EXPLICITARRAY` - require explicit declarations
+- [x] `SELECT EVERYCASE` - evaluate all matching cases (not just first)
+
+### Type Conversion Functions (QB64)
+- [x] `_CV(type, string$)` function - generic convert string bytes to typed value
+- [x] `_MK$(type, value)` function - generic convert value to string bytes
+- [x] `_CAST(type, value)` function - explicit type conversion
+
+### Variable Type Declaration
+- [x] `_DEFINE A-Z AS type` statement - define default type for letter ranges (QB64 extended)
+
+### Test Results
+- Integration tests: 550 → 558 tests (+8 new tests)

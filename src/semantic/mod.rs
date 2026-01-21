@@ -1749,6 +1749,85 @@ impl SemanticAnalyzer {
 
         // Delay/timing statements (NEW)
         self.register_builtin_sub("_DELAY", &[("seconds", BasicType::Single)]);
+
+        // ==========================================
+        // QB64 Extension Functions (Session 035+)
+        // ==========================================
+
+        // Memory block functions (Session 035)
+        self.register_builtin_function(
+            "_MEMGET",
+            &[("block", BasicType::Offset), ("offset", BasicType::Offset)],
+            BasicType::Long,
+        );
+        self.register_builtin_function(
+            "_MEMEXISTS",
+            &[("block", BasicType::Offset)],
+            BasicType::Long,
+        );
+
+        // String utility functions (QB64 underscore versions - Session 035)
+        self.register_builtin_function("_TRIM$", &[("text", BasicType::String)], BasicType::String);
+
+        // Console extended (Session 035)
+        self.register_builtin_function("_SCREENBUFFER", &[], BasicType::Long);
+        self.register_builtin_function("_SCINKEY$", &[], BasicType::String);
+
+        // Date/time extended (Session 035)
+        self.register_builtin_function("_YEAR", &[], BasicType::Long);
+        self.register_builtin_function("_MONTH", &[], BasicType::Long);
+        self.register_builtin_function("_DAY", &[], BasicType::Long);
+        self.register_builtin_function("_WEEKDAY", &[], BasicType::Long);
+        self.register_builtin_function("_HOUR", &[], BasicType::Long);
+        self.register_builtin_function("_MINUTE", &[], BasicType::Long);
+        self.register_builtin_function("_SECOND", &[], BasicType::Long);
+
+        // Image functions (Session 035)
+        self.register_builtin_function(
+            "_PIXELSIZE",
+            &[("handle", BasicType::Long)],
+            BasicType::Long,
+        );
+
+        // Window icon state (Session 035)
+        self.register_builtin_function("_SCREENICON", &[], BasicType::Long);
+
+        // ==========================================
+        // QB64 Extension SUBs (Session 035+)
+        // ==========================================
+
+        // Memory statements
+        self.register_builtin_sub(
+            "_MEMPUT",
+            &[
+                ("block", BasicType::Offset),
+                ("offset", BasicType::Offset),
+                ("value", BasicType::Long),
+            ],
+        );
+        self.register_builtin_sub(
+            "_MEMFILL",
+            &[
+                ("block", BasicType::Offset),
+                ("offset", BasicType::Offset),
+                ("size", BasicType::Long),
+                ("value", BasicType::Long),
+            ],
+        );
+        self.register_builtin_sub(
+            "_MEMCOPY",
+            &[
+                ("src", BasicType::Offset),
+                ("srcoff", BasicType::Offset),
+                ("bytes", BasicType::Long),
+                ("dst", BasicType::Offset),
+                ("dstoff", BasicType::Offset),
+            ],
+        );
+        self.register_builtin_sub("_MEMFREE", &[("block", BasicType::Offset)]);
+
+        // Window icon statement (Session 035)
+        self.register_builtin_sub("_SCREENICON", &[]);
     }
 
     /// Registers a single built-in function.

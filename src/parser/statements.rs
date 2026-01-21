@@ -61,6 +61,7 @@ impl<'a> Parser<'a> {
             TokenKind::DefSng => self.parse_deftype(),
             TokenKind::DefDbl => self.parse_deftype(),
             TokenKind::DefStr => self.parse_deftype(),
+            TokenKind::Define => self.parse_define(),
 
             // OPTION BASE
             TokenKind::Option => self.parse_option(),
@@ -119,6 +120,18 @@ impl<'a> Parser<'a> {
             TokenKind::MetaConsoleOnly => self.parse_meta_console(true),
             TokenKind::MetaScreenHide => self.parse_meta_screenhide(),
             TokenKind::MetaScreenShow => self.parse_meta_screenshow(),
+            TokenKind::MetaResizeOn => self.parse_meta_resize(true),
+            TokenKind::MetaResizeOff => self.parse_meta_resize(false),
+            TokenKind::MetaResizeStretch => self.parse_meta_resize_stretch(),
+            TokenKind::MetaResizeSmooth => self.parse_meta_resize_smooth(),
+            TokenKind::MetaStatic => self.parse_meta_static(),
+            TokenKind::MetaDynamic => self.parse_meta_dynamic(),
+            TokenKind::MetaDebug => self.parse_meta_debug(),
+            TokenKind::MetaIncludeOnce => self.parse_meta_includeonce(),
+            TokenKind::MetaExeIcon => self.parse_meta_exeicon(),
+            TokenKind::MetaVersionInfo => self.parse_meta_versioninfo(),
+            TokenKind::MetaError => self.parse_meta_error(),
+            TokenKind::MetaEmbed => self.parse_meta_embed(),
             TokenKind::MetaCommand => self.parse_meta_command(),
 
             // Graphics statements
@@ -791,64 +804,200 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    /// Parses an OPTION statement.
+    /// Parses a _DEFINE statement.
     ///
-    /// Syntax: `OPTION BASE 0` or `OPTION BASE 1`
-    /// Sets the default lower bound for array subscripts.
-    pub(super) fn parse_option(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("OPTION keyword").span.start;
+    /// Syntax: `_DEFINE A-Z AS type` where type can be any QB64 type
+    pub(super) fn parse_define(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("_DEFINE keyword").span.start;
 
-        // Expect BASE keyword
-        if !self.match_token(&TokenKind::Base) {
-            let span = self.current_span();
-            self.errors.push(ParseError::syntax(
-                "expected BASE after OPTION".to_string(),
-                span,
-            ));
-            return Err(());
-        }
+        let mut ranges = Vec::new();
 
-        // Expect 0 or 1
-        let base = if let Some(token) = self.peek() {
-            if token.kind == TokenKind::IntegerLiteral {
-                let text = token.text.clone();
-                match text.as_str() {
-                    "0" => {
-                        self.advance();
-                        0
-                    }
-                    "1" => {
-                        self.advance();
-                        1
-                    }
-                    _ => {
-                        let span = self.current_span();
+        // Parse letter ranges (same as DEFxxx)
+        loop {
+            // Expect a letter (as an identifier)
+            let first_token = self.expect(&TokenKind::Identifier, "letter")?;
+            let first_text = first_token.text.to_uppercase();
+            let first_span: Span = first_token.span.clone().into();
+
+            let first_char = match first_text
+                .chars()
+                .next()
+                .filter(|c| c.is_ascii_alphabetic())
+            {
+                Some(c) => c,
+                None => {
+                    self.errors.push(ParseError::syntax(
+                        "expected single letter for _DEFINE range".to_string(),
+                        first_span,
+                    ));
+                    return Err(());
+                }
+            };
+
+            // Check for range (letter-letter)
+            let last_char = if self.match_token(&TokenKind::Minus) {
+                let last_token = self.expect(&TokenKind::Identifier, "letter")?;
+                let last_text = last_token.text.to_uppercase();
+                let last_span: Span = last_token.span.clone().into();
+                match last_text.chars().next().filter(|c| c.is_ascii_alphabetic()) {
+                    Some(c) => c,
+                    None => {
                         self.errors.push(ParseError::syntax(
-                            "OPTION BASE must be 0 or 1".to_string(),
-                            span,
+                            "expected single letter for _DEFINE range".to_string(),
+                            last_span,
                         ));
                         return Err(());
                     }
                 }
             } else {
-                let span = self.current_span();
-                self.errors.push(ParseError::syntax(
-                    "expected 0 or 1 after OPTION BASE".to_string(),
-                    span,
-                ));
-                return Err(());
+                first_char
+            };
+
+            ranges.push((first_char, last_char));
+
+            // Check for more ranges (before AS)
+            if !self.match_token(&TokenKind::Comma) {
+                break;
             }
+        }
+
+        // Expect AS keyword
+        self.expect(&TokenKind::As, "AS")?;
+
+        // Parse the type specification (reuse parse_type_name from expressions.rs)
+        let type_spec = self.parse_define_type()?;
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::Define { type_spec, ranges },
+            span,
+        ))
+    }
+
+    /// Parses a type name for _DEFINE statement.
+    fn parse_define_type(&mut self) -> Result<String, ()> {
+        // Check for _UNSIGNED modifier
+        let mut prefix = String::new();
+        if self.match_token(&TokenKind::Unsigned) {
+            prefix = "_UNSIGNED ".to_string();
+        }
+
+        // Parse the base type
+        let type_str = if let Some(token) = self.peek() {
+            let type_name = match &token.kind {
+                TokenKind::Integer => "INTEGER",
+                TokenKind::Long => "LONG",
+                TokenKind::Single => "SINGLE",
+                TokenKind::Double => "DOUBLE",
+                TokenKind::String_ => "STRING",
+                TokenKind::Byte => "_BYTE",
+                TokenKind::BitType => "_BIT",
+                TokenKind::Integer64 => "_INTEGER64",
+                TokenKind::Float => "_FLOAT",
+                TokenKind::Offset => "_OFFSET",
+                _ => {
+                    let span = self.current_span();
+                    self.errors.push(ParseError::syntax(
+                        "expected type name after AS".to_string(),
+                        span,
+                    ));
+                    return Err(());
+                }
+            };
+            self.advance();
+            type_name.to_string()
         } else {
             let span = self.current_span();
             self.errors.push(ParseError::syntax(
-                "expected 0 or 1 after OPTION BASE".to_string(),
+                "expected type name after AS".to_string(),
                 span,
             ));
             return Err(());
         };
 
-        let span = self.span_from(start);
-        Ok(Statement::new(StatementKind::OptionBase { base }, span))
+        Ok(format!("{}{}", prefix, type_str))
+    }
+
+    /// Parses an OPTION statement.
+    ///
+    /// Parses OPTION statements.
+    /// Syntax: `OPTION BASE 0|1` or `OPTION _EXPLICIT` or `OPTION _EXPLICITARRAY`
+    pub(super) fn parse_option(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("OPTION keyword").span.start;
+
+        // Check what follows OPTION
+        if let Some(token) = self.peek() {
+            match token.kind {
+                TokenKind::Base => {
+                    self.advance(); // consume BASE
+                    // Expect 0 or 1
+                    let base = if let Some(token) = self.peek() {
+                        if token.kind == TokenKind::IntegerLiteral {
+                            let text = token.text.clone();
+                            match text.as_str() {
+                                "0" => {
+                                    self.advance();
+                                    0
+                                }
+                                "1" => {
+                                    self.advance();
+                                    1
+                                }
+                                _ => {
+                                    let span = self.current_span();
+                                    self.errors.push(ParseError::syntax(
+                                        "OPTION BASE must be 0 or 1".to_string(),
+                                        span,
+                                    ));
+                                    return Err(());
+                                }
+                            }
+                        } else {
+                            let span = self.current_span();
+                            self.errors.push(ParseError::syntax(
+                                "expected 0 or 1 after OPTION BASE".to_string(),
+                                span,
+                            ));
+                            return Err(());
+                        }
+                    } else {
+                        let span = self.current_span();
+                        self.errors.push(ParseError::syntax(
+                            "expected 0 or 1 after OPTION BASE".to_string(),
+                            span,
+                        ));
+                        return Err(());
+                    };
+                    let span = self.span_from(start);
+                    Ok(Statement::new(StatementKind::OptionBase { base }, span))
+                }
+                TokenKind::Explicit => {
+                    self.advance(); // consume _EXPLICIT
+                    let span = self.span_from(start);
+                    Ok(Statement::new(StatementKind::OptionExplicit, span))
+                }
+                TokenKind::ExplicitArray => {
+                    self.advance(); // consume _EXPLICITARRAY
+                    let span = self.span_from(start);
+                    Ok(Statement::new(StatementKind::OptionExplicitArray, span))
+                }
+                _ => {
+                    let span = self.current_span();
+                    self.errors.push(ParseError::syntax(
+                        "expected BASE, _EXPLICIT, or _EXPLICITARRAY after OPTION".to_string(),
+                        span,
+                    ));
+                    Err(())
+                }
+            }
+        } else {
+            let span = self.current_span();
+            self.errors.push(ParseError::syntax(
+                "expected BASE, _EXPLICIT, or _EXPLICITARRAY after OPTION".to_string(),
+                span,
+            ));
+            Err(())
+        }
     }
 
     // ==================== Simple Flow Control ====================

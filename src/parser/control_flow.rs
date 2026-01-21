@@ -298,10 +298,17 @@ impl<'a> Parser<'a> {
 
     // ==================== SELECT CASE ====================
 
-    /// Parses a SELECT CASE statement.
+    /// Parses a SELECT CASE or SELECT EVERYCASE statement.
     pub(super) fn parse_select_case(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("SELECT keyword").span.start; // consume SELECT
-        self.expect(&TokenKind::Case, "CASE")?;
+
+        // Check for EVERYCASE (QB64 extension) or CASE
+        let is_everycase = if self.match_token(&TokenKind::EveryCase) {
+            true
+        } else {
+            self.expect(&TokenKind::Case, "CASE or EVERYCASE")?;
+            false
+        };
 
         let test_expr = self.parse_expression()?;
 
@@ -352,14 +359,25 @@ impl<'a> Parser<'a> {
         self.expect(&TokenKind::Select, "SELECT")?;
 
         let span = self.span_from(start);
-        Ok(Statement::new(
-            StatementKind::SelectCase {
-                test_expr,
-                cases,
-                case_else,
-            },
-            span,
-        ))
+        if is_everycase {
+            Ok(Statement::new(
+                StatementKind::SelectEveryCase {
+                    test_expr,
+                    cases,
+                    case_else,
+                },
+                span,
+            ))
+        } else {
+            Ok(Statement::new(
+                StatementKind::SelectCase {
+                    test_expr,
+                    cases,
+                    case_else,
+                },
+                span,
+            ))
+        }
     }
 
     /// Parses CASE match expressions.

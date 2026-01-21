@@ -134,6 +134,17 @@ pub enum StatementKind {
         ranges: Vec<(char, char)>,
     },
 
+    /// `_DEFINE A-Z AS type` - QB64 extended default type declaration
+    ///
+    /// Like DEFxxx but allows specifying any QB64 type including extended types
+    /// like _INTEGER64, _BYTE, _FLOAT, _OFFSET, and _UNSIGNED variants.
+    Define {
+        /// The type specifier (e.g., "_INTEGER64", "_UNSIGNED _BYTE")
+        type_spec: String,
+        /// List of letter ranges
+        ranges: Vec<(char, char)>,
+    },
+
     /// `OPTION BASE 0` or `OPTION BASE 1`
     ///
     /// Sets the default lower bound for array subscripts. Must appear before
@@ -142,6 +153,18 @@ pub enum StatementKind {
         /// The base value (0 or 1).
         base: i64,
     },
+
+    /// `OPTION _EXPLICIT` - Require all variables to be explicitly declared
+    ///
+    /// When enabled, any variable used without prior DIM statement causes
+    /// a compile-time error. This helps catch typos in variable names.
+    OptionExplicit,
+
+    /// `OPTION _EXPLICITARRAY` - Require all arrays to be explicitly declared
+    ///
+    /// When enabled, any array used without prior DIM statement causes
+    /// a compile-time error, but scalar variables can still be implicitly declared.
+    OptionExplicitArray,
 
     /// Single-line: `IF condition THEN statement [ELSE statement]`
     /// Multi-line: `IF condition THEN ... [ELSEIF ...] [ELSE ...] END IF`
@@ -158,6 +181,19 @@ pub enum StatementKind {
 
     /// `SELECT CASE expression ... END SELECT`
     SelectCase {
+        /// The expression to match against.
+        test_expr: Expr,
+        /// The CASE clauses.
+        cases: Vec<CaseClause>,
+        /// CASE ELSE clause (if present).
+        case_else: Option<Vec<Statement>>,
+    },
+
+    /// `SELECT EVERYCASE expression ... END SELECT` (QB64)
+    ///
+    /// Unlike SELECT CASE, SELECT EVERYCASE evaluates ALL cases and
+    /// executes ALL matching ones, not just the first match.
+    SelectEveryCase {
         /// The expression to match against.
         test_expr: Expr,
         /// The CASE clauses.
@@ -1607,6 +1643,56 @@ pub enum StatementKind {
     MetaColor {
         /// Color depth mode (0 for EGA, 32 for RGBA)
         depth: Option<i64>,
+    },
+
+    /// `$RESIZE:ON` / `$RESIZE:OFF` - Enable/disable window resize events
+    MetaResize {
+        /// If true, resize events are enabled
+        enabled: bool,
+    },
+
+    /// `$RESIZE:STRETCH` - Stretch graphics when window is resized
+    MetaResizeStretch,
+
+    /// `$RESIZE:SMOOTH` - Use smooth scaling when window is resized
+    MetaResizeSmooth,
+
+    /// `$STATIC` - Use static arrays (allocated at compile time)
+    MetaStatic,
+
+    /// `$DYNAMIC` - Use dynamic arrays (allocated at runtime)
+    MetaDynamic,
+
+    /// `$DEBUG` - Enable debug mode
+    MetaDebug,
+
+    /// `$INCLUDEONCE` - Include this file only once (prevents multiple inclusion)
+    MetaIncludeOnce,
+
+    /// `$EXEICON:'filename'` - Set the executable icon
+    MetaExeIcon {
+        /// Path to the icon file
+        filename: String,
+    },
+
+    /// `$VERSIONINFO:key=value` - Set version info for executable
+    MetaVersionInfo {
+        /// Version info key (e.g., "CompanyName", "ProductName")
+        key: String,
+        /// Version info value
+        value: String,
+    },
+
+    /// `$ERROR message` - Generate a compiler error
+    MetaErrorDirective {
+        /// Error message to display
+        message: String,
+    },
+
+    /// `$EMBED:'filename'` - Embed a file into the executable
+    MetaEmbed {
+        /// Path to the file to embed
+        filename: String,
     },
 }
 

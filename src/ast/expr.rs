@@ -93,6 +93,38 @@ pub enum ExprKind {
         /// The name of the SUB or FUNCTION to get a pointer to.
         name: String,
     },
+
+    /// _CV function: `_CV(type, string$)` (QB64)
+    ///
+    /// Converts a string's raw bytes to a value of the specified type.
+    /// The type argument is a type keyword, not an expression.
+    CvFunc {
+        /// The target type to convert to.
+        target_type: String,
+        /// The string expression containing raw bytes.
+        value: Box<Expr>,
+    },
+
+    /// _MK$ function: `_MK$(type, value)` (QB64)
+    ///
+    /// Converts a value to a string of raw bytes representing that type.
+    /// The type argument is a type keyword, not an expression.
+    MkDollarFunc {
+        /// The source type to convert from.
+        source_type: String,
+        /// The value expression to convert.
+        value: Box<Expr>,
+    },
+
+    /// _CAST function: `_CAST(type, value)` (QB64)
+    ///
+    /// Explicitly converts a value to the specified type.
+    CastFunc {
+        /// The target type to cast to.
+        target_type: String,
+        /// The value expression to cast.
+        value: Box<Expr>,
+    },
 }
 
 /// Binary operators.

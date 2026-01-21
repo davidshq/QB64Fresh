@@ -134,6 +134,30 @@ pub enum TypedExprKind {
         /// The C wrapper function name that will be generated.
         wrapper_name: String,
     },
+
+    /// _CV function: converts string bytes to a typed value.
+    CvFunc {
+        /// The target type to convert to.
+        target_type: BasicType,
+        /// The string expression.
+        value: Box<TypedExpr>,
+    },
+
+    /// _MK$ function: converts a typed value to string bytes.
+    MkDollarFunc {
+        /// The source type being converted.
+        source_type: BasicType,
+        /// The value expression.
+        value: Box<TypedExpr>,
+    },
+
+    /// _CAST function: explicit type conversion.
+    CastFunc {
+        /// The target type to cast to.
+        target_type: BasicType,
+        /// The value expression.
+        value: Box<TypedExpr>,
+    },
 }
 
 /// Parameter information for external function calls.
@@ -297,6 +321,14 @@ pub enum TypedStatementKind {
         case_else: Option<Vec<TypedStatement>>,
     },
 
+    /// SELECT EVERYCASE statement (QB64).
+    /// Evaluates ALL matching cases, not just the first one.
+    SelectEveryCase {
+        test_expr: TypedExpr,
+        cases: Vec<TypedCaseClause>,
+        case_else: Option<Vec<TypedStatement>>,
+    },
+
     /// FOR/NEXT loop.
     For {
         variable: String,
@@ -416,9 +448,22 @@ pub enum TypedStatementKind {
     /// This statement only affects the symbol table and generates no code.
     DefType,
 
+    /// _DEFINE statement (QB64).
+    /// Like DEFxxx but with explicit type specification.
+    /// This statement only affects the symbol table and generates no code.
+    Define,
+
     /// OPTION BASE statement - sets default array lower bound.
     /// This statement only affects the symbol table and generates no code.
     OptionBase,
+
+    /// OPTION _EXPLICIT statement - requires all variables to be declared.
+    /// This statement only affects the semantic checker and generates no code.
+    OptionExplicit,
+
+    /// OPTION _EXPLICITARRAY statement - requires all arrays to be declared.
+    /// This statement only affects the semantic checker and generates no code.
+    OptionExplicitArray,
 
     /// DEF SEG statement - set memory segment for PEEK/POKE/BLOAD/BSAVE.
     /// In modern QB64, this is largely a no-op but must be parsed for compatibility.
@@ -1537,6 +1582,56 @@ pub enum TypedStatementKind {
     MetaColor {
         /// Color depth (0 for EGA, 32 for RGBA).
         depth: Option<i64>,
+    },
+
+    /// $RESIZE:ON or $RESIZE:OFF metacommand.
+    MetaResize {
+        /// If true, resize events are enabled.
+        enabled: bool,
+    },
+
+    /// $RESIZE:STRETCH metacommand.
+    MetaResizeStretch,
+
+    /// $RESIZE:SMOOTH metacommand.
+    MetaResizeSmooth,
+
+    /// $STATIC metacommand.
+    MetaStatic,
+
+    /// $DYNAMIC metacommand.
+    MetaDynamic,
+
+    /// $DEBUG metacommand.
+    MetaDebug,
+
+    /// $INCLUDEONCE metacommand.
+    MetaIncludeOnce,
+
+    /// $EXEICON:'filename' metacommand.
+    MetaExeIcon {
+        /// Path to the icon file.
+        filename: String,
+    },
+
+    /// $VERSIONINFO:key=value metacommand.
+    MetaVersionInfo {
+        /// Version info key.
+        key: String,
+        /// Version info value.
+        value: String,
+    },
+
+    /// $ERROR message metacommand.
+    MetaErrorDirective {
+        /// Error message.
+        message: String,
+    },
+
+    /// $EMBED:'filename' metacommand.
+    MetaEmbed {
+        /// Path to the embedded file.
+        filename: String,
     },
 }
 

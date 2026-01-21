@@ -1,6 +1,6 @@
 # QB64Fresh TODO
 
-*Last updated: 2026-01-20 (Session 034)*
+*Last updated: 2026-01-20 (Session 036)*
 
 A prioritized roadmap for QB64Fresh development. For completed features, see [TODO-completed.md](TODO-completed.md).
 
@@ -92,49 +92,13 @@ All C Library Integration items completed - see TODO-completed.md.
 
 ## Phase 7: Missing Language Features
 
-### Medium Priority - QB64 Extensions
+### Medium Priority - QB64 Extensions (Remaining)
 
-#### String Functions
-- [ ] `_CV(type, string$)` function - generic convert string to type
-- [ ] `_MK$(type, value)` function - generic convert value to string
-
-#### Utility Functions
-- [ ] `_CAST(type, value)` function - explicit type cast
-- [ ] `_DEFINE` statement - define default variable types by letter range
-
-### Lower Priority - QB64 Advanced Extensions
-
-#### Console Mode
-- [ ] `$CONSOLE` / `$CONSOLE:ONLY` metacommands
-
-#### Resize Events
-- [ ] `$RESIZE:ON` / `$RESIZE:OFF` metacommands
-- [ ] `$RESIZE:STRETCH` / `$RESIZE:SMOOTH` metacommands
-
-#### File I/O (Extended)
-- [ ] `$EMBED:'filename'` metacommand - embed file in executable
-
-#### Miscellaneous QB64 Features
-- [ ] `OPTION _EXPLICIT` / `OPTION _EXPLICITARRAY` - require declarations
-- [ ] `SELECT EVERYCASE` - check all cases
-
-### Metacommands (Not Yet Implemented)
-- [ ] `$STATIC` / `$DYNAMIC` - array allocation mode
-- [ ] `$COLOR:0` / `$COLOR:32` - color mode
-- [ ] `$EXEICON:'file.ico'` - executable icon
-- [ ] `$VERSIONINFO:key=value` - version info
+#### Metacommands (Not Yet Implemented)
 - [ ] `$MIDISOUNDFONT:'file.sf2'` - MIDI soundfont
-- [ ] `$DEBUG` - enable debug mode
-- [ ] `$INCLUDEONCE` - include file only once
-- [ ] `$NOPREFIX` - allow keywords without underscore
 - [ ] `$UNSTABLE:feature` - enable unstable features
-- [ ] `$ERROR message` - compiler error
 - [ ] `$FORMAT` - code formatting directive
-- [ ] `$SCREENHIDE` / `$SCREENSHOW` - hide/show window on startup
 - [ ] `$USELIBRARY` - use external library
-
-### Type Modifiers & Keywords (Not Yet Implemented)
-- [ ] `_BIT` type - single bit type modifier
 
 ### OpenGL Commands (Intentionally Excluded)
 

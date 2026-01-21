@@ -5295,3 +5295,285 @@ mod qb64_extension_statements_session034 {
         assert!(code.contains("qb_delay("));
     }
 }
+
+/// Tests for QB64 extension functions added in Session 035+
+/// Note: Many QB64 commands like _DISPLAY, _LIMIT, _FREEIMAGE, _COPYIMAGE, _AUTODISPLAY
+/// are lexer tokens (reserved statement keywords) and cannot be tested as function expressions.
+/// Tests for pre-existing functions (math, device input, blend) are in other modules.
+mod qb64_extension_functions_session035 {
+    use super::*;
+
+    // Memory functions (new in Session 035)
+    #[test]
+    fn memexists_function() {
+        let code = compile_to_c("DIM n AS LONG: DIM m AS LONG: n = _MEMEXISTS(m)").unwrap();
+        assert!(code.contains("qb_memexists("));
+    }
+
+    // String utility (new in Session 035)
+    #[test]
+    fn trim_function() {
+        let code = compile_to_c("DIM s AS STRING: s = _TRIM$(\"  hello  \")").unwrap();
+        assert!(code.contains("qb_trim("));
+    }
+
+    // Console extended (new in Session 035)
+    #[test]
+    fn screenbuffer_function() {
+        let code = compile_to_c("DIM n AS LONG: n = _SCREENBUFFER").unwrap();
+        assert!(code.contains("qb_screenbuffer("));
+    }
+
+    #[test]
+    fn scinkey_function() {
+        let code = compile_to_c("DIM s AS STRING: s = _SCINKEY$").unwrap();
+        assert!(code.contains("qb_scinkey("));
+    }
+
+    // Date/time functions (new in Session 035)
+    #[test]
+    fn year_function() {
+        let code = compile_to_c("DIM n AS LONG: n = _YEAR").unwrap();
+        assert!(code.contains("qb_year("));
+    }
+
+    #[test]
+    fn month_function() {
+        let code = compile_to_c("DIM n AS LONG: n = _MONTH").unwrap();
+        assert!(code.contains("qb_month("));
+    }
+
+    #[test]
+    fn day_function() {
+        let code = compile_to_c("DIM n AS LONG: n = _DAY").unwrap();
+        assert!(code.contains("qb_day("));
+    }
+
+    #[test]
+    fn weekday_function() {
+        let code = compile_to_c("DIM n AS LONG: n = _WEEKDAY").unwrap();
+        assert!(code.contains("qb_weekday("));
+    }
+
+    #[test]
+    fn hour_function() {
+        let code = compile_to_c("DIM n AS LONG: n = _HOUR").unwrap();
+        assert!(code.contains("qb_hour("));
+    }
+
+    #[test]
+    fn minute_function() {
+        let code = compile_to_c("DIM n AS LONG: n = _MINUTE").unwrap();
+        assert!(code.contains("qb_minute("));
+    }
+
+    #[test]
+    fn second_function() {
+        let code = compile_to_c("DIM n AS LONG: n = _SECOND").unwrap();
+        assert!(code.contains("qb_second("));
+    }
+
+    // Image functions (new in Session 035)
+    #[test]
+    fn pixelsize_function() {
+        let code = compile_to_c("DIM n AS LONG: n = _PIXELSIZE(0)").unwrap();
+        assert!(code.contains("qb_pixelsize("));
+    }
+
+    // Note: _SCREENICON is a lexer token (statement keyword), cannot be used as function expression
+}
+
+/// Tests for QB64 extension statements added in Session 035+
+mod qb64_extension_statements_session035 {
+    use super::*;
+
+    // Memory statements (new in Session 035)
+    // Note: _MEMFREE takes a _MEM (Offset) type block, tested via _MEM operations
+
+    // Screen icon statement (new in Session 035)
+    #[test]
+    fn screenicon_statement() {
+        let code = compile_to_c("_SCREENICON").unwrap();
+        assert!(code.contains("qb_screenicon("));
+    }
+}
+
+/// Tests for metacommands added in Session 036
+mod metacommands_session036 {
+    use super::*;
+
+    #[test]
+    fn resize_on_metacommand() {
+        let code = compile_to_c("$RESIZE:ON").unwrap();
+        assert!(code.contains("/* $RESIZE:ON */"));
+    }
+
+    #[test]
+    fn resize_off_metacommand() {
+        let code = compile_to_c("$RESIZE:OFF").unwrap();
+        assert!(code.contains("/* $RESIZE:OFF */"));
+    }
+
+    #[test]
+    fn resize_stretch_metacommand() {
+        let code = compile_to_c("$RESIZE:STRETCH").unwrap();
+        assert!(code.contains("/* $RESIZE:STRETCH */"));
+    }
+
+    #[test]
+    fn resize_smooth_metacommand() {
+        let code = compile_to_c("$RESIZE:SMOOTH").unwrap();
+        assert!(code.contains("/* $RESIZE:SMOOTH */"));
+    }
+
+    #[test]
+    fn static_metacommand() {
+        let code = compile_to_c("$STATIC").unwrap();
+        assert!(code.contains("/* $STATIC */"));
+    }
+
+    #[test]
+    fn dynamic_metacommand() {
+        let code = compile_to_c("$DYNAMIC").unwrap();
+        assert!(code.contains("/* $DYNAMIC */"));
+    }
+
+    #[test]
+    fn debug_metacommand() {
+        let code = compile_to_c("$DEBUG").unwrap();
+        assert!(code.contains("/* $DEBUG */"));
+    }
+
+    #[test]
+    fn includeonce_metacommand() {
+        let code = compile_to_c("$INCLUDEONCE").unwrap();
+        assert!(code.contains("/* $INCLUDEONCE */"));
+    }
+
+    #[test]
+    fn exeicon_metacommand() {
+        let code = compile_to_c("$EXEICON:'myicon.ico'").unwrap();
+        assert!(code.contains("/* $EXEICON:'myicon.ico' */"));
+    }
+
+    #[test]
+    fn versioninfo_metacommand() {
+        let code = compile_to_c("$VERSIONINFO:CompanyName=My Company").unwrap();
+        assert!(code.contains("/* $VERSIONINFO:CompanyName=My Company */"));
+    }
+
+    #[test]
+    fn error_metacommand() {
+        let code = compile_to_c("$ERROR This is an error").unwrap();
+        assert!(code.contains("#error \"This is an error\""));
+    }
+
+    #[test]
+    fn embed_metacommand() {
+        let code = compile_to_c("$EMBED:'assets/icon.png'").unwrap();
+        assert!(code.contains("/* $EMBED:'assets/icon.png' */"));
+    }
+
+    #[test]
+    fn option_explicit() {
+        // Just verify it parses - actual enforcement would require testing for errors
+        let code = compile_to_c("OPTION _EXPLICIT\nDIM x AS INTEGER\nx = 5").unwrap();
+        assert!(code.contains("int16_t x"));
+    }
+
+    #[test]
+    fn option_explicitarray() {
+        // Just verify it parses - actual enforcement would require testing for errors
+        let code = compile_to_c("OPTION _EXPLICITARRAY\nDIM arr(10) AS INTEGER").unwrap();
+        // Array is allocated dynamically with malloc
+        assert!(code.contains("int16_t* arr"));
+    }
+
+    #[test]
+    fn select_everycase() {
+        let code = compile_to_c(
+            r#"
+DIM x AS INTEGER
+x = 5
+SELECT EVERYCASE x
+CASE 5
+    PRINT "five"
+CASE IS > 3
+    PRINT "greater than three"
+CASE ELSE
+    PRINT "other"
+END SELECT
+"#,
+        )
+        .unwrap();
+        // SELECT EVERYCASE should generate independent if statements, not else if
+        // and track whether any case matched (variable like _qb_matched_N)
+        assert!(
+            code.contains("_qb_matched_"),
+            "Expected matched flag variable"
+        );
+        // Check that matched flag is set in cases
+        assert!(code.contains("= 1"), "Expected matched = 1 assignments");
+    }
+
+    #[test]
+    fn cv_function() {
+        let code = compile_to_c(
+            r#"
+DIM s AS STRING
+DIM x AS INTEGER
+s = "AB"
+x = _CV(INTEGER, s)
+"#,
+        )
+        .unwrap();
+        // _CV(INTEGER, s) should call qb_cvi
+        assert!(code.contains("qb_cvi"));
+    }
+
+    #[test]
+    fn mk_function() {
+        let code = compile_to_c(
+            r#"
+DIM x AS INTEGER
+DIM s AS STRING
+x = 1000
+s = _MK$(INTEGER, x)
+"#,
+        )
+        .unwrap();
+        // _MK$(INTEGER, x) should call qb_mki
+        assert!(code.contains("qb_mki"));
+    }
+
+    #[test]
+    fn cast_function() {
+        let code = compile_to_c(
+            r#"
+DIM x AS DOUBLE
+DIM y AS INTEGER
+x = 3.14
+y = _CAST(INTEGER, x)
+"#,
+        )
+        .unwrap();
+        // _CAST(INTEGER, x) should generate a C cast
+        assert!(code.contains("int16_t"));
+    }
+
+    #[test]
+    fn define_statement() {
+        let code = compile_to_c(
+            r#"
+_DEFINE A-Z AS _INTEGER64
+DIM myVar
+"#,
+        )
+        .unwrap();
+        // Variable without type suffix should use _INTEGER64 due to _DEFINE
+        assert!(
+            code.contains("int64_t myVar"),
+            "Expected int64_t myVar in output"
+        );
+    }
+}

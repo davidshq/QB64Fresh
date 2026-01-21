@@ -377,4 +377,148 @@ impl<'a> Parser<'a> {
 
         Ok(Statement::new(StatementKind::MetaScreenShow, span))
     }
+
+    /// Parses a `$RESIZE:ON` or `$RESIZE:OFF` directive.
+    pub(super) fn parse_meta_resize(&mut self, enabled: bool) -> Result<Statement, ()> {
+        let token = self.advance().expect("$RESIZE token");
+        let span: Span = token.span.clone().into();
+
+        Ok(Statement::new(StatementKind::MetaResize { enabled }, span))
+    }
+
+    /// Parses a `$RESIZE:STRETCH` directive.
+    pub(super) fn parse_meta_resize_stretch(&mut self) -> Result<Statement, ()> {
+        let token = self.advance().expect("$RESIZE:STRETCH token");
+        let span: Span = token.span.clone().into();
+
+        Ok(Statement::new(StatementKind::MetaResizeStretch, span))
+    }
+
+    /// Parses a `$RESIZE:SMOOTH` directive.
+    pub(super) fn parse_meta_resize_smooth(&mut self) -> Result<Statement, ()> {
+        let token = self.advance().expect("$RESIZE:SMOOTH token");
+        let span: Span = token.span.clone().into();
+
+        Ok(Statement::new(StatementKind::MetaResizeSmooth, span))
+    }
+
+    /// Parses a `$STATIC` directive.
+    pub(super) fn parse_meta_static(&mut self) -> Result<Statement, ()> {
+        let token = self.advance().expect("$STATIC token");
+        let span: Span = token.span.clone().into();
+
+        Ok(Statement::new(StatementKind::MetaStatic, span))
+    }
+
+    /// Parses a `$DYNAMIC` directive.
+    pub(super) fn parse_meta_dynamic(&mut self) -> Result<Statement, ()> {
+        let token = self.advance().expect("$DYNAMIC token");
+        let span: Span = token.span.clone().into();
+
+        Ok(Statement::new(StatementKind::MetaDynamic, span))
+    }
+
+    /// Parses a `$DEBUG` directive.
+    pub(super) fn parse_meta_debug(&mut self) -> Result<Statement, ()> {
+        let token = self.advance().expect("$DEBUG token");
+        let span: Span = token.span.clone().into();
+
+        Ok(Statement::new(StatementKind::MetaDebug, span))
+    }
+
+    /// Parses a `$INCLUDEONCE` directive.
+    pub(super) fn parse_meta_includeonce(&mut self) -> Result<Statement, ()> {
+        let token = self.advance().expect("$INCLUDEONCE token");
+        let span: Span = token.span.clone().into();
+
+        Ok(Statement::new(StatementKind::MetaIncludeOnce, span))
+    }
+
+    /// Parses a `$EXEICON:'filename'` directive.
+    pub(super) fn parse_meta_exeicon(&mut self) -> Result<Statement, ()> {
+        let token = self.advance().expect("$EXEICON token");
+        let span: Span = token.span.clone().into();
+
+        // Extract filename from the token text (e.g., "$EXEICON:'icon.ico'")
+        let text = &token.text;
+        let filename = if let Some(start) = text.find('\'') {
+            if let Some(end) = text[start + 1..].find('\'') {
+                text[start + 1..start + 1 + end].to_string()
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        };
+
+        Ok(Statement::new(
+            StatementKind::MetaExeIcon { filename },
+            span,
+        ))
+    }
+
+    /// Parses a `$VERSIONINFO:key=value` directive.
+    pub(super) fn parse_meta_versioninfo(&mut self) -> Result<Statement, ()> {
+        let token = self.advance().expect("$VERSIONINFO token");
+        let span: Span = token.span.clone().into();
+
+        // Extract key and value from the token text (e.g., "$VERSIONINFO:CompanyName=My Company")
+        let text = &token.text;
+        let (key, value) = if let Some(colon_pos) = text.find(':') {
+            let rest = &text[colon_pos + 1..];
+            if let Some(eq_pos) = rest.find('=') {
+                let key = rest[..eq_pos].trim().to_string();
+                let value = rest[eq_pos + 1..].trim().to_string();
+                (key, value)
+            } else {
+                (String::new(), String::new())
+            }
+        } else {
+            (String::new(), String::new())
+        };
+
+        Ok(Statement::new(
+            StatementKind::MetaVersionInfo { key, value },
+            span,
+        ))
+    }
+
+    /// Parses a `$ERROR message` directive.
+    pub(super) fn parse_meta_error(&mut self) -> Result<Statement, ()> {
+        let token = self.advance().expect("$ERROR token");
+        let span: Span = token.span.clone().into();
+
+        // Extract message from the token text (e.g., "$ERROR This is an error message")
+        let text = &token.text;
+        let message = if text.len() > 7 {
+            text[7..].trim().to_string() // Skip "$ERROR " prefix
+        } else {
+            String::new()
+        };
+
+        Ok(Statement::new(
+            StatementKind::MetaErrorDirective { message },
+            span,
+        ))
+    }
+
+    /// Parses a `$EMBED:'filename'` directive.
+    pub(super) fn parse_meta_embed(&mut self) -> Result<Statement, ()> {
+        let token = self.advance().expect("$EMBED token");
+        let span: Span = token.span.clone().into();
+
+        // Extract filename from the token text (e.g., "$EMBED:'icon.png'")
+        let text = &token.text;
+        let filename = if let Some(start) = text.find('\'') {
+            if let Some(end) = text[start + 1..].find('\'') {
+                text[start + 1..start + 1 + end].to_string()
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        };
+
+        Ok(Statement::new(StatementKind::MetaEmbed { filename }, span))
+    }
 }

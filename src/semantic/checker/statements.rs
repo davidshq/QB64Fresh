@@ -105,7 +105,13 @@ impl<'a> TypeChecker<'a> {
                 test_expr,
                 cases,
                 case_else,
-            } => self.check_select_case(test_expr, cases, case_else, stmt.span),
+            } => self.check_select_case(test_expr, cases, case_else, false, stmt.span),
+
+            StatementKind::SelectEveryCase {
+                test_expr,
+                cases,
+                case_else,
+            } => self.check_select_case(test_expr, cases, case_else, true, stmt.span),
 
             StatementKind::For {
                 variable,
@@ -212,7 +218,21 @@ impl<'a> TypeChecker<'a> {
                 self.check_deftype(type_kind, ranges, stmt.span)
             }
 
+            StatementKind::Define { type_spec, ranges } => {
+                self.check_define(type_spec, ranges, stmt.span)
+            }
+
             StatementKind::OptionBase { base } => self.check_option_base(*base, stmt.span),
+
+            StatementKind::OptionExplicit => {
+                self.symbols.set_explicit_mode(true);
+                TypedStatement::new(TypedStatementKind::OptionExplicit, stmt.span)
+            }
+
+            StatementKind::OptionExplicitArray => {
+                self.symbols.set_explicit_array_mode(true);
+                TypedStatement::new(TypedStatementKind::OptionExplicitArray, stmt.span)
+            }
 
             StatementKind::Label { name } => {
                 TypedStatement::new(TypedStatementKind::Label { name: name.clone() }, stmt.span)
@@ -2550,6 +2570,64 @@ impl<'a> TypeChecker<'a> {
             StatementKind::MetaColor { depth } => {
                 TypedStatement::new(TypedStatementKind::MetaColor { depth: *depth }, stmt.span)
             }
+
+            StatementKind::MetaResize { enabled } => TypedStatement::new(
+                TypedStatementKind::MetaResize { enabled: *enabled },
+                stmt.span,
+            ),
+
+            StatementKind::MetaResizeStretch => {
+                TypedStatement::new(TypedStatementKind::MetaResizeStretch, stmt.span)
+            }
+
+            StatementKind::MetaResizeSmooth => {
+                TypedStatement::new(TypedStatementKind::MetaResizeSmooth, stmt.span)
+            }
+
+            StatementKind::MetaStatic => {
+                TypedStatement::new(TypedStatementKind::MetaStatic, stmt.span)
+            }
+
+            StatementKind::MetaDynamic => {
+                TypedStatement::new(TypedStatementKind::MetaDynamic, stmt.span)
+            }
+
+            StatementKind::MetaDebug => {
+                TypedStatement::new(TypedStatementKind::MetaDebug, stmt.span)
+            }
+
+            StatementKind::MetaIncludeOnce => {
+                TypedStatement::new(TypedStatementKind::MetaIncludeOnce, stmt.span)
+            }
+
+            StatementKind::MetaExeIcon { filename } => TypedStatement::new(
+                TypedStatementKind::MetaExeIcon {
+                    filename: filename.clone(),
+                },
+                stmt.span,
+            ),
+
+            StatementKind::MetaVersionInfo { key, value } => TypedStatement::new(
+                TypedStatementKind::MetaVersionInfo {
+                    key: key.clone(),
+                    value: value.clone(),
+                },
+                stmt.span,
+            ),
+
+            StatementKind::MetaErrorDirective { message } => TypedStatement::new(
+                TypedStatementKind::MetaErrorDirective {
+                    message: message.clone(),
+                },
+                stmt.span,
+            ),
+
+            StatementKind::MetaEmbed { filename } => TypedStatement::new(
+                TypedStatementKind::MetaEmbed {
+                    filename: filename.clone(),
+                },
+                stmt.span,
+            ),
         }
     }
 
