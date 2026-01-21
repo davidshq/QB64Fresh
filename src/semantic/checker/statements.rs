@@ -2628,6 +2628,31 @@ impl<'a> TypeChecker<'a> {
                 },
                 stmt.span,
             ),
+
+            StatementKind::MetaMidiSoundFont { filename } => TypedStatement::new(
+                TypedStatementKind::MetaMidiSoundFont {
+                    filename: filename.clone(),
+                },
+                stmt.span,
+            ),
+
+            StatementKind::MetaUnstable { feature } => TypedStatement::new(
+                TypedStatementKind::MetaUnstable {
+                    feature: feature.clone(),
+                },
+                stmt.span,
+            ),
+
+            StatementKind::MetaFormat => {
+                TypedStatement::new(TypedStatementKind::MetaFormat, stmt.span)
+            }
+
+            StatementKind::MetaUseLibrary { library } => TypedStatement::new(
+                TypedStatementKind::MetaUseLibrary {
+                    library: library.clone(),
+                },
+                stmt.span,
+            ),
         }
     }
 

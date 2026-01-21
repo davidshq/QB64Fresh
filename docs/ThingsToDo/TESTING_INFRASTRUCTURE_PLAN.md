@@ -1,7 +1,7 @@
 # Testing Infrastructure Plan
 
 **Created:** 2026-01-18
-**Updated:** 2026-01-20 (Session 036)
+**Updated:** 2026-01-20 (Session 037)
 **Purpose:** Comprehensive plan for building out QB64Fresh testing infrastructure
 **Based On:** QB64PE testing framework analysis + codebase review findings
 
@@ -9,16 +9,16 @@
 
 ## Executive Summary
 
-**UPDATE:** As of 2026-01-20 (Session 036), the testing infrastructure has been substantially implemented:
+**UPDATE:** As of 2026-01-20 (Session 037), the testing infrastructure has been substantially implemented:
 - **217 unit tests** in source modules
-- **558 integration tests** (0 ignored)
+- **562 integration tests** (0 ignored)
 - **10 golden tests** for C code generation snapshots
 - **16 compatibility test fixtures** (12 success + 4 error, auto-discovered)
 - **19 property-based tests** using proptest (thousands of iterations)
 - **30 benchmarks** measuring compiler performance
 - **44 runtime tests** (all passing)
 
-Total: **749+ tests** across the main compiler (11 doc-test ignored for setup requirements).
+Total: **753+ tests** across the main compiler (11 doc-test ignored for setup requirements).
 **QB64PE Compatibility:** 99.1% (114/115 files compile successfully, excluding open_gl)
 **Fuzz testing:** 3 fuzz targets verified (~4.6M inputs, 0 crashes)
 

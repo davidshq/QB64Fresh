@@ -5576,4 +5576,28 @@ DIM myVar
             "Expected int64_t myVar in output"
         );
     }
+
+    #[test]
+    fn midisoundfont_metacommand() {
+        let code = compile_to_c("$MIDISOUNDFONT:'soundfont.sf2'").unwrap();
+        assert!(code.contains("/* $MIDISOUNDFONT:'soundfont.sf2' */"));
+    }
+
+    #[test]
+    fn unstable_metacommand() {
+        let code = compile_to_c("$UNSTABLE:http").unwrap();
+        assert!(code.contains("/* $UNSTABLE:http */"));
+    }
+
+    #[test]
+    fn format_metacommand() {
+        let code = compile_to_c("$FORMAT").unwrap();
+        assert!(code.contains("/* $FORMAT */"));
+    }
+
+    #[test]
+    fn uselibrary_metacommand() {
+        let code = compile_to_c("$USELIBRARY:'opengl32'").unwrap();
+        assert!(code.contains("/* $USELIBRARY:'opengl32' */"));
+    }
 }

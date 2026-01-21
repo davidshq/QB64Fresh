@@ -1268,6 +1268,22 @@ pub enum TokenKind {
     #[regex(r"\$EMBED\s*:\s*'[^']*'", ignore(ascii_case))]
     MetaEmbed,
 
+    /// $MIDISOUNDFONT - set MIDI soundfont file
+    #[regex(r"\$MIDISOUNDFONT\s*:\s*'[^']*'", ignore(ascii_case))]
+    MetaMidiSoundFont,
+
+    /// $UNSTABLE - enable unstable features
+    #[regex(r"\$UNSTABLE\s*:\s*[A-Za-z][A-Za-z0-9_]*", ignore(ascii_case))]
+    MetaUnstable,
+
+    /// $FORMAT - code formatting directive
+    #[token("$FORMAT", ignore(ascii_case))]
+    MetaFormat,
+
+    /// $USELIBRARY - use external library
+    #[regex(r"\$USELIBRARY\s*:\s*'[^']*'", ignore(ascii_case))]
+    MetaUseLibrary,
+
     /// Other $ directives (catch-all for unrecognized metacommands)
     #[regex(r"\$[A-Za-z][A-Za-z0-9]*")]
     MetaCommand,

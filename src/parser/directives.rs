@@ -521,4 +521,77 @@ impl<'a> Parser<'a> {
 
         Ok(Statement::new(StatementKind::MetaEmbed { filename }, span))
     }
+
+    /// Parses a `$MIDISOUNDFONT:'file.sf2'` directive.
+    pub(super) fn parse_meta_midisoundfont(&mut self) -> Result<Statement, ()> {
+        let token = self.advance().expect("$MIDISOUNDFONT token");
+        let span: Span = token.span.clone().into();
+
+        // Extract filename from the token text (e.g., "$MIDISOUNDFONT:'soundfont.sf2'")
+        let text = &token.text;
+        let filename = if let Some(start) = text.find('\'') {
+            if let Some(end) = text[start + 1..].find('\'') {
+                text[start + 1..start + 1 + end].to_string()
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        };
+
+        Ok(Statement::new(
+            StatementKind::MetaMidiSoundFont { filename },
+            span,
+        ))
+    }
+
+    /// Parses a `$UNSTABLE:feature` directive.
+    pub(super) fn parse_meta_unstable(&mut self) -> Result<Statement, ()> {
+        let token = self.advance().expect("$UNSTABLE token");
+        let span: Span = token.span.clone().into();
+
+        // Extract feature name from the token text (e.g., "$UNSTABLE:http")
+        let text = &token.text;
+        let feature = if let Some(colon_pos) = text.find(':') {
+            text[colon_pos + 1..].trim().to_string()
+        } else {
+            String::new()
+        };
+
+        Ok(Statement::new(
+            StatementKind::MetaUnstable { feature },
+            span,
+        ))
+    }
+
+    /// Parses a `$FORMAT` directive.
+    pub(super) fn parse_meta_format(&mut self) -> Result<Statement, ()> {
+        let token = self.advance().expect("$FORMAT token");
+        let span: Span = token.span.clone().into();
+
+        Ok(Statement::new(StatementKind::MetaFormat, span))
+    }
+
+    /// Parses a `$USELIBRARY:'library'` directive.
+    pub(super) fn parse_meta_uselibrary(&mut self) -> Result<Statement, ()> {
+        let token = self.advance().expect("$USELIBRARY token");
+        let span: Span = token.span.clone().into();
+
+        // Extract library from the token text (e.g., "$USELIBRARY:'opengl32'")
+        let text = &token.text;
+        let library = if let Some(start) = text.find('\'') {
+            if let Some(end) = text[start + 1..].find('\'') {
+                text[start + 1..start + 1 + end].to_string()
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        };
+
+        Ok(Statement::new(
+            StatementKind::MetaUseLibrary { library },
+            span,
+        ))
+    }
 }

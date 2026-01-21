@@ -1,15 +1,14 @@
 # QB64Fresh TODO
 
-*Last updated: 2026-01-20 (Session 036)*
+*Last updated: 2026-01-20 (Session 037)*
 
 A prioritized roadmap for QB64Fresh development. For completed features, see [TODO-completed.md](TODO-completed.md).
 
 ---
 
-## Phase 1: Language Completeness - Remaining Items
+## Phase 1: Language Completeness ✅ COMPLETE
 
-### Missing Built-in Functions
-- [ ] `POKE` (memory write - may be limited/simulated for safety)
+All Phase 1 items have been completed - see TODO-completed.md.
 
 ---
 
@@ -94,11 +93,9 @@ All C Library Integration items completed - see TODO-completed.md.
 
 ### Medium Priority - QB64 Extensions (Remaining)
 
-#### Metacommands (Not Yet Implemented)
-- [ ] `$MIDISOUNDFONT:'file.sf2'` - MIDI soundfont
-- [ ] `$UNSTABLE:feature` - enable unstable features
-- [ ] `$FORMAT` - code formatting directive
-- [ ] `$USELIBRARY` - use external library
+#### Metacommands ✅ COMPLETE
+
+All metacommands have been implemented - see TODO-completed.md.
 
 ### OpenGL Commands (Intentionally Excluded)
 

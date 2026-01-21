@@ -1694,6 +1694,27 @@ pub enum StatementKind {
         /// Path to the file to embed
         filename: String,
     },
+
+    /// `$MIDISOUNDFONT:'file.sf2'` - Set MIDI soundfont file
+    MetaMidiSoundFont {
+        /// Path to the soundfont file
+        filename: String,
+    },
+
+    /// `$UNSTABLE:feature` - Enable an unstable/experimental feature
+    MetaUnstable {
+        /// Name of the feature to enable
+        feature: String,
+    },
+
+    /// `$FORMAT` - Code formatting directive (no-op, for IDE support)
+    MetaFormat,
+
+    /// `$USELIBRARY:'library'` - Use an external library
+    MetaUseLibrary {
+        /// Path or name of the library
+        library: String,
+    },
 }
 
 /// File mode for OPEN statement.

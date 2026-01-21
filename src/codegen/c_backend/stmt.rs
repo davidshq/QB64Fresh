@@ -2304,6 +2304,26 @@ impl StmtEmitter {
                 // Runtime function _EMBEDDED$ can retrieve embedded content
                 writeln!(output, "{}/* $EMBED:'{}' */", indent, filename).unwrap();
             }
+
+            TypedStatementKind::MetaMidiSoundFont { filename } => {
+                // $MIDISOUNDFONT sets the MIDI soundfont file for playback
+                writeln!(output, "{}/* $MIDISOUNDFONT:'{}' */", indent, filename).unwrap();
+            }
+
+            TypedStatementKind::MetaUnstable { feature } => {
+                // $UNSTABLE enables an experimental feature
+                writeln!(output, "{}/* $UNSTABLE:{} */", indent, feature).unwrap();
+            }
+
+            TypedStatementKind::MetaFormat => {
+                // $FORMAT is a no-op for code formatting (IDE support only)
+                writeln!(output, "{}/* $FORMAT */", indent).unwrap();
+            }
+
+            TypedStatementKind::MetaUseLibrary { library } => {
+                // $USELIBRARY includes an external library
+                writeln!(output, "{}/* $USELIBRARY:'{}' */", indent, library).unwrap();
+            }
         }
 
         Ok(())

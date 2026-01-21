@@ -132,6 +132,10 @@ impl<'a> Parser<'a> {
             TokenKind::MetaVersionInfo => self.parse_meta_versioninfo(),
             TokenKind::MetaError => self.parse_meta_error(),
             TokenKind::MetaEmbed => self.parse_meta_embed(),
+            TokenKind::MetaMidiSoundFont => self.parse_meta_midisoundfont(),
+            TokenKind::MetaUnstable => self.parse_meta_unstable(),
+            TokenKind::MetaFormat => self.parse_meta_format(),
+            TokenKind::MetaUseLibrary => self.parse_meta_uselibrary(),
             TokenKind::MetaCommand => self.parse_meta_command(),
 
             // Graphics statements

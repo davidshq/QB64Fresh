@@ -1633,6 +1633,27 @@ pub enum TypedStatementKind {
         /// Path to the embedded file.
         filename: String,
     },
+
+    /// $MIDISOUNDFONT:'file.sf2' metacommand.
+    MetaMidiSoundFont {
+        /// Path to the soundfont file.
+        filename: String,
+    },
+
+    /// $UNSTABLE:feature metacommand.
+    MetaUnstable {
+        /// Feature name to enable.
+        feature: String,
+    },
+
+    /// $FORMAT metacommand.
+    MetaFormat,
+
+    /// $USELIBRARY:'library' metacommand.
+    MetaUseLibrary {
+        /// Library name or path.
+        library: String,
+    },
 }
 
 /// Typed coordinates for VIEW and WINDOW statements.

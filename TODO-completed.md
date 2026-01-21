@@ -897,3 +897,23 @@ The following items were discovered to already be implemented during a TODO audi
 
 ### Test Results
 - Integration tests: 550 → 558 tests (+8 new tests)
+
+---
+
+## Phase 7: Session 037 Additions
+
+### Final Metacommands
+- [x] `$MIDISOUNDFONT:'file.sf2'` - set MIDI soundfont file for playback
+- [x] `$UNSTABLE:feature` - enable unstable/experimental features
+- [x] `$FORMAT` - code formatting directive (IDE support, no-op)
+- [x] `$USELIBRARY:'library'` - use external library
+
+### Test Results
+- Integration tests: 558 → 562 tests (+4 new tests)
+
+---
+
+## Phase 1: Language Completeness ✅ (Discovered Complete Session 037)
+
+### Memory Write Function
+- [x] `POKE address, value` - write byte to memory (already implemented, generates `qb_poke()` call)
