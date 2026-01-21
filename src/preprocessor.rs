@@ -214,10 +214,13 @@ pub fn preprocess(source: &str, base_path: &Path) -> Result<String, Preprocessor
 ///
 /// The preprocessed source with all includes expanded.
 pub fn preprocess_file(path: &Path) -> Result<String, PreprocessorError> {
-    let source = fs::read_to_string(path).map_err(|e| PreprocessorError::ReadError {
+    // Read file as bytes and convert with lossy UTF-8 to handle legacy encodings
+    // (some QB64pe source files contain Windows-1252 or Code Page 437 characters)
+    let bytes = fs::read(path).map_err(|e| PreprocessorError::ReadError {
         path: path.to_path_buf(),
         message: e.to_string(),
     })?;
+    let source = String::from_utf8_lossy(&bytes).into_owned();
 
     let base_path = path.parent().unwrap_or(Path::new("."));
     let canonical = path.canonicalize().unwrap_or(path.to_path_buf());
@@ -255,13 +258,14 @@ fn preprocess_internal(
             // Enter the include (checks for cycles and depth)
             context.enter_include(include_full_path.clone())?;
 
-            // Read the included file
-            let include_source = fs::read_to_string(&include_full_path).map_err(|e| {
+            // Read the included file (using lossy UTF-8 for legacy encoding support)
+            let include_bytes = fs::read(&include_full_path).map_err(|e| {
                 PreprocessorError::ReadError {
                     path: include_full_path.clone(),
                     message: e.to_string(),
                 }
             })?;
+            let include_source = String::from_utf8_lossy(&include_bytes).into_owned();
 
             // Get the include file's directory for nested includes
             let include_base = include_full_path.parent().unwrap_or(Path::new("."));
@@ -299,6 +303,10 @@ fn preprocess_internal(
 /// - `$INCLUDE:'path'`
 /// - `'$INCLUDE: 'path'` (comment prefix, still valid)
 ///
+/// Also normalizes Windows-style backslashes to forward slashes for cross-platform
+/// compatibility. This allows QB64pe source (which uses `global\version.bas`) to
+/// work on Linux/macOS.
+///
 /// Returns `None` if the line is not an include directive.
 fn parse_include_directive(line: &str) -> Option<String> {
     let trimmed = line.trim();
@@ -329,7 +337,9 @@ fn parse_include_directive(line: &str) -> Option<String> {
         if let Some(end) = after_quote.find('\'') {
             let path = &after_quote[..end];
             if !path.is_empty() {
-                return Some(path.to_string());
+                // Normalize Windows backslashes to forward slashes for cross-platform support
+                let normalized_path = path.replace('\\', "/");
+                return Some(normalized_path);
             }
         }
     }
@@ -377,6 +387,16 @@ mod tests {
         assert_eq!(
             parse_include_directive("$INCLUDE: 'inc/common.bi'"),
             Some("inc/common.bi".to_string())
+        );
+
+        // Windows-style backslashes should be normalized to forward slashes
+        assert_eq!(
+            parse_include_directive("'$INCLUDE:'global\\version.bas'"),
+            Some("global/version.bas".to_string())
+        );
+        assert_eq!(
+            parse_include_directive("$INCLUDE: 'subs_functions\\extensions\\opengl\\opengl_global.bas'"),
+            Some("subs_functions/extensions/opengl/opengl_global.bas".to_string())
         );
     }
 

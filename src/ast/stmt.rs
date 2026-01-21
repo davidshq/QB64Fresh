@@ -1292,7 +1292,7 @@ pub enum StatementKind {
         params: Vec<DeclareParam>,
     },
 
-    /// `DECLARE FUNCTION name [(parameters)]`
+    /// `DECLARE FUNCTION name [(parameters)] [AS type]`
     ///
     /// Forward declaration of a function. Similar to DECLARE SUB but for
     /// functions that return values.
@@ -1300,12 +1300,15 @@ pub enum StatementKind {
     /// Example:
     /// ```basic
     /// DECLARE FUNCTION AddNumbers% (a AS INTEGER, b AS INTEGER)
+    /// DECLARE FUNCTION GetName (id AS LONG) AS STRING
     /// ```
     DeclareFunction {
         /// The name of the function.
         name: String,
         /// Parameter declarations.
         params: Vec<DeclareParam>,
+        /// Optional explicit return type (AS type).
+        return_type: Option<TypeSpec>,
     },
 
     // ==================== Phase 7: Additional QB4.5/QB64 Statements ====================

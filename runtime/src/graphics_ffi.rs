@@ -1372,6 +1372,199 @@ pub unsafe extern "C" fn qb_printwidth(text: *const c_char) -> i64 {
     (text_str.len() as i64) * 8
 }
 
+// ============================================================================
+// GET/PUT Graphics Array Operations
+// ============================================================================
+
+/// PUT action constants matching the C defines in runtime.rs
+const QB_PUT_XOR: c_int = 0;
+const QB_PUT_PSET: c_int = 1;
+const QB_PUT_PRESET: c_int = 2;
+const QB_PUT_AND: c_int = 3;
+const QB_PUT_OR: c_int = 4;
+
+/// GET - Capture a screen region to an array.
+///
+/// Array format:
+/// - Bytes 0-1: Width (16-bit little-endian)
+/// - Bytes 2-3: Height (16-bit little-endian)
+/// - Bytes 4+: Pixel data (32-bit ARGB per pixel, row-major order)
+///
+/// # Arguments
+/// - `x1`, `y1`: Top-left corner of region
+/// - `x2`, `y2`: Bottom-right corner of region
+/// - `arr`: Pointer to destination array (must be large enough)
+///
+/// # Safety
+/// - `arr` must point to a valid, writable memory region large enough
+///   to hold 4 bytes header + (width * height * 4) bytes of pixel data
+#[no_mangle]
+pub extern "C" fn qb_gfx_get(x1: i32, y1: i32, x2: i32, y2: i32, arr: *mut u8) -> c_int {
+    if arr.is_null() {
+        return 1;
+    }
+
+    // Normalize coordinates (ensure x1 <= x2, y1 <= y2)
+    let (left, right) = if x1 <= x2 { (x1, x2) } else { (x2, x1) };
+    let (top, bottom) = if y1 <= y2 { (y1, y2) } else { (y2, y1) };
+
+    let width = (right - left + 1) as u16;
+    let height = (bottom - top + 1) as u16;
+
+    unsafe {
+        if let Some(ref backend) = crate::graphics::GRAPHICS_BACKEND {
+            // Write header: width and height as 16-bit values
+            let header = arr as *mut u16;
+            *header = width;
+            *header.add(1) = height;
+
+            // Write pixel data
+            let pixels = arr.add(4) as *mut u32;
+            let mut idx = 0usize;
+
+            for py in top..=bottom {
+                for px in left..=right {
+                    let color = backend.point(px, py).unwrap_or(0);
+                    *pixels.add(idx) = color;
+                    idx += 1;
+                }
+            }
+
+            0 // Success
+        } else {
+            1 // Not initialized
+        }
+    }
+}
+
+/// GET with STEP variant - coordinates may be relative.
+///
+/// For GET, the STEP applies to the second coordinate pair,
+/// making (w, h) relative offsets from (x1, y1).
+#[no_mangle]
+pub extern "C" fn qb_gfx_get_step(x1: i32, y1: i32, w: i32, h: i32, arr: *mut u8) -> c_int {
+    // STEP variant: w and h are offsets from x1, y1
+    qb_gfx_get(x1, y1, x1 + w, y1 + h, arr)
+}
+
+/// PUT - Draw array contents to screen.
+///
+/// Reads image data from array and draws it to screen at (x, y),
+/// applying the specified action mode.
+///
+/// # Arguments
+/// - `x`, `y`: Top-left corner of destination
+/// - `arr`: Pointer to source array (format from GET)
+/// - `action`: Drawing mode (XOR=0, PSET=1, PRESET=2, AND=3, OR=4)
+/// - `clip`: If non-zero, clip to screen boundaries
+/// - `trans_color`: Transparent color (-1 for none, otherwise skip pixels of this color)
+///
+/// # Safety
+/// - `arr` must point to a valid array with proper header and pixel data
+#[no_mangle]
+pub extern "C" fn qb_gfx_put(
+    x: i32,
+    y: i32,
+    arr: *const u8,
+    action: c_int,
+    clip: c_int,
+    trans_color: i32,
+) -> c_int {
+    if arr.is_null() {
+        return 1;
+    }
+
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            // Read header
+            let header = arr as *const u16;
+            let width = *header as i32;
+            let height = *header.add(1) as i32;
+
+            if width <= 0 || height <= 0 {
+                return 1; // Invalid dimensions
+            }
+
+            // Get screen size for clipping
+            let (screen_w, screen_h) = backend.get_screen_size();
+            let screen_w = screen_w as i32;
+            let screen_h = screen_h as i32;
+
+            // Read pixel data
+            let pixels = arr.add(4) as *const u32;
+
+            for py in 0..height {
+                let dest_y = y + py;
+
+                // Clip vertically
+                if clip != 0 && (dest_y < 0 || dest_y >= screen_h) {
+                    continue;
+                }
+
+                for px in 0..width {
+                    let dest_x = x + px;
+
+                    // Clip horizontally
+                    if clip != 0 && (dest_x < 0 || dest_x >= screen_w) {
+                        continue;
+                    }
+
+                    let src_idx = (py * width + px) as usize;
+                    let src_color = *pixels.add(src_idx);
+
+                    // Check transparent color
+                    if trans_color >= 0 && src_color == trans_color as u32 {
+                        continue;
+                    }
+
+                    // Apply action mode
+                    let final_color = match action {
+                        QB_PUT_PSET => src_color,
+                        QB_PUT_PRESET => !src_color | 0xFF000000, // Invert RGB, keep alpha opaque
+                        QB_PUT_XOR => {
+                            let dest_color = backend.point(dest_x, dest_y).unwrap_or(0);
+                            (src_color ^ dest_color) | 0xFF000000 // XOR RGB, keep alpha opaque
+                        }
+                        QB_PUT_AND => {
+                            let dest_color = backend.point(dest_x, dest_y).unwrap_or(0);
+                            (src_color & dest_color) | 0xFF000000 // AND RGB, keep alpha opaque
+                        }
+                        QB_PUT_OR => {
+                            let dest_color = backend.point(dest_x, dest_y).unwrap_or(0);
+                            (src_color | dest_color) | 0xFF000000 // OR RGB, keep alpha opaque
+                        }
+                        _ => src_color, // Default to PSET for unknown actions
+                    };
+
+                    let _ = backend.pset(dest_x, dest_y, final_color);
+                }
+            }
+
+            0 // Success
+        } else {
+            1 // Not initialized
+        }
+    }
+}
+
+/// PUT with STEP variant - position is relative to last graphics point.
+///
+/// Note: In a full implementation, this would track the last graphics
+/// position. For now, it behaves the same as the non-STEP variant.
+#[no_mangle]
+pub extern "C" fn qb_gfx_put_step(
+    x: i32,
+    y: i32,
+    arr: *const u8,
+    action: c_int,
+    clip: c_int,
+    trans_color: i32,
+) -> c_int {
+    // TODO: Track last graphics position for proper STEP behavior
+    // For now, just pass through to the non-STEP variant
+    qb_gfx_put(x, y, arr, action, clip, trans_color)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

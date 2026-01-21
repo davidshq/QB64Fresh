@@ -126,27 +126,57 @@ QB64Fresh/                      # Main compiler workspace
 ├── src/
 │   ├── lib.rs                  # Library root
 │   ├── main.rs                 # CLI entry point (qb64fresh binary)
+│   ├── preprocessor.rs         # $INCLUDE directive processing
 │   ├── lexer/                  # Tokenization (logos-based)
 │   │   ├── mod.rs              # Lexer wrapper
-│   │   └── token.rs            # Token definitions
+│   │   └── token.rs            # Token definitions (~200 token types)
 │   ├── parser/                 # AST construction (Pratt + recursive descent)
-│   │   ├── mod.rs              # Parser implementation
+│   │   ├── mod.rs              # Parser entry point
+│   │   ├── tokens.rs           # Token navigation utilities
+│   │   ├── expressions.rs      # Pratt parser for expressions
+│   │   ├── statements.rs       # Core statement parsing
+│   │   ├── control_flow.rs     # IF/FOR/WHILE/DO/SELECT
+│   │   ├── procedures.rs       # SUB/FUNCTION/TYPE definitions
+│   │   ├── directives.rs       # $IF, $LET, $CHECKING
+│   │   ├── graphics.rs         # SCREEN, LINE, CIRCLE, etc.
+│   │   ├── audio.rs            # BEEP, SOUND, PLAY, _SND*
+│   │   ├── file_io.rs          # OPEN, CLOSE, GET, PUT, SEEK
+│   │   ├── system.rs           # SHELL, KILL, NAME, MKDIR
 │   │   └── error.rs            # Parse error types
 │   ├── ast/                    # AST type definitions
 │   │   ├── mod.rs              # Span, Program
 │   │   ├── expr.rs             # Expression nodes
-│   │   └── stmt.rs             # Statement nodes
+│   │   └── stmt.rs             # Statement nodes (~100 variants)
 │   ├── semantic/               # Type checking, symbol resolution
-│   │   ├── mod.rs              # Analyzer entry point
-│   │   ├── types.rs            # BasicType enum
-│   │   ├── symbols.rs          # Symbol table
-│   │   ├── checker.rs          # Type checker
-│   │   ├── typed_ir.rs         # Typed IR output
-│   │   └── error.rs            # Semantic errors
+│   │   ├── mod.rs              # Analyzer entry point, built-ins
+│   │   ├── types.rs            # BasicType enum, type inference
+│   │   ├── symbols.rs          # Symbol table with scope management
+│   │   ├── typed_ir.rs         # Typed IR output for codegen
+│   │   ├── error.rs            # Semantic errors
+│   │   └── checker/            # Type checker modules
+│   │       ├── mod.rs          # Checker entry point
+│   │       ├── expressions.rs  # Expression type checking
+│   │       ├── statements.rs   # Statement type checking
+│   │       ├── control_flow.rs # Control flow checking
+│   │       ├── assignments.rs  # Assignment validation
+│   │       ├── definitions.rs  # Definition handling
+│   │       └── const_eval.rs   # Constant evaluation
 │   ├── codegen/                # Code generation
 │   │   ├── mod.rs              # CodeGenerator trait
-│   │   ├── c_backend.rs        # C code generator (~1450 lines)
-│   │   └── error.rs            # CodeGen errors
+│   │   ├── error.rs            # CodeGen errors
+│   │   └── c_backend/          # C code generation
+│   │       ├── mod.rs          # Backend entry point
+│   │       ├── expr.rs         # Expression codegen
+│   │       ├── stmt.rs         # Statement codegen (core)
+│   │       ├── file_io.rs      # File I/O helpers
+│   │       ├── types.rs        # Type mapping utilities
+│   │       ├── runtime.rs      # Inline C runtime (~4000 lines)
+│   │       ├── analysis.rs     # DATA/label collection
+│   │       └── const_fold.rs   # Constant folding optimization
+│   ├── header_parser/          # C header parsing (optional)
+│   │   ├── mod.rs              # Module root
+│   │   ├── lexer.rs            # C token lexer
+│   │   └── parser.rs           # C declaration parser
 │   └── lsp/                    # Language Server Protocol
 │       ├── mod.rs              # LSP server implementation
 │       └── main.rs             # qb64fresh-lsp binary entry
@@ -155,9 +185,24 @@ QB64Fresh/                      # Main compiler workspace
 │   │   ├── lib.rs              # Crate root
 │   │   ├── string.rs           # Reference-counted strings
 │   │   ├── io.rs               # PRINT, INPUT, console
-│   │   └── math.rs             # Math functions
+│   │   ├── math.rs             # Math functions
+│   │   ├── graphics_ffi.rs     # Graphics C FFI bindings
+│   │   ├── audio_ffi.rs        # Audio C FFI bindings
+│   │   ├── graphics/           # Graphics backend system
+│   │   │   ├── mod.rs          # GraphicsBackend trait
+│   │   │   ├── sdl2.rs         # SDL2 implementation
+│   │   │   ├── mock.rs         # Mock for testing
+│   │   │   ├── font.rs         # Font rendering (8x8 bitmap)
+│   │   │   └── error.rs        # Graphics errors
+│   │   └── audio/              # Audio backend system
+│   │       ├── mod.rs          # AudioBackend trait
+│   │       ├── rodio_backend.rs # Rodio implementation
+│   │       ├── mock.rs         # Mock for testing
+│   │       └── error.rs        # Audio errors
 │   └── include/
 │       └── qb64fresh_rt.h      # C header for FFI
+├── tools/                      # Utility tools
+│   └── fix_encoding/           # DOS encoding converter
 ├── examples/                   # Test BASIC files
 ├── docs/                       # Documentation
 ├── AgenticLogs/                # Development history and decisions
@@ -448,4 +493,4 @@ docs(readme): update build instructions
 
 ---
 
-*Last updated: 2026-01-17*
+*Last updated: 2026-01-20*

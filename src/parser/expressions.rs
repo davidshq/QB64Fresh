@@ -112,6 +112,7 @@ impl<'a> Parser<'a> {
             // Image buffer functions
             TokenKind::NewImage => self.parse_builtin_function("_NEWIMAGE"),
             TokenKind::LoadImage => self.parse_builtin_function("_LOADIMAGE"),
+            TokenKind::CopyImage => self.parse_builtin_function("_COPYIMAGE"),
             TokenKind::ImageWidth => self.parse_builtin_function("_WIDTH"),
             TokenKind::ImageHeight => self.parse_builtin_function("_HEIGHT"),
 

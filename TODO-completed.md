@@ -437,7 +437,27 @@
 
 ---
 
-*Last updated: 2026-01-20 (Session 035 - 99.1% QB4.5 compatibility excluding open_gl)*
+*Last updated: 2026-01-20 (Session 039)*
+
+---
+
+## Phase 6: Tooling & Ecosystem ✅ (Session 038)
+
+### Documentation
+- [x] Migration guide from QB64 *(Small - 1-2 sessions)* - see docs/MIGRATION_GUIDE.md
+
+### Testing
+- [x] Add comprehensive recursion test suite *(Small - 1 session)* - 32 tests in `recursion` module
+
+---
+
+## Known Issues Resolved ✅ (Session 038)
+
+### Memory Features
+- [x] **QB45 memory features: DEF SEG, VARSEG, VARPTR, BLOAD, BSAVE** - All memory segment operations fully implemented and working. Test suite shows 96.5% compatibility (136/141 files passing). thebob/ directory (heavy BLOAD/BSAVE usage) passes 100%.
+
+### Recursion
+- [x] **Recursion support** - Thoroughly tested with 32 tests added
 
 ---
 
@@ -919,3 +939,37 @@ The following items were discovered to already be implemented during a TODO audi
 
 ### Memory Write Function
 - [x] `POKE address, value` - write byte to memory (already implemented, generates `qb_poke()` call)
+
+---
+
+## Phase 6: Tooling & Ecosystem ✅ (Session 039)
+
+### Optimization
+- [x] Constant folding expansion - Compile-time evaluation of constant expressions
+  - Arithmetic: `10 + 5` → `15`
+  - String concatenation: `"Hello" + " World"` → `"Hello World"`
+  - Pure built-in functions: `ABS(-42)` → `42`, `LEN("test")` → `4`
+  - Trigonometric: `SIN(0)` → `0.0`, `COS(0)` → `1.0`
+  - String functions: `UCASE$("hello")` → `"HELLO"`, `CHR$(65)` → `"A"`
+  - Bitwise: `_SHL(1, 4)` → `16`, `_SHR(16, 2)` → `4`
+  - Comparisons: `5 > 3` → `-1` (TRUE)
+  - Implementation: `src/codegen/c_backend/const_fold.rs` (650+ lines)
+
+### Test Results
+- Integration tests: 693 → 720 tests (+27 constant folding tests)
+
+---
+
+## Session 039 Additions
+
+### Phase 3: Graphics System
+- [x] GET/PUT full pixel copying implementation *(Small - 1 session)* - stubs upgraded to full implementation
+
+### Known Issues Resolved
+- [x] Large array handling: Verify stack vs heap allocation *(Small - 1 session)* ✅ **VERIFIED**
+      Arrays are correctly heap-allocated via `malloc()` in `emit_dim()` (stmt.rs:3010).
+      REDIM uses `realloc()` with optional `_PRESERVE`. Only scalars use stack allocation.
+
+### Documentation
+- [x] Add doc comments to 16 undocumented modules *(Small - 1-2 sessions)* ✅ **ALREADY COMPLETE**
+      All parser and codegen modules now have module-level documentation (`//!` comments).

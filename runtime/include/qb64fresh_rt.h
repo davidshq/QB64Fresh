@@ -151,6 +151,99 @@ void qb_sleep(double seconds);
 void qb_delay(double seconds);
 
 /* ============================================================================
+ * File I/O Functions
+ * ============================================================================ */
+
+/* File open/close */
+void qb_file_open(int32_t fnum, const char* filename, const char* mode);
+void qb_file_set_reclen(int32_t fnum, int32_t len);
+void qb_file_close(int32_t fnum);
+void qb_file_close_all(void);
+
+/* Sequential output (PRINT #) */
+void qb_file_print_int(int32_t fnum, int64_t val);
+void qb_file_print_float(int32_t fnum, double val);
+void qb_file_print_string(int32_t fnum, QbString* s);
+void qb_file_print_newline(int32_t fnum);
+void qb_file_print_tab(int32_t fnum);
+
+/* Sequential output (WRITE #) */
+void qb_file_write_string(int32_t fnum, QbString* s);
+void qb_file_write_number(int32_t fnum, double val);
+void qb_file_write_char(int32_t fnum, char c);
+
+/* Sequential input (INPUT #) */
+void qb_file_input_string(int32_t fnum, QbString** s);
+void qb_file_input_int(int32_t fnum, int32_t* val);
+void qb_file_input_float(int32_t fnum, double* val);
+void qb_file_line_input(int32_t fnum, QbString** s);
+
+/* Random/binary access */
+void qb_file_seek(int32_t fnum, int64_t pos);
+void qb_file_seek_record(int32_t fnum, int64_t rec);
+void qb_file_get(int32_t fnum, void* data, size_t size);
+void qb_file_put(int32_t fnum, const void* data, size_t size);
+
+/* File status functions */
+int32_t qb_eof(int32_t fnum);
+int64_t qb_lof(int32_t fnum);
+int64_t qb_loc(int32_t fnum);
+int32_t qb_freefile(void);
+
+/* FIELD statement support */
+void qb_field_start(int32_t fnum);
+void qb_field_add(int32_t width, QbString** var);
+void qb_lset(QbString** var, QbString* value);
+void qb_rset(QbString** var, QbString* value);
+
+/* File system operations */
+int32_t qb_file_kill(const char* filename);
+int32_t qb_file_rename(const char* old_name, const char* new_name);
+int32_t qb_file_exists(const char* path);
+
+/* ============================================================================
+ * Dialog Functions
+ * ============================================================================ */
+
+/* File dialogs */
+QbString* qb_openfiledialog(const char* title, const char* initial_dir, const char* filter);
+QbString* qb_savefiledialog(const char* title, const char* initial_dir, const char* default_name, const char* filter);
+QbString* qb_selectfolderdialog(const char* title, const char* initial_dir);
+
+/* Message box button types */
+#define QB_MB_OK              0
+#define QB_MB_OKCANCEL        1
+#define QB_MB_ABORTRETRYIGNORE 2
+#define QB_MB_YESNOCANCEL     3
+#define QB_MB_YESNO           4
+#define QB_MB_RETRYCANCEL     5
+
+/* Message box return values */
+#define QB_MBRET_OK           1
+#define QB_MBRET_CANCEL       2
+#define QB_MBRET_ABORT        3
+#define QB_MBRET_RETRY        4
+#define QB_MBRET_IGNORE       5
+#define QB_MBRET_YES          6
+#define QB_MBRET_NO           7
+
+/* Message box */
+int32_t qb_messagebox_ex(const char* title, const char* message, int32_t buttons);
+
+/* ============================================================================
+ * Joystick/Gamepad Functions
+ * ============================================================================ */
+
+/* Classic BASIC joystick functions */
+int32_t qb_stick(int32_t axis);
+int32_t qb_strig(int32_t button);
+
+/* QB64 input device extensions */
+int32_t qb_devices(void);
+double qb_axis(int32_t device, int32_t axis);
+int32_t qb_button(int32_t device, int32_t button);
+
+/* ============================================================================
  * Runtime Control
  * ============================================================================ */
 

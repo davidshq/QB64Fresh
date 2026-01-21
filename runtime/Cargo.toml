@@ -24,13 +24,17 @@ image = { version = "0.25", optional = true, default-features = false, features 
 # For audio support (pure Rust audio library)
 rodio = { version = "0.19", optional = true }
 
+# For native file dialogs (_OPENFILEDIALOG$, _SAVEFILEDIALOG$, etc.)
+rfd = { version = "0.14", optional = true }
+
 [features]
-default = ["graphics-sdl2", "audio-rodio"]
+default = ["graphics-sdl2", "audio-rodio", "dialogs"]
 graphics-sdl2 = ["sdl2", "image"]
 graphics-sdl2-ttf = ["sdl2/ttf"]  # Requires SDL2_ttf library
 graphics-mock = []  # For testing without display
 audio-rodio = ["rodio"]
 audio-mock = []  # For testing without audio
+dialogs = ["rfd"]  # Native file dialogs
 
 [dev-dependencies]
 # For testing

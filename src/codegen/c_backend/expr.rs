@@ -3,6 +3,12 @@
 //! This module handles the emission of C code for all expression types,
 //! including literals, binary/unary operations, function calls, and array access.
 //!
+//! # Constant Folding
+//!
+//! Before emitting C code, expressions are checked for constant folding
+//! opportunities. Expressions like `10 + 5` are folded to `15` at compile
+//! time, resulting in simpler generated code.
+//!
 //! # Special Handling
 //!
 //! Several BASIC operations require special treatment:
@@ -16,13 +22,32 @@ use crate::codegen::error::CodeGenError;
 use crate::semantic::typed_ir::{TypedArrayDimension, TypedExpr, TypedExprKind};
 use crate::semantic::types::BasicType;
 
+use super::const_fold::{emit_folded, try_fold};
 use super::types::{c_identifier, c_type};
 
 /// Emits C code for an expression.
 ///
 /// This function recursively processes the expression tree, generating
 /// appropriate C code for each node type.
+///
+/// Before emitting, attempts to fold constant expressions. For example,
+/// `10 + 5` will be emitted as `15LL` instead of `(10LL + 5LL)`.
 pub(super) fn emit_expr(expr: &TypedExpr) -> Result<String, CodeGenError> {
+    // Try to fold the expression to a constant first
+    // Only fold complex expressions (binary, unary, function calls) to avoid
+    // redundant work on already-literal values
+    if matches!(
+        &expr.kind,
+        TypedExprKind::Binary { .. }
+            | TypedExprKind::Unary { .. }
+            | TypedExprKind::FunctionCall { .. }
+            | TypedExprKind::Grouped(_)
+    ) {
+        if let Some(folded) = try_fold(expr) {
+            return Ok(emit_folded(&folded));
+        }
+    }
+
     match &expr.kind {
         TypedExprKind::IntegerLiteral(n) => Ok(format!("{}LL", n)),
 
@@ -581,6 +606,7 @@ pub(super) fn c_function_name(name: &str) -> String {
         // Image buffer functions
         "_NEWIMAGE" => "qb_gfx_newimage".to_string(),
         "_LOADIMAGE" => "qb_gfx_loadimage".to_string(),
+        "_COPYIMAGE" => "qb_gfx_copyimage".to_string(),
         "_WIDTH" => "qb_gfx_image_width".to_string(),
         "_HEIGHT" => "qb_gfx_image_height".to_string(),
 
@@ -708,6 +734,8 @@ pub(super) fn c_function_name(name: &str) -> String {
 
         // Sound extended
         "_SNDRAWDONE" => "qb_sndrawdone".to_string(),
+        "_SNDOPENRAW" => "qb_sndopenraw".to_string(),
+        "_SNDRAWLEN" => "qb_sndrawlen".to_string(),
 
         // QB64 Extension Functions (Session 032+)
         // Error handling extended
@@ -892,7 +920,8 @@ mod tests {
     }
 
     #[test]
-    fn test_emit_power_operator() {
+    fn test_emit_power_operator_constant_folded() {
+        // When both operands are constant, the expression is folded
         let expr = TypedExpr::new(
             TypedExprKind::Binary {
                 left: Box::new(TypedExpr::integer(2, Span::new(0, 1))),
@@ -903,11 +932,32 @@ mod tests {
             Span::new(0, 5),
         );
         let result = emit_expr(&expr).unwrap();
-        assert_eq!(result, "pow(2LL, 3LL)");
+        assert_eq!(result, "8LL"); // 2^3 = 8, folded at compile time
     }
 
     #[test]
-    fn test_emit_eqv_operator() {
+    fn test_emit_power_operator_with_variable() {
+        // When an operand is a variable, pow() is used
+        let expr = TypedExpr::new(
+            TypedExprKind::Binary {
+                left: Box::new(TypedExpr::new(
+                    TypedExprKind::Variable("x".to_string()),
+                    BasicType::Long,
+                    Span::new(0, 1),
+                )),
+                op: BinaryOp::Power,
+                right: Box::new(TypedExpr::integer(3, Span::new(4, 5))),
+            },
+            BasicType::Double,
+            Span::new(0, 5),
+        );
+        let result = emit_expr(&expr).unwrap();
+        assert_eq!(result, "pow(x, 3LL)");
+    }
+
+    #[test]
+    fn test_emit_eqv_operator_constant_folded() {
+        // When both operands are constant, the expression is folded
         let expr = TypedExpr::new(
             TypedExprKind::Binary {
                 left: Box::new(TypedExpr::integer(5, Span::new(0, 1))),
@@ -918,11 +968,33 @@ mod tests {
             Span::new(0, 7),
         );
         let result = emit_expr(&expr).unwrap();
-        assert_eq!(result, "(~(5LL ^ 3LL))");
+        // EQV: !(5 XOR 3) = !6 = -7 (bitwise NOT)
+        assert_eq!(result, "-7LL");
     }
 
     #[test]
-    fn test_emit_imp_operator() {
+    fn test_emit_eqv_operator_with_variable() {
+        // When an operand is a variable, the C expression is emitted
+        let expr = TypedExpr::new(
+            TypedExprKind::Binary {
+                left: Box::new(TypedExpr::new(
+                    TypedExprKind::Variable("x".to_string()),
+                    BasicType::Long,
+                    Span::new(0, 1),
+                )),
+                op: BinaryOp::Eqv,
+                right: Box::new(TypedExpr::integer(3, Span::new(6, 7))),
+            },
+            BasicType::Long,
+            Span::new(0, 7),
+        );
+        let result = emit_expr(&expr).unwrap();
+        assert_eq!(result, "(~(x ^ 3LL))");
+    }
+
+    #[test]
+    fn test_emit_imp_operator_constant_folded() {
+        // When both operands are constant, the expression is folded
         let expr = TypedExpr::new(
             TypedExprKind::Binary {
                 left: Box::new(TypedExpr::integer(5, Span::new(0, 1))),
@@ -933,7 +1005,28 @@ mod tests {
             Span::new(0, 7),
         );
         let result = emit_expr(&expr).unwrap();
-        assert_eq!(result, "((~5LL) | 3LL)");
+        // IMP: (!5) OR 3 = -6 OR 3 = -5
+        assert_eq!(result, "-5LL");
+    }
+
+    #[test]
+    fn test_emit_imp_operator_with_variable() {
+        // When an operand is a variable, the C expression is emitted
+        let expr = TypedExpr::new(
+            TypedExprKind::Binary {
+                left: Box::new(TypedExpr::new(
+                    TypedExprKind::Variable("x".to_string()),
+                    BasicType::Long,
+                    Span::new(0, 1),
+                )),
+                op: BinaryOp::Imp,
+                right: Box::new(TypedExpr::integer(3, Span::new(6, 7))),
+            },
+            BasicType::Long,
+            Span::new(0, 7),
+        );
+        let result = emit_expr(&expr).unwrap();
+        assert_eq!(result, "((~x) | 3LL)");
     }
 
     #[test]

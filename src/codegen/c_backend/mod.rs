@@ -11,8 +11,10 @@
 //! - [`types`] - BASIC-to-C type mapping utilities
 //! - [`runtime`] - Inline runtime library code generation
 //! - [`expr`] - Expression emission
-//! - [`stmt`] - Statement emission (main dispatcher + helper methods)
+//! - [`stmt`] - Statement emission (main dispatcher + core helpers)
+//! - [`file_io`] - File I/O statement helpers (OPEN, CLOSE, GET, PUT, etc.)
 //! - [`analysis`] - Program analysis (globals, DATA collection)
+//! - [`const_fold`] - Compile-time constant folding optimization
 //!
 //! # Generated Code Structure
 //!
@@ -50,7 +52,9 @@
 //! | STRING        | qb_string*    |
 
 mod analysis;
+mod const_fold;
 mod expr;
+mod file_io;
 mod runtime;
 mod stmt;
 mod types;

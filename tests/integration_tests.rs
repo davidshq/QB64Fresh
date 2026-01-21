@@ -795,6 +795,764 @@ mod procedures {
 }
 
 // =============================================================================
+// Recursion Tests
+// =============================================================================
+// Comprehensive test coverage for recursive functions and SUBs.
+// QB64Fresh compiles to C, so the C runtime handles stack management.
+// These tests verify that recursive patterns compile correctly and
+// generate proper recursive C code.
+
+mod recursion {
+    use super::*;
+
+    // ==================== Basic Recursion ====================
+
+    #[test]
+    fn factorial_function() {
+        // Classic factorial - tests basic recursion with decrementing counter
+        let source = r#"
+            PRINT Factorial(5)
+            PRINT Factorial(0)
+            PRINT Factorial(1)
+            END
+
+            FUNCTION Factorial(n AS LONG) AS LONG
+                IF n <= 1 THEN
+                    Factorial = 1
+                ELSE
+                    Factorial = n * Factorial(n - 1)
+                END IF
+            END FUNCTION
+        "#;
+        let code = compile_to_c(source).unwrap();
+        // Verify the function calls itself recursively
+        assert!(code.contains("factorial("), "Generated code should contain recursive call");
+    }
+
+    #[test]
+    fn fibonacci_function() {
+        // Fibonacci - tests recursion with two recursive calls (tree recursion)
+        let source = r#"
+            PRINT Fibonacci(10)
+            END
+
+            FUNCTION Fibonacci(n AS LONG) AS LONG
+                IF n <= 1 THEN
+                    Fibonacci = n
+                ELSE
+                    Fibonacci = Fibonacci(n - 1) + Fibonacci(n - 2)
+                END IF
+            END FUNCTION
+        "#;
+        let code = compile_to_c(source).unwrap();
+        // Should have two recursive calls in the else branch
+        assert!(code.contains("fibonacci("), "Generated code should contain recursive calls");
+    }
+
+    #[test]
+    fn countdown_recursive() {
+        // Simple countdown - tests recursion that decrements to zero
+        let source = r#"
+            PRINT Countdown(5)
+            END
+
+            FUNCTION Countdown(n AS LONG) AS LONG
+                IF n <= 0 THEN
+                    Countdown = 0
+                ELSE
+                    PRINT n
+                    Countdown = Countdown(n - 1)
+                END IF
+            END FUNCTION
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn sum_recursive() {
+        // Recursive sum from 1 to n
+        let source = r#"
+            PRINT SumTo(10)
+            END
+
+            FUNCTION SumTo(n AS LONG) AS LONG
+                IF n <= 0 THEN
+                    SumTo = 0
+                ELSE
+                    SumTo = n + SumTo(n - 1)
+                END IF
+            END FUNCTION
+        "#;
+        assert_compiles(source);
+    }
+
+    // ==================== Mutual Recursion ====================
+
+    #[test]
+    fn mutual_recursion_even_odd() {
+        // Classic mutual recursion: IsEven and IsOdd call each other
+        // Note: DECLARE FUNCTION doesn't consume return type, so we omit it
+        let source = r#"
+            DECLARE FUNCTION IsOdd(n AS LONG)
+            PRINT IsEven(4)
+            PRINT IsEven(5)
+            PRINT IsOdd(4)
+            PRINT IsOdd(5)
+            END
+
+            FUNCTION IsEven(n AS LONG) AS LONG
+                IF n = 0 THEN
+                    IsEven = -1
+                ELSE
+                    IsEven = IsOdd(n - 1)
+                END IF
+            END FUNCTION
+
+            FUNCTION IsOdd(n AS LONG) AS LONG
+                IF n = 0 THEN
+                    IsOdd = 0
+                ELSE
+                    IsOdd = IsEven(n - 1)
+                END IF
+            END FUNCTION
+        "#;
+        let code = compile_to_c(source).unwrap();
+        // Both functions should call each other
+        assert!(code.contains("iseven("), "Generated code should have iseven function");
+        assert!(code.contains("isodd("), "Generated code should have isodd function");
+    }
+
+    #[test]
+    fn mutual_recursion_ping_pong() {
+        // Ping-pong recursion pattern
+        let source = r#"
+            DECLARE FUNCTION Pong(n AS LONG)
+            PRINT Ping(3)
+            END
+
+            FUNCTION Ping(n AS LONG) AS LONG
+                IF n <= 0 THEN
+                    Ping = 0
+                ELSE
+                    PRINT "Ping"; n
+                    Ping = Pong(n - 1)
+                END IF
+            END FUNCTION
+
+            FUNCTION Pong(n AS LONG) AS LONG
+                IF n <= 0 THEN
+                    Pong = 0
+                ELSE
+                    PRINT "Pong"; n
+                    Pong = Ping(n - 1)
+                END IF
+            END FUNCTION
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn triple_mutual_recursion() {
+        // Three functions calling each other in a cycle: A -> B -> C -> A
+        let source = r#"
+            DECLARE FUNCTION FuncB(n AS LONG)
+            DECLARE FUNCTION FuncC(n AS LONG)
+            PRINT FuncA(6)
+            END
+
+            FUNCTION FuncA(n AS LONG) AS LONG
+                IF n <= 0 THEN
+                    FuncA = 0
+                ELSE
+                    FuncA = FuncB(n - 1)
+                END IF
+            END FUNCTION
+
+            FUNCTION FuncB(n AS LONG) AS LONG
+                IF n <= 0 THEN
+                    FuncB = 0
+                ELSE
+                    FuncB = FuncC(n - 1)
+                END IF
+            END FUNCTION
+
+            FUNCTION FuncC(n AS LONG) AS LONG
+                IF n <= 0 THEN
+                    FuncC = 0
+                ELSE
+                    FuncC = FuncA(n - 1)
+                END IF
+            END FUNCTION
+        "#;
+        assert_compiles(source);
+    }
+
+    // ==================== Recursive SUBs ====================
+
+    #[test]
+    fn recursive_sub_countdown() {
+        // SUB that calls itself recursively
+        let source = r#"
+            CALL CountdownSub(5)
+            END
+
+            SUB CountdownSub(n AS LONG)
+                IF n > 0 THEN
+                    PRINT n
+                    CALL CountdownSub(n - 1)
+                END IF
+            END SUB
+        "#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_sub_countdownsub("), "Generated code should contain recursive SUB call");
+    }
+
+    #[test]
+    fn recursive_sub_binary_print() {
+        // Print binary representation recursively (tail recursion pattern)
+        let source = r#"
+            CALL PrintBinary(10)
+            PRINT
+            END
+
+            SUB PrintBinary(n AS LONG)
+                IF n > 0 THEN
+                    CALL PrintBinary(n \ 2)
+                    PRINT n MOD 2;
+                END IF
+            END SUB
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn mutual_recursive_subs() {
+        // Two SUBs calling each other
+        let source = r#"
+            DECLARE SUB SubB(n AS LONG)
+            CALL SubA(3)
+            END
+
+            SUB SubA(n AS LONG)
+                IF n > 0 THEN
+                    PRINT "A:"; n
+                    CALL SubB(n - 1)
+                END IF
+            END SUB
+
+            SUB SubB(n AS LONG)
+                IF n > 0 THEN
+                    PRINT "B:"; n
+                    CALL SubA(n - 1)
+                END IF
+            END SUB
+        "#;
+        assert_compiles(source);
+    }
+
+    // ==================== Recursion with Different Types ====================
+
+    #[test]
+    fn recursion_with_double_type() {
+        // Recursion with floating point parameters
+        // Note: "base" is a reserved word in BASIC, so use "b" instead
+        let source = r#"
+            PRINT Power(2.0, 8)
+            END
+
+            FUNCTION Power(b AS DOUBLE, exponent AS LONG) AS DOUBLE
+                IF exponent = 0 THEN
+                    Power = 1.0
+                ELSEIF exponent < 0 THEN
+                    Power = 1.0 / Power(b, -exponent)
+                ELSE
+                    Power = b * Power(b, exponent - 1)
+                END IF
+            END FUNCTION
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn recursion_with_single_type() {
+        // Recursion with SINGLE (float) type
+        let source = r#"
+            PRINT Halve!(8.0)
+            END
+
+            FUNCTION Halve!(n AS SINGLE) AS SINGLE
+                IF n < 1.0 THEN
+                    Halve! = n
+                ELSE
+                    Halve! = Halve!(n / 2.0)
+                END IF
+            END FUNCTION
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn recursion_with_integer_type() {
+        // Recursion with INTEGER type (16-bit)
+        let source = r#"
+            PRINT GCD%(48, 18)
+            END
+
+            FUNCTION GCD%(a AS INTEGER, b AS INTEGER) AS INTEGER
+                IF b = 0 THEN
+                    GCD% = a
+                ELSE
+                    GCD% = GCD%(b, a MOD b)
+                END IF
+            END FUNCTION
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn recursion_with_string_concatenation() {
+        // Build string recursively
+        let source = r#"
+            PRINT RepeatChar$("*", 5)
+            END
+
+            FUNCTION RepeatChar$(c AS STRING, n AS LONG) AS STRING
+                IF n <= 0 THEN
+                    RepeatChar$ = ""
+                ELSE
+                    RepeatChar$ = c + RepeatChar$(c, n - 1)
+                END IF
+            END FUNCTION
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn recursion_returning_string() {
+        // Reverse a string recursively
+        let source = r#"
+            PRINT ReverseStr$("Hello")
+            END
+
+            FUNCTION ReverseStr$(s AS STRING) AS STRING
+                IF LEN(s) <= 1 THEN
+                    ReverseStr$ = s
+                ELSE
+                    ReverseStr$ = RIGHT$(s, 1) + ReverseStr$(LEFT$(s, LEN(s) - 1))
+                END IF
+            END FUNCTION
+        "#;
+        assert_compiles(source);
+    }
+
+    // ==================== Recursion with BYVAL ====================
+
+    #[test]
+    fn recursion_with_byval_parameter() {
+        // Explicit BYVAL parameter in recursive function
+        let source = r#"
+            PRINT DoubleRecursive(5)
+            END
+
+            FUNCTION DoubleRecursive(BYVAL n AS LONG) AS LONG
+                IF n <= 0 THEN
+                    DoubleRecursive = 0
+                ELSE
+                    DoubleRecursive = 2 + DoubleRecursive(n - 1)
+                END IF
+            END FUNCTION
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn recursion_byval_sub() {
+        // SUB with BYVAL parameter recursive call
+        let source = r#"
+            DIM x AS LONG
+            x = 5
+            CALL TestByVal(x)
+            PRINT x
+            END
+
+            SUB TestByVal(BYVAL n AS LONG)
+                IF n > 0 THEN
+                    PRINT n
+                    CALL TestByVal(n - 1)
+                END IF
+            END SUB
+        "#;
+        assert_compiles(source);
+    }
+
+    // ==================== Tail Recursion Patterns ====================
+
+    #[test]
+    fn tail_recursive_factorial() {
+        // Tail-recursive factorial with accumulator
+        let source = r#"
+            PRINT TailFactorial(5, 1)
+            END
+
+            FUNCTION TailFactorial(n AS LONG, acc AS LONG) AS LONG
+                IF n <= 1 THEN
+                    TailFactorial = acc
+                ELSE
+                    TailFactorial = TailFactorial(n - 1, n * acc)
+                END IF
+            END FUNCTION
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn tail_recursive_sum() {
+        // Tail-recursive sum with accumulator
+        let source = r#"
+            PRINT TailSum(10, 0)
+            END
+
+            FUNCTION TailSum(n AS LONG, acc AS LONG) AS LONG
+                IF n <= 0 THEN
+                    TailSum = acc
+                ELSE
+                    TailSum = TailSum(n - 1, acc + n)
+                END IF
+            END FUNCTION
+        "#;
+        assert_compiles(source);
+    }
+
+    // ==================== Recursion with Multiple Exit Points ====================
+
+    #[test]
+    fn recursion_with_exit_function() {
+        // Multiple EXIT FUNCTION statements in recursive function
+        let source = r#"
+            PRINT FindFirst(1)
+            PRINT FindFirst(5)
+            PRINT FindFirst(10)
+            END
+
+            FUNCTION FindFirst(n AS LONG) AS LONG
+                IF n > 7 THEN
+                    FindFirst = -1
+                    EXIT FUNCTION
+                END IF
+                IF n = 5 THEN
+                    FindFirst = 5
+                    EXIT FUNCTION
+                END IF
+                FindFirst = FindFirst(n + 1)
+            END FUNCTION
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn recursion_with_multiple_base_cases() {
+        // Multiple base cases in recursive function
+        let source = r#"
+            PRINT Classify(15)
+            END
+
+            FUNCTION Classify(n AS LONG) AS LONG
+                IF n <= 0 THEN
+                    Classify = 0
+                ELSEIF n = 1 THEN
+                    Classify = 1
+                ELSEIF n MOD 2 = 0 THEN
+                    Classify = Classify(n \ 2)
+                ELSE
+                    Classify = Classify(3 * n + 1)
+                END IF
+            END FUNCTION
+        "#;
+        assert_compiles(source);
+    }
+
+    // ==================== Recursion with Local Variables ====================
+
+    #[test]
+    fn recursion_with_local_vars() {
+        // Local variables in recursive function (tests stack frame isolation)
+        let source = r#"
+            PRINT SumDigits(12345)
+            END
+
+            FUNCTION SumDigits(n AS LONG) AS LONG
+                DIM digit AS LONG
+                DIM rest AS LONG
+                IF n = 0 THEN
+                    SumDigits = 0
+                ELSE
+                    digit = n MOD 10
+                    rest = n \ 10
+                    SumDigits = digit + SumDigits(rest)
+                END IF
+            END FUNCTION
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn recursion_local_vars_complex() {
+        // Multiple local variables used throughout recursion
+        let source = r#"
+            PRINT ProcessValue(100)
+            END
+
+            FUNCTION ProcessValue(n AS LONG) AS LONG
+                DIM half AS LONG
+                DIM quarter AS LONG
+                DIM temp AS LONG
+                IF n <= 1 THEN
+                    ProcessValue = n
+                ELSE
+                    half = n \ 2
+                    quarter = n \ 4
+                    temp = half + quarter
+                    ProcessValue = temp + ProcessValue(n - temp)
+                END IF
+            END FUNCTION
+        "#;
+        assert_compiles(source);
+    }
+
+    // ==================== Recursion with SHARED Variables ====================
+
+    #[test]
+    fn recursion_with_shared_counter() {
+        // SHARED variable tracking recursive call count
+        let source = r#"
+            DIM callCount AS LONG
+            callCount = 0
+            PRINT Fib(10)
+            PRINT "Calls:"; callCount
+            END
+
+            FUNCTION Fib(n AS LONG) AS LONG
+                SHARED callCount
+                callCount = callCount + 1
+                IF n <= 1 THEN
+                    Fib = n
+                ELSE
+                    Fib = Fib(n - 1) + Fib(n - 2)
+                END IF
+            END FUNCTION
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn recursive_sub_with_shared() {
+        // Recursive SUB modifying SHARED variable
+        let source = r#"
+            DIM total AS LONG
+            total = 0
+            CALL Accumulate(5)
+            PRINT total
+            END
+
+            SUB Accumulate(n AS LONG)
+                SHARED total
+                IF n > 0 THEN
+                    total = total + n
+                    CALL Accumulate(n - 1)
+                END IF
+            END SUB
+        "#;
+        assert_compiles(source);
+    }
+
+    // ==================== Deep Recursion ====================
+
+    #[test]
+    fn moderately_deep_recursion() {
+        // Test that moderately deep recursion compiles (runtime depth depends on C stack)
+        let source = r#"
+            PRINT DeepCount(100)
+            END
+
+            FUNCTION DeepCount(n AS LONG) AS LONG
+                IF n <= 0 THEN
+                    DeepCount = 0
+                ELSE
+                    DeepCount = 1 + DeepCount(n - 1)
+                END IF
+            END FUNCTION
+        "#;
+        assert_compiles(source);
+    }
+
+    // ==================== Recursion in Expressions ====================
+
+    #[test]
+    fn recursive_call_in_expression() {
+        // Recursive calls used in complex expressions
+        let source = r#"
+            DIM result AS LONG
+            result = Fact(5) + Fact(3) * Fact(2)
+            PRINT result
+            END
+
+            FUNCTION Fact(n AS LONG) AS LONG
+                IF n <= 1 THEN
+                    Fact = 1
+                ELSE
+                    Fact = n * Fact(n - 1)
+                END IF
+            END FUNCTION
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn nested_recursive_calls() {
+        // Recursive function called with another recursive call as argument
+        let source = r#"
+            PRINT Ack(2, 2)
+            END
+
+            FUNCTION Ack(m AS LONG, n AS LONG) AS LONG
+                IF m = 0 THEN
+                    Ack = n + 1
+                ELSEIF n = 0 THEN
+                    Ack = Ack(m - 1, 1)
+                ELSE
+                    Ack = Ack(m - 1, Ack(m, n - 1))
+                END IF
+            END FUNCTION
+        "#;
+        let code = compile_to_c(source).unwrap();
+        // Ackermann function should have nested recursive calls
+        assert!(code.contains("ack("), "Generated code should contain recursive calls");
+    }
+
+    // ==================== Recursion with SELECT CASE ====================
+
+    #[test]
+    fn recursion_with_select_case() {
+        // Recursive function using SELECT CASE for dispatch
+        let source = r#"
+            PRINT Collatz(7)
+            END
+
+            FUNCTION Collatz(n AS LONG) AS LONG
+                SELECT CASE n
+                    CASE 1
+                        Collatz = 0
+                    CASE ELSE
+                        IF n MOD 2 = 0 THEN
+                            Collatz = 1 + Collatz(n \ 2)
+                        ELSE
+                            Collatz = 1 + Collatz(3 * n + 1)
+                        END IF
+                END SELECT
+            END FUNCTION
+        "#;
+        assert_compiles(source);
+    }
+
+    // ==================== Indirect Recursion (Longer Chain) ====================
+
+    #[test]
+    fn indirect_recursion_chain() {
+        // A -> B -> C -> D -> A (4-function cycle)
+        let source = r#"
+            DECLARE FUNCTION ChainB(n AS LONG)
+            DECLARE FUNCTION ChainC(n AS LONG)
+            DECLARE FUNCTION ChainD(n AS LONG)
+            PRINT ChainA(12)
+            END
+
+            FUNCTION ChainA(n AS LONG) AS LONG
+                IF n <= 0 THEN
+                    ChainA = 0
+                ELSE
+                    ChainA = ChainB(n - 1)
+                END IF
+            END FUNCTION
+
+            FUNCTION ChainB(n AS LONG) AS LONG
+                IF n <= 0 THEN
+                    ChainB = 0
+                ELSE
+                    ChainB = ChainC(n - 1)
+                END IF
+            END FUNCTION
+
+            FUNCTION ChainC(n AS LONG) AS LONG
+                IF n <= 0 THEN
+                    ChainC = 0
+                ELSE
+                    ChainC = ChainD(n - 1)
+                END IF
+            END FUNCTION
+
+            FUNCTION ChainD(n AS LONG) AS LONG
+                IF n <= 0 THEN
+                    ChainD = 0
+                ELSE
+                    ChainD = ChainA(n - 1)
+                END IF
+            END FUNCTION
+        "#;
+        assert_compiles(source);
+    }
+
+    // ==================== Recursion Mixing SUB and FUNCTION ====================
+
+    #[test]
+    fn sub_calls_recursive_function() {
+        // SUB that uses a recursive function
+        let source = r#"
+            CALL PrintFactorials(5)
+            END
+
+            SUB PrintFactorials(maxN AS LONG)
+                DIM i AS LONG
+                FOR i = 0 TO maxN
+                    PRINT i; "! ="; Factorial(i)
+                NEXT i
+            END SUB
+
+            FUNCTION Factorial(n AS LONG) AS LONG
+                IF n <= 1 THEN
+                    Factorial = 1
+                ELSE
+                    Factorial = n * Factorial(n - 1)
+                END IF
+            END FUNCTION
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn recursive_function_calls_sub() {
+        // Recursive function that calls a SUB
+        let source = r#"
+            PRINT RecursiveWithLog(5)
+            END
+
+            SUB LogValue(msg AS STRING, val AS LONG)
+                PRINT msg; val
+            END SUB
+
+            FUNCTION RecursiveWithLog(n AS LONG) AS LONG
+                CALL LogValue("Processing: ", n)
+                IF n <= 0 THEN
+                    RecursiveWithLog = 0
+                ELSE
+                    RecursiveWithLog = n + RecursiveWithLog(n - 1)
+                END IF
+            END FUNCTION
+        "#;
+        assert_compiles(source);
+    }
+}
+
+// =============================================================================
 // SHARED Variable Tests
 // =============================================================================
 
@@ -1902,6 +2660,7 @@ mod math_functions {
 
     #[test]
     fn pi_function() {
+        // _PI is a constant, so it gets folded to its value
         let code = compile_to_c(
             r#"
 DIM x AS DOUBLE
@@ -1909,11 +2668,13 @@ x = _PI
 "#,
         )
         .unwrap();
-        assert!(code.contains("qb_pi()"));
+        // Should contain the folded value of pi
+        assert!(code.contains("3.14159265358979"));
     }
 
     #[test]
-    fn ceil_function() {
+    fn ceil_function_constant_folded() {
+        // With constant argument, _CEIL is folded at compile time
         let code = compile_to_c(
             r#"
 DIM x AS LONG
@@ -1921,11 +2682,27 @@ x = _CEIL(3.7)
 "#,
         )
         .unwrap();
+        // Should contain folded value (ceil(3.7) = 4.0)
+        assert!(code.contains("4.0"));
+    }
+
+    #[test]
+    fn ceil_function_with_variable() {
+        // With variable argument, ceil() is emitted
+        let code = compile_to_c(
+            r#"
+DIM y AS DOUBLE, x AS LONG
+y = 3.7
+x = _CEIL(y)
+"#,
+        )
+        .unwrap();
         assert!(code.contains("ceil("));
     }
 
     #[test]
-    fn round_function() {
+    fn round_function_constant_folded() {
+        // With constant argument, _ROUND is folded at compile time
         let code = compile_to_c(
             r#"
 DIM x AS LONG
@@ -1933,11 +2710,27 @@ x = _ROUND(3.5)
 "#,
         )
         .unwrap();
+        // Should contain folded value (round(3.5) = 4.0)
+        assert!(code.contains("4.0"));
+    }
+
+    #[test]
+    fn round_function_with_variable() {
+        // With variable argument, round() is emitted
+        let code = compile_to_c(
+            r#"
+DIM y AS DOUBLE, x AS LONG
+y = 3.5
+x = _ROUND(y)
+"#,
+        )
+        .unwrap();
         assert!(code.contains("round("));
     }
 
     #[test]
-    fn min_function() {
+    fn min_function_constant_folded() {
+        // With constant arguments, _MIN is folded at compile time
         let code = compile_to_c(
             r#"
 DIM x AS DOUBLE
@@ -1945,15 +2738,46 @@ x = _MIN(5.0, 10.0)
 "#,
         )
         .unwrap();
+        // Should contain folded value (min(5.0, 10.0) = 5.0)
+        assert!(code.contains("5.0"));
+    }
+
+    #[test]
+    fn min_function_with_variable() {
+        // With variable argument, fmin() is emitted
+        let code = compile_to_c(
+            r#"
+DIM a AS DOUBLE, b AS DOUBLE, x AS DOUBLE
+a = 5.0: b = 10.0
+x = _MIN(a, b)
+"#,
+        )
+        .unwrap();
         assert!(code.contains("fmin("));
     }
 
     #[test]
-    fn max_function() {
+    fn max_function_constant_folded() {
+        // With constant arguments, _MAX is folded at compile time
         let code = compile_to_c(
             r#"
 DIM x AS DOUBLE
 x = _MAX(5.0, 10.0)
+"#,
+        )
+        .unwrap();
+        // Should contain folded value (max(5.0, 10.0) = 10.0)
+        assert!(code.contains("10.0"));
+    }
+
+    #[test]
+    fn max_function_with_variable() {
+        // With variable argument, fmax() is emitted
+        let code = compile_to_c(
+            r#"
+DIM a AS DOUBLE, b AS DOUBLE, x AS DOUBLE
+a = 5.0: b = 10.0
+x = _MAX(a, b)
 "#,
         )
         .unwrap();
@@ -2280,11 +3104,27 @@ result = _CLAMP(5.5, 0, 10)
     }
 
     #[test]
-    fn hypot_function() {
+    fn hypot_function_constant_folded() {
+        // With constant arguments, _HYPOT is folded at compile time
         let code = compile_to_c(
             r#"
 DIM result AS DOUBLE
 result = _HYPOT(3, 4)
+"#,
+        )
+        .unwrap();
+        // Should contain folded value (hypot(3, 4) = 5.0)
+        assert!(code.contains("5.0"));
+    }
+
+    #[test]
+    fn hypot_function_with_variable() {
+        // With variable argument, hypot() is emitted
+        let code = compile_to_c(
+            r#"
+DIM x AS DOUBLE, y AS DOUBLE, result AS DOUBLE
+x = 3: y = 4
+result = _HYPOT(x, y)
 "#,
         )
         .unwrap();
@@ -5599,5 +6439,1239 @@ DIM myVar
     fn uselibrary_metacommand() {
         let code = compile_to_c("$USELIBRARY:'opengl32'").unwrap();
         assert!(code.contains("/* $USELIBRARY:'opengl32' */"));
+    }
+}
+
+// =============================================================================
+// Runtime Stub Tests - File I/O (Codegen Verification)
+// =============================================================================
+// These tests verify that the code generator produces correct C FFI calls
+// for file I/O operations. The runtime stubs handle the actual execution.
+
+mod file_io_runtime_stubs {
+    use super::*;
+
+    // ==================== File System Operations ====================
+
+    #[test]
+    fn kill_generates_ffi_call() {
+        let code = compile_to_c(r#"KILL "testfile.txt""#).unwrap();
+        assert!(code.contains("qb_file_kill("));
+    }
+
+    #[test]
+    fn kill_with_string_variable() {
+        let source = r#"
+DIM path AS STRING
+path = "deleteme.dat"
+KILL path
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_file_kill("));
+    }
+
+    #[test]
+    fn name_as_generates_ffi_call() {
+        let code = compile_to_c(r#"NAME "oldfile.txt" AS "newfile.txt""#).unwrap();
+        assert!(code.contains("qb_file_rename("));
+    }
+
+    #[test]
+    fn name_as_with_variables() {
+        let source = r#"
+DIM oldname AS STRING, newname AS STRING
+oldname = "old.dat"
+newname = "new.dat"
+NAME oldname AS newname
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_file_rename("));
+    }
+
+    #[test]
+    fn mkdir_generates_ffi_call() {
+        let code = compile_to_c(r#"MKDIR "newdir""#).unwrap();
+        assert!(code.contains("qb_mkdir("));
+    }
+
+    #[test]
+    fn mkdir_with_variable() {
+        let source = r#"
+DIM dirname AS STRING
+dirname = "mydir"
+MKDIR dirname
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_mkdir("));
+    }
+
+    #[test]
+    fn rmdir_generates_ffi_call() {
+        let code = compile_to_c(r#"RMDIR "olddir""#).unwrap();
+        assert!(code.contains("qb_rmdir("));
+    }
+
+    #[test]
+    fn chdir_generates_ffi_call() {
+        let code = compile_to_c(r#"CHDIR "/home/user""#).unwrap();
+        assert!(code.contains("qb_chdir("));
+    }
+
+    // ==================== File Existence Checks ====================
+
+    #[test]
+    fn fileexists_function() {
+        let source = r#"
+DIM exists AS LONG
+exists = _FILEEXISTS("test.txt")
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_file_exists("));
+    }
+
+    #[test]
+    fn fileexists_in_condition() {
+        let source = r#"
+IF _FILEEXISTS("config.ini") THEN PRINT "Found"
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_file_exists("));
+    }
+
+    #[test]
+    fn direxists_function() {
+        let source = r#"
+DIM exists AS LONG
+exists = _DIREXISTS("mydir")
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_dir_exists("));
+    }
+
+    // ==================== Directory Listing ====================
+
+    #[test]
+    fn dir_function_with_pattern() {
+        let source = r#"
+DIM filename AS STRING
+filename = _DIR$("*.txt")
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_dir("));
+    }
+
+    // ==================== Shell Commands ====================
+
+    #[test]
+    fn shell_generates_ffi_call() {
+        let code = compile_to_c(r#"SHELL "ls -la""#).unwrap();
+        assert!(code.contains("qb_shell("));
+    }
+
+    #[test]
+    fn shellhide_generates_ffi_call() {
+        let code = compile_to_c(r#"_SHELLHIDE "background_process""#).unwrap();
+        assert!(code.contains("qb_shell_hide("));
+    }
+
+    // ==================== File I/O with OPEN ====================
+
+    #[test]
+    fn open_for_output() {
+        let source = r#"
+OPEN "test.txt" FOR OUTPUT AS #1
+PRINT #1, "Hello"
+CLOSE #1
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_file_open("));
+        assert!(code.contains("qb_file_close("));
+    }
+
+    #[test]
+    fn open_for_input() {
+        let source = r#"
+DIM textline AS STRING
+OPEN "test.txt" FOR INPUT AS #1
+LINE INPUT #1, textline
+CLOSE #1
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_file_open("));
+    }
+
+    #[test]
+    fn open_for_binary() {
+        let source = r#"
+OPEN "data.bin" FOR BINARY AS #1
+CLOSE #1
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_file_open("));
+    }
+
+    #[test]
+    fn freefile_function() {
+        let source = r#"
+DIM f AS LONG
+f = FREEFILE
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_freefile("));
+    }
+
+    #[test]
+    fn eof_function() {
+        let source = r#"
+DIM done AS LONG
+done = EOF(1)
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_eof("));
+    }
+
+    #[test]
+    fn lof_function() {
+        let source = r#"
+DIM size AS LONG
+size = LOF(1)
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_lof("));
+    }
+
+    #[test]
+    fn loc_function() {
+        let source = r#"
+DIM pos AS LONG
+pos = LOC(1)
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_loc("));
+    }
+
+    #[test]
+    fn seek_statement() {
+        let source = "SEEK #1, 100";
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_file_seek("));
+    }
+}
+
+// =============================================================================
+// Runtime Stub Tests - Graphics (Codegen Verification)
+// =============================================================================
+// These tests verify that graphics statements compile to the correct C FFI calls.
+// The mock backend can be used at runtime for headless testing.
+
+mod graphics_runtime_stubs {
+    use super::*;
+
+    // ==================== Screen Initialization ====================
+
+    #[test]
+    fn screen_mode_0() {
+        let code = compile_to_c("SCREEN 0").unwrap();
+        assert!(code.contains("qb_gfx_init("));
+    }
+
+    #[test]
+    fn screen_mode_12() {
+        let code = compile_to_c("SCREEN 12").unwrap();
+        assert!(code.contains("qb_gfx_init("));
+    }
+
+    #[test]
+    fn screen_mode_13() {
+        let code = compile_to_c("SCREEN 13").unwrap();
+        assert!(code.contains("qb_gfx_init("));
+    }
+
+    #[test]
+    fn newimage_function() {
+        let source = r#"
+DIM img AS LONG
+img = _NEWIMAGE(640, 480, 32)
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_gfx_newimage("));
+    }
+
+    #[test]
+    fn loadimage_function() {
+        let source = r#"
+DIM img AS LONG
+img = _LOADIMAGE("picture.png", 32)
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_gfx_loadimage("));
+    }
+
+    #[test]
+    fn freeimage_statement() {
+        let source = r#"
+DIM img AS LONG
+img = 1
+_FREEIMAGE img
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_gfx_freeimage("));
+    }
+
+    // ==================== Screen Clearing and Colors ====================
+
+    #[test]
+    fn cls_no_args() {
+        let code = compile_to_c("CLS").unwrap();
+        assert!(code.contains("qb_gfx_cls()"));
+    }
+
+    #[test]
+    fn color_foreground_only() {
+        let code = compile_to_c("COLOR 15").unwrap();
+        assert!(code.contains("qb_gfx_color("));
+    }
+
+    #[test]
+    fn color_foreground_background() {
+        let code = compile_to_c("COLOR 15, 1").unwrap();
+        assert!(code.contains("qb_gfx_color("));
+    }
+
+    #[test]
+    fn palette_statement() {
+        let code = compile_to_c("PALETTE 0, 63").unwrap();
+        assert!(code.contains("qb_gfx_palette("));
+    }
+
+    #[test]
+    fn palette_reset() {
+        let code = compile_to_c("PALETTE").unwrap();
+        assert!(code.contains("qb_gfx_palette_reset()"));
+    }
+
+    // ==================== Cursor and Text ====================
+
+    #[test]
+    fn locate_row_col() {
+        let code = compile_to_c("LOCATE 10, 20").unwrap();
+        assert!(code.contains("qb_gfx_locate("));
+    }
+
+    #[test]
+    fn csrlin_function() {
+        let source = r#"
+DIM row AS LONG
+row = CSRLIN
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_csrlin("));
+    }
+
+    #[test]
+    fn pos_function() {
+        let source = r#"
+DIM col AS LONG
+col = POS(0)
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_pos("));
+    }
+
+    // ==================== Drawing Primitives ====================
+
+    #[test]
+    fn pset_with_color() {
+        let code = compile_to_c("PSET (100, 100), 15").unwrap();
+        assert!(code.contains("qb_gfx_pset("));
+    }
+
+    #[test]
+    fn pset_default_color() {
+        let code = compile_to_c("PSET (50, 50)").unwrap();
+        assert!(code.contains("qb_gfx_pset("));
+    }
+
+    #[test]
+    fn point_function() {
+        let source = r#"
+DIM c AS LONG
+c = POINT(100, 100)
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_gfx_point("));
+    }
+
+    #[test]
+    fn line_basic() {
+        let code = compile_to_c("LINE (0, 0)-(100, 100), 14").unwrap();
+        assert!(code.contains("qb_gfx_line("));
+    }
+
+    #[test]
+    fn line_box() {
+        let code = compile_to_c("LINE (10, 10)-(200, 150), 12, B").unwrap();
+        assert!(code.contains("qb_gfx_line("));
+    }
+
+    #[test]
+    fn line_filled_box() {
+        let code = compile_to_c("LINE (10, 10)-(200, 150), 12, BF").unwrap();
+        assert!(code.contains("qb_gfx_line("));
+    }
+
+    #[test]
+    fn circle_basic() {
+        let code = compile_to_c("CIRCLE (320, 240), 50, 9").unwrap();
+        assert!(code.contains("qb_gfx_circle("));
+    }
+
+    #[test]
+    fn circle_with_arcs() {
+        let code = compile_to_c("CIRCLE (160, 100), 40, 11, 0, 3.14159").unwrap();
+        assert!(code.contains("qb_gfx_circle("));
+    }
+
+    #[test]
+    fn paint_flood_fill() {
+        let code = compile_to_c("PAINT (320, 240), 4, 15").unwrap();
+        assert!(code.contains("qb_gfx_paint("));
+    }
+
+    #[test]
+    fn draw_command_string() {
+        let code = compile_to_c(r#"DRAW "U10 R10 D10 L10""#).unwrap();
+        assert!(code.contains("qb_gfx_draw("));
+    }
+
+    // ==================== View and Window ====================
+
+    #[test]
+    fn view_coordinates() {
+        let code = compile_to_c("VIEW (10, 10)-(300, 200)").unwrap();
+        assert!(code.contains("qb_gfx_view("));
+    }
+
+    #[test]
+    fn view_reset() {
+        let code = compile_to_c("VIEW").unwrap();
+        assert!(code.contains("qb_gfx_view_reset()"));
+    }
+
+    #[test]
+    fn window_coordinates() {
+        let code = compile_to_c("WINDOW (-1, -1)-(1, 1)").unwrap();
+        assert!(code.contains("qb_gfx_window("));
+    }
+
+    #[test]
+    fn window_reset() {
+        let code = compile_to_c("WINDOW").unwrap();
+        assert!(code.contains("qb_gfx_window_reset()"));
+    }
+
+    #[test]
+    fn pmap_function() {
+        let source = r#"
+DIM x AS LONG
+x = PMAP(100, 0)
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_gfx_pmap("));
+    }
+
+    // ==================== Image Operations ====================
+
+    #[test]
+    fn putimage_basic() {
+        let source = r#"
+DIM img AS LONG
+img = 1
+_PUTIMAGE (0, 0)-(100, 100), img
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_gfx_putimage("));
+    }
+
+    #[test]
+    fn source_statement() {
+        let source = r#"
+DIM img AS LONG
+img = 1
+_SOURCE img
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_gfx_source("));
+    }
+
+    #[test]
+    fn dest_statement() {
+        let source = r#"
+DIM img AS LONG
+img = 0
+_DEST img
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_gfx_dest("));
+    }
+
+    #[test]
+    fn copyimage_function() {
+        let source = r#"
+DIM copy AS LONG
+copy = _COPYIMAGE(0, 32)
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_gfx_copyimage("));
+    }
+
+    #[test]
+    fn display_statement() {
+        let code = compile_to_c("_DISPLAY").unwrap();
+        assert!(code.contains("qb_gfx_display()"));
+    }
+
+    #[test]
+    fn pcopy_statement() {
+        let code = compile_to_c("PCOPY 0, 1").unwrap();
+        assert!(code.contains("qb_gfx_pcopy("));
+    }
+
+    // ==================== Mouse Input ====================
+
+    #[test]
+    fn mousex_function() {
+        let source = r#"
+DIM x AS LONG
+x = _MOUSEX
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_mouse_x("));
+    }
+
+    #[test]
+    fn mousey_function() {
+        let source = r#"
+DIM y AS LONG
+y = _MOUSEY
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_mouse_y("));
+    }
+
+    #[test]
+    fn mousebutton_function() {
+        let source = r#"
+DIM b AS LONG
+b = _MOUSEBUTTON(1)
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_mouse_button("));
+    }
+
+    #[test]
+    fn mouseinput_function() {
+        let source = r#"
+IF _MOUSEINPUT THEN PRINT "Input"
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_mouse_input("));
+    }
+
+    #[test]
+    fn mousewheel_function() {
+        let source = r#"
+DIM w AS LONG
+w = _MOUSEWHEEL
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_mouse_wheel("));
+    }
+
+    #[test]
+    fn mousehide_statement() {
+        let code = compile_to_c("_MOUSEHIDE").unwrap();
+        assert!(code.contains("qb_mouse_hide("));
+    }
+
+    #[test]
+    fn mouseshow_statement() {
+        let code = compile_to_c("_MOUSESHOW").unwrap();
+        assert!(code.contains("qb_mouse_show("));
+    }
+
+    #[test]
+    fn mousemove_statement() {
+        let code = compile_to_c("_MOUSEMOVE 100, 100").unwrap();
+        assert!(code.contains("qb_mouse_move("));
+    }
+}
+
+// =============================================================================
+// Runtime Stub Tests - Sound (Codegen Verification)
+// =============================================================================
+// These tests verify that sound statements compile to the correct C FFI calls.
+// The mock audio backend allows testing without audio hardware.
+
+mod sound_runtime_stubs {
+    use super::*;
+
+    // ==================== Classic BASIC Sound ====================
+
+    #[test]
+    fn beep_generates_ffi_call() {
+        let code = compile_to_c("BEEP").unwrap();
+        assert!(code.contains("qb_beep("));
+    }
+
+    #[test]
+    fn sound_generates_ffi_call() {
+        let code = compile_to_c("SOUND 440, 18").unwrap();
+        assert!(code.contains("qb_sound("));
+    }
+
+    #[test]
+    fn sound_with_variables() {
+        let source = r#"
+DIM freq AS DOUBLE, dur AS DOUBLE
+freq = 880
+dur = 36
+SOUND freq, dur
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_sound("));
+    }
+
+    #[test]
+    fn play_mml_string() {
+        let code = compile_to_c(r#"PLAY "O4 L4 CDEFGAB""#).unwrap();
+        assert!(code.contains("qb_play("));
+    }
+
+    #[test]
+    fn play_with_variable() {
+        let source = r#"
+DIM music AS STRING
+music = "T120 L8 CDEFGABC"
+PLAY music
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_play("));
+    }
+
+    // ==================== QB64 Sound File Operations ====================
+
+    #[test]
+    fn sndopen_function() {
+        let source = r#"
+DIM handle AS LONG
+handle = _SNDOPEN("music.ogg")
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_sndopen("));
+    }
+
+    #[test]
+    fn sndclose_statement() {
+        let source = r#"
+DIM h AS LONG
+h = 1
+_SNDCLOSE h
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_sndclose("));
+    }
+
+    #[test]
+    fn sndplay_statement() {
+        let source = r#"
+DIM h AS LONG
+h = 1
+_SNDPLAY h
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_sndplay("));
+    }
+
+    #[test]
+    fn sndstop_statement() {
+        let source = r#"
+DIM h AS LONG
+h = 1
+_SNDSTOP h
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_sndstop("));
+    }
+
+    #[test]
+    fn sndpause_statement() {
+        let source = r#"
+DIM h AS LONG
+h = 1
+_SNDPAUSE h
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_sndpause("));
+    }
+
+    #[test]
+    fn sndloop_statement() {
+        let source = r#"
+DIM h AS LONG
+h = 1
+_SNDLOOP h
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_sndloop("));
+    }
+
+    // ==================== Sound Properties ====================
+
+    #[test]
+    fn sndvol_statement() {
+        let source = r#"
+DIM h AS LONG
+h = 1
+_SNDVOL h, 0.5
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_sndvol("));
+    }
+
+    #[test]
+    fn sndbal_simple() {
+        let source = r#"
+DIM h AS LONG
+h = 1
+_SNDBAL h, -0.5
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_sndbal("));
+    }
+
+    #[test]
+    fn sndlen_function() {
+        let source = r#"
+DIM h AS LONG, length AS DOUBLE
+h = 1
+length = _SNDLEN(h)
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_sndlen("));
+    }
+
+    #[test]
+    fn sndgetpos_function() {
+        let source = r#"
+DIM h AS LONG, pos AS DOUBLE
+h = 1
+pos = _SNDGETPOS(h)
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_sndgetpos("));
+    }
+
+    #[test]
+    fn sndsetpos_statement() {
+        let source = r#"
+DIM h AS LONG
+h = 1
+_SNDSETPOS h, 5.0
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_sndsetpos("));
+    }
+
+    #[test]
+    fn sndplaying_function() {
+        let source = r#"
+DIM h AS LONG, playing AS LONG
+h = 1
+playing = _SNDPLAYING(h)
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_sndplaying("));
+    }
+
+    #[test]
+    fn sndpaused_function() {
+        let source = r#"
+DIM h AS LONG, paused AS LONG
+h = 1
+paused = _SNDPAUSED(h)
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_sndpaused("));
+    }
+
+    // ==================== Raw Audio Synthesis ====================
+
+    #[test]
+    fn sndraw_mono() {
+        let code = compile_to_c("_SNDRAW 0.5").unwrap();
+        assert!(code.contains("qb_sndraw("));
+    }
+
+    #[test]
+    fn sndraw_stereo() {
+        let code = compile_to_c("_SNDRAW 0.5, -0.5").unwrap();
+        assert!(code.contains("qb_sndraw_stereo("));
+    }
+
+    #[test]
+    fn sndrawlen_function() {
+        let source = r#"
+DIM rawlen AS DOUBLE
+rawlen = _SNDRAWLEN
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_sndrawlen("));
+    }
+
+    #[test]
+    fn sndrawdone_function() {
+        let source = r#"
+IF _SNDRAWDONE THEN PRINT "Buffer empty"
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_sndrawdone("));
+    }
+
+    #[test]
+    fn sndrate_function() {
+        let source = r#"
+DIM rate AS LONG
+rate = _SNDRATE
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_sndrate("));
+    }
+
+    // ==================== Advanced Sound Operations ====================
+
+    #[test]
+    fn sndopenraw_function() {
+        let source = r#"
+DIM h AS LONG
+h = _SNDOPENRAW
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_sndopenraw("));
+    }
+
+    #[test]
+    fn sndplaycopy_statement() {
+        let source = r#"
+DIM h AS LONG
+h = 1
+_SNDPLAYCOPY h
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_sndplaycopy("));
+    }
+
+    #[test]
+    fn sndplayfile_statement() {
+        let code = compile_to_c(r#"_SNDPLAYFILE "music.mp3""#).unwrap();
+        assert!(code.contains("qb_sndplayfile("));
+    }
+
+    #[test]
+    fn sndlimit_statement() {
+        let source = r#"
+DIM h AS LONG
+h = 1
+_SNDLIMIT h, 5.0
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_sndlimit("));
+    }
+
+    // ==================== Sound in Control Flow ====================
+
+    #[test]
+    fn sound_in_if_statement() {
+        let source = r#"
+DIM h AS LONG
+h = 1
+IF _SNDPLAYING(h) THEN
+    _SNDSTOP h
+END IF
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_sndplaying("));
+        assert!(code.contains("qb_sndstop("));
+    }
+
+    #[test]
+    fn wait_for_sound_pattern() {
+        let source = r#"
+DIM h AS LONG
+h = 1
+_SNDPLAY h
+DO WHILE _SNDPLAYING(h)
+    _LIMIT 60
+LOOP
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_sndplay("));
+        assert!(code.contains("qb_sndplaying("));
+    }
+}
+
+/// Tests for compile-time constant folding optimization
+mod constant_folding {
+    use super::*;
+
+    #[test]
+    fn fold_arithmetic_expression() {
+        // 10 + 5 * 2 should fold to 20
+        let code = compile_to_c(
+            r#"
+DIM x AS LONG
+x = 10 + 5 * 2
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("20LL"));
+        // Should NOT contain the expression parts
+        assert!(!code.contains("10LL + 5LL"));
+    }
+
+    #[test]
+    fn fold_nested_arithmetic() {
+        // (10 + 5) * (3 - 1) should fold to 30
+        let code = compile_to_c(
+            r#"
+DIM x AS LONG
+x = (10 + 5) * (3 - 1)
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("30LL"));
+    }
+
+    #[test]
+    fn fold_string_concatenation() {
+        let code = compile_to_c(
+            r#"
+DIM s AS STRING
+s = "Hello" + " " + "World"
+"#,
+        )
+        .unwrap();
+        // Should contain the folded string in the assignment
+        assert!(code.contains("s = qb_string_new(\"Hello World\")"));
+    }
+
+    #[test]
+    fn fold_comparison_true() {
+        // 5 > 3 should fold to -1 (TRUE)
+        let code = compile_to_c(
+            r#"
+DIM b AS INTEGER
+b = 5 > 3
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("-1LL"));
+    }
+
+    #[test]
+    fn fold_comparison_false() {
+        // 3 > 5 should fold to 0 (FALSE)
+        let code = compile_to_c(
+            r#"
+DIM b AS INTEGER
+b = 3 > 5
+"#,
+        )
+        .unwrap();
+        // Should contain the literal 0, not an expression
+        assert!(code.contains("0LL"));
+    }
+
+    #[test]
+    fn fold_abs_function() {
+        let code = compile_to_c(
+            r#"
+DIM x AS LONG
+x = ABS(-42)
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("42LL"));
+        assert!(!code.contains("fabs("));
+    }
+
+    #[test]
+    fn fold_len_function() {
+        let code = compile_to_c(
+            r#"
+DIM n AS INTEGER
+n = LEN("Hello World")
+"#,
+        )
+        .unwrap();
+        // Should contain the folded value (11) with possible int16_t cast
+        assert!(code.contains("(int16_t)(11LL)") || code.contains("n = 11LL"));
+    }
+
+    #[test]
+    fn fold_chr_function() {
+        let code = compile_to_c(
+            r#"
+DIM s AS STRING
+s = CHR$(65)
+"#,
+        )
+        .unwrap();
+        // Should contain "A" directly in the assignment
+        assert!(code.contains("s = qb_string_new(\"A\")"));
+    }
+
+    #[test]
+    fn fold_asc_function() {
+        let code = compile_to_c(
+            r#"
+DIM n AS INTEGER
+n = ASC("A")
+"#,
+        )
+        .unwrap();
+        // Should contain the folded value (65)
+        assert!(code.contains("65LL") || code.contains("n = ((int16_t)(65"));
+    }
+
+    #[test]
+    fn fold_ucase_function() {
+        let code = compile_to_c(
+            r#"
+DIM s AS STRING
+s = UCASE$("hello")
+"#,
+        )
+        .unwrap();
+        // Should contain HELLO in the assignment
+        assert!(code.contains("s = qb_string_new(\"HELLO\")"));
+    }
+
+    #[test]
+    fn fold_lcase_function() {
+        let code = compile_to_c(
+            r#"
+DIM s AS STRING
+s = LCASE$("HELLO")
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("hello"));
+    }
+
+    #[test]
+    fn fold_left_function() {
+        let code = compile_to_c(
+            r#"
+DIM s AS STRING
+s = LEFT$("Hello World", 5)
+"#,
+        )
+        .unwrap();
+        // Should contain the folded assignment
+        assert!(code.contains("s = qb_string_new(\"Hello\")"));
+    }
+
+    #[test]
+    fn fold_right_function() {
+        let code = compile_to_c(
+            r#"
+DIM s AS STRING
+s = RIGHT$("Hello World", 5)
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("World"));
+    }
+
+    #[test]
+    fn fold_space_function() {
+        let code = compile_to_c(
+            r#"
+DIM s AS STRING
+s = SPACE$(3)
+"#,
+        )
+        .unwrap();
+        // Should contain 3 spaces
+        assert!(code.contains("qb_string_new(\"   \")"));
+    }
+
+    #[test]
+    fn fold_string_function() {
+        let code = compile_to_c(
+            r#"
+DIM s AS STRING
+s = STRING$(5, "*")
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("*****"));
+    }
+
+    #[test]
+    fn fold_bitwise_and() {
+        // 12 AND 10 = 8 (binary: 1100 AND 1010 = 1000)
+        let code = compile_to_c(
+            r#"
+DIM x AS INTEGER
+x = 12 AND 10
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("8LL"));
+    }
+
+    #[test]
+    fn fold_bitwise_or() {
+        // 12 OR 10 = 14 (binary: 1100 OR 1010 = 1110)
+        let code = compile_to_c(
+            r#"
+DIM x AS INTEGER
+x = 12 OR 10
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("14LL"));
+    }
+
+    #[test]
+    fn fold_instr_function() {
+        let code = compile_to_c(
+            r#"
+DIM pos AS INTEGER
+pos = INSTR("Hello World", "World")
+"#,
+        )
+        .unwrap();
+        // "World" starts at position 7
+        assert!(code.contains("7LL"));
+    }
+
+    #[test]
+    fn fold_hex_function() {
+        let code = compile_to_c(
+            r#"
+DIM s AS STRING
+s = HEX$(255)
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("FF"));
+    }
+
+    #[test]
+    fn fold_oct_function() {
+        let code = compile_to_c(
+            r#"
+DIM s AS STRING
+s = OCT$(8)
+"#,
+        )
+        .unwrap();
+        // 8 in octal is "10"
+        assert!(code.contains("10"));
+    }
+
+    #[test]
+    fn fold_shl_function() {
+        // 1 SHL 4 = 16
+        let code = compile_to_c(
+            r#"
+DIM x AS LONG
+x = _SHL(1, 4)
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("16LL"));
+    }
+
+    #[test]
+    fn fold_shr_function() {
+        // 16 SHR 2 = 4
+        let code = compile_to_c(
+            r#"
+DIM x AS LONG
+x = _SHR(16, 2)
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("4LL"));
+    }
+
+    #[test]
+    fn fold_trig_functions() {
+        // sin(0) = 0, cos(0) = 1
+        let code = compile_to_c(
+            r#"
+DIM x AS DOUBLE
+x = SIN(0)
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("0.0"));
+    }
+
+    #[test]
+    fn no_fold_with_variable() {
+        // When a variable is involved, expression should not be folded
+        let code = compile_to_c(
+            r#"
+DIM x AS LONG, y AS LONG
+y = 5
+x = y + 10
+"#,
+        )
+        .unwrap();
+        // Should contain the runtime expression
+        assert!(code.contains("y + 10LL") || code.contains("(y + 10LL)"));
+    }
+
+    #[test]
+    fn fold_trim_function() {
+        let code = compile_to_c(
+            r#"
+DIM s AS STRING
+s = _TRIM$("  hello  ")
+"#,
+        )
+        .unwrap();
+        // Should contain trimmed string
+        assert!(code.contains("qb_string_new(\"hello\")"));
+    }
+
+    #[test]
+    fn fold_val_function() {
+        let code = compile_to_c(
+            r#"
+DIM x AS LONG
+x = VAL("42")
+"#,
+        )
+        .unwrap();
+        assert!(code.contains("42LL"));
+    }
+
+    #[test]
+    fn fold_str_function() {
+        let code = compile_to_c(
+            r#"
+DIM s AS STRING
+s = STR$(42)
+"#,
+        )
+        .unwrap();
+        // STR$ prepends a space for positive numbers
+        assert!(code.contains(" 42"));
     }
 }

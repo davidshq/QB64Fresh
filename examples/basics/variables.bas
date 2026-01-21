@@ -32,10 +32,10 @@ PRINT "  DOUBLE: "; d
 PRINT
 
 ' String type
-DIM name AS STRING
-name = "QB64Fresh"
-PRINT "String: "; name
-PRINT "Length: "; LEN(name)
+DIM appName AS STRING
+appName = "QB64Fresh"
+PRINT "String: "; appName
+PRINT "Length: "; LEN(appName)
 PRINT
 
 ' Type suffixes (shorthand)

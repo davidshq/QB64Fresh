@@ -23,12 +23,40 @@ impl<'a> TypeChecker<'a> {
     // ========================================================================
 
     /// Type checks an assignment statement.
+    ///
+    /// Handles both simple variable assignments and UDT field assignments.
+    /// The lexer tokenizes `s.PERSON` as a single identifier (to support classic
+    /// BASIC naming conventions like `player.move`), so we detect UDT field
+    /// access by checking if the name contains a dot and the first part is
+    /// a UDT variable.
     pub(super) fn check_assignment(
         &mut self,
         name: &str,
         value: &Expr,
         span: crate::ast::Span,
     ) -> TypedStatement {
+        // Check if this is a UDT field assignment (e.g., "s.PERSON" or "s.nested.field")
+        // The lexer includes dots in identifiers, so we need to split and check
+        // if the first part is a UDT variable.
+        if let Some(dot_pos) = name.find('.') {
+            let object_name = &name[..dot_pos];
+            let field_part = &name[dot_pos + 1..];
+
+            // Check if the object is a UDT variable
+            if let Some(symbol) = self.symbols.lookup_symbol(object_name) {
+                if let BasicType::UserDefined(_) = &symbol.basic_type {
+                    // This is a UDT field assignment
+                    return self.check_udt_field_assignment(
+                        object_name,
+                        field_part,
+                        value,
+                        span,
+                    );
+                }
+            }
+        }
+
+        // Regular variable assignment
         // Check if assigning to a constant
         if let Some(symbol) = self.symbols.lookup_symbol(name)
             && !symbol.is_mutable
@@ -76,6 +104,63 @@ impl<'a> TypeChecker<'a> {
                 name: name.to_string(),
                 value: typed_value,
                 target_type,
+            },
+            span,
+        )
+    }
+
+    /// Type checks a UDT field assignment: `udt.field = value` or `udt.nested.field = value`
+    fn check_udt_field_assignment(
+        &mut self,
+        object_name: &str,
+        field_part: &str,
+        value: &Expr,
+        span: crate::ast::Span,
+    ) -> TypedStatement {
+        let typed_value = self.check_expr(value);
+
+        // Split the field part into individual fields (for nested access like "nested.field")
+        let fields: Vec<String> = field_part.split('.').map(|s| s.to_string()).collect();
+
+        // Get the object's type
+        let object_type = if let Some(symbol) = self.symbols.lookup_symbol(object_name) {
+            symbol.basic_type.clone()
+        } else {
+            self.errors.push(SemanticError::UndefinedVariable {
+                name: object_name.to_string(),
+                span,
+            });
+            return TypedStatement::new(
+                TypedStatementKind::FieldAssignment {
+                    name: object_name.to_string(),
+                    fields,
+                    value: typed_value,
+                    field_type: BasicType::Unknown,
+                },
+                span,
+            );
+        };
+
+        // Resolve the field type by walking through the UDT definition chain
+        let field_type = self.resolve_field_chain_type(&object_type, &fields);
+
+        // Check type compatibility
+        if field_type != BasicType::Unknown
+            && !typed_value.basic_type.is_convertible_to(&field_type)
+        {
+            self.errors.push(SemanticError::TypeMismatch {
+                expected: field_type.to_string(),
+                found: typed_value.basic_type.to_string(),
+                span: value.span,
+            });
+        }
+
+        TypedStatement::new(
+            TypedStatementKind::FieldAssignment {
+                name: object_name.to_string(),
+                fields,
+                value: typed_value,
+                field_type,
             },
             span,
         )

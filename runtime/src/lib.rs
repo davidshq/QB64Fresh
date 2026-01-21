@@ -25,18 +25,22 @@
 
 pub mod audio;
 pub mod audio_ffi;
+pub mod dialogs;
 pub mod graphics;
 pub mod graphics_ffi;
 pub mod io;
+pub mod joystick;
 pub mod math;
 pub mod string;
 
 // Re-export everything at the crate root for C access
 pub use audio::*;
 pub use audio_ffi::*;
+pub use dialogs::*;
 pub use graphics::*;
 pub use graphics_ffi::*;
 pub use io::*;
+pub use joystick::*;
 pub use math::*;
 pub use string::*;
 

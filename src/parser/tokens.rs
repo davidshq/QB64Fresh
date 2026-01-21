@@ -210,6 +210,22 @@ impl<'a> Parser<'a> {
         Span::new(start, end)
     }
 
+    /// Advances and returns the start position of the consumed token.
+    ///
+    /// This is a safe alternative to `advance().expect("keyword").span.start` that
+    /// reports an EOF error instead of panicking if no token is available.
+    ///
+    /// Use this at the start of parse functions that are called after matching
+    /// a specific keyword token (e.g., `parse_screen()` called after seeing SCREEN).
+    pub(super) fn advance_start(&mut self, keyword_desc: &str) -> Result<usize, ()> {
+        if let Some(token) = self.advance() {
+            Ok(token.span.start)
+        } else {
+            self.errors.push(ParseError::eof(keyword_desc));
+            Err(())
+        }
+    }
+
     // ==================== Keyword-as-Identifier Handling ====================
     //
     // In BASIC, most keywords can be used as variable/parameter names since

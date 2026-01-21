@@ -2728,9 +2728,16 @@ impl<'a> Parser<'a> {
             Vec::new()
         };
 
+        // Parse optional return type (AS type)
+        let return_type = if self.match_token(&TokenKind::As) {
+            Some(self.parse_type_spec()?)
+        } else {
+            None
+        };
+
         let span = self.span_from(start);
         Ok(Statement::new(
-            StatementKind::DeclareFunction { name, params },
+            StatementKind::DeclareFunction { name, params, return_type },
             span,
         ))
     }

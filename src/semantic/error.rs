@@ -1,37 +1,126 @@
-//! Semantic analysis error types.
+//! Semantic analysis error types for QB64Fresh.
 //!
-//! These errors represent problems found during type checking and symbol resolution
-//! that aren't syntax errors. Each error includes source location information
-//! for accurate diagnostics.
+//! This module defines errors that occur during type checking and symbol resolution -
+//! problems that are valid syntax but semantically incorrect. Each error includes
+//! source location information for accurate diagnostics.
+//!
+//! ## Error Categories
+//!
+//! Semantic errors are organized into categories:
+//!
+//! - **Symbol errors** - Undefined or duplicate variables, labels, procedures
+//! - **Type errors** - Type mismatches, invalid conversions, operator type errors
+//! - **Procedure errors** - Wrong argument counts, argument type mismatches
+//! - **Control flow errors** - EXIT/CONTINUE outside loops, mismatched FOR/NEXT
+//! - **Array errors** - Wrong dimensions, non-numeric indices
+//! - **Constant errors** - Assigning to constants, non-constant initializers
+//! - **Scope errors** - SHARED outside procedures, invalid OPTION BASE
+//!
+//! ## Example
+//!
+//! ```ignore
+//! use qb64fresh::semantic::error::SemanticError;
+//!
+//! let err = SemanticError::type_mismatch("INTEGER", "STRING", span);
+//! println!("{}", err); // "type mismatch: expected INTEGER, found STRING"
+//! ```
 
 use crate::ast::Span;
 use thiserror::Error;
 
-/// A semantic analysis error with location and description.
+/// Errors that occur during semantic analysis of QB64 BASIC programs.
+///
+/// These errors represent problems found after parsing - the code is syntactically
+/// valid but violates semantic rules (type safety, scope rules, etc.). Each variant
+/// includes location information via [`Span`] for accurate error reporting.
+///
+/// # Example
+///
+/// ```ignore
+/// use qb64fresh::semantic::error::SemanticError;
+/// use qb64fresh::ast::Span;
+///
+/// let err = SemanticError::undefined_variable("count", Span::new(10, 15));
+/// assert_eq!(err.span(), Span::new(10, 15));
+/// ```
 #[derive(Debug, Error, Clone)]
 pub enum SemanticError {
-    // === Variable/Symbol Errors ===
+    // ========================================================================
+    // Variable/Symbol Errors
+    // ========================================================================
+
     /// Reference to a variable that hasn't been declared.
+    ///
+    /// In QB64, variables can be implicitly declared by assignment, but referencing
+    /// a variable before any assignment is an error. Check for typos in the variable
+    /// name or add a DIM statement.
+    ///
+    /// # BASIC Example
+    ///
+    /// ```basic
+    /// PRINT counter   ' Error: undefined variable `counter`
+    /// ```
     #[error("undefined variable `{name}`")]
     UndefinedVariable { name: String, span: Span },
 
     /// Reference to a label that doesn't exist.
+    ///
+    /// GOTO and GOSUB require the target label to be defined somewhere in the
+    /// program. Check for typos in the label name.
+    ///
+    /// # BASIC Example
+    ///
+    /// ```basic
+    /// GOTO finish     ' Error: undefined label `finish`
+    /// ```
     #[error("undefined label `{name}`")]
     UndefinedLabel { name: String, span: Span },
 
-    /// Call to a procedure that hasn't been defined.
+    /// Call to a SUB or FUNCTION that hasn't been defined.
+    ///
+    /// Ensure the procedure is defined (with SUB...END SUB or FUNCTION...END FUNCTION)
+    /// or declared (with DECLARE SUB/FUNCTION for external procedures).
+    ///
+    /// # BASIC Example
+    ///
+    /// ```basic
+    /// CALL ProcessData   ' Error: undefined procedure `ProcessData`
+    /// ```
     #[error("undefined procedure `{name}`")]
     UndefinedProcedure { name: String, span: Span },
 
     /// Variable declared more than once in the same scope.
+    ///
+    /// Each variable name can only be declared once per scope. Remove the
+    /// duplicate DIM statement or use a different variable name.
+    ///
+    /// # BASIC Example
+    ///
+    /// ```basic
+    /// DIM x AS INTEGER
+    /// DIM x AS STRING    ' Error: variable `x` already defined
+    /// ```
     #[error("variable `{name}` already defined")]
     DuplicateVariable {
         name: String,
+        /// Location of the original declaration.
         original_span: Span,
+        /// Location of the duplicate declaration.
         duplicate_span: Span,
     },
 
     /// Label defined more than once.
+    ///
+    /// Each label name must be unique within its scope.
+    ///
+    /// # BASIC Example
+    ///
+    /// ```basic
+    /// start:
+    ///     PRINT "first"
+    /// start:             ' Error: label `start` already defined
+    ///     PRINT "second"
+    /// ```
     #[error("label `{name}` already defined")]
     DuplicateLabel {
         name: String,
@@ -39,7 +128,19 @@ pub enum SemanticError {
         duplicate_span: Span,
     },
 
-    /// Procedure defined more than once.
+    /// SUB or FUNCTION defined more than once.
+    ///
+    /// Each procedure name must be unique. Rename one of the procedures.
+    ///
+    /// # BASIC Example
+    ///
+    /// ```basic
+    /// SUB Init
+    /// END SUB
+    ///
+    /// SUB Init           ' Error: procedure `Init` already defined
+    /// END SUB
+    /// ```
     #[error("procedure `{name}` already defined")]
     DuplicateProcedure {
         name: String,
@@ -47,7 +148,21 @@ pub enum SemanticError {
         duplicate_span: Span,
     },
 
-    /// TYPE defined more than once.
+    /// User-defined TYPE declared more than once.
+    ///
+    /// Each TYPE name must be unique. Rename one of the types.
+    ///
+    /// # BASIC Example
+    ///
+    /// ```basic
+    /// TYPE Point
+    ///     x AS INTEGER
+    /// END TYPE
+    ///
+    /// TYPE Point         ' Error: TYPE `Point` already defined
+    ///     y AS INTEGER
+    /// END TYPE
+    /// ```
     #[error("TYPE `{name}` already defined")]
     DuplicateType {
         name: String,
@@ -55,8 +170,21 @@ pub enum SemanticError {
         duplicate_span: Span,
     },
 
-    // === Type Errors ===
+    // ========================================================================
+    // Type Errors
+    // ========================================================================
+
     /// Expected one type but found another.
+    ///
+    /// This occurs when an expression's type doesn't match what's required.
+    /// Common cases: assigning STRING to INTEGER, passing wrong argument types.
+    ///
+    /// # BASIC Example
+    ///
+    /// ```basic
+    /// DIM count AS INTEGER
+    /// count = "hello"    ' Error: type mismatch: expected INTEGER, found STRING
+    /// ```
     #[error("type mismatch: expected {expected}, found {found}")]
     TypeMismatch {
         expected: String,
@@ -65,6 +193,16 @@ pub enum SemanticError {
     },
 
     /// Cannot convert between these types.
+    ///
+    /// Some type conversions are not allowed, such as converting a STRING
+    /// to a numeric type without using VAL().
+    ///
+    /// # BASIC Example
+    ///
+    /// ```basic
+    /// DIM n AS INTEGER
+    /// n = CINT("123")    ' Error: cannot convert STRING to INTEGER (use VAL first)
+    /// ```
     #[error("cannot convert {from} to {to}")]
     InvalidConversion {
         from: String,
@@ -73,6 +211,15 @@ pub enum SemanticError {
     },
 
     /// Binary operator applied to incompatible types.
+    ///
+    /// Operators like +, -, *, / require compatible operand types.
+    /// String concatenation uses + but both operands must be strings.
+    ///
+    /// # BASIC Example
+    ///
+    /// ```basic
+    /// PRINT "Count: " - 5   ' Error: operator `-` cannot be applied to STRING and INTEGER
+    /// ```
     #[error("operator `{op}` cannot be applied to types {left_type} and {right_type}")]
     InvalidBinaryOp {
         op: String,
@@ -82,6 +229,14 @@ pub enum SemanticError {
     },
 
     /// Unary operator applied to incompatible type.
+    ///
+    /// Unary operators like - (negation) and NOT require specific operand types.
+    ///
+    /// # BASIC Example
+    ///
+    /// ```basic
+    /// PRINT -"hello"     ' Error: operator `-` cannot be applied to STRING
+    /// ```
     #[error("operator `{op}` cannot be applied to type {operand_type}")]
     InvalidUnaryOp {
         op: String,
@@ -89,8 +244,20 @@ pub enum SemanticError {
         span: Span,
     },
 
-    // === Procedure/Function Errors ===
-    /// Function called with wrong number of arguments.
+    // ========================================================================
+    // Procedure/Function Errors
+    // ========================================================================
+
+    /// Function or SUB called with wrong number of arguments.
+    ///
+    /// Check the procedure definition for the correct number of parameters.
+    /// Some built-in functions have optional parameters.
+    ///
+    /// # BASIC Example
+    ///
+    /// ```basic
+    /// PRINT MID$("hello")   ' Error: function `MID$` called with 1 arguments, expected 2 to 3
+    /// ```
     #[error("function `{name}` called with {found} arguments, expected {expected_min}{}", if *.expected_min == *.expected_max { "".to_string() } else { format!(" to {}", .expected_max) })]
     ArgumentCountMismatch {
         name: String,
@@ -101,36 +268,108 @@ pub enum SemanticError {
     },
 
     /// Argument type doesn't match parameter type.
+    ///
+    /// The type of an argument must be compatible with the parameter type
+    /// declared in the procedure definition.
+    ///
+    /// # BASIC Example
+    ///
+    /// ```basic
+    /// SUB PrintNum(n AS INTEGER)
+    /// END SUB
+    ///
+    /// PrintNum "hello"   ' Error: argument 1 type mismatch: expected INTEGER, found STRING
+    /// ```
     #[error("argument {position} type mismatch: expected {expected}, found {found}")]
     ArgumentTypeMismatch {
+        /// 1-based argument position.
         position: usize,
         expected: String,
         found: String,
         span: Span,
     },
 
-    /// Trying to call something that isn't a procedure.
+    /// Trying to call something that isn't a SUB or FUNCTION.
+    ///
+    /// Only procedures (SUB/FUNCTION) can be called. Variables and constants
+    /// cannot be called.
+    ///
+    /// # BASIC Example
+    ///
+    /// ```basic
+    /// DIM myVar AS INTEGER
+    /// CALL myVar         ' Error: cannot call `myVar` - it is not a procedure
+    /// ```
     #[error("cannot call `{name}` - it is not a procedure")]
     NotCallable { name: String, span: Span },
 
-    /// SUB used where a value is expected (SUBs don't return values).
+    /// SUB used in an expression where a return value is expected.
+    ///
+    /// SUBs don't return values - use a FUNCTION instead, or call the SUB
+    /// as a statement rather than in an expression.
+    ///
+    /// # BASIC Example
+    ///
+    /// ```basic
+    /// SUB DoWork
+    /// END SUB
+    ///
+    /// x = DoWork         ' Error: SUB `DoWork` does not return a value
+    /// ```
     #[error("SUB `{name}` does not return a value")]
     SubUsedAsFunction { name: String, span: Span },
 
-    // === Control Flow Errors ===
-    /// EXIT statement outside its corresponding loop/procedure.
+    // ========================================================================
+    // Control Flow Errors
+    // ========================================================================
+
+    /// EXIT statement used outside its corresponding construct.
+    ///
+    /// EXIT FOR must be inside a FOR loop, EXIT DO inside a DO loop, etc.
+    ///
+    /// # BASIC Example
+    ///
+    /// ```basic
+    /// EXIT FOR           ' Error: EXIT FOR outside of FOR
+    /// ```
     #[error("EXIT {exit_type} outside of {exit_type}")]
     ExitOutsideLoop { exit_type: String, span: Span },
 
-    /// CONTINUE statement outside its corresponding loop.
+    /// CONTINUE statement used outside its corresponding loop.
+    ///
+    /// CONTINUE FOR must be inside a FOR loop, CONTINUE DO inside a DO loop.
+    ///
+    /// # BASIC Example
+    ///
+    /// ```basic
+    /// CONTINUE FOR       ' Error: CONTINUE FOR outside of FOR loop
+    /// ```
     #[error("CONTINUE {loop_type} outside of {loop_type} loop")]
     ContinueOutsideLoop { loop_type: String, span: Span },
 
-    /// RETURN statement outside of GOSUB or FUNCTION.
+    /// RETURN statement outside of a GOSUB routine or FUNCTION.
+    ///
+    /// RETURN is used to return from GOSUB or to return a value from FUNCTION.
+    ///
+    /// # BASIC Example
+    ///
+    /// ```basic
+    /// RETURN             ' Error: RETURN outside of GOSUB or FUNCTION
+    /// ```
     #[error("RETURN outside of GOSUB or FUNCTION")]
     ReturnOutsideContext { span: Span },
 
-    /// NEXT variable doesn't match FOR variable.
+    /// NEXT variable doesn't match the FOR loop variable.
+    ///
+    /// When NEXT specifies a variable, it must match the corresponding FOR.
+    ///
+    /// # BASIC Example
+    ///
+    /// ```basic
+    /// FOR i = 1 TO 10
+    ///     PRINT i
+    /// NEXT j             ' Error: FOR loop variable `i` does not match NEXT variable `j`
+    /// ```
     #[error("FOR loop variable `{expected}` does not match NEXT variable `{found}`")]
     ForNextMismatch {
         expected: String,
@@ -139,12 +378,34 @@ pub enum SemanticError {
         next_span: Span,
     },
 
-    // === Array Errors ===
+    // ========================================================================
+    // Array Errors
+    // ========================================================================
+
     /// Trying to index something that isn't an array.
+    ///
+    /// Array subscript syntax can only be used on arrays. Make sure the
+    /// variable was declared as an array with DIM.
+    ///
+    /// # BASIC Example
+    ///
+    /// ```basic
+    /// DIM x AS INTEGER
+    /// PRINT x(1)         ' Error: `x` is not an array
+    /// ```
     #[error("`{name}` is not an array")]
     NotAnArray { name: String, span: Span },
 
-    /// Array indexed with wrong number of dimensions.
+    /// Array accessed with wrong number of subscripts.
+    ///
+    /// The number of indices must match the array's dimensions.
+    ///
+    /// # BASIC Example
+    ///
+    /// ```basic
+    /// DIM arr(10, 10) AS INTEGER
+    /// PRINT arr(5)       ' Error: array `arr` indexed with 1 dimensions, expected 2
+    /// ```
     #[error("array `{name}` indexed with {found} dimensions, expected {expected}")]
     ArrayDimensionMismatch {
         name: String,
@@ -153,30 +414,97 @@ pub enum SemanticError {
         span: Span,
     },
 
-    /// Array index must be a numeric type.
+    /// Array index is not a numeric type.
+    ///
+    /// Array subscripts must be numeric (INTEGER, LONG, etc.), not STRING.
+    ///
+    /// # BASIC Example
+    ///
+    /// ```basic
+    /// DIM arr(10) AS INTEGER
+    /// PRINT arr("five")  ' Error: array index must be numeric, found STRING
+    /// ```
     #[error("array index must be numeric, found {found}")]
     NonNumericIndex { found: String, span: Span },
 
-    // === Constant Errors ===
-    /// Attempting to assign to a CONST.
+    // ========================================================================
+    // Constant Errors
+    // ========================================================================
+
+    /// Attempting to assign a new value to a CONST.
+    ///
+    /// Constants cannot be modified after declaration. Use a variable instead
+    /// if the value needs to change.
+    ///
+    /// # BASIC Example
+    ///
+    /// ```basic
+    /// CONST PI = 3.14159
+    /// PI = 3.0           ' Error: cannot assign to constant `PI`
+    /// ```
     #[error("cannot assign to constant `{name}`")]
     AssignmentToConst { name: String, span: Span },
 
-    /// CONST initializer isn't a compile-time constant.
+    /// CONST initializer is not a compile-time constant expression.
+    ///
+    /// CONST values must be known at compile time - literals, other constants,
+    /// or simple constant expressions. Variables and function calls are not allowed.
+    ///
+    /// # BASIC Example
+    ///
+    /// ```basic
+    /// DIM x AS INTEGER
+    /// CONST Y = x + 1    ' Error: CONST value must be a compile-time constant
+    /// ```
     #[error("CONST value must be a compile-time constant")]
     NonConstantExpression { span: Span },
 
-    // === SHARED Errors ===
-    /// SHARED used outside a procedure.
+    // ========================================================================
+    // SHARED Errors
+    // ========================================================================
+
+    /// SHARED statement used outside a SUB or FUNCTION.
+    ///
+    /// SHARED is used inside procedures to access module-level variables.
+    /// At module level, variables are already accessible.
+    ///
+    /// # BASIC Example
+    ///
+    /// ```basic
+    /// SHARED globalVar   ' Error: SHARED can only be used inside SUB or FUNCTION
+    /// ```
     #[error("SHARED can only be used inside SUB or FUNCTION")]
     SharedOutsideProcedure { span: Span },
 
-    /// SHARED references a variable not defined at module level.
+    /// SHARED references a variable that doesn't exist at module level.
+    ///
+    /// The variable must be declared or used at module level before it can
+    /// be accessed via SHARED.
+    ///
+    /// # BASIC Example
+    ///
+    /// ```basic
+    /// SUB Test
+    ///     SHARED noSuchVar   ' Error: SHARED variable `noSuchVar` not defined at module level
+    /// END SUB
+    /// ```
     #[error("SHARED variable `{name}` not defined at module level")]
     SharedVariableNotFound { name: String, span: Span },
 
-    // === OPTION Errors ===
+    // ========================================================================
+    // OPTION Errors
+    // ========================================================================
+
     /// OPTION BASE value is not 0 or 1.
+    ///
+    /// OPTION BASE sets the default lower bound for arrays. Only 0 and 1
+    /// are valid values.
+    ///
+    /// # BASIC Example
+    ///
+    /// ```basic
+    /// OPTION BASE 5      ' Error: OPTION BASE must be 0 or 1, found 5
+    /// ```
     #[error("OPTION BASE must be 0 or 1, found {value}")]
     InvalidOptionBase { value: i64, span: Span },
 }

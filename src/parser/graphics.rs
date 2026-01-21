@@ -21,7 +21,7 @@ impl<'a> Parser<'a> {
     /// All arguments are optional, but if you want to specify later ones,
     /// you need the commas: `SCREEN , , 1, 0` (just page arguments)
     pub(super) fn parse_screen(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("SCREEN keyword").span.start;
+        let start = self.advance_start("SCREEN keyword")?;
 
         // Parse mode (first argument) - may be omitted
         let mode = if !self.is_at_statement_end() && !self.check(&TokenKind::Comma) {
@@ -80,7 +80,7 @@ impl<'a> Parser<'a> {
     /// Syntax: `CLS [mode]`
     /// mode: 0=clear graphics and text, 1=clear graphics only, 2=clear text only
     pub(super) fn parse_cls(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("CLS keyword").span.start;
+        let start = self.advance_start("CLS keyword")?;
 
         // Check if there's an optional mode argument (not at end of statement)
         let mode = if !self.is_at_statement_end() {
@@ -100,7 +100,7 @@ impl<'a> Parser<'a> {
     /// All parameters are optional. Omitting a parameter keeps the current value.
     /// In text mode, the third parameter sets the border color (CGA/EGA legacy).
     pub(super) fn parse_color(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("COLOR keyword").span.start;
+        let start = self.advance_start("COLOR keyword")?;
 
         // Foreground is optional - check if we have a comma first (meaning omitted)
         let foreground = if self.check(&TokenKind::Comma) || self.is_at_statement_end() {
@@ -150,7 +150,7 @@ impl<'a> Parser<'a> {
     /// All parameters are optional. A comma before an omitted parameter is still
     /// required if you want to specify parameters after it.
     pub(super) fn parse_locate(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("LOCATE keyword").span.start;
+        let start = self.advance_start("LOCATE keyword")?;
 
         // Parse optional row (may be empty if we see comma first)
         let row = if self.check(&TokenKind::Comma)
@@ -200,7 +200,7 @@ impl<'a> Parser<'a> {
     ///
     /// Syntax: `WIDTH columns[, rows]`
     pub(super) fn parse_width(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("WIDTH keyword").span.start;
+        let start = self.advance_start("WIDTH keyword")?;
         let columns = self.parse_expression()?;
 
         let rows = if self.match_token(&TokenKind::Comma) {
@@ -219,7 +219,7 @@ impl<'a> Parser<'a> {
     ///
     /// Syntax: `PSET [STEP](x, y)[, color]`
     pub(super) fn parse_pset(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("PSET keyword").span.start;
+        let start = self.advance_start("PSET keyword")?;
 
         // Check for STEP (relative coordinates)
         let step = self.match_token(&TokenKind::Step);
@@ -247,7 +247,7 @@ impl<'a> Parser<'a> {
     ///
     /// Syntax: `PRESET [STEP](x, y)`
     pub(super) fn parse_preset(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("PRESET keyword").span.start;
+        let start = self.advance_start("PRESET keyword")?;
 
         // Check for STEP (relative coordinates)
         let step = self.match_token(&TokenKind::Step);
@@ -355,7 +355,7 @@ impl<'a> Parser<'a> {
     ///
     /// Syntax: `CIRCLE [STEP](x, y), radius[, color][, , , , F]`
     pub(super) fn parse_circle(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("CIRCLE keyword").span.start;
+        let start = self.advance_start("CIRCLE keyword")?;
 
         // Check for STEP (relative coordinates)
         let step = self.match_token(&TokenKind::Step);
@@ -411,7 +411,7 @@ impl<'a> Parser<'a> {
     ///
     /// Syntax: `PAINT [STEP](x, y)[, color][, border]`
     pub(super) fn parse_paint(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("PAINT keyword").span.start;
+        let start = self.advance_start("PAINT keyword")?;
 
         // Check for STEP (relative coordinates)
         let step = self.match_token(&TokenKind::Step);
@@ -455,7 +455,7 @@ impl<'a> Parser<'a> {
     ///
     /// Syntax: `DRAW commands$`
     pub(super) fn parse_draw(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("DRAW keyword").span.start;
+        let start = self.advance_start("DRAW keyword")?;
         let commands = self.parse_expression()?;
         let span = self.span_from(start);
         Ok(Statement::new(StatementKind::DrawCmd { commands }, span))
@@ -467,7 +467,7 @@ impl<'a> Parser<'a> {
     ///
     /// Syntax: `VIEW [[SCREEN] (x1, y1)-(x2, y2)[, color[, border]]]`
     pub(super) fn parse_view(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("VIEW keyword").span.start;
+        let start = self.advance_start("VIEW keyword")?;
 
         // Check for VIEW PRINT (text viewport)
         if self.check(&TokenKind::Print) {
@@ -564,7 +564,7 @@ impl<'a> Parser<'a> {
     ///
     /// Syntax: `WINDOW [[SCREEN] (x1, y1)-(x2, y2)]`
     pub(super) fn parse_window(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("WINDOW keyword").span.start;
+        let start = self.advance_start("WINDOW keyword")?;
 
         if self.is_at_end_of_statement() {
             let span = self.span_from(start);
@@ -620,7 +620,7 @@ impl<'a> Parser<'a> {
     ///
     /// Syntax: `_DISPLAY`
     pub(super) fn parse_display(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("_DISPLAY keyword").span.start;
+        let start = self.advance_start("_DISPLAY keyword")?;
         let span = self.span_from(start);
         Ok(Statement::new(StatementKind::GfxDisplay, span))
     }
@@ -629,7 +629,7 @@ impl<'a> Parser<'a> {
     ///
     /// Syntax: `PALETTE [attribute, color]`
     pub(super) fn parse_palette(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("PALETTE keyword").span.start;
+        let start = self.advance_start("PALETTE keyword")?;
 
         let (attribute, color) = if self.is_at_end_of_statement() {
             (None, None)
@@ -651,7 +651,7 @@ impl<'a> Parser<'a> {
     ///
     /// Syntax: `PCOPY source%, dest%`
     pub(super) fn parse_pcopy(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("PCOPY keyword").span.start;
+        let start = self.advance_start("PCOPY keyword")?;
 
         let source = self.parse_expression()?;
         self.expect(&TokenKind::Comma, ",")?;
@@ -667,7 +667,7 @@ impl<'a> Parser<'a> {
     ///
     /// Syntax: `_FREEIMAGE handle&`
     pub(super) fn parse_freeimage(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("_FREEIMAGE keyword").span.start;
+        let start = self.advance_start("_FREEIMAGE keyword")?;
         let handle = self.parse_expression()?;
         let span = self.span_from(start);
         Ok(Statement::new(StatementKind::FreeImage { handle }, span))
@@ -677,7 +677,7 @@ impl<'a> Parser<'a> {
     ///
     /// Syntax: `_PUTIMAGE [(dx1,dy1)-(dx2,dy2)][, src&][, dest&][, (sx1,sy1)-(sx2,sy2)][, _SMOOTH|_STRETCH]`
     pub(super) fn parse_putimage(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("_PUTIMAGE keyword").span.start;
+        let start = self.advance_start("_PUTIMAGE keyword")?;
 
         let dest_coords = if self.check(&TokenKind::LeftParen) {
             Some(Box::new(self.parse_view_coords()?))
@@ -746,7 +746,7 @@ impl<'a> Parser<'a> {
     ///
     /// Syntax: `_SOURCE handle&`
     pub(super) fn parse_source(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("_SOURCE keyword").span.start;
+        let start = self.advance_start("_SOURCE keyword")?;
         let handle = self.parse_expression()?;
         let span = self.span_from(start);
         Ok(Statement::new(StatementKind::SourceImg { handle }, span))
@@ -756,7 +756,7 @@ impl<'a> Parser<'a> {
     ///
     /// Syntax: `_DEST handle&`
     pub(super) fn parse_dest(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("_DEST keyword").span.start;
+        let start = self.advance_start("_DEST keyword")?;
         let handle = self.parse_expression()?;
         let span = self.span_from(start);
         Ok(Statement::new(StatementKind::DestImg { handle }, span))
@@ -766,7 +766,7 @@ impl<'a> Parser<'a> {
     ///
     /// Syntax: `_PRINTSTRING (x, y), text$`
     pub(super) fn parse_printstring(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("_PRINTSTRING keyword").span.start;
+        let start = self.advance_start("_PRINTSTRING keyword")?;
 
         self.expect(&TokenKind::LeftParen, "(")?;
         let x = self.parse_expression()?;
@@ -788,7 +788,7 @@ impl<'a> Parser<'a> {
     ///
     /// Syntax: `_AUTODISPLAY {ON|OFF}` or just `_AUTODISPLAY` (defaults to ON)
     pub(super) fn parse_autodisplay(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("_AUTODISPLAY keyword").span.start;
+        let start = self.advance_start("_AUTODISPLAY keyword")?;
 
         let enabled = if let Some(token) = self.peek() {
             if token.text.eq_ignore_ascii_case("ON") {

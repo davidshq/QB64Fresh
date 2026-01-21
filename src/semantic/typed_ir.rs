@@ -260,6 +260,18 @@ pub enum TypedStatementKind {
         field_type: BasicType,
     },
 
+    /// Simple UDT field assignment (non-array): `udt.field = value`
+    FieldAssignment {
+        /// The UDT variable name.
+        name: String,
+        /// Field access chain (e.g., ["field"] or ["nested", "field"]).
+        fields: Vec<String>,
+        /// The value being assigned.
+        value: TypedExpr,
+        /// The type of the final field being assigned.
+        field_type: BasicType,
+    },
+
     /// MID$ assignment - substring replacement.
     /// `MID$(str$, start [, length]) = value$`
     /// The target can be a simple variable, array element, or UDT field.

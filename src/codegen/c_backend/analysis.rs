@@ -53,13 +53,44 @@ impl DataPoolInfo {
 ///
 /// This enables the generated C code to have proper ordering: globals first,
 /// then forward declarations, then the actual procedure definitions.
+///
+/// # Implicit Variables
+///
+/// In BASIC, variables can be used without explicit DIM declaration. These
+/// implicitly-declared variables are also collected by scanning Assignment
+/// and FOR loop statements to ensure all variables are properly declared
+/// in the generated C code.
 pub(super) fn collect_globals(
     program: &TypedProgram,
     emit_params_fn: impl Fn(&[TypedParameter]) -> String,
 ) -> (Vec<String>, Vec<String>) {
+    use std::collections::HashSet;
+    use crate::semantic::types::BasicType;
+
     let mut globals = Vec::new();
     let mut forward_decls = Vec::new();
+    // Track already-declared variable names to avoid duplicates
+    let mut declared_vars: HashSet<String> = HashSet::new();
 
+    // Helper to add a global variable if not already declared
+    // Note: For strings, we initialize to NULL since qb_string_new() is not a constant
+    // expression in C. The generated code should handle NULL strings safely.
+    let add_global = |name: &str, basic_type: &BasicType, declared_vars: &mut HashSet<String>, globals: &mut Vec<String>| {
+        let c_name = c_identifier(name);
+        if !declared_vars.contains(&c_name) {
+            let c_ty = c_type(basic_type);
+            // For strings, use NULL as initial value since function calls can't be
+            // used as global initializers in C
+            let init = match basic_type {
+                BasicType::String => "NULL".to_string(),
+                _ => default_init(basic_type),
+            };
+            globals.push(format!("{} {} = {};", c_ty, c_name, init));
+            declared_vars.insert(c_name);
+        }
+    };
+
+    // First pass: collect explicit DIM declarations and SUB/FUNCTION forward decls
     for stmt in &program.statements {
         match &stmt.kind {
             TypedStatementKind::Dim {
@@ -69,10 +100,7 @@ pub(super) fn collect_globals(
                 // Simple global variables (non-array)
                 for var in variables {
                     if var.dimensions.is_empty() {
-                        let c_ty = c_type(&var.basic_type);
-                        let c_name = c_identifier(&var.name);
-                        let init = default_init(&var.basic_type);
-                        globals.push(format!("{} {} = {};", c_ty, c_name, init));
+                        add_global(&var.name, &var.basic_type, &mut declared_vars, &mut globals);
                     }
                 }
             }
@@ -99,7 +127,104 @@ pub(super) fn collect_globals(
         }
     }
 
+    // Second pass: collect implicit variables from assignments and FOR loops
+    // (only at module level, not inside SUB/FUNCTION definitions)
+    for stmt in &program.statements {
+        collect_implicit_vars_from_stmt(stmt, &mut declared_vars, &mut globals, false);
+    }
+
     (globals, forward_decls)
+}
+
+/// Recursively collects implicit variable declarations from a statement.
+///
+/// This finds variables that are used (via assignment or FOR loop) without
+/// an explicit DIM declaration, which is valid in BASIC.
+fn collect_implicit_vars_from_stmt(
+    stmt: &TypedStatement,
+    declared_vars: &mut std::collections::HashSet<String>,
+    globals: &mut Vec<String>,
+    inside_procedure: bool,
+) {
+    // Helper to add a variable
+    // For strings, use NULL since function calls aren't valid global initializers in C
+    let add_var = |name: &str, basic_type: &crate::semantic::types::BasicType, declared_vars: &mut std::collections::HashSet<String>, globals: &mut Vec<String>| {
+        use crate::semantic::types::BasicType;
+        let c_name = c_identifier(name);
+        if !declared_vars.contains(&c_name) {
+            let c_ty = c_type(basic_type);
+            let init = match basic_type {
+                BasicType::String => "NULL".to_string(),
+                _ => default_init(basic_type),
+            };
+            globals.push(format!("{} {} = {};", c_ty, c_name, init));
+            declared_vars.insert(c_name);
+        }
+    };
+
+    match &stmt.kind {
+        // Skip SUB/FUNCTION bodies - local variables don't need global declarations
+        TypedStatementKind::SubDefinition { .. } | TypedStatementKind::FunctionDefinition { .. } => {
+            // Don't recurse into procedures - their variables are local
+        }
+
+        // Assignment introduces an implicit variable at module level
+        TypedStatementKind::Assignment { name, target_type, .. } => {
+            if !inside_procedure {
+                add_var(name, target_type, declared_vars, globals);
+            }
+        }
+
+        // FOR loop counter variable
+        TypedStatementKind::For { variable, var_type, body, .. } => {
+            if !inside_procedure {
+                add_var(variable, var_type, declared_vars, globals);
+            }
+            // Recurse into body (still at module level if we're at module level)
+            for s in body {
+                collect_implicit_vars_from_stmt(s, declared_vars, globals, inside_procedure);
+            }
+        }
+
+        // Recurse into compound statements
+        TypedStatementKind::If { then_branch, elseif_branches, else_branch, .. } => {
+            for s in then_branch {
+                collect_implicit_vars_from_stmt(s, declared_vars, globals, inside_procedure);
+            }
+            for (_, branch) in elseif_branches {
+                for s in branch {
+                    collect_implicit_vars_from_stmt(s, declared_vars, globals, inside_procedure);
+                }
+            }
+            if let Some(else_stmts) = else_branch {
+                for s in else_stmts {
+                    collect_implicit_vars_from_stmt(s, declared_vars, globals, inside_procedure);
+                }
+            }
+        }
+
+        TypedStatementKind::While { body, .. } | TypedStatementKind::DoLoop { body, .. } => {
+            for s in body {
+                collect_implicit_vars_from_stmt(s, declared_vars, globals, inside_procedure);
+            }
+        }
+
+        TypedStatementKind::SelectCase { cases, case_else, .. }
+        | TypedStatementKind::SelectEveryCase { cases, case_else, .. } => {
+            for case in cases {
+                for s in &case.body {
+                    collect_implicit_vars_from_stmt(s, declared_vars, globals, inside_procedure);
+                }
+            }
+            if let Some(else_stmts) = case_else {
+                for s in else_stmts {
+                    collect_implicit_vars_from_stmt(s, declared_vars, globals, inside_procedure);
+                }
+            }
+        }
+
+        _ => {}
+    }
 }
 
 /// Collects all DATA values from the program into a flat array.

@@ -137,7 +137,7 @@ impl SemanticAnalyzer {
                 }
 
                 // DECLARE FUNCTION - forward declaration of a function
-                StatementKind::DeclareFunction { name, params } => {
+                StatementKind::DeclareFunction { name, params, .. } => {
                     self.register_declared_function(name, params, stmt.span);
                 }
 
@@ -957,6 +957,11 @@ impl SemanticAnalyzer {
         self.register_builtin_function(
             "_LOADIMAGE",
             &[("filename", BasicType::String), ("mode", BasicType::Long)],
+            BasicType::Long,
+        );
+        self.register_builtin_function(
+            "_COPYIMAGE",
+            &[("source", BasicType::Long), ("mode", BasicType::Long)],
             BasicType::Long,
         );
         // Image dimension functions (take handle, return dimension)
@@ -2174,13 +2179,11 @@ mod tests {
         );
         let true_sym = true_sym.unwrap();
         assert!(!true_sym.is_mutable, "_TRUE should be immutable");
-        match &true_sym.kind {
-            SymbolKind::Constant { value } => match value {
-                ConstValue::Integer(v) => assert_eq!(*v, -1, "_TRUE should be -1"),
-                _ => panic!("_TRUE should be an integer constant"),
-            },
-            _ => panic!("_TRUE should be a constant"),
-        }
+        assert!(
+            matches!(&true_sym.kind, SymbolKind::Constant { value: ConstValue::Integer(-1) }),
+            "_TRUE should be an integer constant with value -1, got {:?}",
+            true_sym.kind
+        );
 
         // Check _FALSE constant exists and has correct value (0)
         let false_sym = analyzer.symbols.lookup_symbol("_FALSE");
@@ -2190,13 +2193,11 @@ mod tests {
         );
         let false_sym = false_sym.unwrap();
         assert!(!false_sym.is_mutable, "_FALSE should be immutable");
-        match &false_sym.kind {
-            SymbolKind::Constant { value } => match value {
-                ConstValue::Integer(v) => assert_eq!(*v, 0, "_FALSE should be 0"),
-                _ => panic!("_FALSE should be an integer constant"),
-            },
-            _ => panic!("_FALSE should be a constant"),
-        }
+        assert!(
+            matches!(&false_sym.kind, SymbolKind::Constant { value: ConstValue::Integer(0) }),
+            "_FALSE should be an integer constant with value 0, got {:?}",
+            false_sym.kind
+        );
 
         // Case-insensitive lookup should work
         assert!(analyzer.symbols.lookup_symbol("_true").is_some());
@@ -2215,14 +2216,14 @@ mod tests {
             assert!(sym.is_some(), "{} should exist as built-in constant", name);
             let sym = sym.unwrap();
             assert!(!sym.is_mutable, "{} should be immutable", name);
-            match &sym.kind {
-                SymbolKind::Constant { value } => match value {
-                    ConstValue::Integer(v) => {
-                        assert_eq!(*v, expected_value, "{} should be {}", name, expected_value)
-                    }
-                    _ => panic!("{} should be an integer constant", name),
-                },
-                _ => panic!("{} should be a constant", name),
+            assert!(
+                matches!(&sym.kind, SymbolKind::Constant { value: ConstValue::Integer(_) }),
+                "{} should be an integer constant, got {:?}",
+                name,
+                sym.kind
+            );
+            if let SymbolKind::Constant { value: ConstValue::Integer(v) } = &sym.kind {
+                assert_eq!(*v, expected_value, "{} should be {}", name, expected_value);
             }
         };
 
