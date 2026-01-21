@@ -598,6 +598,16 @@
 - [x] `SCREEN(row, col [, flag])` function - read text screen content
   - Returns ASCII value at text position, or attribute if flag is non-zero
 
+### C Library Integration (FFI)
+- [x] Type marshalling for STRING ↔ char* at FFI boundary
+  - `qb_string_data()` returns `const char*` for C interop
+  - `qb_string_from_cstr()` creates QB string from C string
+- [x] Callback support via `_PROCPTR(procedureName)` function
+  - Returns function pointer address as `_OFFSET`
+  - Generates wrapper functions for C library callbacks
+- [x] Automatic header parsing (optional feature flag `header-parsing`)
+  - Parses C header files to auto-generate DECLARE LIBRARY bindings
+
 ### Test Results Improvement
 - QB4.5 test case compatibility: **117/141 → 114/115** (83.0% → 99.1%, excluding open_gl)
   - pete: 42/42 (100%) - up from 62/68

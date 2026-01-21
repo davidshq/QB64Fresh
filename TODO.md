@@ -13,11 +13,9 @@ A prioritized roadmap for QB64Fresh development. For completed features, see [TO
 
 ---
 
-## Phase 2: Core Extensions - COMPLETE ✓
+## Phase 2: Core Extensions ✅ COMPLETE
 
-All Phase 2 items have been completed:
-- [x] Built-in constants: `_WIN`, `_LINUX`, `_MAC`, `_WINDOWS`, `_32BIT`, `_64BIT` (for `$IF` conditional compilation)
-- [x] `_AUTODISPLAY` / `_DISPLAY` timing
+All Phase 2 items have been completed - see TODO-completed.md.
 
 ---
 
@@ -39,10 +37,9 @@ All sound features have been implemented - see TODO-completed.md.
 
 ## Phase 5: Advanced Features - Remaining Items
 
-### C Library Integration - COMPLETE ✓
-- [x] Type marshalling for STRING ↔ char* at FFI boundary (Session 031)
-- [x] Callback support via `_PROCPTR(procedureName)` (Session 031)
-- [x] Automatic header parsing (optional feature flag `header-parsing`) (Session 031)
+### C Library Integration ✅ COMPLETE
+
+All C Library Integration items completed - see TODO-completed.md.
 
 ### Networking
 - [ ] Network stream I/O (PUT/GET with network handles)
@@ -87,9 +84,9 @@ All sound features have been implemented - see TODO-completed.md.
 - [ ] Example programs
 
 ### Testing (See TESTING_INFRASTRUCTURE_PLAN.md for details)
-- [x] Achieve 80%+ line coverage (**81.63%** achieved!)
+- [x] Achieve 80%+ line coverage (**81.63%** achieved!) ✅
+- [x] QB4.5 test cases from QB64pe (**114/115 = 99.1%** passing, excluding open_gl) ✅
 - [ ] Compatibility tests against QB64 programs (16 fixture files, need more)
-- [ ] Port QB4.5 test cases from QB64pe (currently **114/115 = 99.1%** passing, excluding open_gl)
 
 ---
 
@@ -213,14 +210,6 @@ All sound features have been implemented - see TODO-completed.md.
 - [ ] `_MEMSOUND(handle)` function - get sound memory
 
 #### Sound (Extended)
-- [x] `_SNDCOPY(handle)` function - copy sound ✅ (Session 030)
-- [x] `_SNDPLAYCOPY(handle)` statement - play copy ✅ (Session 030)
-- [x] `_SNDPLAYFILE(file$)` statement - quick play file ✅ (Session 030)
-- [x] `_SNDPLAYING(handle)` function - check if playing ✅ (Session 030)
-- [x] `_SNDPAUSED(handle)` function - check if paused ✅ (Session 030)
-- [x] `_SNDGETPOS(handle)` function - get position ✅ (Session 030)
-- [x] `_SNDLEN(handle)` function - get length ✅ (Session 030)
-- [x] `_SNDSETPOS(handle, pos)` statement - set position ✅ (Session 030)
 - [ ] `_SNDRAWDONE` function - raw buffer done
 - [ ] `_SNDLIMIT(handle, seconds)` statement - limit sound length
 - [ ] `_SNDNEW(frames, channels, bits)` function - create sound buffer
