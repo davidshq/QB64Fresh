@@ -122,6 +122,7 @@ fn emit_string_functions(output: &mut String) {
     writeln!(output, "    str->capacity = str->len + 1;").unwrap();
     writeln!(output, "    str->data = malloc(str->capacity);").unwrap();
     writeln!(output, "    memcpy(str->data, s, str->len + 1);").unwrap();
+    writeln!(output, "    str->refcount = 1;").unwrap();
     writeln!(output, "    return str;").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
@@ -134,6 +135,7 @@ fn emit_string_functions(output: &mut String) {
     writeln!(output, "    str->data = malloc(str->capacity);").unwrap();
     writeln!(output, "    memset(str->data, ' ', len);").unwrap();
     writeln!(output, "    str->data[len] = '\\0';").unwrap();
+    writeln!(output, "    str->refcount = 1;").unwrap();
     writeln!(output, "    return str;").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
@@ -141,6 +143,25 @@ fn emit_string_functions(output: &mut String) {
     // String deallocation
     writeln!(output, "void qb_string_free(qb_string* s) {{").unwrap();
     writeln!(output, "    if (s) {{ free(s->data); free(s); }}").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // Reference counting - retain
+    writeln!(output, "qb_string* qb_string_retain(qb_string* s) {{").unwrap();
+    writeln!(output, "    if (s) s->refcount++;").unwrap();
+    writeln!(output, "    return s;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // Reference counting - release
+    writeln!(output, "void qb_string_release(qb_string* s) {{").unwrap();
+    writeln!(output, "    if (s) {{").unwrap();
+    writeln!(output, "        s->refcount--;").unwrap();
+    writeln!(output, "        if (s->refcount <= 0) {{").unwrap();
+    writeln!(output, "            free(s->data);").unwrap();
+    writeln!(output, "            free(s);").unwrap();
+    writeln!(output, "        }}").unwrap();
+    writeln!(output, "    }}").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
@@ -160,6 +181,7 @@ fn emit_string_functions(output: &mut String) {
     writeln!(output, "    result->len = a->len + b->len;").unwrap();
     writeln!(output, "    result->capacity = result->len + 1;").unwrap();
     writeln!(output, "    result->data = malloc(result->capacity);").unwrap();
+    writeln!(output, "    result->refcount = 1;").unwrap();
     writeln!(output, "    memcpy(result->data, a->data, a->len);").unwrap();
     writeln!(
         output,
@@ -1585,8 +1607,8 @@ fn emit_file_io_functions(output: &mut String) {
     // qb_lset - Left-justify a string value into a fixed-length string variable
     writeln!(output, "void qb_lset(qb_string** var, qb_string* value) {{").unwrap();
     writeln!(output, "    if (!*var || !value) return;").unwrap();
-    writeln!(output, "    int32_t var_len = (*var)->length;").unwrap();
-    writeln!(output, "    int32_t val_len = value->length;").unwrap();
+    writeln!(output, "    int32_t var_len = (*var)->len;").unwrap();
+    writeln!(output, "    int32_t val_len = value->len;").unwrap();
     writeln!(output, "    /* Fill with spaces first */").unwrap();
     writeln!(output, "    memset((*var)->data, ' ', var_len);").unwrap();
     writeln!(output, "    /* Copy value left-justified */").unwrap();
@@ -1602,8 +1624,8 @@ fn emit_file_io_functions(output: &mut String) {
     // qb_rset - Right-justify a string value into a fixed-length string variable
     writeln!(output, "void qb_rset(qb_string** var, qb_string* value) {{").unwrap();
     writeln!(output, "    if (!*var || !value) return;").unwrap();
-    writeln!(output, "    int32_t var_len = (*var)->length;").unwrap();
-    writeln!(output, "    int32_t val_len = value->length;").unwrap();
+    writeln!(output, "    int32_t var_len = (*var)->len;").unwrap();
+    writeln!(output, "    int32_t val_len = value->len;").unwrap();
     writeln!(output, "    /* Fill with spaces first */").unwrap();
     writeln!(output, "    memset((*var)->data, ' ', var_len);").unwrap();
     writeln!(output, "    /* Copy value right-justified */").unwrap();

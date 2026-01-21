@@ -177,6 +177,24 @@ pub(super) fn emit_expr(expr: &TypedExpr) -> Result<String, CodeGenError> {
             let c_ty = c_type(target_type);
             Ok(format!("(({})({})", c_ty, value_code))
         }
+
+        TypedExprKind::ValWithType { value, target_type } => {
+            let value_code = emit_expr(value)?;
+            // VAL with type specifier uses specific conversion functions
+            // that parse the string and return the specified type
+            let func = match target_type {
+                BasicType::Integer64 => "qb_val_int64",
+                BasicType::UnsignedInteger64 => "qb_val_uint64",
+                BasicType::Long => "qb_val_long",
+                BasicType::UnsignedLong => "qb_val_ulong",
+                BasicType::Integer => "qb_val_int",
+                BasicType::UnsignedInteger => "qb_val_uint",
+                BasicType::Double => "qb_val_double",
+                BasicType::Single => "qb_val_float",
+                _ => "qb_val", // Default VAL function
+            };
+            Ok(format!("{}({})", func, value_code))
+        }
     }
 }
 

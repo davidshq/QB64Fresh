@@ -77,6 +77,43 @@ impl StmtEmitter {
         Ok(())
     }
 
+    /// Emits an OPEN statement using legacy syntax: OPEN mode$, [#]filenum, filename[, reclen]
+    pub(super) fn emit_open_file_legacy(
+        &self,
+        indent: &str,
+        mode_expr: &TypedExpr,
+        file_num: &TypedExpr,
+        filename: &TypedExpr,
+        record_len: Option<&TypedExpr>,
+        output: &mut String,
+    ) -> Result<(), CodeGenError> {
+        let mode_code = emit_expr(mode_expr)?;
+        let file_num_code = emit_expr(file_num)?;
+        let filename_code = emit_expr(filename)?;
+
+        // The mode is a string expression that we'll pass to a runtime function
+        // that interprets "O", "I", "A", "R", "B" at runtime
+        writeln!(
+            output,
+            "{}qb_file_open_legacy({}, {}->data, {}->data);",
+            indent, file_num_code, mode_code, filename_code
+        )
+        .unwrap();
+
+        // Handle record length for random access
+        if let Some(rec_len) = record_len {
+            let rec_len_code = emit_expr(rec_len)?;
+            writeln!(
+                output,
+                "{}qb_file_set_reclen({}, {});",
+                indent, file_num_code, rec_len_code
+            )
+            .unwrap();
+        }
+
+        Ok(())
+    }
+
     /// Emits a CLOSE statement.
     pub(super) fn emit_close_file(
         &self,
@@ -342,19 +379,17 @@ impl StmtEmitter {
     }
 
     /// Emits a GET statement.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn emit_file_get(
         &self,
         indent: &str,
         file_num: &TypedExpr,
         position: Option<&TypedExpr>,
-        variable: &str,
-        var_type: &BasicType,
-        index: Option<&TypedExpr>,
+        target: &TypedInputTarget,
         output: &mut String,
     ) -> Result<(), CodeGenError> {
+        use crate::semantic::typed_ir::TypedInputTarget::*;
+
         let file_num_code = emit_expr(file_num)?;
-        let c_var = c_identifier(variable);
 
         // Seek to position if specified
         if let Some(pos) = position {
@@ -367,42 +402,68 @@ impl StmtEmitter {
             .unwrap();
         }
 
-        // Read the data - handle array indexing if present
-        let size = type_size(var_type);
-        if let Some(idx) = index {
-            let idx_code = emit_expr(idx)?;
-            writeln!(
-                output,
-                "{}qb_file_get({}, &{}[{}], {});",
-                indent, file_num_code, c_var, idx_code, size
-            )
-            .unwrap();
-        } else {
-            writeln!(
-                output,
-                "{}qb_file_get({}, &{}, {});",
-                indent, file_num_code, c_var, size
-            )
-            .unwrap();
-        }
+        // Get target code and type for size calculation
+        let (target_code, var_type) = match target {
+            Variable { name, basic_type } => (c_identifier(name), basic_type.clone()),
+            ArrayElement {
+                name,
+                indices,
+                element_type,
+            } => {
+                let c_arr = c_identifier(name);
+                let idx_code: Vec<_> = indices.iter().map(emit_expr).collect::<Result<_, _>>()?;
+                let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
+                (format!("{}[{}]", c_arr, idx), element_type.clone())
+            }
+            ArrayElementField {
+                name,
+                indices,
+                fields,
+                field_type,
+            } => {
+                let c_arr = c_identifier(name);
+                let idx_code: Vec<_> = indices.iter().map(emit_expr).collect::<Result<_, _>>()?;
+                let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
+                let field_chain = fields.join(".");
+                (
+                    format!("{}[{}].{}", c_arr, idx, field_chain),
+                    field_type.clone(),
+                )
+            }
+            Field {
+                name,
+                fields,
+                field_type,
+            } => {
+                let c_name = c_identifier(name);
+                let field_chain = fields.join(".");
+                (format!("{}.{}", c_name, field_chain), field_type.clone())
+            }
+        };
+
+        let size = type_size(&var_type);
+        writeln!(
+            output,
+            "{}qb_file_get({}, &{}, {});",
+            indent, file_num_code, target_code, size
+        )
+        .unwrap();
 
         Ok(())
     }
 
     /// Emits a PUT statement.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn emit_file_put(
         &self,
         indent: &str,
         file_num: &TypedExpr,
         position: Option<&TypedExpr>,
-        variable: &str,
-        var_type: &BasicType,
-        index: Option<&TypedExpr>,
+        target: &TypedInputTarget,
         output: &mut String,
     ) -> Result<(), CodeGenError> {
+        use crate::semantic::typed_ir::TypedInputTarget::*;
+
         let file_num_code = emit_expr(file_num)?;
-        let c_var = c_identifier(variable);
 
         // Seek to position if specified
         if let Some(pos) = position {
@@ -415,24 +476,52 @@ impl StmtEmitter {
             .unwrap();
         }
 
-        // Write the data - handle array indexing if present
-        let size = type_size(var_type);
-        if let Some(idx) = index {
-            let idx_code = emit_expr(idx)?;
-            writeln!(
-                output,
-                "{}qb_file_put({}, &{}[{}], {});",
-                indent, file_num_code, c_var, idx_code, size
-            )
-            .unwrap();
-        } else {
-            writeln!(
-                output,
-                "{}qb_file_put({}, &{}, {});",
-                indent, file_num_code, c_var, size
-            )
-            .unwrap();
-        }
+        // Get target code and type for size calculation
+        let (target_code, var_type) = match target {
+            Variable { name, basic_type } => (c_identifier(name), basic_type.clone()),
+            ArrayElement {
+                name,
+                indices,
+                element_type,
+            } => {
+                let c_arr = c_identifier(name);
+                let idx_code: Vec<_> = indices.iter().map(emit_expr).collect::<Result<_, _>>()?;
+                let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
+                (format!("{}[{}]", c_arr, idx), element_type.clone())
+            }
+            ArrayElementField {
+                name,
+                indices,
+                fields,
+                field_type,
+            } => {
+                let c_arr = c_identifier(name);
+                let idx_code: Vec<_> = indices.iter().map(emit_expr).collect::<Result<_, _>>()?;
+                let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
+                let field_chain = fields.join(".");
+                (
+                    format!("{}[{}].{}", c_arr, idx, field_chain),
+                    field_type.clone(),
+                )
+            }
+            Field {
+                name,
+                fields,
+                field_type,
+            } => {
+                let c_name = c_identifier(name);
+                let field_chain = fields.join(".");
+                (format!("{}.{}", c_name, field_chain), field_type.clone())
+            }
+        };
+
+        let size = type_size(&var_type);
+        writeln!(
+            output,
+            "{}qb_file_put({}, &{}, {});",
+            indent, file_num_code, target_code, size
+        )
+        .unwrap();
 
         Ok(())
     }

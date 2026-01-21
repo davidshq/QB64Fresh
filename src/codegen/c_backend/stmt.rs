@@ -160,6 +160,24 @@ impl StmtEmitter {
                 }
             }
 
+            TypedStatementKind::AscAssignment {
+                target,
+                position,
+                value,
+            } => {
+                // ASC(str$, pos) = value sets a single character in a string
+                // We need to pass the target's address to qb_asc_assign
+                let target_code = emit_expr(target)?;
+                let position_code = emit_expr(position)?;
+                let value_code = emit_expr(value)?;
+                writeln!(
+                    output,
+                    "{}qb_asc_assign(&({}), {}, {});",
+                    indent, target_code, position_code, value_code
+                )
+                .unwrap();
+            }
+
             TypedStatementKind::Print { items, newline } => {
                 for item in items {
                     self.emit_print_item(item, output)?;
@@ -783,6 +801,22 @@ impl StmtEmitter {
                 )?;
             }
 
+            TypedStatementKind::OpenFileLegacy {
+                mode_expr,
+                file_num,
+                filename,
+                record_len,
+            } => {
+                self.emit_open_file_legacy(
+                    &indent,
+                    mode_expr,
+                    file_num,
+                    filename,
+                    record_len.as_ref(),
+                    output,
+                )?;
+            }
+
             TypedStatementKind::CloseFile { file_nums } => {
                 self.emit_close_file(&indent, file_nums, output)?;
             }
@@ -810,37 +844,17 @@ impl StmtEmitter {
             TypedStatementKind::FileGet {
                 file_num,
                 position,
-                variable,
-                var_type,
-                index,
+                target,
             } => {
-                self.emit_file_get(
-                    &indent,
-                    file_num,
-                    position.as_ref(),
-                    variable,
-                    var_type,
-                    index.as_ref(),
-                    output,
-                )?;
+                self.emit_file_get(&indent, file_num, position.as_ref(), target, output)?;
             }
 
             TypedStatementKind::FilePut {
                 file_num,
                 position,
-                variable,
-                var_type,
-                index,
+                target,
             } => {
-                self.emit_file_put(
-                    &indent,
-                    file_num,
-                    position.as_ref(),
-                    variable,
-                    var_type,
-                    index.as_ref(),
-                    output,
-                )?;
+                self.emit_file_put(&indent, file_num, position.as_ref(), target, output)?;
             }
 
             TypedStatementKind::FileSeek { file_num, position } => {
@@ -1204,6 +1218,40 @@ impl StmtEmitter {
 
             TypedStatementKind::GfxDisplay => {
                 writeln!(output, "{}qb_gfx_display();", indent).unwrap();
+            }
+
+            TypedStatementKind::ControlChr { enabled } => {
+                writeln!(
+                    output,
+                    "{}qb_controlchr({});",
+                    indent,
+                    if *enabled { "1" } else { "0" }
+                )
+                .unwrap();
+            }
+
+            TypedStatementKind::MapUnicode {
+                unicode_value,
+                char_position,
+            } => {
+                let unicode_code = emit_expr(unicode_value)?;
+                let char_code = emit_expr(char_position)?;
+                writeln!(
+                    output,
+                    "{}qb_mapunicode((int32_t){}, (int32_t){});",
+                    indent, unicode_code, char_code
+                )
+                .unwrap();
+            }
+
+            TypedStatementKind::GfxResize { enabled } => {
+                writeln!(
+                    output,
+                    "{}qb_gfx_resize({});",
+                    indent,
+                    if *enabled { "1" } else { "0" }
+                )
+                .unwrap();
             }
 
             TypedStatementKind::Palette { attribute, color } => {
