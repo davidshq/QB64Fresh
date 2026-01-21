@@ -34,6 +34,7 @@ qb_string* qb_string_new(const char* s) {
     str->capacity = str->len + 1;
     str->data = malloc(str->capacity);
     memcpy(str->data, s, str->len + 1);
+    str->refcount = 1;
     return str;
 }
 
@@ -44,11 +45,27 @@ qb_string* qb_string_new_len(size_t len) {
     str->data = malloc(str->capacity);
     memset(str->data, ' ', len);
     str->data[len] = '\0';
+    str->refcount = 1;
     return str;
 }
 
 void qb_string_free(qb_string* s) {
     if (s) { free(s->data); free(s); }
+}
+
+qb_string* qb_string_retain(qb_string* s) {
+    if (s) s->refcount++;
+    return s;
+}
+
+void qb_string_release(qb_string* s) {
+    if (s) {
+        s->refcount--;
+        if (s->refcount <= 0) {
+            free(s->data);
+            free(s);
+        }
+    }
 }
 
 qb_string* qb_string_concat(qb_string* a, qb_string* b) {
@@ -58,6 +75,7 @@ qb_string* qb_string_concat(qb_string* a, qb_string* b) {
     result->len = a->len + b->len;
     result->capacity = result->len + 1;
     result->data = malloc(result->capacity);
+    result->refcount = 1;
     memcpy(result->data, a->data, a->len);
     memcpy(result->data + a->len, b->data, b->len + 1);
     return result;
@@ -764,8 +782,8 @@ void qb_field_add(int32_t width, qb_string** var) {
 
 void qb_lset(qb_string** var, qb_string* value) {
     if (!*var || !value) return;
-    int32_t var_len = (*var)->length;
-    int32_t val_len = value->length;
+    int32_t var_len = (*var)->len;
+    int32_t val_len = value->len;
     /* Fill with spaces first */
     memset((*var)->data, ' ', var_len);
     /* Copy value left-justified */
@@ -775,8 +793,8 @@ void qb_lset(qb_string** var, qb_string* value) {
 
 void qb_rset(qb_string** var, qb_string* value) {
     if (!*var || !value) return;
-    int32_t var_len = (*var)->length;
-    int32_t val_len = value->length;
+    int32_t var_len = (*var)->len;
+    int32_t val_len = value->len;
     /* Fill with spaces first */
     memset((*var)->data, ' ', var_len);
     /* Copy value right-justified */
