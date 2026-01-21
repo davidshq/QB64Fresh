@@ -481,6 +481,12 @@ impl StmtEmitter {
                     "_SNDRAWBATCH" => "qb_sndrawbatch".to_string(),
                     "_MIDISOUNDBANK" => "qb_midisoundbank".to_string(),
                     "_NEWHANDLER" => "qb_newhandler".to_string(),
+                    // Session 033+ SUBs
+                    "_PRINTIMAGE" => "qb_printimage".to_string(),
+                    "_CLEAR" => "qb_clear_resource".to_string(),
+                    "_TOGGLE" => "qb_toggle".to_string(),
+                    "_MAPTRIANGLE" => "qb_maptriangle".to_string(),
+                    "_GLRENDER" => "qb_glrender".to_string(),
                     // Default: user-defined SUBs use qb_sub_ prefix
                     _ => format!("qb_sub_{}", c_identifier(name).to_lowercase()),
                 };

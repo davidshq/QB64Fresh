@@ -5005,3 +5005,149 @@ mod qb64_extension_statements_session032 {
         assert!(code.contains("qb_newhandler("));
     }
 }
+
+/// Tests for QB64 extension functions added in Session 033+
+mod qb64_extension_functions_session033 {
+    use super::*;
+
+    // File I/O extended
+    #[test]
+    fn embedded_function() {
+        let code = compile_to_c("DIM d AS STRING: d = _EMBEDDED$(\"data.bin\")").unwrap();
+        assert!(code.contains("qb_embedded("));
+    }
+
+    // Graphics rendering mode functions
+    #[test]
+    fn smooth_function() {
+        let code = compile_to_c("DIM m AS LONG: m = _SMOOTH").unwrap();
+        assert!(code.contains("qb_smooth("));
+    }
+
+    #[test]
+    fn smoothshrunk_function() {
+        let code = compile_to_c("DIM m AS LONG: m = _SMOOTHSHRUNK").unwrap();
+        assert!(code.contains("qb_smoothshrunk("));
+    }
+
+    #[test]
+    fn smoothstretched_function() {
+        let code = compile_to_c("DIM m AS LONG: m = _SMOOTHSTRETCHED").unwrap();
+        assert!(code.contains("qb_smoothstretched("));
+    }
+
+    #[test]
+    fn hardware_function() {
+        let code = compile_to_c("DIM m AS LONG: m = _HARDWARE").unwrap();
+        assert!(code.contains("qb_hardware("));
+    }
+
+    #[test]
+    fn hardware1_function() {
+        let code = compile_to_c("DIM m AS LONG: m = _HARDWARE1").unwrap();
+        assert!(code.contains("qb_hardware1("));
+    }
+
+    #[test]
+    fn software_function() {
+        let code = compile_to_c("DIM m AS LONG: m = _SOFTWARE").unwrap();
+        assert!(code.contains("qb_software("));
+    }
+
+    // Graphics direction
+    #[test]
+    fn anticlockwise_function() {
+        let code = compile_to_c("DIM d AS LONG: d = _ANTICLOCKWISE").unwrap();
+        assert!(code.contains("qb_anticlockwise("));
+    }
+
+    #[test]
+    fn clockwise_function() {
+        let code = compile_to_c("DIM d AS LONG: d = _CLOCKWISE").unwrap();
+        assert!(code.contains("qb_clockwise("));
+    }
+
+    // Print mode constants
+    #[test]
+    fn keepbackground_function() {
+        let code = compile_to_c("DIM m AS LONG: m = _KEEPBACKGROUND").unwrap();
+        assert!(code.contains("qb_keepbackground("));
+    }
+
+    #[test]
+    fn fillbackground_function() {
+        let code = compile_to_c("DIM m AS LONG: m = _FILLBACKGROUND").unwrap();
+        assert!(code.contains("qb_fillbackground("));
+    }
+
+    #[test]
+    fn onlybackground_function() {
+        let code = compile_to_c("DIM m AS LONG: m = _ONLYBACKGROUND").unwrap();
+        assert!(code.contains("qb_onlybackground("));
+    }
+
+    // Alignment
+    #[test]
+    fn middle_function() {
+        let code = compile_to_c("DIM a AS LONG: a = _MIDDLE").unwrap();
+        assert!(code.contains("qb_middle("));
+    }
+
+    // Auto display
+    #[test]
+    fn auto_function() {
+        let code = compile_to_c("DIM a AS LONG: a = _AUTO").unwrap();
+        assert!(code.contains("qb_auto("));
+    }
+
+    // _NONE constant
+    #[test]
+    fn none_constant() {
+        let code = compile_to_c("DIM n AS LONG: n = _NONE").unwrap();
+        // _NONE is constant 0, could be 0LL or just 0
+        assert!(code.contains("= 0") || code.contains("= 0LL"));
+    }
+}
+
+/// Tests for QB64 extension statements added in Session 033+
+mod qb64_extension_statements_session033 {
+    use super::*;
+
+    // Graphics extended
+    #[test]
+    fn printimage_statement() {
+        let code = compile_to_c("_PRINTIMAGE 0").unwrap();
+        assert!(code.contains("qb_printimage("));
+    }
+
+    // Clear resource
+    #[test]
+    fn clear_statement() {
+        let code = compile_to_c("_CLEAR 1").unwrap();
+        assert!(code.contains("qb_clear_resource("));
+    }
+
+    // Toggle
+    #[test]
+    fn toggle_statement() {
+        let code = compile_to_c("_TOGGLE 1").unwrap();
+        assert!(code.contains("qb_toggle("));
+    }
+
+    // 3D triangle mapping
+    #[test]
+    fn maptriangle_statement() {
+        let code = compile_to_c(
+            "_MAPTRIANGLE 0.0, 0.0, 100.0, 0.0, 50.0, 100.0, 10.0, 10.0, 110.0, 10.0, 60.0, 110.0",
+        )
+        .unwrap();
+        assert!(code.contains("qb_maptriangle("));
+    }
+
+    // OpenGL render mode (stub)
+    #[test]
+    fn glrender_statement() {
+        let code = compile_to_c("_GLRENDER 1").unwrap();
+        assert!(code.contains("qb_glrender("));
+    }
+}

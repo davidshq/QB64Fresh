@@ -427,15 +427,15 @@
 
 - **Total source code:** ~30,000+ lines of Rust
 - **Unit tests:** 217
-- **Integration tests:** 486
-- **Total tests:** 800+
+- **Integration tests:** 506
+- **Total tests:** 820+
 - **Line coverage:** 81.63% ✅
 - **Statement types:** 60+
-- **Built-in functions:** 180+ (includes QB64 extensions)
+- **Built-in functions:** 200+ (includes QB64 extensions)
 
 ---
 
-*Last updated: 2026-01-20 (Session 032 - 99.1% QB4.5 compatibility excluding open_gl)*
+*Last updated: 2026-01-20 (Session 033 - 99.1% QB4.5 compatibility excluding open_gl)*
 
 ---
 
@@ -713,3 +713,46 @@
 
 ### Test Results
 - Integration tests: 454 → 486 tests (+32 new tests)
+
+---
+
+## Phase 7: QB64 Extension Functions ✅ (Session 033)
+
+### File I/O Extended
+- [x] `_EMBEDDED$(name$)` function - get embedded file data
+
+### Graphics Rendering Mode Functions
+- [x] `_SMOOTH` function - smooth scaling mode constant
+- [x] `_SMOOTHSHRUNK` function - smooth shrunk mode constant
+- [x] `_SMOOTHSTRETCHED` function - smooth stretched mode constant
+- [x] `_HARDWARE` function - hardware rendering mode constant
+- [x] `_HARDWARE1` function - hardware1 rendering mode constant
+- [x] `_SOFTWARE` function - software rendering mode constant
+
+### Graphics Direction Constants
+- [x] `_ANTICLOCKWISE` function - anticlockwise direction constant
+- [x] `_CLOCKWISE` function - clockwise direction constant
+
+### Print Mode Constants
+- [x] `_KEEPBACKGROUND` function - keep background mode constant
+- [x] `_FILLBACKGROUND` function - fill background mode constant
+- [x] `_ONLYBACKGROUND` function - only background mode constant
+
+### Alignment Constants
+- [x] `_MIDDLE` function - middle alignment constant
+
+### Display Mode Constants
+- [x] `_AUTO` function - auto display mode constant
+
+### Built-in Constants
+- [x] `_NONE` constant - null/none value (0)
+
+### Graphics Extended Statements
+- [x] `_PRINTIMAGE handle` statement - print to image instead of screen
+- [x] `_CLEAR resource` statement - clear specific resource
+- [x] `_TOGGLE setting` statement - toggle a setting
+- [x] `_MAPTRIANGLE` statement - 3D triangle mapping (12 parameters)
+- [x] `_GLRENDER mode` statement - OpenGL render mode (stub)
+
+### Test Results
+- Integration tests: 486 → 506 tests (+20 new tests)

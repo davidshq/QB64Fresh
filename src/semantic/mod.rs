@@ -1577,6 +1577,76 @@ impl SemanticAnalyzer {
 
         // Device input extended
         self.register_builtin_sub("_NEWHANDLER", &[("callback", BasicType::Offset)]);
+
+        // ==========================================
+        // QB64 Extension Functions (Session 033+)
+        // ==========================================
+
+        // File I/O extended - get embedded file data
+        self.register_builtin_function(
+            "_EMBEDDED$",
+            &[("name", BasicType::String)],
+            BasicType::String,
+        );
+
+        // Graphics rendering mode functions (return current mode when called without args)
+        // These can also be used as keywords in _PUTIMAGE, but work as functions too
+        self.register_builtin_function("_SMOOTH", &[], BasicType::Long);
+        self.register_builtin_function("_SMOOTHSHRUNK", &[], BasicType::Long);
+        self.register_builtin_function("_SMOOTHSTRETCHED", &[], BasicType::Long);
+        self.register_builtin_function("_HARDWARE", &[], BasicType::Long);
+        self.register_builtin_function("_HARDWARE1", &[], BasicType::Long);
+        self.register_builtin_function("_SOFTWARE", &[], BasicType::Long);
+
+        // Graphics direction constants/functions
+        self.register_builtin_function("_ANTICLOCKWISE", &[], BasicType::Long);
+        self.register_builtin_function("_CLOCKWISE", &[], BasicType::Long);
+
+        // Print mode constants/functions
+        self.register_builtin_function("_KEEPBACKGROUND", &[], BasicType::Long);
+        self.register_builtin_function("_FILLBACKGROUND", &[], BasicType::Long);
+        self.register_builtin_function("_ONLYBACKGROUND", &[], BasicType::Long);
+
+        // Alignment constants
+        self.register_builtin_function("_MIDDLE", &[], BasicType::Long);
+
+        // Auto display mode
+        self.register_builtin_function("_AUTO", &[], BasicType::Long);
+
+        // ==========================================
+        // QB64 Extension SUBs (Session 033+)
+        // ==========================================
+
+        // Graphics extended - print to image
+        self.register_builtin_sub("_PRINTIMAGE", &[("handle", BasicType::Long)]);
+
+        // Clear specific resource
+        self.register_builtin_sub("_CLEAR", &[("resource", BasicType::Long)]);
+
+        // Toggle a setting
+        self.register_builtin_sub("_TOGGLE", &[("setting", BasicType::Long)]);
+
+        // 3D triangle mapping (simplified - full version needs vertex arrays)
+        self.register_builtin_sub(
+            "_MAPTRIANGLE",
+            &[
+                ("src_x1", BasicType::Single),
+                ("src_y1", BasicType::Single),
+                ("src_x2", BasicType::Single),
+                ("src_y2", BasicType::Single),
+                ("src_x3", BasicType::Single),
+                ("src_y3", BasicType::Single),
+                ("dst_x1", BasicType::Single),
+                ("dst_y1", BasicType::Single),
+                ("dst_x2", BasicType::Single),
+                ("dst_y2", BasicType::Single),
+                ("dst_x3", BasicType::Single),
+                ("dst_y3", BasicType::Single),
+            ],
+        );
+
+        // OpenGL render mode (stub - we use SDL2)
+        self.register_builtin_sub("_GLRENDER", &[("mode", BasicType::Long)]);
     }
 
     /// Registers a single built-in function.
@@ -1686,6 +1756,18 @@ impl SemanticAnalyzer {
             is_mutable: false,
         };
         let _ = self.symbols.define_symbol(false_symbol);
+
+        // _NONE = 0 (null/none value for handles, modes, etc.)
+        let none_symbol = Symbol {
+            name: "_NONE".to_string(),
+            kind: SymbolKind::Constant {
+                value: ConstValue::Integer(0),
+            },
+            basic_type: BasicType::Long,
+            span: crate::ast::Span::new(0, 0),
+            is_mutable: false,
+        };
+        let _ = self.symbols.define_symbol(none_symbol);
 
         // Register platform/architecture constants for conditional compilation
         // These follow BASIC convention: -1 for true, 0 for false

@@ -712,6 +712,33 @@ pub(super) fn c_function_name(name: &str) -> String {
         "_ULINESPACING" => "qb_ulinespacing".to_string(),
         "_UPRINTWIDTH" => "qb_uprintwidth".to_string(),
 
+        // QB64 Extension Functions (Session 033+)
+        // File I/O extended
+        "_EMBEDDED$" => "qb_embedded".to_string(),
+
+        // Graphics rendering mode functions
+        "_SMOOTH" => "qb_smooth".to_string(),
+        "_SMOOTHSHRUNK" => "qb_smoothshrunk".to_string(),
+        "_SMOOTHSTRETCHED" => "qb_smoothstretched".to_string(),
+        "_HARDWARE" => "qb_hardware".to_string(),
+        "_HARDWARE1" => "qb_hardware1".to_string(),
+        "_SOFTWARE" => "qb_software".to_string(),
+
+        // Graphics direction
+        "_ANTICLOCKWISE" => "qb_anticlockwise".to_string(),
+        "_CLOCKWISE" => "qb_clockwise".to_string(),
+
+        // Print mode constants
+        "_KEEPBACKGROUND" => "qb_keepbackground".to_string(),
+        "_FILLBACKGROUND" => "qb_fillbackground".to_string(),
+        "_ONLYBACKGROUND" => "qb_onlybackground".to_string(),
+
+        // Alignment
+        "_MIDDLE" => "qb_middle".to_string(),
+
+        // Auto display
+        "_AUTO" => "qb_auto".to_string(),
+
         // Default: prefix with qb_ for user functions
         _ => format!("qb_{}", c_identifier(name).to_lowercase()),
     }

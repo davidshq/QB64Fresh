@@ -1,6 +1,6 @@
 # QB64Fresh TODO
 
-*Last updated: 2026-01-20 (Session 032)*
+*Last updated: 2026-01-20 (Session 033)*
 
 A prioritized roadmap for QB64Fresh development. For completed features, see [TODO-completed.md](TODO-completed.md).
 
@@ -108,20 +108,11 @@ All C Library Integration items completed - see TODO-completed.md.
 ### Lower Priority - QB64 Advanced Extensions
 
 #### Graphics (Extended)
-- [ ] `_MAPTRIANGLE` statement - 3D triangle mapping
 - [ ] `_CLIP` keyword - clipping mode for _PUTIMAGE
-- [ ] `_SMOOTH` / `_SMOOTHSHRUNK` / `_SMOOTHSTRETCHED` - image scaling modes
-- [ ] `_HARDWARE` / `_HARDWARE1` / `_SOFTWARE` - rendering modes
-- [ ] `_GLRENDER` statement - OpenGL render mode
 - [ ] `_SQUAREPIXELS` keyword - square pixels mode
 - [ ] `_SEAMLESS` keyword - seamless image tiling
 - [ ] `_STRETCH` keyword - stretch mode for _PUTIMAGE
-- [ ] `_ANTICLOCKWISE` / `_CLOCKWISE` keywords - drawing direction
 - [ ] `_BEHIND` keyword - draw behind existing content
-- [ ] `_KEEPBACKGROUND` keyword - preserve background
-- [ ] `_FILLBACKGROUND` keyword - fill background
-- [ ] `_ONLYBACKGROUND` keyword - affect only background
-- [ ] `_PRINTIMAGE` statement - print to image instead of screen
 
 #### Sound (Extended)
 - [ ] `_WAVE` keyword - waveform type for sound synthesis
@@ -134,7 +125,6 @@ All C Library Integration items completed - see TODO-completed.md.
 - [ ] `$RESIZE:STRETCH` / `$RESIZE:SMOOTH` metacommands
 
 #### File I/O (Extended)
-- [ ] `_EMBEDDED$(name$)` function - get embedded file data
 - [ ] `$EMBED:'filename'` metacommand - embed file in executable
 
 #### Miscellaneous QB64 Features
@@ -159,14 +149,9 @@ All C Library Integration items completed - see TODO-completed.md.
 ### Type Modifiers & Keywords (Not Yet Implemented)
 - [ ] `_BIT` type - single bit type modifier
 - [ ] `_ALL` keyword - all items/modes modifier
-- [ ] `_AUTO` keyword - auto display mode
 - [ ] `_BLINK` keyword - text blinking mode
-- [ ] `_CLEAR` statement - clear specific resource
-- [ ] `_MIDDLE` keyword - middle alignment
-- [ ] `_NONE` constant - none/null value
 - [ ] `_OFF` keyword - off state for toggles
 - [ ] `_ONLY` keyword - exclusive mode modifier
-- [ ] `_TOGGLE` statement - toggle a setting
 
 ### OpenGL Commands (Intentionally Excluded)
 
