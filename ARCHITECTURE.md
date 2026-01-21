@@ -20,26 +20,26 @@ This document describes the high-level architecture of QB64Fresh, a BASIC compil
         ▼
 ┌───────────────┐
 │    Lexer      │  Tokenizes source into a stream of tokens
-│  (src/lexer)  │  Uses `logos` crate for fast lexical analysis (~1,670 lines)
+│  (src/lexer)  │  Uses `logos` crate for fast lexical analysis (~1,846 lines)
 └───────┬───────┘
         │ Vec<Token>
         ▼
 ┌───────────────┐
 │    Parser     │  Builds Abstract Syntax Tree from tokens
 │ (src/parser)  │  Pratt parsing for expressions, recursive descent for statements
-│               │  11 specialized modules (~7,798 lines)
+│               │  12 specialized modules (~11,350 lines)
 └───────┬───────┘
         │ Program (AST)
         ▼
 ┌───────────────┐
 │   Semantic    │  Type checking, symbol resolution, validation
-│ (src/semantic)│  Two-pass analysis, constant evaluation (~11,051 lines)
+│ (src/semantic)│  Two-pass analysis, constant evaluation (~14,440 lines)
 └───────┬───────┘
         │ TypedProgram (IR)
         ▼
 ┌───────────────┐
 │   CodeGen     │  Generates target code via backend trait
-│ (src/codegen) │  C backend with inline runtime (~8,957 lines)
+│ (src/codegen) │  C backend with inline runtime (~11,728 lines)
 └───────┬───────┘
         │ Generated C code
         ▼
@@ -51,7 +51,7 @@ This document describes the high-level architecture of QB64Fresh, a BASIC compil
         ▼
 ┌───────────────┐
 │   Runtime     │  Graphics (SDL2), Audio (Rodio), I/O, Strings
-│   (runtime/)  │  Rust library with C FFI (~8,618 lines)
+│   (runtime/)  │  Rust library with C FFI (~11,678 lines)
 └───────┬───────┘
         │
         ▼
@@ -66,16 +66,16 @@ src/
 ├── main.rs               # CLI entry point (--tokens, --ast, --typed-ir, --emit-c)
 ├── preprocessor.rs       # $INCLUDE directive processing
 │
-├── lexer/                # Phase 1: Lexical Analysis (~1,670 lines)
+├── lexer/                # Phase 1: Lexical Analysis (~1,846 lines)
 │   ├── mod.rs            # Lexer struct, iterator interface
 │   └── token.rs          # TokenKind enum (logos-generated)
 │
-├── ast/                  # AST Type Definitions (~2,342 lines)
+├── ast/                  # AST Type Definitions (~2,646 lines)
 │   ├── mod.rs            # Span, Program types
 │   ├── expr.rs           # Expression AST nodes
 │   └── stmt.rs           # Statement AST nodes (comprehensive coverage)
 │
-├── parser/               # Phase 2: Syntax Analysis (~7,798 lines) ✓
+├── parser/               # Phase 2: Syntax Analysis (~11,350 lines) ✓
 │   ├── mod.rs            # Parser entry point, recursive descent
 │   ├── tokens.rs         # Token navigation utilities (peek, advance, match)
 │   ├── expressions.rs    # Pratt parser with full operator precedence
@@ -89,7 +89,7 @@ src/
 │   ├── system.rs         # System: KILL, NAME, MKDIR, SHELL, mouse, clipboard
 │   └── error.rs          # ParseError types with spans
 │
-├── semantic/             # Phase 3: Semantic Analysis (~11,051 lines) ✓
+├── semantic/             # Phase 3: Semantic Analysis (~14,440 lines) ✓
 │   ├── mod.rs            # Analysis entry point, built-in registration
 │   ├── symbols.rs        # Symbol table with scope management
 │   ├── types.rs          # BasicType enum, type inference
@@ -104,7 +104,7 @@ src/
 │       ├── definitions.rs  # Definition handling
 │       └── const_eval.rs   # Constant expression evaluation
 │
-├── codegen/              # Phase 4: Code Generation (~8,957 lines) ✓
+├── codegen/              # Phase 4: Code Generation (~11,728 lines) ✓
 │   ├── mod.rs            # CodeGenerator trait, GeneratedOutput
 │   ├── error.rs          # CodeGenError types
 │   └── c_backend/        # C Code Generator Submodule
@@ -112,28 +112,30 @@ src/
 │       ├── expr.rs       # Expression code generation
 │       ├── stmt.rs       # Statement code generation
 │       ├── types.rs      # Type mapping (BASIC → C)
-│       ├── runtime.rs    # Inline C runtime library
-│       └── analysis.rs   # DATA/label collection pre-pass
+│       ├── runtime.rs    # Inline C runtime library (~4,141 lines)
+│       ├── analysis.rs   # DATA/label collection pre-pass
+│       ├── const_fold.rs # Constant folding optimization
+│       └── file_io.rs    # File I/O code generation
 │
 └── lsp/                  # Language Server Protocol ✓
     ├── mod.rs            # LSP server implementation (tower-lsp)
     └── main.rs           # qb64fresh-lsp binary entry
 
-runtime/                  # Runtime Library (workspace member) (~8,618 lines) ✓
+runtime/                  # Runtime Library (workspace member) (~11,678 lines) ✓
 ├── src/
 │   ├── lib.rs            # Crate root, init/shutdown
-│   ├── string.rs         # Reference-counted dynamic strings (~758 lines)
-│   ├── io.rs             # PRINT, INPUT, console operations (~852 lines)
-│   ├── math.rs           # Mathematical functions (~392 lines)
-│   ├── graphics_ffi.rs   # C FFI layer for graphics (~1,238 lines)
+│   ├── string.rs         # Reference-counted dynamic strings (~1,572 lines)
+│   ├── io.rs             # PRINT, INPUT, console operations (~1,379 lines)
+│   ├── math.rs           # Mathematical functions (~641 lines)
+│   ├── graphics_ffi.rs   # C FFI layer for graphics (~1,597 lines)
 │   ├── audio_ffi.rs      # C FFI layer for audio (~439 lines)
-│   ├── graphics/         # Graphics Backend System (~3,558 lines)
+│   ├── graphics/         # Graphics Backend System (~3,998 lines)
 │   │   ├── mod.rs        # GraphicsBackend trait definition
 │   │   ├── sdl2.rs       # SDL2 implementation (primary)
 │   │   ├── font.rs       # Font rendering
 │   │   ├── mock.rs       # Mock backend for testing
 │   │   └── error.rs      # Graphics error types
-│   └── audio/            # Audio Backend System (~1,298 lines)
+│   └── audio/            # Audio Backend System (~1,304 lines)
 │       ├── mod.rs        # AudioBackend trait definition
 │       ├── rodio_backend.rs  # Rodio implementation (primary)
 │       ├── mock.rs       # Mock backend for testing
@@ -262,14 +264,16 @@ pub trait CodeGenerator {
 }
 ```
 
-**C Backend (implemented, ~8,957 lines across 6 files):**
+**C Backend (implemented, ~11,728 lines across 8 files):**
 - Proven approach (QB64pe uses C++)
 - Refactored into specialized submodules:
-  - `expr.rs` - Expression generation with type coercion
-  - `stmt.rs` - Statement generation (control flow, I/O, procedures)
+  - `expr.rs` - Expression generation with type coercion (~1,079 lines)
+  - `stmt.rs` - Statement generation (control flow, I/O, procedures) (~3,690 lines)
   - `types.rs` - BASIC to C type mapping
-  - `runtime.rs` - Inline C runtime (~3,897 lines)
+  - `runtime.rs` - Inline C runtime (~4,141 lines)
   - `analysis.rs` - Pre-pass for DATA statements and labels
+  - `const_fold.rs` - Constant folding optimization (~855 lines)
+  - `file_io.rs` - File I/O code generation (~569 lines)
 - Two runtime modes: `inline` (self-contained) and `external` (library-linked)
 - Handles all statements: assignments, control flow, procedures
 - Type conversions, string operations, built-in functions
@@ -513,10 +517,13 @@ audio-rodio = ["rodio"]
 
 | Component | Lines | Status |
 |-----------|-------|--------|
-| Lexer | ~1,670 | ✓ Complete |
-| AST | ~2,342 | ✓ Complete |
-| Parser | ~7,798 | ✓ Complete |
-| Semantic Analysis | ~11,051 | ✓ Complete |
-| Code Generation | ~8,957 | ✓ Complete |
-| Runtime Library | ~8,618 | ✓ Complete |
-| **Total** | **~40,436** | |
+| Lexer | ~1,846 | ✓ Complete |
+| AST | ~2,646 | ✓ Complete |
+| Parser | ~11,350 | ✓ Complete |
+| Semantic Analysis | ~14,440 | ✓ Complete |
+| Code Generation | ~11,728 | ✓ Complete |
+| LSP | ~2,105 | ✓ Complete |
+| Runtime Library | ~11,678 | ✓ Complete |
+| **Compiler (src/)** | **~45,753** | |
+| **Runtime** | **~11,678** | |
+| **Total** | **~57,431** | |

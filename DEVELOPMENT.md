@@ -170,7 +170,7 @@ QB64Fresh/                      # Main compiler workspace
 │   │       ├── stmt.rs         # Statement codegen (core)
 │   │       ├── file_io.rs      # File I/O helpers
 │   │       ├── types.rs        # Type mapping utilities
-│   │       ├── runtime.rs      # Inline C runtime (~4000 lines)
+│   │       ├── runtime.rs      # Inline C runtime (~4141 lines)
 │   │       ├── analysis.rs     # DATA/label collection
 │   │       └── const_fold.rs   # Constant folding optimization
 │   ├── header_parser/          # C header parsing (optional)
@@ -493,4 +493,4 @@ docs(readme): update build instructions
 
 ---
 
-*Last updated: 2026-01-20*
+*Last updated: 2026-01-21*

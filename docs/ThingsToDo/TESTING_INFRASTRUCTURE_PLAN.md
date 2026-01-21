@@ -10,42 +10,77 @@
 
 ## Current State Summary
 
-The testing infrastructure is **substantially complete**:
-- **1,111+ tests** total (359 unit, 720 integration, 10 golden, 19 property-based, 3 compatibility)
+The **compiler** testing infrastructure is substantially complete:
+- **1,111+ compiler tests** (359 unit, 720 integration, 10 golden, 19 property-based, 3 compatibility)
 - **99.1%** QB64PE compatibility (114/115 files, excluding open_gl)
 - **3 fuzz targets** verified (~4.6M inputs, 0 crashes)
+
+The **runtime library** now has comprehensive test coverage:
+- **163 runtime tests** total (up from ~58)
+- Critical modules like `io.rs` and `string.rs` now have thorough testing
 
 ### Test Breakdown
 | Test Suite | Count | Command |
 |------------|-------|---------|
-| Unit tests | 359 | `cargo test --lib` |
+| Compiler unit tests | 359 | `cargo test -p qb64fresh --lib` |
 | Integration tests | 720 | `cargo test --test integration_tests` |
 | Golden tests | 10 | `cargo test --test golden_tests` |
 | Property-based | 19 | `cargo test --test proptest_tests` |
 | Compatibility | 3 | `cargo test --test compatibility` |
+| **Runtime tests** | **188** | `cargo test -p qb64fresh-runtime --lib` |
+| **Execution tests** | **27** | `cargo test --test execution_tests` |
+
+### Runtime Test Distribution (Updated 2026-01-21)
+| Module | Lines | Tests | Status |
+|--------|-------|-------|--------|
+| string.rs | 758 | **90+** | ✅ Comprehensive (null, refcount, edge cases) |
+| math.rs | 392 | **23** | ✅ Comprehensive (edge cases, infinity, NaN, boundaries) |
+| io.rs | 850+ | **60+** | ✅ Comprehensive (print, file, network, shell) |
+| graphics_ffi.rs | 1590 | 3 | FFI wrappers minimally tested |
+| graphics/sdl2.rs | 2135 | 6 | Basic init/mode tests only |
+| graphics/mock.rs | 466 | **10** | ✅ STEP operations, state management |
+| graphics/font.rs | 593 | 5 | Font loading tests |
+| audio/mock.rs | 428 | **8** | ✅ Lifecycle, playback, errors, multi-sound |
+| audio_ffi.rs | 460 | 1 | FFI wrapper minimal |
+| dialogs.rs | 350 | 1 | Dialog stubs minimal |
+| joystick.rs | 310 | 2 | Joystick stubs minimal |
+| lib.rs | 95 | 1 | Init/shutdown only |
 
 ---
 
 ## Remaining Gaps
 
+### High Priority (Blocking Compilation)
+
+| Area | File | Issue | Recommendation |
+|------|------|-------|----------------|
+| `_CONTROLCHR` incomplete | graphics.rs:639 | Calls `self.error()` but Parser lacks this method | Add error method or use existing error handling |
+| `ControlChr` semantic | statements.rs | TypedStatementKind::ControlChr not handled | Add match arm in check_stmt |
+| `ControlChr` codegen | stmt.rs:83 | TypedStatementKind::ControlChr not handled | Add match arm in emit_stmt |
+| rodio API mismatch | runtime/src/audio/*.rs | rodio crate API changed (try_new, try_default, etc.) | Update to new rodio API or pin version |
+
+### Medium Priority
+
 | Area | Current State | Risk Level | Recommendation |
 |------|---------------|------------|----------------|
 | STRING * n assignment | Type mismatch error | Medium | Add implicit padding/conversion |
 | Coverage reporting | Ready to run | Low | Run `cargo llvm-cov --workspace` |
-| ~~Parser module tests~~ | ~~Incomplete~~ | ~~Low~~ | ✅ **Done** - 21 edge case tests added (Session 040) |
-| ~~File I/O runtime~~ | ~~Stubs only~~ | ~~Low~~ | ✅ **Done** - 22 codegen tests added |
-| ~~Graphics runtime~~ | ~~Stubs only~~ | ~~Low~~ | ✅ **Done** - 43 codegen tests added |
-| ~~Sound runtime~~ | ~~Stubs only~~ | ~~Low~~ | ✅ **Done** - 29 codegen tests added |
+| Graphics integration | Mock tests only | Medium | Test actual SDL2 backend where possible |
+| By-ref parameter codegen | Parameters as pointers not dereferenced | Medium | Add param context to emit_expr |
 
 ---
 
 ## Remaining Work
 
 ### Medium Term
+
 - [ ] Restore coverage reporting and verify 80%+ coverage
 - [ ] STRING * n implicit conversion
+- [ ] Graphics backend integration tests (non-headless where possible)
+- [ ] Audio backend integration tests
 
 ### Future Enhancements
+
 | Area | Priority | Rationale |
 |------|----------|-----------|
 | STRING * n conversion tests | Medium | Would fix 6+ QB64pe failures |
@@ -53,6 +88,7 @@ The testing infrastructure is **substantially complete**:
 | Extended ASCII handling | Low | Would fix 1 QB64pe file |
 | `cargo-mutants` | Low | Mutation testing - not yet installed |
 | Automated comparison with QB64PE output | Low | compile_tests now supported |
+| Runtime fuzzing | Low | Fuzz runtime functions directly |
 
 ### Remaining QB64pe Failure (1 file)
 - `frog.bas`: Bug in original code (`SCORE > HISCORE` where HISCORE is a UDT array)
@@ -62,8 +98,11 @@ The testing infrastructure is **substantially complete**:
 ## Quick Reference: Running Tests
 
 ```bash
-# Run all tests (compiler + runtime)
+# Run all tests (compiler + runtime) - requires source bugs to be fixed first
 cargo test
+
+# Run runtime tests only (use mock features to avoid rodio API issues)
+cargo test -p qb64fresh-runtime --lib --no-default-features --features "graphics-mock audio-mock"
 
 # Run specific test suites
 cargo test -p qb64fresh --test integration_tests    # 720 integration tests
@@ -73,7 +112,8 @@ cargo test -p qb64fresh --test proptest_tests       # 19 property-based tests
 cargo test -p qb64fresh --test qb45_compat          # QB64pe compatibility (141 files)
 
 # Run unit tests only
-cargo test -p qb64fresh --lib                       # 359 unit tests
+cargo test -p qb64fresh --lib                       # 359 compiler unit tests
+cargo test -p qb64fresh-runtime --lib --no-default-features --features "graphics-mock audio-mock"  # 163 runtime tests
 
 # Run parser tests specifically
 cargo test --lib parser::tests                      # All parser unit tests
@@ -119,4 +159,4 @@ cargo llvm-cov --workspace --html      # HTML report in target/llvm-cov/html
 
 *Document created as part of QB64Fresh codebase review - 2026-01-18*
 *Updated: 2026-01-20 - Moved completed items to TESTING-COMPLETED.md*
-*Updated: 2026-01-21 - Updated test counts (1,111+ total); added parser module test completion*
+*Updated: 2026-01-21 - Moved Session 041/042 completed items (resolved gaps, bug fixes, runtime test coverage) to TESTING-COMPLETED.md*

@@ -2,6 +2,112 @@
 
 This directory contains utility tools for working with BASIC source files.
 
+## qb64fresh-fmt
+
+A code formatter for QB64/QBasic BASIC source files. Standardizes code style across your projects.
+
+### Features
+
+- **Keyword capitalization** - UPPERCASE, lowercase, Title Case, or preserve original
+- **Operator spacing** - Consistent spaces around `=`, `+`, `-`, `*`, `/`, etc.
+- **Semicolon/comma spacing** - Proper spacing in PRINT statements
+- **Indentation** - Spaces or tabs, configurable width
+- **Comment formatting** - Proper spacing after `'` and `REM`
+- **Style presets** - Default, minimal, QB64 IDE style, pretty
+
+### Installation
+
+Build from the QB64Fresh workspace root:
+
+```bash
+cargo build --release -p qb64fresh-fmt
+```
+
+The binary will be at `target/release/qb64fresh-fmt`.
+
+### Usage
+
+```
+qb64fresh-fmt [OPTIONS] <FILES>...
+
+Options:
+  -c, --check              Check if files are formatted (exit 1 if not)
+      --stdout             Write output to stdout instead of modifying files
+      --diff               Show diff of changes
+  -b, --backup             Create .bak backup files before modifying
+  -r, --recursive          Process directories recursively
+      --style <STYLE>      Style preset: default, minimal, qb64, pretty
+      --keyword-case <KC>  Keyword case: upper, lower, title, preserve
+      --indent-style <IS>  Indent style: spaces, tabs
+      --indent-width <N>   Spaces per indent level (default: 4)
+  -v, --verbose            Show detailed information
+  -q, --quiet              Only show errors
+  -h, --help               Show help message
+```
+
+### Examples
+
+```bash
+# Format a single file in place
+qb64fresh-fmt myprogram.bas
+
+# Check formatting without making changes (for CI)
+qb64fresh-fmt --check *.bas
+
+# Preview changes with diff
+qb64fresh-fmt --diff myprogram.bas
+
+# Format from stdin
+echo 'print "hello"' | qb64fresh-fmt -
+# Output: PRINT "hello"
+
+# Use lowercase keywords
+qb64fresh-fmt --keyword-case lower myprogram.bas
+
+# Use QB64 IDE style
+qb64fresh-fmt --style qb64 myprogram.bas
+
+# Process all .bas files recursively with backup
+qb64fresh-fmt --backup --recursive ./src/
+```
+
+### Style Presets
+
+| Preset | Keywords | Indent | Operators | Description |
+|--------|----------|--------|-----------|-------------|
+| `default` | UPPERCASE | 4 spaces | spaced | Standard formatting |
+| `minimal` | preserve | 4 spaces | preserve | Minimal changes |
+| `qb64` | UPPERCASE | 4 spaces | spaced | QB64 IDE compatible |
+| `pretty` | UPPERCASE | 4 spaces | spaced | Full enhancements |
+
+### Before/After Example
+
+**Before:**
+```basic
+if x>1 then
+print "hello";x
+end if
+```
+
+**After (default style):**
+```basic
+IF x > 1 THEN
+    PRINT "hello"; x
+END IF
+```
+
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success (or check passed) |
+| 1 | Check failed (files would be formatted) |
+| Non-zero | Error occurred |
+
+See [tools/fmt/README.md](fmt/README.md) for complete documentation.
+
+---
+
 ## fix_encoding
 
 A utility for fixing encoding issues in legacy BASIC source files from the DOS era.

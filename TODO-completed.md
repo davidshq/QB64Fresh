@@ -427,17 +427,17 @@
 
 ## Statistics
 
-- **Total source code:** ~30,000+ lines of Rust
+- **Total source code:** ~57,000+ lines of Rust (compiler: ~46k, runtime: ~11k)
 - **Unit tests:** 217
-- **Integration tests:** 539
-- **Total tests:** 850+
+- **Integration tests:** 720+
+- **Total tests:** 937+
 - **Line coverage:** 81.63% ✅
 - **Statement types:** 60+
 - **Built-in functions:** 240+ (includes QB64 extensions)
 
 ---
 
-*Last updated: 2026-01-20 (Session 039)*
+*Last updated: 2026-01-21 (Session 043)*
 
 ---
 
@@ -973,3 +973,29 @@ The following items were discovered to already be implemented during a TODO audi
 ### Documentation
 - [x] Add doc comments to 16 undocumented modules *(Small - 1-2 sessions)* ✅ **ALREADY COMPLETE**
       All parser and codegen modules now have module-level documentation (`//!` comments).
+
+---
+
+## Session 040 Additions
+
+### Testing
+- [x] Add unit tests for new parser modules (graphics, audio, system, file_io) *(Completed Session 040)*
+
+---
+
+## Session 043 Additions
+
+### Language Server Protocol ✅ (Session 043)
+- [x] Implement LSP server core features
+  - [x] Go-to-definition
+  - [x] Find references
+  - [x] Hover information with type details
+  - [x] Code completion (keywords + built-in functions)
+  - [x] Diagnostics (real-time error checking)
+  - [x] Signature help for 50+ built-in functions
+
+### Known Issues Resolved (Session 043)
+- [x] **STRING * n in UDTs** - Fixed: The lexer tokenizes `s.PERSON` as a single identifier
+      (supporting classic BASIC naming like `player.move`). The semantic analyzer now detects
+      dotted names where the first part is a UDT variable and handles them as field assignments.
+      Code generation properly uses strncpy for fixed-length string field assignments.

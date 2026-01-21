@@ -451,7 +451,7 @@ pub trait CodeGenerator {
 
 ## Key Files Reference
 
-### Current Implementation (as of 2026-01-20)
+### Current Implementation (as of 2026-01-21)
 
 | File | Purpose | Status |
 |------|---------|--------|
@@ -496,6 +496,7 @@ pub trait CodeGenerator {
 | `src/codegen/c_backend/types.rs` | Type mapping utilities | ✓ Complete |
 | `src/codegen/c_backend/runtime.rs` | Inline C runtime library | ✓ Complete |
 | `src/codegen/c_backend/analysis.rs` | DATA/label collection | ✓ Complete |
+| `src/codegen/c_backend/const_fold.rs` | Constant folding optimization | ✓ Complete |
 | `examples/hello.bas` | Test BASIC file for development | ✓ Complete |
 | `examples/simple.bas` | Simpler test BASIC file | ✓ Complete |
 
@@ -568,7 +569,8 @@ QB64Fresh/                    # Main compiler workspace
 │   │       ├── file_io.rs    # File I/O helpers
 │   │       ├── types.rs      # Type mapping
 │   │       ├── runtime.rs    # Inline C runtime
-│   │       └── analysis.rs   # DATA/label collection
+│   │       ├── analysis.rs   # DATA/label collection
+│   │       └── const_fold.rs # Constant folding optimization
 │   ├── lsp/                  # ✓ Language Server Protocol
 │   │   ├── mod.rs            # LSP server implementation
 │   │   └── main.rs           # qb64fresh-lsp binary entry
@@ -781,12 +783,12 @@ cargo run --bin qb64fresh -- /tmp/test.bas --ast
 
 ### QB45 Compatibility Status
 
-Current: **97/141 files (68.8%)**
+Current: **114/115 files (99.1%)** (excluding open_gl which uses intentionally unsupported `_GL*` commands)
 
-Remaining issues (as of 2026-01-19):
-- Parser: 29 failures (various missing syntax)
-- Semantic: 12 failures (type mismatches, symbol lookup issues)
-- Lexer: 3 failures (special characters like `@`, `|`, extended ASCII)
+Remaining issues (as of 2026-01-21):
+- Parser: 0 failures ✓ ALL RESOLVED
+- Semantic: 1 failure (misc/frog.bas - bug in original code, not compiler limitation)
+- Lexer: 0 failures ✓ ALL RESOLVED
 
 Test files: `/home/dave/repos/qb64contain/QB64pe/tests/qbasic_testcases/`
 

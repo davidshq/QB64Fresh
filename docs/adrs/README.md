@@ -12,6 +12,10 @@ This directory contains Architecture Decision Records (ADRs) for QB64Fresh.
 - [ADR-0006: Graphics System Architecture](ADR-0006-graphics-system.md)
 - [ADR-0007: Audio System Architecture](ADR-0007-audio-system.md)
 - [ADR-0008: C Interoperability (DECLARE LIBRARY)](ADR-0008-c-interoperability.md)
+- [ADR-0009: LSP Architecture](ADR-0009-lsp-architecture.md)
+- [ADR-0010: Parser Modularization](ADR-0010-parser-modularization.md)
+- [ADR-0011: Error Handling](ADR-0011-error-handling.md)
+- [ADR-0012: Preprocessor Architecture](ADR-0012-preprocessor-architecture.md)
 
 ## Format
 

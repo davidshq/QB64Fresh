@@ -15,15 +15,101 @@ The QB64Fresh testing infrastructure has been substantially implemented:
 - **16 compatibility test fixtures** (12 success + 4 error, auto-discovered)
 - **19 property-based tests** using proptest (thousands of iterations)
 - **30 benchmarks** measuring compiler performance
-- **44 runtime tests** (all passing)
+- **163 runtime tests** (all passing)
 
-**Total: 730+ tests** across the main compiler (11 doc-test ignored for setup requirements).
+**Total: ~900 tests** across the main compiler (11 doc-test ignored for setup requirements).
 **QB64PE Compatibility:** 99.1% (114/115 files compile successfully, excluding open_gl)
 **Fuzz testing:** 3 fuzz targets verified (~4.6M inputs, 0 crashes)
 
 ---
 
 ## Completed Milestones
+
+### ✅ Runtime Test Coverage Gaps Resolved (2026-01-21 Session 041)
+
+The following high-priority gaps were addressed:
+
+| Area | Previous State | New State |
+|------|----------------|-----------|
+| io.rs unit tests | 1 test | **60+ tests** ✅ |
+| File I/O runtime | No tests | **Tested via io.rs** ✅ |
+| String edge cases | Basic coverage | **80+ edge case tests** ✅ |
+| End-to-end execution | None | **27 execution tests** ✅ |
+
+**io.rs comprehensive tests** (~60 tests):
+- Print functions (`qb_print_int`, `qb_print_float`, `qb_print_string`, etc.)
+- Console functions (`qb_cls`, `qb_locate`, `qb_color`)
+- File system ops (`qb_file_kill`, `qb_file_rename`, `qb_mkdir`, `qb_rmdir`, etc.)
+- Network functions (`qb_net_openhost`, `qb_net_openclient`, etc.)
+- Shell functions (`qb_shell`, `qb_shell_hide`)
+
+**string.rs edge case tests** (~80 tests):
+- Null pointer handling (all functions tested with null inputs)
+- Reference counting (retain/release patterns, operations preserving originals)
+- Edge case values (negative indices, overflow, empty strings)
+- Large strings (1MB creation, 200KB concat, memory stress)
+- Binary data (embedded nulls, high bytes)
+- String conversion (STR$, VAL, CHR$, ASC)
+
+**End-to-end execution tests** (tests/execution_tests.rs):
+- Test framework that compiles BASIC → C → executable → verifies output
+- **27 tests all passing** after bug fixes in Session 042
+
+### ✅ Inline Runtime Bug Fixes (2026-01-21 Session 042)
+
+Fixed three bugs in the inline C runtime that were blocking execution tests:
+
+| Bug | Issue | Fix |
+|-----|-------|-----|
+| `qb_lset`/`qb_rset` struct access | Used `->length` instead of `->len` | Fixed field name in [runtime.rs:1588-1606](src/codegen/c_backend/runtime.rs#L1588-L1606) |
+| `qb_string_release` missing | Not defined in inline runtime | Added with proper refcount decrement in [runtime.rs:154-164](src/codegen/c_backend/runtime.rs#L154-L164) |
+| `qb_string` refcount init | Strings created without refcount=1 | Added `str->refcount = 1;` to all string creation functions |
+
+All 27 execution tests now pass.
+
+### ✅ Runtime Test Coverage Complete (2026-01-21)
+
+Added comprehensive runtime library testing:
+
+**io.rs tests (~60 tests)**:
+- Print functions (qb_print_int, qb_print_float, qb_print_string, etc.)
+- Console functions (qb_cls, qb_locate, qb_color)
+- File system ops (qb_file_kill, qb_file_rename, qb_mkdir, qb_rmdir, etc.)
+- Network functions (qb_net_openhost, qb_net_openclient, etc.)
+- Shell functions (qb_shell, qb_shell_hide)
+
+**string.rs edge case tests (~80 tests)**:
+- Null pointer handling (all functions tested with null inputs)
+- Reference counting (retain/release patterns, operations preserving originals)
+- Edge case values (negative indices, overflow, empty strings)
+- Large strings (1MB creation, 200KB concat, memory stress)
+- Binary data (embedded nulls, high bytes)
+- String conversion (STR$, VAL, CHR$, ASC)
+
+**End-to-end execution tests** (tests/execution_tests.rs):
+- Test framework that compiles BASIC → C → executable → verifies output
+- 27 test cases covering: print, variables, loops, conditionals, functions, arrays
+- Tests use BYVAL for function parameters (workaround for by-ref codegen limitation)
+
+Total runtime tests: **163** (up from 44)
+
+### ✅ Parser Module Tests Complete (2026-01-21)
+
+Added 21 edge case tests to the parser module covering:
+- Graphics statement parsing (GET, PUT, VIEW PRINT, etc.)
+- Audio statement parsing (BEEP, SOUND, PLAY)
+- System statement parsing (SHELL, RUN, CHAIN)
+- File I/O parsing (OPEN, CLOSE, INPUT#, PRINT#)
+- Edge cases like malformed statements, empty inputs
+
+### ✅ Codegen Tests for Stubs Complete (2026-01-21)
+
+Added integration tests verifying codegen for previously stub-only areas:
+- **File I/O codegen tests** (22 tests) - OPEN, CLOSE, INPUT#, PRINT#, GET, PUT, LOC, LOF, EOF
+- **Graphics codegen tests** (43 tests) - PSET, LINE, CIRCLE, PAINT, GET, PUT, SCREEN, etc.
+- **Sound codegen tests** (29 tests) - BEEP, SOUND, PLAY, _SNDOPEN, _SNDPLAY, etc.
+
+These verify the compiler generates valid C code for these statements. Note: These are **compiler tests**, not runtime behavioral tests.
 
 ### ✅ Runtime Compilation Fixed (2026-01-20)
 

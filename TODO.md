@@ -1,6 +1,6 @@
 # QB64Fresh TODO
 
-*Last updated: 2026-01-20 (Session 038)*
+*Last updated: 2026-01-21 (Session 043)*
 
 A prioritized roadmap for QB64Fresh development. For completed features, see [TODO-completed.md](TODO-completed.md).
 
@@ -40,15 +40,6 @@ A prioritized roadmap for QB64Fresh development. For completed features, see [TO
 
 ## Phase 6: Tooling & Ecosystem
 
-### Language Server Protocol
-- [ ] Implement full LSP server *(Large - 5-8 sessions for full implementation)*
-  - [ ] Go-to-definition *(included above)*
-  - [ ] Find references *(included above)*
-  - [ ] Hover information *(included above)*
-  - [ ] Code completion *(included above)*
-  - [ ] Diagnostics (real-time error checking) *(included above)*
-  - [ ] Signature help *(included above)*
-
 ### Debugging
 - [ ] Source-level debugging support *(X-Large - 10+ sessions, requires debug info generation)*
   - [ ] Breakpoints *(included above)*
@@ -66,7 +57,6 @@ A prioritized roadmap for QB64Fresh development. For completed features, see [TO
 
 ### Testing (See TESTING_INFRASTRUCTURE_PLAN.md for details)
 - [ ] Compatibility tests against QB64 programs *(Ongoing - add as discovered)*
-- [x] Add unit tests for new parser modules (graphics, audio, system, file_io) *(Completed Session 040)*
 
 ---
 
@@ -89,12 +79,6 @@ If raw OpenGL is needed, users can use `DECLARE LIBRARY` to call OpenGL function
 ## Known Issues / Technical Debt
 
 ### Low Priority
-
-- [x] **STRING * n in UDTs** *(Completed)*
-      Fixed: The lexer tokenizes `s.PERSON` as a single identifier (supporting classic
-      BASIC naming like `player.move`). The semantic analyzer now detects dotted names
-      where the first part is a UDT variable and handles them as field assignments.
-      Code generation properly uses strncpy for fixed-length string field assignments.
 
 - [ ] Unicode support: Currently ASCII-focused *(Large - 4-6 sessions for full Unicode)*
 - [ ] Windows-specific path handling in file I/O *(Small - 1 session)*
@@ -121,16 +105,16 @@ If raw OpenGL is needed, users can use `DECLARE LIBRARY` to call OpenGL function
 ## Code Quality Summary
 
 **Overall Health:** Excellent
-- **Test Coverage:** 81.63% (820+ tests)
+- **Test Coverage:** 81.63% (850+ tests, including 31 LSP tests)
 - **Clippy Warnings:** 0
 - **Security Issues:** 0
 
 **File Size Concerns:** (monitor for growth)
 | File | Lines | Status |
 |------|-------|--------|
-| runtime.rs | 3,956 | Large - C code generator, hard to split |
-| stmt.rs (codegen) | 3,593 | Large - File I/O extracted |
-| statements.rs (parser) | 3,595 | Large - Already split from main parser |
+| runtime.rs | 4,141 | Large - C code generator, hard to split |
+| stmt.rs (codegen) | 3,690 | Large - File I/O extracted |
+| statements.rs (parser) | 3,865 | Large - Already split from main parser |
 
 **Stub Functions:** Many graphics/audio/input functions are stubs returning safe defaults.
 This is intentional for compatibility. See runtime.rs for implementation guidance.
