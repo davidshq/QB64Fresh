@@ -41,13 +41,44 @@ pub mod typed_ir;
 pub mod types;
 
 pub use error::SemanticError;
-pub use symbols::{ParameterInfo, ProcedureEntry, ProcedureKind, ScopeKind, Symbol, SymbolTable};
+pub use symbols::{
+    ParameterInfo, ProcedureEntry, ProcedureKind, ScopeKind, Symbol, SymbolKind, SymbolTable,
+    UserTypeDefinition,
+};
 pub use typed_ir::TypedProgram;
 pub use types::BasicType;
 
-use crate::ast::{Program, Statement, StatementKind};
+use crate::ast::{Program, Span, Statement, StatementKind};
 use checker::TypeChecker;
 use types::{from_type_spec, type_from_name};
+
+/// Information about a document symbol for LSP.
+#[derive(Debug, Clone)]
+pub struct DocumentSymbolInfo {
+    /// The symbol's name.
+    pub name: String,
+    /// What kind of symbol this is.
+    pub kind: DocumentSymbolKind,
+    /// Where the symbol is defined.
+    pub span: Span,
+}
+
+/// The kind of document symbol for LSP.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DocumentSymbolKind {
+    /// SUB (subroutine)
+    Sub,
+    /// FUNCTION
+    Function,
+    /// User-defined TYPE
+    Type,
+    /// CONST constant
+    Constant,
+    /// Array variable
+    Array,
+    /// Regular variable
+    Variable,
+}
 
 /// Main entry point for semantic analysis.
 ///
@@ -93,6 +124,204 @@ impl SemanticAnalyzer {
         } else {
             Err(std::mem::take(&mut self.errors))
         }
+    }
+
+    /// Finds the definition span of a named symbol.
+    ///
+    /// Used by the LSP server for "Go to Definition". Searches for:
+    /// - Variables (local and global)
+    /// - Procedures (SUB and FUNCTION)
+    /// - Labels
+    /// - User-defined TYPEs
+    ///
+    /// Returns `None` if the name doesn't match any defined symbol.
+    pub fn find_definition(&self, name: &str) -> Option<crate::ast::Span> {
+        // Try procedures first (SUB, FUNCTION)
+        if let Some(proc) = self.symbols.lookup_procedure(name) {
+            return Some(proc.span);
+        }
+
+        // Try variables (local scope first, then global)
+        if let Some(sym) = self.symbols.lookup_symbol(name) {
+            return Some(sym.span);
+        }
+
+        // Try global symbols specifically
+        if let Some(sym) = self.symbols.lookup_global_symbol(name) {
+            return Some(sym.span);
+        }
+
+        // Try labels
+        if let Some(label) = self.symbols.lookup_label(name) {
+            return Some(label.span);
+        }
+
+        // Try user-defined types
+        if let Some(udt) = self.symbols.lookup_user_type(name) {
+            return Some(udt.span);
+        }
+
+        None
+    }
+
+    /// Gets detailed hover information about a symbol.
+    ///
+    /// Used by the LSP server for enhanced hover. Returns a markdown-formatted
+    /// string describing the symbol including its type, kind, and signature.
+    ///
+    /// Returns `None` if the name doesn't match any defined symbol.
+    pub fn get_hover_info(&self, name: &str) -> Option<String> {
+        // Try procedures first (SUB, FUNCTION)
+        if let Some(proc) = self.symbols.lookup_procedure(name) {
+            let kind = match proc.kind {
+                symbols::ProcedureKind::Sub => "SUB",
+                symbols::ProcedureKind::Function => "FUNCTION",
+                symbols::ProcedureKind::BuiltIn => "Built-in",
+            };
+
+            let params: Vec<String> = proc
+                .params
+                .iter()
+                .map(|p| {
+                    let type_str = format_type(&p.basic_type);
+                    if p.by_val {
+                        format!("BYVAL {} AS {}", p.name, type_str)
+                    } else {
+                        format!("{} AS {}", p.name, type_str)
+                    }
+                })
+                .collect();
+
+            let params_str = params.join(", ");
+
+            let mut info = if proc.kind == symbols::ProcedureKind::Function {
+                let ret = proc
+                    .return_type
+                    .as_ref()
+                    .map(format_type)
+                    .unwrap_or_else(|| "SINGLE".to_string());
+                format!("```basic\n{} {}({}) AS {}\n```\n\n", kind, proc.name, params_str, ret)
+            } else {
+                format!("```basic\n{} {}({})\n```\n\n", kind, proc.name, params_str)
+            };
+
+            info.push_str(&format!("**{}**", kind));
+            if proc.is_static {
+                info.push_str(" (STATIC)");
+            }
+
+            return Some(info);
+        }
+
+        // Try variables
+        if let Some(sym) = self.symbols.lookup_symbol(name) {
+            return Some(format_symbol_hover(sym));
+        }
+
+        // Try global symbols
+        if let Some(sym) = self.symbols.lookup_global_symbol(name) {
+            return Some(format_symbol_hover(sym));
+        }
+
+        // Try labels
+        if let Some(label) = self.symbols.lookup_label(name) {
+            return Some(format!("**Label:** `{}`", label.name));
+        }
+
+        // Try user-defined types
+        if let Some(udt) = self.symbols.lookup_user_type(name) {
+            let members: Vec<String> = udt
+                .members
+                .iter()
+                .map(|m| format!("    {} AS {}", m.name, format_type(&m.basic_type)))
+                .collect();
+            let members_str = members.join("\n");
+            return Some(format!(
+                "```basic\nTYPE {}\n{}\nEND TYPE\n```",
+                udt.name, members_str
+            ));
+        }
+
+        None
+    }
+
+    /// Returns all document symbols for the LSP outline view.
+    ///
+    /// Collects procedures (SUB/FUNCTION), user-defined TYPEs, and
+    /// global variables. Returns tuples of (name, kind, span) where
+    /// kind is a string identifying the symbol type.
+    pub fn get_document_symbols(&self) -> Vec<DocumentSymbolInfo> {
+        let mut symbols = Vec::new();
+
+        // Add procedures
+        for proc in self.symbols.iter_procedures() {
+            // Skip built-in functions (they have span 0..0)
+            if proc.span.start == 0 && proc.span.end == 0 {
+                continue;
+            }
+            let kind = match proc.kind {
+                symbols::ProcedureKind::Sub => DocumentSymbolKind::Sub,
+                symbols::ProcedureKind::Function => DocumentSymbolKind::Function,
+                symbols::ProcedureKind::BuiltIn => continue, // Skip built-ins
+            };
+            symbols.push(DocumentSymbolInfo {
+                name: proc.name.clone(),
+                kind,
+                span: proc.span,
+            });
+        }
+
+        // Add user-defined types
+        for udt in self.symbols.iter_user_types() {
+            symbols.push(DocumentSymbolInfo {
+                name: udt.name.clone(),
+                kind: DocumentSymbolKind::Type,
+                span: udt.span,
+            });
+        }
+
+        // Add global variables (skip built-in constants with span 0..0)
+        for sym in self.symbols.iter_global_symbols() {
+            // Skip built-in constants (they have span 0..0)
+            if sym.span.start == 0 && sym.span.end == 0 {
+                continue;
+            }
+            let kind = match &sym.kind {
+                symbols::SymbolKind::Constant { .. } => DocumentSymbolKind::Constant,
+                symbols::SymbolKind::ArrayVariable { .. } => DocumentSymbolKind::Array,
+                symbols::SymbolKind::Variable => DocumentSymbolKind::Variable,
+                _ => continue, // Skip parameters and external functions
+            };
+            symbols.push(DocumentSymbolInfo {
+                name: sym.name.clone(),
+                kind,
+                span: sym.span,
+            });
+        }
+
+        // Sort by position in file
+        symbols.sort_by_key(|s| s.span.start);
+        symbols
+    }
+
+    /// Finds detailed symbol information for a named symbol.
+    ///
+    /// Used by the LSP server for inlay hints. Returns the Symbol struct
+    /// which contains type information.
+    ///
+    /// Searches global symbols first (where variables and constants are stored).
+    pub fn find_symbol_info(&self, name: &str) -> Option<&Symbol> {
+        // Try global symbols (where DIM'd variables live)
+        if let Some(sym) = self.symbols.lookup_global_symbol(name) {
+            return Some(sym);
+        }
+
+        // Try local scope
+        if let Some(sym) = self.symbols.lookup_symbol(name) {
+            return Some(sym);
+        }
+
+        None
     }
 
     /// Pass 1: Collects all declarations without analyzing bodies.
@@ -1552,12 +1781,17 @@ impl SemanticAnalyzer {
                 ("text", BasicType::String),
             ],
         );
-        self.register_builtin_sub(
+        // _MAPUNICODE is dual-use:
+        // - As function: _MAPUNICODE(charcode) returns Unicode codepoint (1 arg)
+        // - As statement: _MAPUNICODE codepoint TO charcode (2 args, TO stripped by parser)
+        // Use optional params to allow 1-2 arguments
+        self.register_builtin_function_with_optionals(
             "_MAPUNICODE",
             &[
-                ("codepoint", BasicType::Long),
-                ("charcode", BasicType::Long),
+                ("charcode", BasicType::Long, false),      // required
+                ("codepoint_set", BasicType::Long, true),  // optional (only for statement form)
             ],
+            BasicType::Long,
         );
 
         // Logging statements
@@ -1683,7 +1917,12 @@ impl SemanticAnalyzer {
         self.register_builtin_function("_CONSOLE", &[], BasicType::Long);
 
         // Environment functions
-        self.register_builtin_function("_SHELLHIDE", &[], BasicType::Long);
+        // _SHELLHIDE is both a statement and a function; as function takes command, returns exit code
+        self.register_builtin_function(
+            "_SHELLHIDE",
+            &[("command", BasicType::String)],
+            BasicType::Long,
+        );
         self.register_builtin_function("_STARTDIR$", &[], BasicType::String);
         self.register_builtin_function("_ACCEPTFILEDROP", &[], BasicType::Long);
         self.register_builtin_function("_TOTALDROPPEDFILES", &[], BasicType::Long);
@@ -2101,6 +2340,90 @@ impl SemanticAnalyzer {
 impl Default for SemanticAnalyzer {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Formats a BasicType for display in hover information.
+fn format_type(typ: &BasicType) -> String {
+    match typ {
+        BasicType::Integer => "INTEGER".to_string(),
+        BasicType::Long => "LONG".to_string(),
+        BasicType::Single => "SINGLE".to_string(),
+        BasicType::Double => "DOUBLE".to_string(),
+        BasicType::String => "STRING".to_string(),
+        BasicType::Integer64 => "_INTEGER64".to_string(),
+        BasicType::Bit => "_BIT".to_string(),
+        BasicType::Byte => "_BYTE".to_string(),
+        BasicType::Offset => "_OFFSET".to_string(),
+        BasicType::Float => "_FLOAT".to_string(),
+        BasicType::FixedString(length) => format!("STRING * {}", length),
+        BasicType::UnsignedBit => "_UNSIGNED _BIT".to_string(),
+        BasicType::UnsignedByte => "_UNSIGNED _BYTE".to_string(),
+        BasicType::UnsignedInteger => "_UNSIGNED INTEGER".to_string(),
+        BasicType::UnsignedLong => "_UNSIGNED LONG".to_string(),
+        BasicType::UnsignedInteger64 => "_UNSIGNED _INTEGER64".to_string(),
+        BasicType::UserDefined(name) => name.clone(),
+        BasicType::Array { element_type, dimensions } => {
+            format!("{}() x {}", format_type(element_type), dimensions)
+        }
+        BasicType::Mem => "_MEM".to_string(),
+        BasicType::Void => "VOID".to_string(),
+        BasicType::Unknown => "UNKNOWN".to_string(),
+    }
+}
+
+/// Formats a Symbol for hover information.
+fn format_symbol_hover(sym: &Symbol) -> String {
+    let type_str = format_type(&sym.basic_type);
+
+    match &sym.kind {
+        symbols::SymbolKind::Variable => {
+            format!("```basic\nDIM {} AS {}\n```\n\n**Variable**", sym.name, type_str)
+        }
+        symbols::SymbolKind::Constant { value } => {
+            let val_str = match value {
+                symbols::ConstValue::Integer(i) => i.to_string(),
+                symbols::ConstValue::Float(f) => f.to_string(),
+                symbols::ConstValue::String(s) => format!("\"{}\"", s),
+            };
+            format!(
+                "```basic\nCONST {} = {}\n```\n\n**Constant** ({})",
+                sym.name, val_str, type_str
+            )
+        }
+        symbols::SymbolKind::Parameter { by_val } => {
+            let modifier = if *by_val { "BYVAL " } else { "" };
+            format!(
+                "```basic\n{}{} AS {}\n```\n\n**Parameter**",
+                modifier, sym.name, type_str
+            )
+        }
+        symbols::SymbolKind::ArrayVariable { dimensions } => {
+            let dims: Vec<String> = dimensions
+                .iter()
+                .map(|d| {
+                    if d.lower_bound == 0 {
+                        format!("{}", d.upper_bound)
+                    } else {
+                        format!("{} TO {}", d.lower_bound, d.upper_bound)
+                    }
+                })
+                .collect();
+            let dims_str = dims.join(", ");
+            format!(
+                "```basic\nDIM {}({}) AS {}\n```\n\n**Array**",
+                sym.name, dims_str, type_str
+            )
+        }
+        symbols::SymbolKind::ExternalFunction { c_name, params, return_type } => {
+            let param_types: Vec<String> = params.iter().map(format_type).collect();
+            let params_str = param_types.join(", ");
+            let ret_str = format_type(return_type);
+            format!(
+                "```basic\nDECLARE FUNCTION {}({}) AS {}\n' C name: {}\n```\n\n**External Function**",
+                sym.name, params_str, ret_str, c_name
+            )
+        }
     }
 }
 
