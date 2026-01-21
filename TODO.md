@@ -66,7 +66,7 @@ A prioritized roadmap for QB64Fresh development. For completed features, see [TO
 
 ### Testing (See TESTING_INFRASTRUCTURE_PLAN.md for details)
 - [ ] Compatibility tests against QB64 programs *(Ongoing - add as discovered)*
-- [ ] Add unit tests for new parser modules (graphics, audio, system, file_io) *(Small - 1-2 sessions)*
+- [x] Add unit tests for new parser modules (graphics, audio, system, file_io) *(Completed Session 040)*
 
 ---
 

@@ -1,7 +1,7 @@
 # Testing Infrastructure Plan - Remaining Work
 
 **Created:** 2026-01-18
-**Updated:** 2026-01-20
+**Updated:** 2026-01-21
 **Purpose:** Track remaining testing infrastructure work for QB64Fresh
 
 > **Note:** Completed items have been moved to [TESTING-COMPLETED.md](TESTING-COMPLETED.md)
@@ -11,9 +11,18 @@
 ## Current State Summary
 
 The testing infrastructure is **substantially complete**:
-- **820+ tests** total (217 unit, 656 integration, 10 golden, 16 compatibility, 19 property-based, 30 benchmarks, 44 runtime)
+- **1,111+ tests** total (359 unit, 720 integration, 10 golden, 19 property-based, 3 compatibility)
 - **99.1%** QB64PE compatibility (114/115 files, excluding open_gl)
 - **3 fuzz targets** verified (~4.6M inputs, 0 crashes)
+
+### Test Breakdown
+| Test Suite | Count | Command |
+|------------|-------|---------|
+| Unit tests | 359 | `cargo test --lib` |
+| Integration tests | 720 | `cargo test --test integration_tests` |
+| Golden tests | 10 | `cargo test --test golden_tests` |
+| Property-based | 19 | `cargo test --test proptest_tests` |
+| Compatibility | 3 | `cargo test --test compatibility` |
 
 ---
 
@@ -23,6 +32,7 @@ The testing infrastructure is **substantially complete**:
 |------|---------------|------------|----------------|
 | STRING * n assignment | Type mismatch error | Medium | Add implicit padding/conversion |
 | Coverage reporting | Ready to run | Low | Run `cargo llvm-cov --workspace` |
+| ~~Parser module tests~~ | ~~Incomplete~~ | ~~Low~~ | ✅ **Done** - 21 edge case tests added (Session 040) |
 | ~~File I/O runtime~~ | ~~Stubs only~~ | ~~Low~~ | ✅ **Done** - 22 codegen tests added |
 | ~~Graphics runtime~~ | ~~Stubs only~~ | ~~Low~~ | ✅ **Done** - 43 codegen tests added |
 | ~~Sound runtime~~ | ~~Stubs only~~ | ~~Low~~ | ✅ **Done** - 29 codegen tests added |
@@ -56,14 +66,22 @@ The testing infrastructure is **substantially complete**:
 cargo test
 
 # Run specific test suites
-cargo test -p qb64fresh --test integration_tests    # 539 integration tests
+cargo test -p qb64fresh --test integration_tests    # 720 integration tests
 cargo test -p qb64fresh --test golden_tests         # 10 golden tests
-cargo test -p qb64fresh --test compatibility        # 16 local fixture tests
+cargo test -p qb64fresh --test compatibility        # 3 local fixture tests
 cargo test -p qb64fresh --test proptest_tests       # 19 property-based tests
 cargo test -p qb64fresh --test qb45_compat          # QB64pe compatibility (141 files)
 
 # Run unit tests only
-cargo test -p qb64fresh --lib                       # 217 unit tests
+cargo test -p qb64fresh --lib                       # 359 unit tests
+
+# Run parser tests specifically
+cargo test --lib parser::tests                      # All parser unit tests
+cargo test --lib parser::tests::graphics_tests     # Graphics parser tests
+cargo test --lib parser::tests::audio_tests        # Audio parser tests
+cargo test --lib parser::tests::system_tests       # System parser tests
+cargo test --lib parser::tests::file_io_tests      # File I/O parser tests
+cargo test --lib parser::tests::edge_case_tests    # Edge case tests
 
 # QB64pe compatibility tests (with output)
 cargo test --test qb45_compat -- --nocapture
@@ -101,3 +119,4 @@ cargo llvm-cov --workspace --html      # HTML report in target/llvm-cov/html
 
 *Document created as part of QB64Fresh codebase review - 2026-01-18*
 *Updated: 2026-01-20 - Moved completed items to TESTING-COMPLETED.md*
+*Updated: 2026-01-21 - Updated test counts (1,111+ total); added parser module test completion*
