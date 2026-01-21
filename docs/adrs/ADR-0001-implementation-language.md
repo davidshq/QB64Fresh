@@ -23,10 +23,10 @@ Key considerations:
 
 1. **Memory safety without garbage collection**: Predictable performance characteristics crucial for a compiler
 2. **Excellent pattern matching via `enum`**: Perfect for AST representation and compiler phases
-3. **Strong compiler tooling ecosystem**: 
+3. **Strong compiler tooling ecosystem**:
    - `logos` for lexing
-   - `chumsky` for parsing
-   - `ariadne` for error diagnostics
+   - Custom Pratt parser (chumsky evaluated but not used - see ADR-0010)
+   - `ariadne` available for CLI error diagnostics (currently errors flow to LSP)
    - `tower-lsp` for LSP implementation
 4. **Good FFI to C**: Enables integration with C runtime libraries
 5. **Cargo**: Excellent build system and dependency management

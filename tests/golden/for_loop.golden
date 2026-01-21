@@ -1407,6 +1407,15 @@ int32_t qb_sndcopy(int32_t handle) {
     return 0;
 }
 
+int32_t qb_sndopenraw(void) {
+    _qb_audio_warn();
+    return -1; /* Return invalid handle */
+}
+
+double qb_sndrawlen(void) {
+    return 0.0;
+}
+
 /* Graphics Stubs (Inline Runtime) */
 /* For full graphics support, use --runtime external and link with libqb64fresh_rt */
 
@@ -1452,6 +1461,7 @@ int qb_gfx_draw(const char* cmd) { (void)cmd; return 0; }
 
 int32_t qb_gfx_newimage(int32_t w, int32_t h, int32_t mode) { (void)w; (void)h; (void)mode; return -1; }
 int32_t qb_gfx_loadimage(const char* fn, int32_t mode) { (void)fn; (void)mode; return -1; }
+int32_t qb_gfx_copyimage(int32_t src, int32_t mode) { (void)src; (void)mode; return -1; }
 int qb_gfx_freeimage(int32_t h) { (void)h; return 0; }
 int qb_gfx_putimage_simple(int32_t src, int32_t dst, int scale_mode) { (void)src; (void)dst; (void)scale_mode; return 0; }
 int qb_gfx_putimage(int32_t dx1, int32_t dy1, int32_t dx2, int32_t dy2, int32_t src, int32_t dst, int scale_mode) { (void)dx1; (void)dy1; (void)dx2; (void)dy2; (void)src; (void)dst; (void)scale_mode; return 0; }

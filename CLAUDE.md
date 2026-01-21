@@ -97,6 +97,30 @@ We use a **tiered logging system** to balance readability with completeness:
 
 ---
 
+## TODO and Completed Item Maintenance
+
+**When marking items as completed in TODO.md or TESTING_INFRASTRUCTURE_PLAN.md:**
+
+1. **Move completed items to their respective archive files:**
+   - `TODO.md` completed items → `TODO-completed.md`
+   - `TESTING_INFRASTRUCTURE_PLAN.md` completed items → `docs/ThingsToDo/TESTING-COMPLETED.md`
+
+2. **Format for completed items:**
+   - Use `[x]` checkbox syntax
+   - Include any relevant metrics or dates (e.g., "**81.63%** achieved!")
+   - Group with related completed items in the archive
+
+3. **Keep TODO files clean:**
+   - Only uncompleted `[ ]` items should remain in TODO.md and TESTING_INFRASTRUCTURE_PLAN.md
+   - Remove redundant checkboxes and strikethrough text after moving
+   - Update session numbers and dates in file headers
+
+4. **Session end check:**
+   - Before ending a session, scan TODO.md for any `[x]` items and move them
+   - This keeps the active TODO focused on remaining work
+
+---
+
 ## Core Principles
 
 ### 1. Educational Value
@@ -156,11 +180,178 @@ Each phase should be:
 - Prefer `Result` over panics for recoverable errors
 - Use meaningful type names that reflect domain concepts
 
-### Documentation
-- All public items get doc comments
-- Module-level docs explain the "what" and "why"
-- Include examples in doc comments where helpful
-- Link to relevant compiler concepts/theory
+### Documentation (MANDATORY - Follow These Standards)
+
+**CRITICAL:** All code must follow Rust community documentation best practices. Documentation is not optional - it's part of delivering quality code. Use `#![warn(missing_docs)]` in modules to enforce this.
+
+#### Comment Types
+
+**`///` - Item Documentation (Doc Comments)**
+Use for the item that follows (functions, structs, enums, traits, type aliases):
+
+```rust
+/// Parses a BASIC expression using Pratt parsing.
+///
+/// Handles operator precedence, function calls, and array access.
+/// Returns a typed AST node with source location information.
+///
+/// # Arguments
+///
+/// * `min_precedence` - Minimum precedence level for this parse context
+///
+/// # Returns
+///
+/// The parsed expression, or `Err(())` if parsing failed (errors accumulated in `self.errors`).
+///
+/// # Example
+///
+/// ```ignore
+/// let expr = parser.parse_expression(Precedence::Lowest)?;
+/// assert!(matches!(expr.kind, ExprKind::Binary { .. }));
+/// ```
+pub fn parse_expression(&mut self, min_precedence: Precedence) -> Result<Expr, ()> {
+    // ...
+}
+```
+
+**`//!` - Module/Crate Documentation**
+Use at the top of a file to document the containing module:
+
+```rust
+//! # Lexical Analysis
+//!
+//! This module tokenizes QB64 BASIC source code using the `logos` crate.
+//!
+//! ## Design Notes
+//!
+//! - Case-insensitive keyword matching
+//! - Preserves original source spans for error reporting
+//! - Handles BASIC-specific tokens (type suffixes like `$`, `%`, `&`)
+//!
+//! ## Example
+//!
+//! ```
+//! use qb64fresh::lexer::lex;
+//! let tokens = lex("PRINT \"Hello\"");
+//! ```
+```
+
+#### Standard Documentation Sections
+
+Use these conventional headings consistently:
+
+| Section | When to Use | Required? |
+|---------|-------------|-----------|
+| `# Arguments` | Functions with parameters | Yes, if params exist |
+| `# Returns` | Functions returning values | Yes, if non-void |
+| `# Example` / `# Examples` | Public APIs | Strongly encouraged |
+| `# Panics` | Functions that can panic | Yes, if it panics |
+| `# Errors` | Functions returning `Result` | Yes, list error cases |
+| `# Safety` | `unsafe` functions | **Mandatory** |
+
+#### Documentation Requirements by Item Type
+
+**Modules (`//!`):**
+- Brief one-line summary
+- Purpose and responsibilities
+- Key concepts or design notes
+- Usage example (can use `ignore` if complex setup needed)
+- Links to related modules
+
+**Structs/Enums:**
+- Brief one-line summary
+- Field/variant documentation for public fields
+- Example of construction and use
+
+**Functions/Methods:**
+- Brief one-line summary (appears in rustdoc listings)
+- Detailed behavior description
+- All parameters documented
+- Return value documented
+- Example (runnable if possible)
+- Error conditions for `Result` returns
+
+**Error Enums:**
+- Each variant MUST be documented explaining:
+  - What condition causes this error
+  - What the user should do to fix it
+  - Example of code that triggers it (where helpful)
+
+```rust
+/// Errors that can occur during parsing.
+#[derive(Debug, Clone)]
+pub enum ParseError {
+    /// Expected a specific token but found something else.
+    ///
+    /// This typically occurs when syntax is malformed, such as
+    /// missing parentheses or incorrect keyword ordering.
+    ///
+    /// # Example
+    ///
+    /// ```basic
+    /// IF x > 5   ' Missing THEN keyword
+    /// ```
+    UnexpectedToken {
+        expected: String,
+        found: TokenKind,
+        span: Span,
+    },
+
+    /// Reached end of input while expecting more tokens.
+    ///
+    /// Usually indicates an unclosed block (IF without END IF,
+    /// FOR without NEXT, etc.) or incomplete expression.
+    UnexpectedEof {
+        expected: String,
+        span: Span,
+    },
+}
+```
+
+#### Best Practices
+
+1. **First line is a summary** - Keep concise; it appears in search results and module listings
+
+2. **Examples are tests** - Code in `# Examples` blocks runs during `cargo test --doc`
+   - Use `ignore` for examples that need external setup
+   - Use `no_run` for examples that compile but shouldn't execute
+   - Use `should_panic` for examples demonstrating panic behavior
+
+3. **Link to related items** - Use backtick syntax for auto-linking:
+   ```rust
+   /// See [`Parser::parse_expression`] for expression handling.
+   /// Returns a [`TypedExpr`] with the inferred [`BasicType`].
+   ```
+
+4. **Document the "why"** - Implementation details that aren't obvious:
+   ```rust
+   /// Uses Pratt parsing for correct operator precedence.
+   /// Array access uses FunctionCall AST node because syntax is identical.
+   ```
+
+5. **ASCII diagrams for architecture** - Include in module docs:
+   ```rust
+   //! ## Pipeline
+   //!
+   //! ```text
+   //! Source → Lexer → Parser → AST → Semantic → TypedIR → CodeGen → C
+   //! ```
+   ```
+
+6. **Avoid documenting the obvious** - Don't write:
+   ```rust
+   /// Returns the name.  // BAD - says nothing useful
+   fn name(&self) -> &str
+
+   /// Returns the variable name including any type suffix (e.g., "count%").
+   fn name(&self) -> &str  // GOOD - explains what "name" means in context
+   ```
+
+#### Enforcement
+
+- Run `cargo doc --no-deps` to verify documentation builds
+- Run `cargo test --doc` to verify examples compile and run
+- Consider `#![warn(missing_docs)]` at crate root for public API enforcement
 
 ### Naming
 ```rust
@@ -212,11 +403,55 @@ pub trait CodeGenerator {
 - Avoids inheriting QB64pe's C++ technical debt
 - May have subtle behavioral differences - document and test carefully
 
+### Decision 4: Build System and Tooling
+**Choice:** Cargo as primary build system with auxiliary orchestration
+**Rationale:**
+- Standard Rust tooling reduces friction for contributors
+- Workspace support for multi-crate project (compiler + runtime + LSP)
+- Integrated testing, formatting (`cargo fmt`), linting (`cargo clippy`)
+- Cross-platform consistency
+
+### Decision 5: Testing Framework
+**Choice:** Rust's built-in testing + QB64pe test suite
+**Rationale:**
+- Unit tests (`#[test]`) for each compiler phase
+- Integration tests for end-to-end compilation
+- Golden tests for regression detection
+- Compatibility tests using QB64pe's `qbasic_testcases/`
+
+### Decision 6: Graphics System
+**Choice:** Trait-based pluggable backend with SDL2 primary implementation
+**Rationale:**
+- `GraphicsBackend` trait enables mock backend for CI/headless testing
+- SDL2 proven by QB64pe, cross-platform, well-maintained
+- Feature flags for compile-time backend selection
+- See `runtime/src/graphics/` for implementation
+
+### Decision 7: Audio System
+**Choice:** Trait-based pluggable backend mirroring graphics, rodio planned
+**Rationale:**
+- `AudioBackend` trait consistent with graphics architecture
+- rodio is pure Rust, simpler integration than SDL2_mixer
+- Mock backend enables CI testing without audio hardware
+- Handle-based API matches QB64 semantics
+- See `runtime/src/audio/` for implementation
+
+### Decision 8: C Interoperability (DECLARE LIBRARY)
+**Choice:** First-class language feature with direct C code generation
+**Rationale:**
+- Natural fit since we emit C code anyway
+- Syntax matches QB64 for compatibility
+- Enables system API calls and third-party library integration
+- Supports static and dynamic libraries, ALIAS for name mangling
+- See `docs/adrs/ADR-0008-c-interoperability.md` for type mapping details
+
+*For detailed ADRs with full rationale and consequences, see `docs/adrs/`.*
+
 ---
 
 ## Key Files Reference
 
-### Current Implementation (as of 2026-01-19)
+### Current Implementation (as of 2026-01-20)
 
 | File | Purpose | Status |
 |------|---------|--------|
@@ -231,7 +466,11 @@ pub trait CodeGenerator {
 | `src/parser/mod.rs` | Parser entry point and tests | ✓ Complete |
 | `src/parser/tokens.rs` | Token navigation utilities | ✓ Complete |
 | `src/parser/expressions.rs` | Pratt parser for expressions | ✓ Complete |
-| `src/parser/statements.rs` | Statement parsing | ✓ Complete |
+| `src/parser/statements.rs` | Statement parsing (core) | ✓ Complete |
+| `src/parser/graphics.rs` | Graphics statement parsing | ✓ Complete |
+| `src/parser/audio.rs` | Audio statement parsing | ✓ Complete |
+| `src/parser/file_io.rs` | File I/O statement parsing | ✓ Complete |
+| `src/parser/system.rs` | System statement parsing | ✓ Complete |
 | `src/parser/control_flow.rs` | IF/FOR/WHILE/DO/SELECT parsing | ✓ Complete |
 | `src/parser/procedures.rs` | SUB/FUNCTION/TYPE definitions | ✓ Complete |
 | `src/parser/directives.rs` | Preprocessor directives ($IF, $LET) | ✓ Complete |
@@ -252,7 +491,8 @@ pub trait CodeGenerator {
 | `src/codegen/error.rs` | Code generation error types | ✓ Complete |
 | `src/codegen/c_backend/mod.rs` | C backend entry point | ✓ Complete |
 | `src/codegen/c_backend/expr.rs` | Expression code generation | ✓ Complete |
-| `src/codegen/c_backend/stmt.rs` | Statement code generation | ✓ Complete |
+| `src/codegen/c_backend/stmt.rs` | Statement code generation (core) | ✓ Complete |
+| `src/codegen/c_backend/file_io.rs` | File I/O helpers (OPEN, CLOSE, GET, PUT) | ✓ Complete |
 | `src/codegen/c_backend/types.rs` | Type mapping utilities | ✓ Complete |
 | `src/codegen/c_backend/runtime.rs` | Inline C runtime library | ✓ Complete |
 | `src/codegen/c_backend/analysis.rs` | DATA/label collection | ✓ Complete |
@@ -295,10 +535,14 @@ QB64Fresh/                    # Main compiler workspace
 │   │   ├── mod.rs            # Entry point, tests
 │   │   ├── tokens.rs         # Token navigation
 │   │   ├── expressions.rs    # Expression parsing
-│   │   ├── statements.rs     # Statement parsing
+│   │   ├── statements.rs     # Statement parsing (core)
 │   │   ├── control_flow.rs   # IF/FOR/WHILE/DO/SELECT
 │   │   ├── procedures.rs     # SUB/FUNCTION/TYPE
 │   │   ├── directives.rs     # $IF, $LET, $CHECKING
+│   │   ├── graphics.rs       # SCREEN, LINE, CIRCLE, etc.
+│   │   ├── audio.rs          # BEEP, SOUND, PLAY, _SND*
+│   │   ├── file_io.rs        # OPEN, CLOSE, GET, PUT, SEEK
+│   │   ├── system.rs         # SHELL, KILL, NAME, MKDIR
 │   │   └── error.rs          # Parse errors
 │   ├── semantic/             # ✓ Type checking, symbol resolution
 │   │   ├── mod.rs            # Entry point, built-ins
@@ -320,7 +564,8 @@ QB64Fresh/                    # Main compiler workspace
 │   │   └── c_backend/        # C code generation
 │   │       ├── mod.rs        # Backend entry point
 │   │       ├── expr.rs       # Expression codegen
-│   │       ├── stmt.rs       # Statement codegen
+│   │       ├── stmt.rs       # Statement codegen (core)
+│   │       ├── file_io.rs    # File I/O helpers
 │   │       ├── types.rs      # Type mapping
 │   │       ├── runtime.rs    # Inline C runtime
 │   │       └── analysis.rs   # DATA/label collection

@@ -35,6 +35,10 @@ examples/*.c
 # Test artifacts
 /tmp/
 
+# Mutation testing output (cargo-mutants)
+/mutants.out/
+/mutants.out.old/
+
 
 # Added by cargo
 

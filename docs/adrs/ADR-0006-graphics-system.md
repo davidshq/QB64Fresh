@@ -150,6 +150,8 @@ Generated C code calls functions like:
 | Code generation | Complete |
 | Mouse input | Complete |
 | Clipboard | Complete |
+| Font rendering | Complete |
+| Text output (PRINT, LOCATE) | Complete |
 
 ### Files
 
@@ -157,4 +159,5 @@ Generated C code calls functions like:
 - `runtime/src/graphics/error.rs` - Error types
 - `runtime/src/graphics/mock.rs` - Mock backend for testing
 - `runtime/src/graphics/sdl2.rs` - SDL2 backend (stub)
+- `runtime/src/graphics/font.rs` - Font rendering and text output
 - `runtime/src/graphics_ffi.rs` - C FFI functions

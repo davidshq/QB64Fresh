@@ -29,6 +29,7 @@ cargo run -- examples/hello.bas --tokens
 ## Docs
 
 - [DEVELOPMENT.md](DEVELOPMENT.md) — Setup & contributing
+- [Migration Guide](docs/MIGRATION_GUIDE.md) — For QB64 users switching to QB64Fresh
 - [AgenticLogs/](AgenticLogs/) — Development history
 
 ## License

@@ -224,3 +224,29 @@ jobs:
           cargo +nightly fuzz build fuzz_lexer
           cargo +nightly fuzz build fuzz_parser
           cargo +nightly fuzz build fuzz_full_pipeline
+
+  # QB45 compatibility tests (requires larger stack for deeply nested expressions)
+  qb45_compat:
+    name: QB45 Compatibility Tests
+    runs-on: ubuntu-latest
+    env:
+      RUST_MIN_STACK: 8388608  # 8MB stack for recursive descent parsing
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-qb45-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-qb45-
+
+      - name: Run QB45 compatibility tests
+        run: cargo test --test qb45_compat --verbose

@@ -252,6 +252,8 @@
 - [x] Expand test suite for all built-ins (315 integration tests)
 - [x] Achieve 80%+ line coverage (81.63% achieved!)
 - [x] SHARED variable scope - SUBs/FUNCTIONs can access module-level variables via SHARED statement
+- [x] QB4.5 test cases from QB64pe (**114/115 = 99.1%** passing, excluding open_gl)
+- [x] Runtime stub tests for File I/O, Graphics, Sound (94 tests added)
 
 ---
 
