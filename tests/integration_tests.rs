@@ -4788,3 +4788,220 @@ mod qb64_extension_statements {
         assert!(code.contains("qb_printmode("));
     }
 }
+
+/// Tests for QB64 extension functions added in Session 032+
+mod qb64_extension_functions_session032 {
+    use super::*;
+
+    // Error handling extended
+    #[test]
+    fn inclerrorfile_function() {
+        let code = compile_to_c("DIM f AS STRING: f = _INCLERRORFILE$").unwrap();
+        assert!(code.contains("qb_inclerrorfile("));
+    }
+
+    #[test]
+    fn inclerrorline_function() {
+        let code = compile_to_c("DIM n AS LONG: n = _INCLERRORLINE").unwrap();
+        assert!(code.contains("qb_inclerrorline("));
+    }
+
+    // Utility functions
+    #[test]
+    fn statuscode_function() {
+        let code = compile_to_c("DIM s AS LONG: s = _STATUSCODE").unwrap();
+        assert!(code.contains("qb_statuscode("));
+    }
+
+    // Networking extended
+    #[test]
+    fn connectionaddress_function() {
+        let code = compile_to_c("DIM a AS LONG: a = _CONNECTIONADDRESS(1)").unwrap();
+        assert!(code.contains("qb_connectionaddress("));
+    }
+
+    #[test]
+    fn connectionaddress_str_function() {
+        let code = compile_to_c("DIM a AS STRING: a = _CONNECTIONADDRESS$(1)").unwrap();
+        assert!(code.contains("qb_connectionaddress_str("));
+    }
+
+    // HSB color functions
+    #[test]
+    fn hsb32_function() {
+        let code = compile_to_c("DIM c AS LONG: c = _HSB32(180.0, 50.0, 75.0)").unwrap();
+        assert!(code.contains("qb_hsb32("));
+    }
+
+    #[test]
+    fn hsba32_function() {
+        let code = compile_to_c("DIM c AS LONG: c = _HSBA32(180.0, 50.0, 75.0, 128.0)").unwrap();
+        assert!(code.contains("qb_hsba32("));
+    }
+
+    #[test]
+    fn hue32_function() {
+        let code = compile_to_c("DIM h AS SINGLE: h = _HUE32(&HFF8040)").unwrap();
+        assert!(code.contains("qb_hue32("));
+    }
+
+    #[test]
+    fn saturation32_function() {
+        let code = compile_to_c("DIM s AS SINGLE: s = _SATURATION32(&HFF8040)").unwrap();
+        assert!(code.contains("qb_saturation32("));
+    }
+
+    #[test]
+    fn brightness32_function() {
+        let code = compile_to_c("DIM b AS SINGLE: b = _BRIGHTNESS32(&HFF8040)").unwrap();
+        assert!(code.contains("qb_brightness32("));
+    }
+
+    // Memory extended (using LONG for pointer types in tests)
+    #[test]
+    fn memelement_function() {
+        let code = compile_to_c("DIM m AS LONG, o AS LONG: o = _MEMELEMENT(m, 5)").unwrap();
+        assert!(code.contains("qb_memelement("));
+    }
+
+    #[test]
+    fn memimage_function() {
+        let code = compile_to_c("DIM m AS LONG: m = _MEMIMAGE(0)").unwrap();
+        assert!(code.contains("qb_memimage("));
+    }
+
+    #[test]
+    fn memsound_function() {
+        let code = compile_to_c("DIM m AS LONG: m = _MEMSOUND(1)").unwrap();
+        assert!(code.contains("qb_memsound("));
+    }
+
+    // Sound extended
+    #[test]
+    fn sndnew_function() {
+        let code = compile_to_c("DIM h AS LONG: h = _SNDNEW(44100, 2, 16)").unwrap();
+        assert!(code.contains("qb_sndnew("));
+    }
+
+    // File I/O extended
+    #[test]
+    fn files_function() {
+        let code = compile_to_c("DIM f AS STRING: f = _FILES$(\"*.bas\")").unwrap();
+        assert!(code.contains("qb_files_str("));
+    }
+
+    // Device input extended
+    #[test]
+    fn lasthandler_function() {
+        let code = compile_to_c("DIM h AS LONG: h = _LASTHANDLER").unwrap();
+        assert!(code.contains("qb_lasthandler("));
+    }
+
+    // Unicode font functions
+    #[test]
+    fn ucharpos_function() {
+        let code = compile_to_c("DIM p AS LONG: p = _UCHARPOS(\"hello\", 3)").unwrap();
+        assert!(code.contains("qb_ucharpos("));
+    }
+
+    #[test]
+    fn ufontheight_function() {
+        let code = compile_to_c("DIM h AS LONG: h = _UFONTHEIGHT(0)").unwrap();
+        assert!(code.contains("qb_ufontheight("));
+    }
+
+    #[test]
+    fn ulinespacing_function() {
+        let code = compile_to_c("DIM s AS LONG: s = _ULINESPACING").unwrap();
+        assert!(code.contains("qb_ulinespacing("));
+    }
+
+    #[test]
+    fn uprintwidth_function() {
+        let code = compile_to_c("DIM w AS LONG: w = _UPRINTWIDTH(\"hello\")").unwrap();
+        assert!(code.contains("qb_uprintwidth("));
+    }
+}
+
+/// Tests for QB64 extension statements added in Session 032+
+mod qb64_extension_statements_session032 {
+    use super::*;
+
+    // Graphics extended
+    #[test]
+    fn saveimage_statement() {
+        let code = compile_to_c("_SAVEIMAGE \"output.png\", 0").unwrap();
+        assert!(code.contains("qb_saveimage("));
+    }
+
+    #[test]
+    fn screenprint_statement() {
+        let code = compile_to_c("_SCREENPRINT \"Hello\"").unwrap();
+        assert!(code.contains("qb_screenprint("));
+    }
+
+    // Unicode font statements
+    #[test]
+    fn uprintstring_statement() {
+        let code = compile_to_c("_UPRINTSTRING 100, 200, \"Hello\"").unwrap();
+        assert!(code.contains("qb_uprintstring("));
+    }
+
+    #[test]
+    fn mapunicode_statement() {
+        let code = compile_to_c("_MAPUNICODE 8364, 128").unwrap();
+        assert!(code.contains("qb_mapunicode("));
+    }
+
+    // Logging statements
+    #[test]
+    fn logtrace_statement() {
+        let code = compile_to_c("_LOGTRACE \"debug info\"").unwrap();
+        assert!(code.contains("qb_logtrace("));
+    }
+
+    #[test]
+    fn loginfo_statement() {
+        let code = compile_to_c("_LOGINFO \"info message\"").unwrap();
+        assert!(code.contains("qb_loginfo("));
+    }
+
+    #[test]
+    fn logwarn_statement() {
+        let code = compile_to_c("_LOGWARN \"warning\"").unwrap();
+        assert!(code.contains("qb_logwarn("));
+    }
+
+    #[test]
+    fn logerror_statement() {
+        let code = compile_to_c("_LOGERROR \"error occurred\"").unwrap();
+        assert!(code.contains("qb_logerror("));
+    }
+
+    #[test]
+    fn logminlevel_statement() {
+        let code = compile_to_c("_LOGMINLEVEL 2").unwrap();
+        assert!(code.contains("qb_logminlevel("));
+    }
+
+    // Sound extended (using LONG for pointer types in tests)
+    #[test]
+    fn sndrawbatch_statement() {
+        let code = compile_to_c("DIM m AS LONG: _SNDRAWBATCH 1, m, 1000").unwrap();
+        assert!(code.contains("qb_sndrawbatch("));
+    }
+
+    // MIDI
+    #[test]
+    fn midisoundbank_statement() {
+        let code = compile_to_c("_MIDISOUNDBANK \"soundfont.sf2\"").unwrap();
+        assert!(code.contains("qb_midisoundbank("));
+    }
+
+    // Device input extended (using LONG for pointer types in tests)
+    #[test]
+    fn newhandler_statement() {
+        let code = compile_to_c("DIM p AS LONG: _NEWHANDLER p").unwrap();
+        assert!(code.contains("qb_newhandler("));
+    }
+}

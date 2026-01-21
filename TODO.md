@@ -1,6 +1,6 @@
 # QB64Fresh TODO
 
-*Last updated: 2026-01-20 (Session 031)*
+*Last updated: 2026-01-20 (Session 032)*
 
 A prioritized roadmap for QB64Fresh development. For completed features, see [TODO-completed.md](TODO-completed.md).
 
@@ -92,69 +92,26 @@ All C Library Integration items completed - see TODO-completed.md.
 
 ## Phase 7: Missing Language Features
 
-### High Priority - QB4.5 Core Features
-
-#### Remaining QB4.5 Items
-*(All completed - see TODO-completed.md)*
-
 ### Medium Priority - QB64 Extensions
 
 #### String Functions
 - [ ] `_CV(type, string$)` function - generic convert string to type
 - [ ] `_MK$(type, value)` function - generic convert value to string
 
-#### Error Handling (Extended)
-- [ ] `_INCLERRORFILE$` / `_INCLERRORLINE` - include file error info
-- [x] `_EXIT` statement - exit program with code ✅ (Session 031)
-
 #### Utility Functions
 - [ ] `_CAST(type, value)` function - explicit type cast
 - [ ] `_DEFINE` statement - define default variable types by letter range
-- [ ] `_STATUSCODE` function - status code from last operation
 
 #### Networking (Extended)
-- [ ] `_CONNECTIONADDRESS(handle)` function - get connection IP address
-- [ ] `_CONNECTIONADDRESS$(handle)` function - get connection IP as string
 - [ ] `_DONTWAIT` keyword - non-blocking network operations
 
 ### Lower Priority - QB64 Advanced Extensions
 
-#### Desktop/Window Info
-- [x] `_SCREENEXISTS` function - check if window exists ✅ (Session 031)
-- [ ] `_SCREENPRINT` statement - print screen contents
-- [x] `_ICON` statement - set window icon ✅ (Session 031)
-- [x] `_HIDE` / `_SHOW` statements - hide/show window ✅ (Session 031)
-- [x] `_ONTOP` statement - set window always on top ✅ (Session 031)
-
-#### Unicode Font Support
-- [ ] `_UCHARPOS` function - Unicode character position
-- [ ] `_UFONTHEIGHT` function - Unicode font height
-- [ ] `_ULINESPACING` function - Unicode line spacing
-- [ ] `_UPRINTSTRING` statement - Unicode print string
-- [ ] `_UPRINTWIDTH` function - Unicode print width
-- [ ] `_MAPUNICODE` statement - map Unicode code points
-
-#### Color Functions
-- [x] `_RED(color)` / `_GREEN(color)` / `_BLUE(color)` / `_ALPHA(color)` - color components ✅ (Session 031)
-- [x] `_RED32` / `_GREEN32` / `_BLUE32` / `_ALPHA32` - 32-bit color components ✅ (Session 031)
-- [x] `_PALETTECOLOR(index, color)` statement - set palette entry ✅ (Session 031)
-- [x] `_COPYPALETTE` statement - copy palette between images ✅ (Session 031)
-- [x] `_DEFAULTCOLOR` / `_BACKGROUNDCOLOR` functions ✅ (Session 031)
-- [x] `_SETALPHA` statement - set image alpha ✅ (Session 031)
-- [ ] `_HSB32(h, s, b)` / `_HSBA32(h, s, b, a)` - HSB color creation
-- [ ] `_HUE32(color)` / `_SATURATION32(color)` / `_BRIGHTNESS32(color)` - HSB components
-- [x] `_PIXELSIZE` function - bytes per pixel ✅ (Session 031)
-
 #### Graphics (Extended)
-- [ ] `_SAVEIMAGE(file$, handle)` statement - save image to file
 - [ ] `_MAPTRIANGLE` statement - 3D triangle mapping
-- [x] `_BLEND` / `_DONTBLEND` statements - alpha blending control ✅ (Session 031)
-- [x] `_CLEARCOLOR` statement - set transparent color ✅ (Session 031)
 - [ ] `_CLIP` keyword - clipping mode for _PUTIMAGE
-- [x] `_DEPTHBUFFER` statement - depth buffer control ✅ (Session 031)
 - [ ] `_SMOOTH` / `_SMOOTHSHRUNK` / `_SMOOTHSTRETCHED` - image scaling modes
 - [ ] `_HARDWARE` / `_HARDWARE1` / `_SOFTWARE` - rendering modes
-- [x] `_DISPLAYORDER` statement - set display layer order ✅ (Session 031)
 - [ ] `_GLRENDER` statement - OpenGL render mode
 - [ ] `_SQUAREPIXELS` keyword - square pixels mode
 - [ ] `_SEAMLESS` keyword - seamless image tiling
@@ -165,90 +122,24 @@ All C Library Integration items completed - see TODO-completed.md.
 - [ ] `_FILLBACKGROUND` keyword - fill background
 - [ ] `_ONLYBACKGROUND` keyword - affect only background
 - [ ] `_PRINTIMAGE` statement - print to image instead of screen
-- [x] `_PRINTMODE` statement - set print mode (fill/keep/only) ✅ (Session 031)
-
-#### Device Input (Gamepad/Joystick)
-- [x] `_DEVICES` function - number of input devices ✅ (Session 031)
-- [x] `_DEVICE$(n)` function - device name ✅ (Session 031)
-- [x] `_DEVICEINPUT` function - check for device input ✅ (Session 031)
-- [x] `_LASTAXIS(device)` / `_LASTBUTTON(device)` / `_LASTWHEEL(device)` - device capabilities ✅ (Session 031)
-- [x] `_AXIS(device, axis)` function - read axis value ✅ (Session 031)
-- [x] `_BUTTON(device, button)` function - read button state ✅ (Session 031)
-- [x] `_BUTTONCHANGE(device, button)` function - button state changed ✅ (Session 031)
-- [x] `_WHEEL(device, wheel)` function - read wheel value ✅ (Session 031)
-- [ ] `_LASTHANDLER` function - get last event handler
-- [ ] `_NEWHANDLER` statement - create new event handler
-
-#### Mouse (Extended)
-- [x] `_MOUSEHIDDEN` function - check if mouse cursor is hidden ✅ (Session 031)
-
-#### Clipboard (Extended)
-- [x] `_CLIPBOARDIMAGE` function - get image from clipboard ✅ (Session 031)
-
-#### Dialog Boxes
-- [x] `_COLORCHOOSERDIALOG` function - color picker ✅ (Session 031)
-- [x] `_NOTIFYPOPUP` function - system notification ✅ (Session 031)
-
-#### Drag and Drop
-- [x] `_ACCEPTFILEDROP` statement - enable file drop ✅ (Session 031)
-- [x] `_TOTALDROPPEDFILES` function - count dropped files ✅ (Session 031)
-- [x] `_DROPPEDFILE` / `_DROPPEDFILE$` functions - get dropped file ✅ (Session 031)
-- [x] `_FINISHDROP` statement - complete drop handling ✅ (Session 031)
-
-#### Hash and Encoding Functions
-- [x] `_CRC32(data$)` function - CRC32 checksum ✅ (Session 031)
-- [x] `_MD5$(data$)` function - MD5 hash ✅ (Session 031)
-- [x] `_ADLER32(data$)` function - Adler32 checksum ✅ (Session 031)
-- [x] `_BASE64ENCODE$(data$)` / `_BASE64DECODE$(data$)` - Base64 ✅ (Session 031)
-- [x] `_DEFLATE$(data$)` / `_INFLATE$(data$)` - compression ✅ (Session 031)
-- [x] `_ENCODEURL$(url$)` / `_DECODEURL$(url$)` - URL encoding ✅ (Session 031)
-
-#### Memory (Extended)
-- [x] `_MEMEXISTS(mem)` function - check if memory valid ✅ (Session 031)
-- [ ] `_MEMELEMENT(mem, index)` function - get element offset
-- [ ] `_MEMIMAGE(handle)` function - get image memory
-- [ ] `_MEMSOUND(handle)` function - get sound memory
 
 #### Sound (Extended)
-- [x] `_SNDRAWDONE` function - raw buffer done ✅ (Session 031)
-- [x] `_SNDLIMIT(handle, seconds)` statement - limit sound length ✅ (Session 031)
-- [ ] `_SNDNEW(frames, channels, bits)` function - create sound buffer
-- [ ] `_SNDRAWBATCH` statement - batch raw samples
 - [ ] `_WAVE` keyword - waveform type for sound synthesis
-- [ ] `_MIDISOUNDBANK` statement - set MIDI soundbank
 
 #### Console Mode
 - [ ] `$CONSOLE` / `$CONSOLE:ONLY` metacommands
-- [x] `_CONSOLECURSOR` statement - console cursor control ✅ (Session 031)
-- [x] `_CONSOLEFONT` statement - console font ✅ (Session 031)
-- [x] `_CONSOLEINPUT` function - console input available ✅ (Session 031)
-- [x] `_CONTROLCHR` statement - control character handling ✅ (Session 031)
-- [x] `_ECHO` statement - console output ✅ (Session 031)
-
-#### Logging (QB64 extension)
-- [ ] `_LOGTRACE` / `_LOGINFO` / `_LOGWARN` / `_LOGERROR` statements
-- [ ] `_LOGMINLEVEL` statement - set minimum log level
 
 #### Resize Events
 - [ ] `$RESIZE:ON` / `$RESIZE:OFF` metacommands
 - [ ] `$RESIZE:STRETCH` / `$RESIZE:SMOOTH` metacommands
-- [x] `_RESIZE` function - check for resize ✅ (Session 031)
-- [x] `_RESIZEHEIGHT` / `_RESIZEWIDTH` functions - new dimensions ✅ (Session 031)
-- [x] `_SCALEDHEIGHT` / `_SCALEDWIDTH` functions - scaled dimensions ✅ (Session 031)
 
 #### File I/O (Extended)
 - [ ] `_EMBEDDED$(name$)` function - get embedded file data
 - [ ] `$EMBED:'filename'` metacommand - embed file in executable
-- [x] `_FULLPATH$(path$)` function - get full path ✅ (Session 031)
-- [ ] `_FILES$(pattern$)` function - file listing iterator
 
 #### Miscellaneous QB64 Features
-- [x] `_ANDALSO` / `_ORELSE` operators - short-circuit evaluation ✅ (Session 031)
 - [ ] `OPTION _EXPLICIT` / `OPTION _EXPLICITARRAY` - require declarations
 - [ ] `SELECT EVERYCASE` - check all cases
-- [x] `_FPS` function - current frame rate ✅ (Session 031)
-- [x] `_FREETIMER` function - free a timer ✅ (Session 031)
-- [ ] `_FREETIMER` function - free a timer
 
 ### Metacommands (Not Yet Implemented)
 - [ ] `$STATIC` / `$DYNAMIC` - array allocation mode

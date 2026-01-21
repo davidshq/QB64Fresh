@@ -673,6 +673,45 @@ pub(super) fn c_function_name(name: &str) -> String {
         // Sound extended
         "_SNDRAWDONE" => "qb_sndrawdone".to_string(),
 
+        // QB64 Extension Functions (Session 032+)
+        // Error handling extended
+        "_INCLERRORFILE$" => "qb_inclerrorfile".to_string(),
+        "_INCLERRORLINE" => "qb_inclerrorline".to_string(),
+
+        // Utility functions
+        "_STATUSCODE" => "qb_statuscode".to_string(),
+
+        // Networking extended
+        "_CONNECTIONADDRESS" => "qb_connectionaddress".to_string(),
+        "_CONNECTIONADDRESS$" => "qb_connectionaddress_str".to_string(),
+
+        // HSB color functions
+        "_HSB32" => "qb_hsb32".to_string(),
+        "_HSBA32" => "qb_hsba32".to_string(),
+        "_HUE32" => "qb_hue32".to_string(),
+        "_SATURATION32" => "qb_saturation32".to_string(),
+        "_BRIGHTNESS32" => "qb_brightness32".to_string(),
+
+        // Memory extended
+        "_MEMELEMENT" => "qb_memelement".to_string(),
+        "_MEMIMAGE" => "qb_memimage".to_string(),
+        "_MEMSOUND" => "qb_memsound".to_string(),
+
+        // Sound extended
+        "_SNDNEW" => "qb_sndnew".to_string(),
+
+        // File I/O extended
+        "_FILES$" => "qb_files_str".to_string(),
+
+        // Device input extended
+        "_LASTHANDLER" => "qb_lasthandler".to_string(),
+
+        // Unicode font functions
+        "_UCHARPOS" => "qb_ucharpos".to_string(),
+        "_UFONTHEIGHT" => "qb_ufontheight".to_string(),
+        "_ULINESPACING" => "qb_ulinespacing".to_string(),
+        "_UPRINTWIDTH" => "qb_uprintwidth".to_string(),
+
         // Default: prefix with qb_ for user functions
         _ => format!("qb_{}", c_identifier(name).to_lowercase()),
     }

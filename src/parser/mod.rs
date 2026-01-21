@@ -500,7 +500,7 @@ PRINT x
         assert_eq!(program.statements.len(), 1);
         assert!(matches!(
             &program.statements[0].kind,
-            StatementKind::OnErrorResumeNext { .. }
+            StatementKind::OnErrorResumeNext
         ));
     }
 

@@ -468,6 +468,19 @@ impl StmtEmitter {
                     "_SHOW" => "qb_show".to_string(),
                     "_ONTOP" => "qb_ontop".to_string(),
                     "_PRINTMODE" => "qb_printmode".to_string(),
+                    // Session 032+ SUBs
+                    "_SAVEIMAGE" => "qb_saveimage".to_string(),
+                    "_SCREENPRINT" => "qb_screenprint".to_string(),
+                    "_UPRINTSTRING" => "qb_uprintstring".to_string(),
+                    "_MAPUNICODE" => "qb_mapunicode".to_string(),
+                    "_LOGTRACE" => "qb_logtrace".to_string(),
+                    "_LOGINFO" => "qb_loginfo".to_string(),
+                    "_LOGWARN" => "qb_logwarn".to_string(),
+                    "_LOGERROR" => "qb_logerror".to_string(),
+                    "_LOGMINLEVEL" => "qb_logminlevel".to_string(),
+                    "_SNDRAWBATCH" => "qb_sndrawbatch".to_string(),
+                    "_MIDISOUNDBANK" => "qb_midisoundbank".to_string(),
+                    "_NEWHANDLER" => "qb_newhandler".to_string(),
                     // Default: user-defined SUBs use qb_sub_ prefix
                     _ => format!("qb_sub_{}", c_identifier(name).to_lowercase()),
                 };

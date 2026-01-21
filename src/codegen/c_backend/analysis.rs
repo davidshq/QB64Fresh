@@ -463,6 +463,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn test_collect_data_string_values() {
         let program = TypedProgram::new(vec![TypedStatement::new(
             TypedStatementKind::Data {

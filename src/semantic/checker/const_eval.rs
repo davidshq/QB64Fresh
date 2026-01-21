@@ -671,6 +671,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn test_evaluate_float_literal() {
         let tc = checker();
         let expr = float_lit(3.14);

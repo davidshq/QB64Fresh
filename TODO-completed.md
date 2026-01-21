@@ -427,15 +427,15 @@
 
 - **Total source code:** ~30,000+ lines of Rust
 - **Unit tests:** 217
-- **Integration tests:** 454
-- **Total tests:** 750+
+- **Integration tests:** 486
+- **Total tests:** 800+
 - **Line coverage:** 81.63% ✅
 - **Statement types:** 60+
-- **Built-in functions:** 85+ (includes QB64 extensions)
+- **Built-in functions:** 180+ (includes QB64 extensions)
 
 ---
 
-*Last updated: 2026-01-20 (Session 031 - 99.1% QB4.5 compatibility excluding open_gl)*
+*Last updated: 2026-01-20 (Session 032 - 99.1% QB4.5 compatibility excluding open_gl)*
 
 ---
 
@@ -646,3 +646,70 @@
   - n54: 3/3 (100%)
 - Only remaining failure: frog.bas (bug in original code: `SCORE > HISCORE` where HISCORE is a UDT array)
 - Integration tests: 409 → 454 tests
+
+---
+
+## Phase 7: QB64 Extension Functions ✅ (Session 032)
+
+### Error Handling Extended
+- [x] `_INCLERRORFILE$` function - get include file where error occurred
+- [x] `_INCLERRORLINE` function - get line number in include file
+
+### Utility Functions
+- [x] `_STATUSCODE` function - get status code from last operation
+
+### Networking Extended
+- [x] `_CONNECTIONADDRESS(handle)` function - get connection IP address as numeric
+- [x] `_CONNECTIONADDRESS$(handle)` function - get connection IP as string
+
+### HSB Color Functions
+- [x] `_HSB32(h, s, b)` function - create 32-bit color from HSB values
+- [x] `_HSBA32(h, s, b, a)` function - create 32-bit color from HSBA values
+- [x] `_HUE32(color)` function - extract hue component from color
+- [x] `_SATURATION32(color)` function - extract saturation component from color
+- [x] `_BRIGHTNESS32(color)` function - extract brightness component from color
+
+### Memory Extended
+- [x] `_MEMELEMENT(mem, index)` function - get element offset in memory block
+- [x] `_MEMIMAGE(handle)` function - get memory block for image
+- [x] `_MEMSOUND(handle)` function - get memory block for sound
+
+### Sound Extended
+- [x] `_SNDNEW(frames, channels, bits)` function - create new sound buffer
+
+### File I/O Extended
+- [x] `_FILES$(pattern$)` function - file listing iterator
+
+### Device Input Extended
+- [x] `_LASTHANDLER` function - get last event handler
+
+### Unicode Font Functions
+- [x] `_UCHARPOS(text$, pos)` function - get Unicode character position
+- [x] `_UFONTHEIGHT(handle)` function - get Unicode font height
+- [x] `_ULINESPACING` function - get Unicode line spacing
+- [x] `_UPRINTWIDTH(text$)` function - get Unicode print width
+
+### Graphics Extended Statements
+- [x] `_SAVEIMAGE filename$, handle` statement - save image to file
+- [x] `_SCREENPRINT text$` statement - print screen contents
+
+### Unicode Font Statements
+- [x] `_UPRINTSTRING x, y, text$` statement - print Unicode string
+- [x] `_MAPUNICODE codepoint, charcode` statement - map Unicode code point
+
+### Logging Statements
+- [x] `_LOGTRACE message$` statement - log trace message
+- [x] `_LOGINFO message$` statement - log info message
+- [x] `_LOGWARN message$` statement - log warning message
+- [x] `_LOGERROR message$` statement - log error message
+- [x] `_LOGMINLEVEL level` statement - set minimum log level
+
+### Sound Extended Statements
+- [x] `_SNDRAWBATCH handle, samples, count` statement - batch raw audio samples
+- [x] `_MIDISOUNDBANK filename$` statement - set MIDI soundbank file
+
+### Device Input Extended Statements
+- [x] `_NEWHANDLER callback` statement - create new event handler
+
+### Test Results
+- Integration tests: 454 → 486 tests (+32 new tests)

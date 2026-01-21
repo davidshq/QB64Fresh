@@ -1407,6 +1407,176 @@ impl SemanticAnalyzer {
 
         // Print mode
         self.register_builtin_sub("_PRINTMODE", &[("mode", BasicType::Integer)]);
+
+        // ==========================================
+        // QB64 Extension Functions (Session 032+)
+        // ==========================================
+
+        // Error handling extended - include file info
+        self.register_builtin_function("_INCLERRORFILE$", &[], BasicType::String);
+        self.register_builtin_function("_INCLERRORLINE", &[], BasicType::Long);
+
+        // Utility function - status code from last operation
+        self.register_builtin_function("_STATUSCODE", &[], BasicType::Long);
+
+        // Networking extended - connection address info
+        self.register_builtin_function(
+            "_CONNECTIONADDRESS",
+            &[("handle", BasicType::Long)],
+            BasicType::Long,
+        );
+        self.register_builtin_function(
+            "_CONNECTIONADDRESS$",
+            &[("handle", BasicType::Long)],
+            BasicType::String,
+        );
+
+        // HSB color functions (Hue, Saturation, Brightness)
+        // _HSB32 creates a 32-bit color from HSB values (0-360, 0-100, 0-100)
+        self.register_builtin_function(
+            "_HSB32",
+            &[
+                ("hue", BasicType::Single),
+                ("saturation", BasicType::Single),
+                ("brightness", BasicType::Single),
+            ],
+            BasicType::Long,
+        );
+        // _HSBA32 creates a 32-bit color from HSBA values
+        self.register_builtin_function(
+            "_HSBA32",
+            &[
+                ("hue", BasicType::Single),
+                ("saturation", BasicType::Single),
+                ("brightness", BasicType::Single),
+                ("alpha", BasicType::Single),
+            ],
+            BasicType::Long,
+        );
+        // Extract HSB components from a color
+        self.register_builtin_function("_HUE32", &[("color", BasicType::Long)], BasicType::Single);
+        self.register_builtin_function(
+            "_SATURATION32",
+            &[("color", BasicType::Long)],
+            BasicType::Single,
+        );
+        self.register_builtin_function(
+            "_BRIGHTNESS32",
+            &[("color", BasicType::Long)],
+            BasicType::Single,
+        );
+
+        // Memory extended functions
+        // _MEMELEMENT returns offset of array element in memory block
+        self.register_builtin_function(
+            "_MEMELEMENT",
+            &[("mem", BasicType::Offset), ("index", BasicType::Long)],
+            BasicType::Offset,
+        );
+        // _MEMIMAGE returns memory block for an image handle
+        self.register_builtin_function(
+            "_MEMIMAGE",
+            &[("handle", BasicType::Long)],
+            BasicType::Offset,
+        );
+        // _MEMSOUND returns memory block for a sound handle
+        self.register_builtin_function(
+            "_MEMSOUND",
+            &[("handle", BasicType::Long)],
+            BasicType::Offset,
+        );
+
+        // Sound extended - create new sound buffer
+        self.register_builtin_function(
+            "_SNDNEW",
+            &[
+                ("frames", BasicType::Long),
+                ("channels", BasicType::Long),
+                ("bits", BasicType::Long),
+            ],
+            BasicType::Long,
+        );
+
+        // File I/O extended - file listing iterator
+        self.register_builtin_function(
+            "_FILES$",
+            &[("pattern", BasicType::String)],
+            BasicType::String,
+        );
+
+        // Device input extended
+        self.register_builtin_function("_LASTHANDLER", &[], BasicType::Long);
+
+        // Unicode font functions
+        self.register_builtin_function(
+            "_UCHARPOS",
+            &[("text", BasicType::String), ("pos", BasicType::Long)],
+            BasicType::Long,
+        );
+        self.register_builtin_function(
+            "_UFONTHEIGHT",
+            &[("handle", BasicType::Long)],
+            BasicType::Long,
+        );
+        self.register_builtin_function("_ULINESPACING", &[], BasicType::Long);
+        self.register_builtin_function(
+            "_UPRINTWIDTH",
+            &[("text", BasicType::String)],
+            BasicType::Long,
+        );
+
+        // ==========================================
+        // QB64 Extension SUBs (Session 032+)
+        // ==========================================
+
+        // Graphics extended - save image to file
+        self.register_builtin_sub(
+            "_SAVEIMAGE",
+            &[("filename", BasicType::String), ("handle", BasicType::Long)],
+        );
+
+        // Graphics - print screen contents
+        self.register_builtin_sub("_SCREENPRINT", &[("text", BasicType::String)]);
+
+        // Unicode font statements
+        self.register_builtin_sub(
+            "_UPRINTSTRING",
+            &[
+                ("x", BasicType::Long),
+                ("y", BasicType::Long),
+                ("text", BasicType::String),
+            ],
+        );
+        self.register_builtin_sub(
+            "_MAPUNICODE",
+            &[
+                ("codepoint", BasicType::Long),
+                ("charcode", BasicType::Long),
+            ],
+        );
+
+        // Logging statements
+        self.register_builtin_sub("_LOGTRACE", &[("message", BasicType::String)]);
+        self.register_builtin_sub("_LOGINFO", &[("message", BasicType::String)]);
+        self.register_builtin_sub("_LOGWARN", &[("message", BasicType::String)]);
+        self.register_builtin_sub("_LOGERROR", &[("message", BasicType::String)]);
+        self.register_builtin_sub("_LOGMINLEVEL", &[("level", BasicType::Long)]);
+
+        // Sound extended - batch raw samples
+        self.register_builtin_sub(
+            "_SNDRAWBATCH",
+            &[
+                ("handle", BasicType::Long),
+                ("samples", BasicType::Offset),
+                ("count", BasicType::Long),
+            ],
+        );
+
+        // MIDI soundbank
+        self.register_builtin_sub("_MIDISOUNDBANK", &[("filename", BasicType::String)]);
+
+        // Device input extended
+        self.register_builtin_sub("_NEWHANDLER", &[("callback", BasicType::Offset)]);
     }
 
     /// Registers a single built-in function.
