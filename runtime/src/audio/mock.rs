@@ -319,4 +319,110 @@ mod tests {
 
         backend.snd_close(handle).unwrap();
     }
+
+    #[test]
+    fn test_mock_error_handling() {
+        let mut backend = MockAudioBackend::new();
+
+        // Operations on uninitialized backend should fail
+        assert!(backend.beep().is_err());
+        assert!(backend.sound(440.0, 1.0).is_err());
+        assert!(backend.play("O4C").is_err());
+
+        // snd_open returns -1 when not initialized
+        assert_eq!(backend.snd_open("test.wav"), -1);
+
+        backend.initialize().unwrap();
+
+        // Double initialization should fail
+        assert!(backend.initialize().is_err());
+
+        // Invalid handle operations should fail
+        assert!(backend.snd_close(999).is_err());
+        assert!(backend.snd_play(999).is_err());
+        assert!(backend.snd_stop(999).is_err());
+        assert!(backend.snd_vol(999, 0.5).is_err());
+    }
+
+    #[test]
+    fn test_mock_basic_sound_operations() {
+        let mut backend = MockAudioBackend::new();
+        backend.initialize().unwrap();
+
+        // BEEP should succeed
+        assert!(backend.beep().is_ok());
+
+        // SOUND should succeed
+        assert!(backend.sound(440.0, 0.5).is_ok());
+
+        // PLAY (MML) should succeed
+        assert!(backend.play("O4L4CDEFGAB").is_ok());
+    }
+
+    #[test]
+    fn test_mock_multiple_sounds() {
+        let mut backend = MockAudioBackend::new();
+        backend.initialize().unwrap();
+
+        // Open multiple sounds
+        let h1 = backend.snd_open("sound1.wav");
+        let h2 = backend.snd_open("sound2.wav");
+        let h3 = backend.snd_open("sound3.wav");
+
+        assert!(h1 > 0);
+        assert!(h2 > 0);
+        assert!(h3 > 0);
+        assert_ne!(h1, h2);
+        assert_ne!(h2, h3);
+
+        // Play all
+        backend.snd_play(h1).unwrap();
+        backend.snd_play(h2).unwrap();
+        backend.snd_play(h3).unwrap();
+
+        assert!(backend.snd_playing(h1));
+        assert!(backend.snd_playing(h2));
+        assert!(backend.snd_playing(h3));
+
+        // Close first, others should still work
+        backend.snd_close(h1).unwrap();
+        assert!(backend.snd_playing(h2));
+        assert!(backend.snd_playing(h3));
+
+        // Shutdown clears all sounds
+        backend.shutdown().unwrap();
+        assert!(!backend.snd_playing(h2));
+        assert!(!backend.snd_playing(h3));
+    }
+
+    #[test]
+    fn test_mock_looping() {
+        let mut backend = MockAudioBackend::new();
+        backend.initialize().unwrap();
+
+        let handle = backend.snd_open("loop.wav");
+        // snd_loop starts looped playback
+        backend.snd_loop(handle).unwrap();
+        assert!(backend.snd_playing(handle));
+
+        backend.snd_close(handle).unwrap();
+    }
+
+    #[test]
+    fn test_mock_query_functions() {
+        let mut backend = MockAudioBackend::new();
+        backend.initialize().unwrap();
+
+        let handle = backend.snd_open("test.wav");
+
+        // Query functions return defaults for mock
+        assert_eq!(backend.snd_len(handle), 1.0); // Default length
+        assert_eq!(backend.snd_getpos(handle), 0.0); // Default position
+
+        // Invalid handle queries return 0
+        assert_eq!(backend.snd_len(999), 0.0);
+        assert_eq!(backend.snd_getpos(999), 0.0);
+        assert!(!backend.snd_playing(999));
+        assert!(!backend.snd_paused(999));
+    }
 }

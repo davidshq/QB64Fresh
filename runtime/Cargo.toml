@@ -38,3 +38,4 @@ dialogs = ["rfd"]  # Native file dialogs
 
 [dev-dependencies]
 # For testing
+tempfile = "3"

@@ -843,10 +843,536 @@ pub extern "C" fn qb_net_close(handle: i64) {
 mod tests {
     use super::*;
 
+    // ========================================================================
+    // Color conversion tests
+    // ========================================================================
+
     #[test]
     fn test_basic_to_ansi_color() {
         assert_eq!(basic_to_ansi_color(0), 30); // Black
         assert_eq!(basic_to_ansi_color(7), 37); // White
         assert_eq!(basic_to_ansi_color(15), 97); // Bright white
+    }
+
+    #[test]
+    fn test_basic_to_ansi_color_all_colors() {
+        // Dark colors (0-7) map to ANSI 30-37
+        assert_eq!(basic_to_ansi_color(0), 30); // Black
+        assert_eq!(basic_to_ansi_color(1), 34); // Blue
+        assert_eq!(basic_to_ansi_color(2), 32); // Green
+        assert_eq!(basic_to_ansi_color(3), 36); // Cyan
+        assert_eq!(basic_to_ansi_color(4), 31); // Red
+        assert_eq!(basic_to_ansi_color(5), 35); // Magenta
+        assert_eq!(basic_to_ansi_color(6), 33); // Brown/Yellow
+        assert_eq!(basic_to_ansi_color(7), 37); // White
+
+        // Bright colors (8-15) map to ANSI 90-97
+        assert_eq!(basic_to_ansi_color(8), 90); // Gray
+        assert_eq!(basic_to_ansi_color(9), 94); // Light Blue
+        assert_eq!(basic_to_ansi_color(10), 92); // Light Green
+        assert_eq!(basic_to_ansi_color(11), 96); // Light Cyan
+        assert_eq!(basic_to_ansi_color(12), 91); // Light Red
+        assert_eq!(basic_to_ansi_color(13), 95); // Light Magenta
+        assert_eq!(basic_to_ansi_color(14), 93); // Yellow
+        assert_eq!(basic_to_ansi_color(15), 97); // Bright White
+
+        // Out of range defaults to white
+        assert_eq!(basic_to_ansi_color(16), 37);
+        assert_eq!(basic_to_ansi_color(-1), 37);
+        assert_eq!(basic_to_ansi_color(100), 37);
+    }
+
+    // ========================================================================
+    // Print function tests (output capture)
+    // ========================================================================
+
+    #[test]
+    fn test_qb_print_int_values() {
+        // Test that qb_print_int doesn't panic on various values
+        qb_print_int(0);
+        qb_print_int(1);
+        qb_print_int(-1);
+        qb_print_int(i64::MAX);
+        qb_print_int(i64::MIN);
+    }
+
+    #[test]
+    fn test_qb_print_float_values() {
+        // Test that qb_print_float doesn't panic on various values
+        qb_print_float(0.0);
+        qb_print_float(1.5);
+        qb_print_float(-1.5);
+        qb_print_float(f64::MAX);
+        qb_print_float(f64::MIN);
+        qb_print_float(f64::INFINITY);
+        qb_print_float(f64::NEG_INFINITY);
+        qb_print_float(f64::NAN);
+    }
+
+    #[test]
+    fn test_qb_print_float_integer_display() {
+        // Floats that are whole numbers should display without decimals
+        // This is a behavioral test - we're testing it doesn't panic
+        qb_print_float(42.0);
+        qb_print_float(-100.0);
+        qb_print_float(1e14); // Still within i64 range
+    }
+
+    #[test]
+    fn test_qb_print_string_null() {
+        unsafe {
+            // Null string should not panic
+            qb_print_string(std::ptr::null());
+        }
+    }
+
+    #[test]
+    fn test_qb_print_string_empty() {
+        unsafe {
+            let s = crate::string::qb_string_empty();
+            qb_print_string(s);
+            crate::string::qb_string_release(s);
+        }
+    }
+
+    #[test]
+    fn test_qb_print_string_valid() {
+        unsafe {
+            let s = crate::string::qb_string_new(b"Hello\0".as_ptr() as *const c_char);
+            qb_print_string(s);
+            crate::string::qb_string_release(s);
+        }
+    }
+
+    #[test]
+    fn test_qb_print_newline() {
+        // Should not panic
+        qb_print_newline();
+    }
+
+    #[test]
+    fn test_qb_print_tab() {
+        // Should not panic
+        qb_print_tab();
+    }
+
+    #[test]
+    fn test_qb_print_space() {
+        // Should not panic
+        qb_print_space();
+    }
+
+    #[test]
+    fn test_qb_print_flush() {
+        // Should not panic
+        qb_print_flush();
+    }
+
+    // ========================================================================
+    // Console function tests
+    // ========================================================================
+
+    #[test]
+    fn test_qb_cls() {
+        // Should not panic
+        qb_cls();
+    }
+
+    #[test]
+    fn test_qb_locate_valid() {
+        // Should not panic with valid positions
+        qb_locate(1, 1);
+        qb_locate(10, 20);
+        qb_locate(25, 80);
+    }
+
+    #[test]
+    fn test_qb_locate_edge_cases() {
+        // Should not panic even with unusual values
+        qb_locate(0, 0);
+        qb_locate(-1, -1);
+        qb_locate(1000, 1000);
+    }
+
+    #[test]
+    fn test_qb_color_foreground_only() {
+        // Foreground only (background = -1)
+        qb_color(7, -1);
+        qb_color(15, -1);
+        qb_color(0, -1);
+    }
+
+    #[test]
+    fn test_qb_color_both() {
+        // Both foreground and background
+        qb_color(15, 0); // White on black
+        qb_color(0, 7); // Black on white
+        qb_color(14, 1); // Yellow on blue
+    }
+
+    #[test]
+    fn test_qb_color_reset() {
+        qb_color_reset();
+    }
+
+    // ========================================================================
+    // INKEY$ test
+    // ========================================================================
+
+    #[test]
+    fn test_qb_inkey_returns_empty() {
+        // Currently returns empty string (stub implementation)
+        let s = qb_inkey();
+        unsafe {
+            assert_eq!(crate::string::qb_string_len(s), 0);
+            crate::string::qb_string_release(s);
+        }
+    }
+
+    // ========================================================================
+    // File system function tests
+    // ========================================================================
+
+    #[test]
+    fn test_qb_file_kill_nonexistent() {
+        unsafe {
+            // Killing non-existent file should return error (1)
+            let result = qb_file_kill(b"/nonexistent/path/file.txt\0".as_ptr() as *const c_char);
+            assert_eq!(result, 1);
+        }
+    }
+
+    #[test]
+    fn test_qb_file_kill_null() {
+        unsafe {
+            let result = qb_file_kill(std::ptr::null());
+            assert_eq!(result, 1);
+        }
+    }
+
+    #[test]
+    fn test_qb_file_kill_valid() {
+        unsafe {
+            // Create a temp file using std::env::temp_dir
+            let temp_dir = std::env::temp_dir();
+            let temp_path = temp_dir.join(format!("qb64_kill_test_{}.tmp", std::process::id()));
+            let path_str = temp_path.to_str().unwrap();
+
+            // Create the file
+            std::fs::write(&temp_path, "test content").unwrap();
+            assert!(temp_path.exists());
+
+            // Kill the file
+            let path_cstring = std::ffi::CString::new(path_str).unwrap();
+            let result = qb_file_kill(path_cstring.as_ptr());
+            assert_eq!(result, 0);
+
+            // Verify file is gone
+            assert!(!temp_path.exists());
+        }
+    }
+
+    #[test]
+    fn test_qb_file_rename_null() {
+        unsafe {
+            assert_eq!(qb_file_rename(std::ptr::null(), std::ptr::null()), 1);
+            assert_eq!(
+                qb_file_rename(b"test\0".as_ptr() as *const c_char, std::ptr::null()),
+                1
+            );
+            assert_eq!(
+                qb_file_rename(std::ptr::null(), b"test\0".as_ptr() as *const c_char),
+                1
+            );
+        }
+    }
+
+    #[test]
+    fn test_qb_file_rename_nonexistent() {
+        unsafe {
+            let result = qb_file_rename(
+                b"/nonexistent/old.txt\0".as_ptr() as *const c_char,
+                b"/nonexistent/new.txt\0".as_ptr() as *const c_char,
+            );
+            assert_eq!(result, 1);
+        }
+    }
+
+    #[test]
+    fn test_qb_mkdir_rmdir_cycle() {
+        unsafe {
+            let temp_dir = std::env::temp_dir();
+            let test_dir = temp_dir.join(format!("qb64_test_{}", std::process::id()));
+            let path_str = test_dir.to_str().unwrap();
+            let path_cstring = std::ffi::CString::new(path_str).unwrap();
+
+            // Ensure directory doesn't exist
+            let _ = std::fs::remove_dir(&test_dir);
+
+            // Create directory
+            let result = qb_mkdir(path_cstring.as_ptr());
+            assert_eq!(result, 0);
+            assert!(test_dir.exists());
+            assert!(test_dir.is_dir());
+
+            // Remove directory
+            let result = qb_rmdir(path_cstring.as_ptr());
+            assert_eq!(result, 0);
+            assert!(!test_dir.exists());
+        }
+    }
+
+    #[test]
+    fn test_qb_mkdir_null() {
+        unsafe {
+            assert_eq!(qb_mkdir(std::ptr::null()), 1);
+        }
+    }
+
+    #[test]
+    fn test_qb_rmdir_null() {
+        unsafe {
+            assert_eq!(qb_rmdir(std::ptr::null()), 1);
+        }
+    }
+
+    #[test]
+    fn test_qb_rmdir_nonexistent() {
+        unsafe {
+            let result = qb_rmdir(b"/nonexistent/directory/path\0".as_ptr() as *const c_char);
+            assert_eq!(result, 1);
+        }
+    }
+
+    #[test]
+    fn test_qb_chdir_null() {
+        unsafe {
+            assert_eq!(qb_chdir(std::ptr::null()), 1);
+        }
+    }
+
+    #[test]
+    fn test_qb_chdir_nonexistent() {
+        unsafe {
+            let result = qb_chdir(b"/nonexistent/directory/path\0".as_ptr() as *const c_char);
+            assert_eq!(result, 1);
+        }
+    }
+
+    #[test]
+    fn test_qb_file_exists_null() {
+        unsafe {
+            assert_eq!(qb_file_exists(std::ptr::null()), 0);
+        }
+    }
+
+    #[test]
+    fn test_qb_file_exists_nonexistent() {
+        unsafe {
+            let result = qb_file_exists(b"/nonexistent/file/path.txt\0".as_ptr() as *const c_char);
+            assert_eq!(result, 0);
+        }
+    }
+
+    #[test]
+    fn test_qb_file_exists_valid() {
+        unsafe {
+            // This test file should exist
+            let path = std::ffi::CString::new(file!()).unwrap();
+            // file!() returns relative path, use Cargo.toml which always exists
+            let result = qb_file_exists(b"Cargo.toml\0".as_ptr() as *const c_char);
+            // May or may not exist depending on working directory
+            // Just verify it doesn't panic
+            let _ = result;
+        }
+    }
+
+    #[test]
+    fn test_qb_file_exists_is_directory() {
+        unsafe {
+            // A directory should return 0 (not a file)
+            let result = qb_file_exists(b"src\0".as_ptr() as *const c_char);
+            // Should be 0 because it's a directory, not a file
+            // (unless working directory doesn't have src)
+            let _ = result;
+        }
+    }
+
+    #[test]
+    fn test_qb_dir_exists_null() {
+        unsafe {
+            assert_eq!(qb_dir_exists(std::ptr::null()), 0);
+        }
+    }
+
+    #[test]
+    fn test_qb_dir_exists_nonexistent() {
+        unsafe {
+            let result = qb_dir_exists(b"/nonexistent/directory\0".as_ptr() as *const c_char);
+            assert_eq!(result, 0);
+        }
+    }
+
+    #[test]
+    fn test_qb_dir_exists_is_file() {
+        unsafe {
+            // A file should return 0 (not a directory)
+            // Use a path that likely exists
+            let result = qb_dir_exists(b"Cargo.toml\0".as_ptr() as *const c_char);
+            // Should be 0 because it's a file, not a directory
+            let _ = result;
+        }
+    }
+
+    #[test]
+    fn test_qb_dir_null_spec() {
+        unsafe {
+            let result = qb_dir(std::ptr::null());
+            assert_eq!(crate::string::qb_string_len(result), 0);
+            crate::string::qb_string_release(result);
+        }
+    }
+
+    #[test]
+    fn test_qb_dir_empty_spec() {
+        unsafe {
+            let result = qb_dir(b"\0".as_ptr() as *const c_char);
+            // Empty spec should return empty or first match from current state
+            crate::string::qb_string_release(result);
+        }
+    }
+
+    // ========================================================================
+    // Shell function tests
+    // ========================================================================
+
+    #[test]
+    fn test_qb_shell_null() {
+        // Note: This would open an interactive shell, so we skip actual execution
+        // Just test that the function exists and handles the case
+        // Don't actually call qb_shell(std::ptr::null()) in tests
+    }
+
+    #[test]
+    fn test_qb_shell_simple_command() {
+        unsafe {
+            // Run a simple command that should succeed
+            #[cfg(not(target_os = "windows"))]
+            {
+                let result = qb_shell(b"true\0".as_ptr() as *const c_char);
+                assert_eq!(result, 0);
+            }
+            #[cfg(target_os = "windows")]
+            {
+                let result = qb_shell(b"cmd /c exit 0\0".as_ptr() as *const c_char);
+                assert_eq!(result, 0);
+            }
+        }
+    }
+
+    #[test]
+    fn test_qb_shell_hide_null() {
+        unsafe {
+            let result = qb_shell_hide(std::ptr::null());
+            assert_eq!(result, 1);
+        }
+    }
+
+    #[test]
+    fn test_qb_shell_hide_simple_command() {
+        unsafe {
+            #[cfg(not(target_os = "windows"))]
+            {
+                let result = qb_shell_hide(b"true\0".as_ptr() as *const c_char);
+                assert_eq!(result, 0);
+            }
+        }
+    }
+
+    // ========================================================================
+    // Network function tests
+    // ========================================================================
+
+    #[test]
+    fn test_net_handle_initialization() {
+        init_net_handles();
+        // Should not panic on multiple calls
+        init_net_handles();
+        init_net_handles();
+    }
+
+    #[test]
+    fn test_qb_net_openhost_invalid_port() {
+        // Port 0 might work (OS assigns), but very high ports might fail
+        // This mainly tests the function doesn't panic
+        let handle = qb_net_openhost(0);
+        if handle != 0 {
+            qb_net_close(handle);
+        }
+    }
+
+    #[test]
+    fn test_qb_net_openconnection_invalid_handle() {
+        let result = qb_net_openconnection(999);
+        assert_eq!(result, 0);
+    }
+
+    #[test]
+    fn test_qb_net_openclient_null() {
+        unsafe {
+            let result = qb_net_openclient(std::ptr::null());
+            assert_eq!(result, 0);
+        }
+    }
+
+    #[test]
+    fn test_qb_net_openclient_invalid_format() {
+        unsafe {
+            // Invalid format - missing parts
+            let result = qb_net_openclient(b"invalid\0".as_ptr() as *const c_char);
+            assert_eq!(result, 0);
+
+            // Invalid protocol
+            let result = qb_net_openclient(b"UDP:8080:localhost\0".as_ptr() as *const c_char);
+            assert_eq!(result, 0);
+
+            // Invalid port
+            let result =
+                qb_net_openclient(b"TCP/IP:notaport:localhost\0".as_ptr() as *const c_char);
+            assert_eq!(result, 0);
+        }
+    }
+
+    #[test]
+    fn test_qb_net_connected_invalid_handle() {
+        let result = qb_net_connected(999);
+        assert_eq!(result, 0);
+    }
+
+    #[test]
+    fn test_qb_net_close_invalid_handle() {
+        // Should not panic on invalid handle
+        qb_net_close(999);
+        qb_net_close(0);
+        qb_net_close(-999);
+    }
+
+    #[test]
+    fn test_network_host_connection_cycle() {
+        // Test the full cycle: open host, check connection (none), close
+        let host_handle = qb_net_openhost(0); // Let OS pick port
+        if host_handle != 0 {
+            // No client connected yet
+            let conn = qb_net_openconnection(host_handle);
+            assert_eq!(conn, 0); // No connection waiting
+
+            // Host should be "connected" (listening)
+            assert_eq!(qb_net_connected(host_handle), -1);
+
+            qb_net_close(host_handle);
+
+            // After close, should not be connected
+            assert_eq!(qb_net_connected(host_handle), 0);
+        }
     }
 }

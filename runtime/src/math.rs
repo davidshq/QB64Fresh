@@ -389,4 +389,253 @@ mod tests {
         assert_eq!(qb_min_float(5.0, 3.0), 3.0);
         assert_eq!(qb_max_float(5.0, 3.0), 5.0);
     }
+
+    // ========================================================================
+    // Edge case tests
+    // ========================================================================
+
+    #[test]
+    fn test_abs_edge_cases() {
+        // Zero
+        assert_eq!(qb_abs_int(0), 0);
+        assert_eq!(qb_abs_float(0.0), 0.0);
+
+        // Maximum values
+        assert_eq!(qb_abs_int(i64::MAX), i64::MAX);
+        assert_eq!(qb_abs_float(f64::MAX), f64::MAX);
+
+        // Very small values
+        assert_eq!(qb_abs_float(f64::MIN_POSITIVE), f64::MIN_POSITIVE);
+        assert_eq!(qb_abs_float(-f64::MIN_POSITIVE), f64::MIN_POSITIVE);
+
+        // Infinity
+        assert!(qb_abs_float(f64::INFINITY).is_infinite());
+        assert!(qb_abs_float(f64::NEG_INFINITY).is_infinite());
+
+        // NaN (abs of NaN is NaN)
+        assert!(qb_abs_float(f64::NAN).is_nan());
+    }
+
+    #[test]
+    fn test_sgn_edge_cases() {
+        // Maximum/minimum integers
+        assert_eq!(qb_sgn_int(i64::MAX), 1);
+        assert_eq!(qb_sgn_int(i64::MIN), -1);
+
+        // Float edge cases
+        assert_eq!(qb_sgn_float(f64::INFINITY), 1);
+        assert_eq!(qb_sgn_float(f64::NEG_INFINITY), -1);
+        assert_eq!(qb_sgn_float(f64::MIN_POSITIVE), 1);
+        assert_eq!(qb_sgn_float(-f64::MIN_POSITIVE), -1);
+
+        // NaN should return 0 (or undefined, but we test current behavior)
+        // Note: NaN comparisons are always false, so SGN returns 0
+        assert_eq!(qb_sgn_float(f64::NAN), 0);
+    }
+
+    #[test]
+    fn test_int_fix_edge_cases() {
+        // Zero
+        assert_eq!(qb_int(0.0), 0.0);
+        assert_eq!(qb_fix(0.0), 0.0);
+
+        // Already integers
+        assert_eq!(qb_int(5.0), 5.0);
+        assert_eq!(qb_fix(5.0), 5.0);
+        assert_eq!(qb_int(-5.0), -5.0);
+        assert_eq!(qb_fix(-5.0), -5.0);
+
+        // Very small decimals
+        assert_eq!(qb_int(0.0001), 0.0);
+        assert_eq!(qb_fix(0.0001), 0.0);
+        assert_eq!(qb_int(-0.0001), -1.0); // INT floors
+        assert_eq!(qb_fix(-0.0001), 0.0); // FIX truncates toward zero
+
+        // Infinity
+        assert!(qb_int(f64::INFINITY).is_infinite());
+        assert!(qb_fix(f64::INFINITY).is_infinite());
+    }
+
+    #[test]
+    fn test_cint_clng_edge_cases() {
+        // Normal rounding (round-half-away-from-zero)
+        assert_eq!(qb_cint(2.4), 2);
+        assert_eq!(qb_cint(2.5), 3); // Rounds away from zero
+        assert_eq!(qb_cint(2.6), 3);
+        assert_eq!(qb_cint(3.5), 4); // Rounds away from zero
+
+        // Negative values (round-half-away-from-zero)
+        assert_eq!(qb_cint(-2.4), -2);
+        assert_eq!(qb_cint(-2.5), -3); // Rounds away from zero
+        assert_eq!(qb_cint(-2.6), -3);
+
+        // CLNG with larger values
+        assert_eq!(qb_clng(1000.5), 1001);
+        assert_eq!(qb_clng(-1000.5), -1001);
+    }
+
+    #[test]
+    fn test_trig_edge_cases() {
+        // Common angles
+        assert!((qb_sin(PI / 2.0) - 1.0).abs() < 1e-10);
+        assert!((qb_cos(PI) + 1.0).abs() < 1e-10);
+
+        // Large values (should still work due to periodicity)
+        let large_angle = 100.0 * PI;
+        assert!(qb_sin(large_angle).abs() < 1e-10);
+        assert!((qb_cos(large_angle) - 1.0).abs() < 1e-10);
+
+        // TAN at 45 degrees
+        assert!((qb_tan(PI / 4.0) - 1.0).abs() < 1e-10);
+
+        // ATN
+        assert!((qb_atn(1.0) - PI / 4.0).abs() < 1e-10);
+        assert!((qb_atn(0.0) - 0.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_hyperbolic_edge_cases() {
+        // At zero
+        assert!((qb_sinh(0.0) - 0.0).abs() < 1e-10);
+        assert!((qb_cosh(0.0) - 1.0).abs() < 1e-10);
+        assert!((qb_tanh(0.0) - 0.0).abs() < 1e-10);
+
+        // Large values (tanh approaches +/- 1)
+        assert!((qb_tanh(100.0) - 1.0).abs() < 1e-10);
+        assert!((qb_tanh(-100.0) + 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_sqr_edge_cases() {
+        // Zero
+        assert_eq!(qb_sqr(0.0), 0.0);
+
+        // Perfect squares
+        assert_eq!(qb_sqr(1.0), 1.0);
+        assert_eq!(qb_sqr(16.0), 4.0);
+        assert_eq!(qb_sqr(100.0), 10.0);
+
+        // Non-perfect squares
+        assert!((qb_sqr(2.0) - std::f64::consts::SQRT_2).abs() < 1e-10);
+
+        // Large values
+        assert!((qb_sqr(1e100) - 1e50).abs() / 1e50 < 1e-10);
+    }
+
+    #[test]
+    fn test_log_edge_cases() {
+        // Log of 1 is 0
+        assert_eq!(qb_log(1.0), 0.0);
+        assert_eq!(qb_log10(1.0), 0.0);
+
+        // Log10 of powers of 10
+        assert!((qb_log10(10.0) - 1.0).abs() < 1e-10);
+        assert!((qb_log10(100.0) - 2.0).abs() < 1e-10);
+        assert!((qb_log10(1000.0) - 3.0).abs() < 1e-10);
+
+        // Natural log of e^n
+        assert!((qb_log(E * E) - 2.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_exp_edge_cases() {
+        // exp(0) = 1
+        assert_eq!(qb_exp(0.0), 1.0);
+
+        // exp(1) = e
+        assert!((qb_exp(1.0) - E).abs() < 1e-10);
+
+        // Negative exponents
+        assert!((qb_exp(-1.0) - 1.0 / E).abs() < 1e-10);
+
+        // Large positive (approaches infinity)
+        assert!(qb_exp(1000.0).is_infinite());
+
+        // Large negative (approaches zero)
+        assert!(qb_exp(-1000.0) < 1e-300);
+    }
+
+    #[test]
+    fn test_pow_edge_cases() {
+        // Anything to the 0 power is 1
+        assert_eq!(qb_pow(5.0, 0.0), 1.0);
+        assert_eq!(qb_pow_int(5.0, 0), 1.0);
+
+        // Anything to the 1 power is itself
+        assert_eq!(qb_pow(5.0, 1.0), 5.0);
+        assert_eq!(qb_pow_int(5.0, 1), 5.0);
+
+        // 0 to any positive power is 0
+        assert_eq!(qb_pow(0.0, 5.0), 0.0);
+        assert_eq!(qb_pow_int(0.0, 5), 0.0);
+
+        // 1 to any power is 1
+        assert_eq!(qb_pow(1.0, 1000.0), 1.0);
+        assert_eq!(qb_pow_int(1.0, 1000), 1.0);
+
+        // Negative exponents
+        assert!((qb_pow(2.0, -1.0) - 0.5).abs() < 1e-10);
+        assert!((qb_pow_int(2.0, -1) - 0.5).abs() < 1e-10);
+
+        // Fractional exponents (square root)
+        assert!((qb_pow(4.0, 0.5) - 2.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_rnd_edge_cases() {
+        // RND with negative argument should reseed (test doesn't crash)
+        let _ = qb_rnd(-1.0);
+
+        // RND with 0 should return previous value (test doesn't crash)
+        let prev = qb_rnd(1.0);
+        let same = qb_rnd(0.0);
+        assert_eq!(prev, same);
+
+        // Many RND calls should all be in range [0, 1)
+        for _ in 0..100 {
+            let r = qb_rnd(1.0);
+            assert!(r >= 0.0 && r < 1.0, "RND returned out of range: {}", r);
+        }
+    }
+
+    #[test]
+    fn test_min_max_edge_cases() {
+        // Same values
+        assert_eq!(qb_min_int(5, 5), 5);
+        assert_eq!(qb_max_int(5, 5), 5);
+        assert_eq!(qb_min_float(5.0, 5.0), 5.0);
+        assert_eq!(qb_max_float(5.0, 5.0), 5.0);
+
+        // Extreme values
+        assert_eq!(qb_min_int(i64::MIN, i64::MAX), i64::MIN);
+        assert_eq!(qb_max_int(i64::MIN, i64::MAX), i64::MAX);
+
+        // Negative values
+        assert_eq!(qb_min_int(-10, -5), -10);
+        assert_eq!(qb_max_int(-10, -5), -5);
+
+        // Float infinity
+        assert!(qb_min_float(0.0, f64::NEG_INFINITY).is_infinite());
+        assert!(qb_max_float(0.0, f64::INFINITY).is_infinite());
+    }
+
+    #[test]
+    fn test_timer_basic() {
+        // Timer should return a non-negative value
+        let t1 = qb_timer();
+        assert!(t1 >= 0.0);
+
+        // Timer should be less than seconds in a day (86400)
+        assert!(t1 < 86400.0);
+
+        // Two calls should return increasing values (or same if very fast)
+        let t2 = qb_timer();
+        assert!(t2 >= t1);
+    }
+
+    #[test]
+    fn test_pi_e_constants() {
+        assert!((qb_pi() - PI).abs() < 1e-15);
+        assert!((qb_e() - E).abs() < 1e-15);
+    }
 }

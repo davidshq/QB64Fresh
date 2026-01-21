@@ -755,4 +755,818 @@ mod tests {
             qb_string_release(s);
         }
     }
+
+    // ========================================================================
+    // NULL POINTER HANDLING TESTS
+    // ========================================================================
+
+    #[test]
+    fn test_null_string_len() {
+        unsafe {
+            assert_eq!(qb_string_len(std::ptr::null()), 0);
+        }
+    }
+
+    #[test]
+    fn test_null_string_data() {
+        unsafe {
+            // Should return empty string, not crash
+            let data = qb_string_data(std::ptr::null());
+            assert!(!data.is_null());
+            // The returned string should be empty (null-terminated)
+            assert_eq!(*data, 0);
+        }
+    }
+
+    #[test]
+    fn test_null_string_retain() {
+        unsafe {
+            // Retain on null should return null, not crash
+            let result = qb_string_retain(std::ptr::null_mut());
+            assert!(result.is_null());
+        }
+    }
+
+    #[test]
+    fn test_null_string_release() {
+        unsafe {
+            // Release on null should not crash
+            qb_string_release(std::ptr::null_mut());
+        }
+    }
+
+    #[test]
+    fn test_null_string_concat_both() {
+        unsafe {
+            let result = qb_string_concat(std::ptr::null(), std::ptr::null());
+            assert_eq!(qb_string_len(result), 0);
+            qb_string_release(result);
+        }
+    }
+
+    #[test]
+    fn test_null_string_concat_first() {
+        unsafe {
+            let b = qb_string_new(b"World\0".as_ptr() as *const c_char);
+            let result = qb_string_concat(std::ptr::null(), b);
+            assert_eq!(qb_string_len(result), 5);
+            qb_string_release(b);
+            qb_string_release(result);
+        }
+    }
+
+    #[test]
+    fn test_null_string_concat_second() {
+        unsafe {
+            let a = qb_string_new(b"Hello\0".as_ptr() as *const c_char);
+            let result = qb_string_concat(a, std::ptr::null());
+            assert_eq!(qb_string_len(result), 5);
+            qb_string_release(a);
+            qb_string_release(result);
+        }
+    }
+
+    #[test]
+    fn test_null_string_compare() {
+        unsafe {
+            // Comparing nulls should not crash
+            let result = qb_string_compare(std::ptr::null(), std::ptr::null());
+            assert_eq!(result, 0); // Both empty = equal
+        }
+    }
+
+    #[test]
+    fn test_null_asc() {
+        unsafe {
+            assert_eq!(qb_asc(std::ptr::null()), 0);
+        }
+    }
+
+    #[test]
+    fn test_null_left() {
+        unsafe {
+            let result = qb_left(std::ptr::null(), 5);
+            assert_eq!(qb_string_len(result), 0);
+            qb_string_release(result);
+        }
+    }
+
+    #[test]
+    fn test_null_right() {
+        unsafe {
+            let result = qb_right(std::ptr::null(), 5);
+            assert_eq!(qb_string_len(result), 0);
+            qb_string_release(result);
+        }
+    }
+
+    #[test]
+    fn test_null_mid() {
+        unsafe {
+            let result = qb_mid(std::ptr::null(), 1, 5);
+            assert_eq!(qb_string_len(result), 0);
+            qb_string_release(result);
+        }
+    }
+
+    #[test]
+    fn test_null_instr() {
+        unsafe {
+            assert_eq!(qb_instr(1, std::ptr::null(), std::ptr::null()), 0);
+        }
+    }
+
+    #[test]
+    fn test_null_ucase() {
+        unsafe {
+            let result = qb_ucase(std::ptr::null());
+            assert_eq!(qb_string_len(result), 0);
+            qb_string_release(result);
+        }
+    }
+
+    #[test]
+    fn test_null_lcase() {
+        unsafe {
+            let result = qb_lcase(std::ptr::null());
+            assert_eq!(qb_string_len(result), 0);
+            qb_string_release(result);
+        }
+    }
+
+    #[test]
+    fn test_null_ltrim() {
+        unsafe {
+            let result = qb_ltrim(std::ptr::null());
+            assert_eq!(qb_string_len(result), 0);
+            qb_string_release(result);
+        }
+    }
+
+    #[test]
+    fn test_null_rtrim() {
+        unsafe {
+            let result = qb_rtrim(std::ptr::null());
+            assert_eq!(qb_string_len(result), 0);
+            qb_string_release(result);
+        }
+    }
+
+    #[test]
+    fn test_null_val() {
+        unsafe {
+            assert_eq!(qb_val(std::ptr::null()), 0.0);
+        }
+    }
+
+    // ========================================================================
+    // REFERENCE COUNTING EDGE CASES
+    // ========================================================================
+
+    #[test]
+    fn test_multiple_retain_release() {
+        unsafe {
+            let s = qb_string_new(b"Test\0".as_ptr() as *const c_char);
+
+            // Retain multiple times
+            qb_string_retain(s);
+            qb_string_retain(s);
+            qb_string_retain(s);
+
+            // Should still be valid after multiple retains
+            assert_eq!(qb_string_len(s), 4);
+
+            // Release all references
+            qb_string_release(s);
+            qb_string_release(s);
+            qb_string_release(s);
+            qb_string_release(s); // Original reference
+        }
+    }
+
+    #[test]
+    fn test_refcount_after_operations() {
+        unsafe {
+            let a = qb_string_new(b"Hello\0".as_ptr() as *const c_char);
+            let b = qb_string_new(b"World\0".as_ptr() as *const c_char);
+
+            // Operations should create new strings, not modify originals
+            let concat = qb_string_concat(a, b);
+            let upper = qb_ucase(a);
+            let lower = qb_lcase(a);
+            let left = qb_left(a, 3);
+            let right = qb_right(a, 3);
+            let mid = qb_mid(a, 2, 3);
+
+            // Original strings should still be valid
+            assert_eq!(qb_string_len(a), 5);
+            assert_eq!(qb_string_len(b), 5);
+
+            // Clean up all strings
+            qb_string_release(a);
+            qb_string_release(b);
+            qb_string_release(concat);
+            qb_string_release(upper);
+            qb_string_release(lower);
+            qb_string_release(left);
+            qb_string_release(right);
+            qb_string_release(mid);
+        }
+    }
+
+    // ========================================================================
+    // EDGE CASE VALUE TESTS
+    // ========================================================================
+
+    #[test]
+    fn test_left_negative() {
+        unsafe {
+            let s = qb_string_new(b"Hello\0".as_ptr() as *const c_char);
+            let result = qb_left(s, -1);
+            assert_eq!(qb_string_len(result), 0);
+            qb_string_release(s);
+            qb_string_release(result);
+        }
+    }
+
+    #[test]
+    fn test_left_zero() {
+        unsafe {
+            let s = qb_string_new(b"Hello\0".as_ptr() as *const c_char);
+            let result = qb_left(s, 0);
+            assert_eq!(qb_string_len(result), 0);
+            qb_string_release(s);
+            qb_string_release(result);
+        }
+    }
+
+    #[test]
+    fn test_left_exceeds_length() {
+        unsafe {
+            let s = qb_string_new(b"Hi\0".as_ptr() as *const c_char);
+            let result = qb_left(s, 100);
+            assert_eq!(qb_string_len(result), 2); // Should only return what's available
+            qb_string_release(s);
+            qb_string_release(result);
+        }
+    }
+
+    #[test]
+    fn test_right_negative() {
+        unsafe {
+            let s = qb_string_new(b"Hello\0".as_ptr() as *const c_char);
+            let result = qb_right(s, -1);
+            assert_eq!(qb_string_len(result), 0);
+            qb_string_release(s);
+            qb_string_release(result);
+        }
+    }
+
+    #[test]
+    fn test_right_zero() {
+        unsafe {
+            let s = qb_string_new(b"Hello\0".as_ptr() as *const c_char);
+            let result = qb_right(s, 0);
+            assert_eq!(qb_string_len(result), 0);
+            qb_string_release(s);
+            qb_string_release(result);
+        }
+    }
+
+    #[test]
+    fn test_right_exceeds_length() {
+        unsafe {
+            let s = qb_string_new(b"Hi\0".as_ptr() as *const c_char);
+            let result = qb_right(s, 100);
+            assert_eq!(qb_string_len(result), 2);
+            qb_string_release(s);
+            qb_string_release(result);
+        }
+    }
+
+    #[test]
+    fn test_mid_start_zero() {
+        unsafe {
+            let s = qb_string_new(b"Hello\0".as_ptr() as *const c_char);
+            let result = qb_mid(s, 0, 3);
+            assert_eq!(qb_string_len(result), 0); // Invalid start
+            qb_string_release(s);
+            qb_string_release(result);
+        }
+    }
+
+    #[test]
+    fn test_mid_start_negative() {
+        unsafe {
+            let s = qb_string_new(b"Hello\0".as_ptr() as *const c_char);
+            let result = qb_mid(s, -1, 3);
+            assert_eq!(qb_string_len(result), 0);
+            qb_string_release(s);
+            qb_string_release(result);
+        }
+    }
+
+    #[test]
+    fn test_mid_start_past_end() {
+        unsafe {
+            let s = qb_string_new(b"Hi\0".as_ptr() as *const c_char);
+            let result = qb_mid(s, 10, 3);
+            assert_eq!(qb_string_len(result), 0);
+            qb_string_release(s);
+            qb_string_release(result);
+        }
+    }
+
+    #[test]
+    fn test_mid_length_negative_means_rest() {
+        unsafe {
+            let s = qb_string_new(b"Hello World\0".as_ptr() as *const c_char);
+            let result = qb_mid(s, 7, -1); // Should return "World"
+            assert_eq!(qb_string_len(result), 5);
+            qb_string_release(s);
+            qb_string_release(result);
+        }
+    }
+
+    #[test]
+    fn test_instr_start_negative() {
+        unsafe {
+            let haystack = qb_string_new(b"Hello\0".as_ptr() as *const c_char);
+            let needle = qb_string_new(b"l\0".as_ptr() as *const c_char);
+            // Negative start should be treated as 1
+            let result = qb_instr(-5, haystack, needle);
+            assert_eq!(result, 3); // First 'l' is at position 3
+            qb_string_release(haystack);
+            qb_string_release(needle);
+        }
+    }
+
+    #[test]
+    fn test_space_negative() {
+        let result = qb_space(-5);
+        unsafe {
+            assert_eq!(qb_string_len(result), 0);
+            qb_string_release(result);
+        }
+    }
+
+    #[test]
+    fn test_space_zero() {
+        let result = qb_space(0);
+        unsafe {
+            assert_eq!(qb_string_len(result), 0);
+            qb_string_release(result);
+        }
+    }
+
+    #[test]
+    fn test_space_positive() {
+        let result = qb_space(5);
+        unsafe {
+            assert_eq!(qb_string_len(result), 5);
+            qb_string_release(result);
+        }
+    }
+
+    #[test]
+    fn test_string_fill_negative() {
+        let result = qb_string_fill(-5, 65);
+        unsafe {
+            assert_eq!(qb_string_len(result), 0);
+            qb_string_release(result);
+        }
+    }
+
+    #[test]
+    fn test_string_fill_zero() {
+        let result = qb_string_fill(0, 65);
+        unsafe {
+            assert_eq!(qb_string_len(result), 0);
+            qb_string_release(result);
+        }
+    }
+
+    #[test]
+    fn test_string_fill_positive() {
+        let result = qb_string_fill(5, 65); // 5 'A's
+        unsafe {
+            assert_eq!(qb_string_len(result), 5);
+            qb_string_release(result);
+        }
+    }
+
+    // ========================================================================
+    // LARGE STRING TESTS
+    // ========================================================================
+
+    #[test]
+    fn test_large_string_creation() {
+        unsafe {
+            // Create a large string (1MB)
+            let size = 1024 * 1024;
+            let data = vec![b'A'; size];
+            let s = qb_string_from_bytes(data.as_ptr(), size);
+
+            assert_eq!(qb_string_len(s), size);
+
+            qb_string_release(s);
+        }
+    }
+
+    #[test]
+    fn test_large_string_concat() {
+        unsafe {
+            // Create two medium strings and concat them
+            let size = 100_000;
+            let data = vec![b'A'; size];
+            let a = qb_string_from_bytes(data.as_ptr(), size);
+            let b = qb_string_from_bytes(data.as_ptr(), size);
+
+            let concat = qb_string_concat(a, b);
+            assert_eq!(qb_string_len(concat), size * 2);
+
+            qb_string_release(a);
+            qb_string_release(b);
+            qb_string_release(concat);
+        }
+    }
+
+    #[test]
+    fn test_many_small_strings() {
+        unsafe {
+            // Create and release many small strings to test memory management
+            for i in 0..1000 {
+                let data = format!("String {}", i);
+                let s = qb_string_from_bytes(data.as_ptr(), data.len());
+                assert_eq!(qb_string_len(s), data.len());
+                qb_string_release(s);
+            }
+        }
+    }
+
+    // ========================================================================
+    // BINARY DATA TESTS
+    // ========================================================================
+
+    #[test]
+    fn test_string_with_embedded_nulls() {
+        unsafe {
+            // BASIC strings can contain embedded null bytes
+            let data = b"Hello\0World";
+            let s = qb_string_from_bytes(data.as_ptr(), data.len());
+
+            // Length should include the embedded null
+            assert_eq!(qb_string_len(s), 11);
+
+            qb_string_release(s);
+        }
+    }
+
+    #[test]
+    fn test_string_with_high_bytes() {
+        unsafe {
+            // Test with high ASCII/binary values
+            let data: [u8; 5] = [0xFF, 0xFE, 0x00, 0x01, 0x80];
+            let s = qb_string_from_bytes(data.as_ptr(), data.len());
+
+            assert_eq!(qb_string_len(s), 5);
+
+            qb_string_release(s);
+        }
+    }
+
+    // ========================================================================
+    // STRING CONVERSION TESTS
+    // ========================================================================
+
+    #[test]
+    fn test_str_int_negative() {
+        let s = qb_str_int(-42);
+        unsafe {
+            // Negative numbers should not have leading space
+            let data = qb_string_data(s);
+            assert_eq!(*data as u8, b'-');
+            qb_string_release(s);
+        }
+    }
+
+    #[test]
+    fn test_str_int_zero() {
+        let s = qb_str_int(0);
+        unsafe {
+            assert!(qb_string_len(s) > 0);
+            qb_string_release(s);
+        }
+    }
+
+    #[test]
+    fn test_str_int_max() {
+        let s = qb_str_int(i64::MAX);
+        unsafe {
+            assert!(qb_string_len(s) > 0);
+            qb_string_release(s);
+        }
+    }
+
+    #[test]
+    fn test_str_int_min() {
+        let s = qb_str_int(i64::MIN);
+        unsafe {
+            assert!(qb_string_len(s) > 0);
+            qb_string_release(s);
+        }
+    }
+
+    #[test]
+    fn test_str_float_negative() {
+        let s = qb_str_float(-3.14);
+        unsafe {
+            let data = qb_string_data(s);
+            assert_eq!(*data as u8, b'-');
+            qb_string_release(s);
+        }
+    }
+
+    #[test]
+    fn test_str_float_positive_has_space() {
+        let s = qb_str_float(3.14);
+        unsafe {
+            let data = qb_string_data(s);
+            // Positive floats should have leading space
+            assert_eq!(*data as u8, b' ');
+            qb_string_release(s);
+        }
+    }
+
+    #[test]
+    fn test_val_whitespace() {
+        unsafe {
+            let s = qb_string_new(b"  42  \0".as_ptr() as *const c_char);
+            assert_eq!(qb_val(s), 42.0);
+            qb_string_release(s);
+        }
+    }
+
+    #[test]
+    fn test_val_invalid_returns_zero() {
+        unsafe {
+            let s = qb_string_new(b"not a number\0".as_ptr() as *const c_char);
+            assert_eq!(qb_val(s), 0.0);
+            qb_string_release(s);
+        }
+    }
+
+    #[test]
+    fn test_val_empty_string() {
+        unsafe {
+            let s = qb_string_empty();
+            assert_eq!(qb_val(s), 0.0);
+            qb_string_release(s);
+        }
+    }
+
+    #[test]
+    fn test_val_float() {
+        unsafe {
+            let s = qb_string_new(b"3.14159\0".as_ptr() as *const c_char);
+            let v = qb_val(s);
+            assert!((v - 3.14159).abs() < 0.0001);
+            qb_string_release(s);
+        }
+    }
+
+    #[test]
+    fn test_val_negative() {
+        unsafe {
+            let s = qb_string_new(b"-123\0".as_ptr() as *const c_char);
+            assert_eq!(qb_val(s), -123.0);
+            qb_string_release(s);
+        }
+    }
+
+    // ========================================================================
+    // CHR$ EDGE CASES
+    // ========================================================================
+
+    #[test]
+    fn test_chr_null_byte() {
+        let s = qb_chr(0);
+        unsafe {
+            assert_eq!(qb_string_len(s), 1);
+            let data = qb_string_data(s);
+            assert_eq!(*data as u8, 0);
+            qb_string_release(s);
+        }
+    }
+
+    #[test]
+    fn test_chr_max_byte() {
+        let s = qb_chr(255);
+        unsafe {
+            assert_eq!(qb_string_len(s), 1);
+            qb_string_release(s);
+        }
+    }
+
+    #[test]
+    fn test_chr_overflow() {
+        // Values > 255 should wrap around
+        let s = qb_chr(256);
+        unsafe {
+            assert_eq!(qb_string_len(s), 1);
+            let data = qb_string_data(s);
+            assert_eq!(*data as u8, 0); // 256 mod 256 = 0
+            qb_string_release(s);
+        }
+    }
+
+    // ========================================================================
+    // ASC EDGE CASES
+    // ========================================================================
+
+    #[test]
+    fn test_asc_empty_string() {
+        unsafe {
+            let s = qb_string_empty();
+            assert_eq!(qb_asc(s), 0);
+            qb_string_release(s);
+        }
+    }
+
+    #[test]
+    fn test_asc_high_byte() {
+        unsafe {
+            let data: [u8; 1] = [255];
+            let s = qb_string_from_bytes(data.as_ptr(), 1);
+            assert_eq!(qb_asc(s), 255);
+            qb_string_release(s);
+        }
+    }
+
+    // ========================================================================
+    // CASE CONVERSION EDGE CASES
+    // ========================================================================
+
+    #[test]
+    fn test_ucase_empty() {
+        unsafe {
+            let s = qb_string_empty();
+            let result = qb_ucase(s);
+            assert_eq!(qb_string_len(result), 0);
+            qb_string_release(s);
+            qb_string_release(result);
+        }
+    }
+
+    #[test]
+    fn test_lcase_empty() {
+        unsafe {
+            let s = qb_string_empty();
+            let result = qb_lcase(s);
+            assert_eq!(qb_string_len(result), 0);
+            qb_string_release(s);
+            qb_string_release(result);
+        }
+    }
+
+    #[test]
+    fn test_ucase_already_upper() {
+        unsafe {
+            let s = qb_string_new(b"HELLO\0".as_ptr() as *const c_char);
+            let result = qb_ucase(s);
+            assert_eq!(qb_string_len(result), 5);
+            qb_string_release(s);
+            qb_string_release(result);
+        }
+    }
+
+    #[test]
+    fn test_lcase_already_lower() {
+        unsafe {
+            let s = qb_string_new(b"hello\0".as_ptr() as *const c_char);
+            let result = qb_lcase(s);
+            assert_eq!(qb_string_len(result), 5);
+            qb_string_release(s);
+            qb_string_release(result);
+        }
+    }
+
+    // ========================================================================
+    // TRIM EDGE CASES
+    // ========================================================================
+
+    #[test]
+    fn test_ltrim_empty() {
+        unsafe {
+            let s = qb_string_empty();
+            let result = qb_ltrim(s);
+            assert_eq!(qb_string_len(result), 0);
+            qb_string_release(s);
+            qb_string_release(result);
+        }
+    }
+
+    #[test]
+    fn test_rtrim_empty() {
+        unsafe {
+            let s = qb_string_empty();
+            let result = qb_rtrim(s);
+            assert_eq!(qb_string_len(result), 0);
+            qb_string_release(s);
+            qb_string_release(result);
+        }
+    }
+
+    #[test]
+    fn test_ltrim_all_spaces() {
+        unsafe {
+            let s = qb_string_new(b"     \0".as_ptr() as *const c_char);
+            let result = qb_ltrim(s);
+            assert_eq!(qb_string_len(result), 0);
+            qb_string_release(s);
+            qb_string_release(result);
+        }
+    }
+
+    #[test]
+    fn test_rtrim_all_spaces() {
+        unsafe {
+            let s = qb_string_new(b"     \0".as_ptr() as *const c_char);
+            let result = qb_rtrim(s);
+            assert_eq!(qb_string_len(result), 0);
+            qb_string_release(s);
+            qb_string_release(result);
+        }
+    }
+
+    #[test]
+    fn test_ltrim_no_leading_spaces() {
+        unsafe {
+            let s = qb_string_new(b"Hello\0".as_ptr() as *const c_char);
+            let result = qb_ltrim(s);
+            assert_eq!(qb_string_len(result), 5);
+            qb_string_release(s);
+            qb_string_release(result);
+        }
+    }
+
+    #[test]
+    fn test_rtrim_no_trailing_spaces() {
+        unsafe {
+            let s = qb_string_new(b"Hello\0".as_ptr() as *const c_char);
+            let result = qb_rtrim(s);
+            assert_eq!(qb_string_len(result), 5);
+            qb_string_release(s);
+            qb_string_release(result);
+        }
+    }
+
+    // ========================================================================
+    // STRING COMPARISON EDGE CASES
+    // ========================================================================
+
+    #[test]
+    fn test_compare_empty_strings() {
+        unsafe {
+            let a = qb_string_empty();
+            let b = qb_string_empty();
+            assert_eq!(qb_string_compare(a, b), 0);
+            qb_string_release(a);
+            qb_string_release(b);
+        }
+    }
+
+    #[test]
+    fn test_compare_same_strings() {
+        unsafe {
+            let a = qb_string_new(b"Hello\0".as_ptr() as *const c_char);
+            let b = qb_string_new(b"Hello\0".as_ptr() as *const c_char);
+            assert_eq!(qb_string_compare(a, b), 0);
+            qb_string_release(a);
+            qb_string_release(b);
+        }
+    }
+
+    #[test]
+    fn test_compare_different_strings() {
+        unsafe {
+            let a = qb_string_new(b"Apple\0".as_ptr() as *const c_char);
+            let b = qb_string_new(b"Banana\0".as_ptr() as *const c_char);
+            assert!(qb_string_compare(a, b) < 0); // Apple < Banana
+            assert!(qb_string_compare(b, a) > 0); // Banana > Apple
+            qb_string_release(a);
+            qb_string_release(b);
+        }
+    }
+
+    #[test]
+    fn test_compare_prefix_string() {
+        unsafe {
+            let a = qb_string_new(b"Hello\0".as_ptr() as *const c_char);
+            let b = qb_string_new(b"Hello World\0".as_ptr() as *const c_char);
+            assert!(qb_string_compare(a, b) < 0); // "Hello" < "Hello World"
+            qb_string_release(a);
+            qb_string_release(b);
+        }
+    }
 }

@@ -16,7 +16,7 @@ use std::io::BufReader;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::time::Duration;
 
-use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
+use rodio::{Decoder, OutputStream, OutputStreamBuilder, Sink, Source};
 
 use super::error::{AudioError, AudioErrorKind};
 use super::AudioBackend;
@@ -33,10 +33,8 @@ struct SoundHandle {
 
 /// Rodio-based audio backend.
 pub struct RodioBackend {
-    /// Output stream (must be kept alive)
-    _stream: Option<OutputStream>,
-    /// Stream handle for creating sinks
-    stream_handle: Option<OutputStreamHandle>,
+    /// Output stream (must be kept alive, provides mixer for creating sinks)
+    stream: Option<OutputStream>,
     /// Whether the backend is initialized
     initialized: AtomicBool,
     /// Next handle ID to assign
@@ -49,17 +47,16 @@ impl RodioBackend {
     /// Create a new RodioBackend (uninitialized).
     pub fn new() -> Self {
         Self {
-            _stream: None,
-            stream_handle: None,
+            stream: None,
             initialized: AtomicBool::new(false),
             next_handle: AtomicI32::new(1),
             sounds: HashMap::new(),
         }
     }
 
-    /// Get the stream handle or return an error.
-    fn get_stream_handle(&self) -> Result<&OutputStreamHandle, AudioError> {
-        self.stream_handle.as_ref().ok_or_else(|| {
+    /// Get the output stream or return an error.
+    fn get_stream(&self) -> Result<&OutputStream, AudioError> {
+        self.stream.as_ref().ok_or_else(|| {
             AudioError::new(
                 AudioErrorKind::NotInitialized,
                 "Audio system not initialized",
@@ -69,13 +66,8 @@ impl RodioBackend {
 
     /// Generate a sine wave tone.
     fn generate_tone(&self, frequency: f64, duration_secs: f64) -> Result<(), AudioError> {
-        let handle = self.get_stream_handle()?;
-        let sink = Sink::try_new(handle).map_err(|e| {
-            AudioError::new(
-                AudioErrorKind::PlaybackFailed,
-                format!("Failed to create sink: {}", e),
-            )
-        })?;
+        let stream = self.get_stream()?;
+        let sink = Sink::connect_new(stream.mixer());
 
         // Create a sine wave source
         let source = SineWave::new(frequency as f32)
@@ -101,15 +93,14 @@ impl AudioBackend for RodioBackend {
             return Ok(());
         }
 
-        let (stream, handle) = OutputStream::try_default().map_err(|e| {
+        let stream = OutputStreamBuilder::open_default_stream().map_err(|e| {
             AudioError::new(
                 AudioErrorKind::InitializationFailed,
                 format!("Failed to initialize audio output: {}", e),
             )
         })?;
 
-        self._stream = Some(stream);
-        self.stream_handle = Some(handle);
+        self.stream = Some(stream);
         self.initialized.store(true, Ordering::SeqCst);
 
         Ok(())
@@ -121,8 +112,7 @@ impl AudioBackend for RodioBackend {
             handle.sink.stop();
         }
 
-        self._stream = None;
-        self.stream_handle = None;
+        self.stream = None;
         self.initialized.store(false, Ordering::SeqCst);
 
         Ok(())
@@ -327,15 +317,12 @@ impl AudioBackend for RodioBackend {
             .unwrap_or(0.0);
 
         // Create a sink for this sound
-        let stream_handle = match self.get_stream_handle() {
-            Ok(h) => h,
+        let stream = match self.get_stream() {
+            Ok(s) => s,
             Err(_) => return -3,
         };
 
-        let sink = match Sink::try_new(stream_handle) {
-            Ok(s) => s,
-            Err(_) => return -4,
-        };
+        let sink = Sink::connect_new(stream.mixer());
 
         // Read the entire file into memory for potential looping
         let file2 = match File::open(filename) {
@@ -538,7 +525,7 @@ impl Iterator for SineWave {
 }
 
 impl Source for SineWave {
-    fn current_frame_len(&self) -> Option<usize> {
+    fn current_span_len(&self) -> Option<usize> {
         None
     }
 

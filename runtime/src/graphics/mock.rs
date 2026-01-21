@@ -381,4 +381,90 @@ mod tests {
 
         assert_eq!(backend.operation_count(&MockOperation::Pset(0, 0, 0)), 3);
     }
+
+    #[test]
+    fn test_step_operations() {
+        let mut backend = MockBackend::new();
+        backend.initialize(640, 480).unwrap();
+
+        // First point sets the reference
+        backend.pset_step(100, 100, 15, false).unwrap();
+        assert_eq!((backend.last_gfx_x, backend.last_gfx_y), (100, 100));
+
+        // STEP uses relative coordinates
+        backend.pset_step(10, 20, 15, true).unwrap();
+        assert_eq!((backend.last_gfx_x, backend.last_gfx_y), (110, 120));
+
+        // Non-STEP resets the reference
+        backend.pset_step(50, 50, 15, false).unwrap();
+        assert_eq!((backend.last_gfx_x, backend.last_gfx_y), (50, 50));
+    }
+
+    #[test]
+    fn test_line_step_operations() {
+        let mut backend = MockBackend::new();
+        backend.initialize(640, 480).unwrap();
+
+        // Draw a line with absolute coords
+        backend
+            .line_step(0, 0, 100, 100, 15, false, false, false)
+            .unwrap();
+        // Last point should be the end of the line
+        assert_eq!((backend.last_gfx_x, backend.last_gfx_y), (100, 100));
+
+        // LINE with STEP on end point
+        backend
+            .line_step(200, 200, 50, 50, 15, false, false, true)
+            .unwrap();
+        // End point should be 200+50, 200+50 = 250, 250
+        // But x1,y1 are absolute, so last_gfx becomes 250, 250
+        assert_eq!((backend.last_gfx_x, backend.last_gfx_y), (250, 250));
+    }
+
+    #[test]
+    fn test_clear_and_has_operation() {
+        let mut backend = MockBackend::new();
+        backend.initialize(320, 200).unwrap();
+        backend.cls().unwrap();
+        backend.pset(10, 10, 15).unwrap();
+
+        assert!(backend.has_operation(&MockOperation::Cls));
+        assert!(backend.has_operation(&MockOperation::Pset(0, 0, 0)));
+        assert!(!backend.has_operation(&MockOperation::Circle(0, 0, 0, 0, false)));
+
+        backend.clear_operations();
+        assert!(!backend.has_operation(&MockOperation::Cls));
+        assert_eq!(backend.operations().len(), 0);
+    }
+
+    #[test]
+    fn test_default_colors() {
+        let backend = MockBackend::new();
+        // Default foreground is white (7), background is black (0)
+        assert_eq!(backend.fg_color, 7);
+        assert_eq!(backend.bg_color, 0);
+    }
+
+    #[test]
+    fn test_cursor_positioning() {
+        let mut backend = MockBackend::new();
+        backend.initialize(640, 480).unwrap();
+
+        // Default cursor position is 1,1
+        assert_eq!((backend.cursor_row, backend.cursor_col), (1, 1));
+
+        backend.locate(10, 20).unwrap();
+        assert_eq!((backend.cursor_row, backend.cursor_col), (10, 20));
+    }
+
+    #[test]
+    fn test_shutdown_clears_state() {
+        let mut backend = MockBackend::new();
+        backend.initialize(640, 480).unwrap();
+        assert!(backend.is_initialized());
+        assert_eq!(backend.get_screen_size(), (640, 480));
+
+        backend.shutdown().unwrap();
+        assert!(!backend.is_initialized());
+    }
 }
