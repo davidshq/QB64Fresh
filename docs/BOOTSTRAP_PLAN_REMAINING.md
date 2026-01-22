@@ -15,17 +15,19 @@ This document outlines the strategy for compiling the QB64pe compiler using QB64
 
 **Approach:** Systematic gap analysis, incremental feature implementation, and progressive testing.
 
-**Current Status (2026-01-22):** **PHASE C IN PROGRESS!** Code generation validation underway. GCC errors reduced from 14,547 → 169 (**98.8% reduction**). Session 4 fixes include:
-- Fixed BYREF parameter passing in user-defined function calls (added `params` to IR)
-- Added C standard library names to reserved word list (`isalpha`, `isdigit`, etc.)
-- Fixed built-in constant BYREF handling (use temp vars for `_TRUE`, `_FALSE`)
-- Added keyboard constants `_KEY_*` (F1-F12, arrows, modifiers)
-- Added function variants: `_INSTRREV`, `_MESSAGEBOX`, `_LOADFONT`, `_WIDTH`, `_HEIGHT`
-- Fixed array subscript type casting (always cast to int64_t)
+**Current Status (2026-01-22):** **PHASE C IN PROGRESS!** Code generation validation underway. GCC errors reduced from 14,547 → 142 (**99.0% reduction**). Session 5 fixes include:
+- Added full set of `_ASC_*` ASCII constants (NUL through TILDE, 70+ constants)
+- Added full set of `_CHR_*` character string constants (matching ASCII constants)
+- Added `_KEY_LAPPLE`, `_KEY_RAPPLE` macOS keyboard constants
+- Added `_FONT` as zero-arg function macro
+- Fixed ON ERROR GOTO with `_LASTHANDLER` (QB64 error handler scoping)
+- Fixed ON ERROR GOTO with global labels in subroutines (disabled cross-function goto)
+- Fixed array parameter handling (arrays passed as pointers, not dereferenced)
+- Fixed SWAP statement for fixed-length strings (use strcpy instead of direct assignment)
+- Fixed array of fixed-length string parameters (correct C syntax `char (*arr)[N]`)
 
-**Ready for Phase C Session 5: Fix remaining 169 GCC errors - major issues:**
-- Implicit variable declarations from BYREF function outputs (~80 errors)
-- Type/assignment issues (~8 errors)
+**Ready for Phase C Session 6: Fix remaining 142 GCC errors - major issue:**
+- Variable name suffix mismatch (~140 errors) - Variables declared as `x AS STRING` but used as `x$` causing `x_str` vs `x` mismatch in generated C code
 
 ---
 
@@ -278,17 +280,26 @@ QB64pe uses these metacommands that need verification:
 - [x] Added dialog function variants: `_SAVEFILEDIALOG$`, `_OPENFILEDIALOG$`, `_SELECTFOLDERDIALOG$`
 - [x] Fixed array subscript type casting (always cast indices to int64_t)
 
-**Current Status:** **169 GCC errors remaining** (down from 14,547 = **98.8% reduction!**)
+**Session 5 Progress (2026-01-22):**
+- [x] Added 70+ `_ASC_*` ASCII value constants (NUL=0 through DEL=127)
+- [x] Added 70+ `_CHR_*` character string constants (corresponding qb_string* macros)
+- [x] Added `_KEY_LAPPLE` (100310) and `_KEY_RAPPLE` (100309) keyboard constants
+- [x] Added `_FONT` macro (expands to `qb_font()` for zero-arg function call)
+- [x] Fixed `ON ERROR GOTO _LASTHANDLER` - restore previous error handler (disable for now)
+- [x] Fixed global error labels in subroutines (qberror_test, errhandler - disabled cross-function goto)
+- [x] Fixed array parameter handling - arrays remain as pointers, not dereferenced to scalars
+- [x] Fixed SWAP statement for fixed-length strings - use strcpy in a block
+- [x] Fixed array of fixed-length string parameter syntax - `char (*arr_ref)[N]` not `char[N]* arr_ref`
+
+**Current Status:** **142 GCC errors remaining** (down from 14,547 = **99.0% reduction!**)
 
 **Remaining Issues Analysis:**
-1. **Implicit BYREF variable declarations** (~80 errors) - Variables like `hashresflags`, `hashresref`, `ideprogname_str` created implicitly through BYREF function calls
-   - Root cause: Semantic analyzer doesn't create variables when passed to BYREF params
-   - Fix: Detect BYREF outputs in call analysis, auto-declare needed variables
-2. **Type/assignment issues** (~8 errors):
-   - `subscripted value is neither array nor pointer` (2) - Non-array being subscripted
-   - `incompatible types when assigning` (2) - qb_string assignment issues
-   - `assignment to expression with array type` (2) - Fixed-length string field assignments
-   - `expected identifier or '(' before '['` (2) - Syntax issues
+1. **Variable name suffix mismatch** (~140 errors) - Variables declared as `DIM x AS STRING` but used as `x$`
+   - Root cause: `x` stored in symbol table, but `x$` lookup produces `x_str` in C
+   - Example: `ideprogname` declared, `ideprogname$` used → `ideprogname_str` undeclared
+   - Fix options:
+     a. Semantic analyzer: Match suffixed names with unsuffixed declarations of same type
+     b. Code generator: Use canonical name from symbol table, not raw AST name
 
 **Tasks:**
 1. [x] Generate C code for QB64pe source
@@ -375,7 +386,7 @@ Once QB64Fresh can compile QB64pe:
 ### Milestone 3: Code Generation Success
 - [x] C code generated for entire QB64pe (4.3MB, ~100K lines)
 - [x] No internal compiler errors
-- [~] Generated code compiles with C compiler (169 GCC errors remaining, 98.8% fixed)
+- [~] Generated code compiles with C compiler (142 GCC errors remaining, 99.0% fixed)
 
 ### Milestone 4: Functional Success
 - [ ] QB64Fresh-compiled QB64pe runs
@@ -404,11 +415,11 @@ Once QB64Fresh can compile QB64pe:
 
 | Phase | Sessions | Status | Notes |
 |-------|----------|--------|-------|
-| C: Code Gen | 2-4 | **In Progress** | 98.8% GCC errors fixed (Session 4) |
+| C: Code Gen | 2-4 | **In Progress** | 99.0% GCC errors fixed (Session 5) |
 | D: Testing | 2-4 | Pending | Build and validate |
 | E: Documentation | 1-2 | Pending | Write up results |
 
-**Progress:** Phases A, B complete. Phase C in progress (4 sessions, 169 errors remaining).
+**Progress:** Phases A, B complete. Phase C in progress (5 sessions, 142 errors remaining).
 
 ---
 
