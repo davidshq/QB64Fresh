@@ -262,7 +262,7 @@ pub(super) fn emit_header(output: &mut String, runtime_mode: RuntimeMode) {
         "/* Graphics pseudo-variables (zero-arg functions) */"
     )
     .unwrap();
-    writeln!(output, "#define _FONT qb_font()").unwrap();
+    writeln!(output, "#define _FONT qb_font_get()").unwrap();
     writeln!(output).unwrap();
 
     match runtime_mode {
@@ -2947,6 +2947,45 @@ fn emit_array_functions(output: &mut String) {
     writeln!(output, "/* Array Functions */").unwrap();
     writeln!(output).unwrap();
 
+    // LBOUND - return lower bound of array dimension
+    // QB64 arrays are 0-based by default (unless OPTION BASE 1)
+    // For bootstrap, we use 0 as the universal lower bound
+    writeln!(output, "int32_t qb_lbound(void* arr) {{").unwrap();
+    writeln!(output, "    (void)arr;").unwrap();
+    writeln!(output, "    return 0; /* Arrays are 0-based */").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "int32_t qb_lbound2(void* arr, int32_t dim) {{").unwrap();
+    writeln!(output, "    (void)arr; (void)dim;").unwrap();
+    writeln!(output, "    return 0; /* Arrays are 0-based */").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // UBOUND - return upper bound of array dimension
+    // For bootstrap, arrays are used dynamically so we return a placeholder.
+    // In practice, QB64pe tracks array bounds separately.
+    // Note: This is a stub - actual array bounds need metadata tracking
+    writeln!(output, "int32_t qb_ubound(void* arr) {{").unwrap();
+    writeln!(output, "    (void)arr;").unwrap();
+    writeln!(
+        output,
+        "    return 0; /* Stub - actual bounds need metadata */"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "int32_t qb_ubound2(void* arr, int32_t dim) {{").unwrap();
+    writeln!(output, "    (void)arr; (void)dim;").unwrap();
+    writeln!(
+        output,
+        "    return 0; /* Stub - actual bounds need metadata */"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
     // ERASE - reset array to initial state
     // This is a placeholder that works with our array struct pattern
     writeln!(output, "void qb_array_erase(void* arr) {{").unwrap();
@@ -3581,6 +3620,12 @@ fn emit_graphics_stubs(output: &mut String) {
     // Font stubs
     writeln!(output, "/* Font Stubs */").unwrap();
     writeln!(output, "static int64_t _qb_current_font = 0;").unwrap();
+    // qb_font_get - returns current font handle (for _FONT pseudo-variable)
+    writeln!(
+        output,
+        "int64_t qb_font_get(void) {{ return _qb_current_font; }}"
+    )
+    .unwrap();
     writeln!(output, "int64_t qb_loadfont(qb_string* file, int64_t size) {{ _qb_gfx_warn(); (void)file; (void)size; return 0; }}").unwrap();
     writeln!(output, "int64_t qb_font(int64_t handle) {{").unwrap();
     writeln!(output, "    int64_t prev = _qb_current_font;").unwrap();

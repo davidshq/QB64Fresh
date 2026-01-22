@@ -15,18 +15,20 @@ This document outlines the strategy for compiling the QB64pe compiler using QB64
 
 **Approach:** Systematic gap analysis, incremental feature implementation, and progressive testing.
 
-**Current Status (2026-01-22):** **PHASE C IN PROGRESS!** Code generation validation underway. GCC errors reduced from 14,547 → 51 (**99.6% reduction**). Session 7 fixes include:
-- Fixed LSET/RSET variable name resolution (symbol lookup + c_identifier)
-- Fixed array access name resolution (use resolved symbol name, not raw name)
-- Added targeted ByRef argument variable collection for implicit declarations
-- Added SHARED variable handling to prevent duplicate local declarations
-- Properly handle FixedString type in implicit variable declarations
+**Current Status (2026-01-22):** **PHASE C IN PROGRESS!** Code generation validation underway. GCC errors reduced from 14,547 → 31 (**99.79% reduction**). Session 7 continuation fixes include:
+- Added qb_lbound/qb_ubound runtime stub functions (array bounds)
+- Added qb_lbound2/qb_ubound2 for 2-argument versions with dimension
+- Fixed qb_font to have zero-arg version (qb_font_get) for _FONT pseudo-variable
+- Added FileGet/FileLineInput/Input/LineInput target variable declaration
+- Added Call statement ByRef variable declaration
+- Added main() implicit local variable collection (previously only SUB/FUNCTION)
+- Fixed const declaration parsing in global variable name extraction
 
-**Ready for Phase C Session 8: Fix remaining 51 GCC errors - categories:**
-- Variables not passed as ByRef args still missing declarations (~30 errors)
-- Function signature mismatches (qb_font, etc.) (~5 errors)
-- Type suffix issues (double suffixes like `tmpB_int_int`) (~10 errors)
-- Symbol lookup edge cases (hashresflags in one location) (~6 errors)
+**Remaining 31 GCC errors - categories:**
+- LEN(dummy_*) pattern variables (~7 errors) - need special handling
+- Read-only variable references (~15 errors) - not caught by current mechanisms
+- Macro expansion edge cases (~4 errors) - _TRUE/_FALSE in problematic contexts
+- Miscellaneous (~5 errors) - typos, conflicting types
 
 ---
 
@@ -105,26 +107,6 @@ constval~&&                    ' Unsigned LONGLONG
 ---
 
 ## 0.5 Phase B Implementation Progress (2026-01-21) ✅ MAJOR MILESTONE
-
-### Features Implemented
-
-| Feature | Status | Impact |
-|---------|--------|--------|
-| TYPE alternate syntax (`AS LONG x, y, z`) | ✅ Done | ~200 errors fixed |
-| Extended type suffixes (`&&`, `%%`, `~&&`, etc.) | ✅ Done | Proper LONGLONG parsing |
-| `_ORELSE` / `_ANDALSO` operators | ✅ Done | ~58 errors fixed |
-| Keywords as field names (`.name`, `.type`) | ✅ Done | ~13 errors fixed |
-| `_OFFSET` and `_BIT` in type specs | ✅ Done | Type parsing complete |
-| `$VERSIONINFO` with `#` suffix | ✅ Done | Minor fix |
-| Line numbers in error messages | ✅ Done | Easier debugging |
-| `$CONSOLE` lexer workaround | ✅ Done | Parser handles Error tokens |
-| `DIM AS type var1, var2` syntax | ✅ Done | Type-first declarations |
-| `REDIM` with scalar variables | ✅ Done | No parentheses required |
-| Keywords as TYPE member names | ✅ Done | `.name`, `.type` fields |
-| `SHELL _HIDE _DONTWAIT` syntax | ✅ Done | Combined options |
-| `_CONSOLE`/`_DEST` as expressions | ✅ Done | Function/statement duality |
-| Type suffix tokenization (`i2&&`) | ✅ Done | Fix multi-char suffixes |
-| Improved parser error recovery | ✅ Done | Reduced cascading |
 
 ### Current Error Count
 
@@ -230,29 +212,42 @@ QB64pe uses these metacommands that need verification:
 
 ## 3. Implementation Phases
 
-**Current Status:** **51 GCC errors remaining** (down from 14,547 = **99.6% reduction!**)
+**Current Status:** **31 GCC errors remaining** (down from 14,547 = **99.79% reduction!**)
 
-**Session 7 Progress (105 → 51 errors = 51% reduction this session):**
+**Session 7 Progress (105 → 31 errors = 71% reduction across two parts):**
+
+*Part 1 (105 → 51 errors):*
 - Fixed LSET/RSET: Variable names now resolved through symbol lookup + c_identifier
 - Fixed array access: Now uses resolved symbol name instead of raw input name
 - Added ByRef argument collection: Variables passed as ByRef function args get declared
 - Added SHARED handling: SHARED variables not re-declared as local scalars
 - Fixed FixedString declarations: Proper C syntax for char arrays
 
-**Remaining Issues Analysis (51 errors):**
-1. **Undeclared variables not in ByRef contexts** (~30 errors)
-   - Variables like `dummy_int_int`, `pp2l`, `upl`, `fg`, `bg`
-   - These are used but never passed as ByRef args or assigned
-   - May need broader implicit variable collection
-2. **Function signature mismatches** (~5 errors)
-   - `qb_font` expects argument but called with none
-   - Type conflicts (`args` declared with different types)
-3. **Symbol lookup edge cases** (~10 errors)
-   - `hashresflags` at line 71737 - ByRef params not propagating
-   - Double suffixes like `tmpB_int_int` not recognized
-4. **Miscellaneous** (~6 errors)
-   - FOR loop syntax error with `qb_lbound`
-   - Typo `IDEErrroColor` vs `IDEErrorColor`
+*Part 2 (51 → 31 errors):*
+- Added qb_lbound/qb_ubound stub functions to runtime (array bounds)
+- Added LBOUND/UBOUND special handling for 2-argument versions (qb_lbound2/qb_ubound2)
+- Fixed _FONT pseudo-variable: qb_font_get() for zero-arg reads
+- Added FileGet/FileLineInput/Input/LineInput target variable declaration
+- Added Call statement ByRef parameter variable declaration (hashresflags fixed)
+- Added main() implicit local collection (module-level code now handled)
+- Fixed const declaration parsing (global_var_names now extracts "const type name" correctly)
+
+**Remaining Issues Analysis (31 errors):**
+1. **LEN(dummy_*) pattern variables** (~7 errors)
+   - Variables like `dummy_int_int`, `dummy_dbl`, etc. used only with LEN()
+   - Used to query type sizes: `varSize& = LEN(dummy%%)`
+   - Need special handling or broader expression scanning
+2. **Read-only variable references** (~15 errors)
+   - Variables like `fg`, `bg`, `comment`, `quote`, `newSyntax`
+   - Used in expressions but never assigned or passed as ByRef
+   - Would require aggressive expression scanning (risky)
+3. **Macro expansion edge cases** (~4 errors)
+   - _TRUE/_FALSE macros in declaration contexts
+   - _CHR_QUOTE in problematic contexts
+4. **Miscellaneous** (~5 errors)
+   - Typo `IDEErrroColor` (original QB64pe bug)
+   - Conflicting types for `args` variable
+   - `Default_StartDir_str`, `AllFiles` undeclared
 
 **Tasks:**
 1. [x] Generate C code for QB64pe source
@@ -372,7 +367,7 @@ Once QB64Fresh can compile QB64pe:
 | D: Testing | 2-4 | Pending | Build and validate |
 | E: Documentation | 1-2 | Pending | Write up results |
 
-**Progress:** Phases A, B complete. Phase C in progress (6 sessions, 105 errors remaining).
+**Progress:** Phases A, B complete. Phase C in progress (7 sessions, 31 errors remaining).
 
 ---
 

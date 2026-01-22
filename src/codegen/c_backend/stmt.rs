@@ -3869,7 +3869,7 @@ impl StmtEmitter {
 /// 2. Second pass: collect implicit variables (assignments to non-DIM'd variables)
 ///
 /// This prevents duplicate declarations when a variable is assigned before its DIM.
-fn collect_implicit_locals(
+pub(super) fn collect_implicit_locals(
     body: &[TypedStatement],
     params: &[TypedParameter],
     existing_vars: &std::collections::HashSet<String>,
@@ -4118,9 +4118,32 @@ fn collect_implicit_locals(
                 }
             }
 
-            // Collect implicit variables from ByRef function args in other statements
-            TypedStatementKind::Call { args, .. } => {
-                for arg in args {
+            // Collect implicit variables from ByRef function args in Call statements
+            TypedStatementKind::Call { args, params, .. } => {
+                // For Call statements, check if each argument is ByRef and declare if needed
+                for (i, arg) in args.iter().enumerate() {
+                    let is_byref = params
+                        .get(i)
+                        .map(|p| !p.by_val && !p.is_array)
+                        .unwrap_or(false);
+
+                    if is_byref {
+                        // If the argument is a simple variable, declare it
+                        if let TypedExprKind::Variable(name) = &arg.kind {
+                            let c_name = c_identifier(name);
+                            if !declared_vars.contains(&c_name) {
+                                if let BasicType::FixedString(len) = &arg.basic_type {
+                                    locals.push(format!("char {}[{}] = \"\";", c_name, len + 1));
+                                } else {
+                                    let c_ty = c_type(&arg.basic_type);
+                                    let init = default_init(&arg.basic_type);
+                                    locals.push(format!("{} {} = {};", c_ty, c_name, init));
+                                }
+                                declared_vars.insert(c_name);
+                            }
+                        }
+                    }
+                    // Also recursively collect from nested function calls in the arg
                     collect_byref_vars(arg, declared_vars, locals);
                 }
             }
@@ -4306,7 +4329,58 @@ fn collect_implicit_locals(
                     collect_implicits(s, declared_vars, locals);
                 }
             }
+            // FileGet has a target variable that needs to be declared
+            TypedStatementKind::FileGet { target, .. } => {
+                declare_input_target(target, declared_vars, locals);
+            }
+            // FileLineInput has a target variable that needs to be declared
+            TypedStatementKind::FileLineInput { target, .. } => {
+                declare_input_target(target, declared_vars, locals);
+            }
+            // Input statement has multiple targets that need to be declared
+            TypedStatementKind::Input { targets, .. } => {
+                for target in targets {
+                    declare_input_target(target, declared_vars, locals);
+                }
+            }
+            // LineInput has a target that needs to be declared
+            TypedStatementKind::LineInput { target, .. } => {
+                declare_input_target(target, declared_vars, locals);
+            }
+            // FileInput has targets that need to be declared
+            TypedStatementKind::FileInput { targets, .. } => {
+                for target in targets {
+                    declare_input_target(target, declared_vars, locals);
+                }
+            }
             _ => {}
+        }
+    }
+
+    // Helper to declare a variable from an input target
+    fn declare_input_target(
+        target: &TypedInputTarget,
+        declared_vars: &mut HashSet<String>,
+        locals: &mut Vec<String>,
+    ) {
+        match target {
+            TypedInputTarget::Variable { name, basic_type } => {
+                let c_name = c_identifier(name);
+                if !declared_vars.contains(&c_name) {
+                    if let BasicType::FixedString(len) = basic_type {
+                        locals.push(format!("char {}[{}] = \"\";", c_name, len + 1));
+                    } else {
+                        let c_ty = c_type(basic_type);
+                        let init = default_init(basic_type);
+                        locals.push(format!("{} {} = {};", c_ty, c_name, init));
+                    }
+                    declared_vars.insert(c_name);
+                }
+            }
+            // Array elements don't need declaration - the array itself is already declared
+            TypedInputTarget::ArrayElement { .. } => {}
+            TypedInputTarget::ArrayElementField { .. } => {}
+            TypedInputTarget::Field { .. } => {}
         }
     }
 
