@@ -503,6 +503,23 @@ impl SymbolTable {
             }
         }
 
+        // Reverse fallback: If name has NO suffix, try looking up constants with suffixes
+        // This handles cases like: CONST idecpnum& = 27 ... IF y > idecpnum THEN
+        // Only apply to constants since suffixed variables are distinct (x$ != x%)
+        if types::type_from_suffix(&name_upper).is_none() {
+            // Try common type suffixes, but ONLY return if it's a constant
+            for suffix in &[
+                "&", "%", "!", "#", "$", "&&", "%%", "##", "%&", "~&", "~&&", "~%%", "~%", "~%&",
+            ] {
+                let suffixed_name = format!("{}{}", name_upper, suffix);
+                if let Some(sym) = scope.scalars.get(&suffixed_name)
+                    && matches!(sym.kind, SymbolKind::Constant { .. })
+                {
+                    return Some(sym);
+                }
+            }
+        }
+
         // If in a procedure scope, SHARED variables are visible from global
         if matches!(scope.kind, ScopeKind::Sub | ScopeKind::Function) {
             // Check if this variable was declared with DIM SHARED at module level
@@ -579,6 +596,24 @@ impl SymbolTable {
                 && matches!(sym.kind, SymbolKind::Constant { .. })
             {
                 return Some(sym);
+            }
+
+            // Check for constants with suffixes in global scope
+            // This handles: CONST idecpnum& = 27 ... IF y > idecpnum THEN
+            if types::type_from_suffix(&name_upper).is_none()
+                && let Some(global) = self.scopes.get(&ScopeId::GLOBAL)
+            {
+                for suffix in &[
+                    "&", "%", "!", "#", "$", "&&", "%%", "##", "%&", "~&", "~&&", "~%%", "~%",
+                    "~%&",
+                ] {
+                    let suffixed_name = format!("{}{}", name_upper, suffix);
+                    if let Some(sym) = global.scalars.get(&suffixed_name)
+                        && matches!(sym.kind, SymbolKind::Constant { .. })
+                    {
+                        return Some(sym);
+                    }
+                }
             }
 
             // Not SHARED, not found in local scope -> not visible
