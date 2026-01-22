@@ -15,20 +15,18 @@ This document outlines the strategy for compiling the QB64pe compiler using QB64
 
 **Approach:** Systematic gap analysis, incremental feature implementation, and progressive testing.
 
-**Current Status (2026-01-22):** **PHASE C IN PROGRESS!** Code generation validation underway. GCC errors reduced from 14,547 → 31 (**99.79% reduction**). Session 7 continuation fixes include:
-- Added qb_lbound/qb_ubound runtime stub functions (array bounds)
-- Added qb_lbound2/qb_ubound2 for 2-argument versions with dimension
-- Fixed qb_font to have zero-arg version (qb_font_get) for _FONT pseudo-variable
-- Added FileGet/FileLineInput/Input/LineInput target variable declaration
-- Added Call statement ByRef variable declaration
-- Added main() implicit local variable collection (previously only SUB/FUNCTION)
-- Fixed const declaration parsing in global variable name extraction
+**Current Status (2026-01-22):** **PHASE C IN PROGRESS!** Code generation validation underway. GCC errors reduced from 14,547 → 18 (**99.88% reduction**). Session 7 part 2 fixes include:
+- Excluded _TRUE/_FALSE from local variable declarations (macro collision fix)
+- Added dummy_* global variables for LEN() type sizing pattern
+- Implemented type-specific LEN handling (qb_len_str for strings, sizeof for numerics)
+- Excluded string constant macros (_CHR_QUOTE, etc.) from variable declarations
 
-**Remaining 31 GCC errors - categories:**
-- LEN(dummy_*) pattern variables (~7 errors) - need special handling
-- Read-only variable references (~15 errors) - not caught by current mechanisms
-- Macro expansion edge cases (~4 errors) - _TRUE/_FALSE in problematic contexts
-- Miscellaneous (~5 errors) - typos, conflicting types
+**Remaining 18 GCC errors - categories:**
+- Read-only variable references (~15 errors) - variables read but never assigned
+  - Examples: fg, bg, comment, quote, newSyntax, titlestr_str, etc.
+  - These require detecting read references to undeclared variables
+- Typos in original source (~2 errors) - num_typ (should be num.typ), IDEErrroColor
+- Conflicting type for 'args' (1 error) - parameter name collision
 
 ---
 

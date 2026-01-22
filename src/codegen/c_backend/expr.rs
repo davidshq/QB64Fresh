@@ -137,6 +137,17 @@ pub(super) fn emit_expr(expr: &TypedExpr) -> Result<String, CodeGenError> {
                 return Ok(format!("qb_ubound2({})", args_str));
             }
 
+            // Special case: LEN - use qb_len_str for strings, sizeof for numeric types
+            if upper_name == "LEN" && args.len() == 1 {
+                let arg_code = emit_expr(&args[0])?;
+                if args[0].basic_type.is_string() {
+                    return Ok(format!("qb_len_str({})", arg_code));
+                } else {
+                    // Numeric types: use sizeof to get byte size
+                    return Ok(format!("(int32_t)sizeof({})", arg_code));
+                }
+            }
+
             // Special case: _MESSAGEBOX with different argument counts
             if upper_name == "_MESSAGEBOX" {
                 let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();

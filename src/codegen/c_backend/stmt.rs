@@ -3879,6 +3879,31 @@ pub(super) fn collect_implicit_locals(
     let mut locals = Vec::new();
     let mut declared_vars: HashSet<String> = existing_vars.clone();
 
+    // Add built-in constants that are already #defined as macros
+    // These must not be declared as local variables
+    declared_vars.insert("_TRUE".to_string());
+    declared_vars.insert("_FALSE".to_string());
+
+    // String constant macros
+    declared_vars.insert("_STR_EMPTY".to_string());
+    declared_vars.insert("_STR_CRLF".to_string());
+    declared_vars.insert("_STR_LF".to_string());
+    declared_vars.insert("_STR_CR".to_string());
+    declared_vars.insert("_CHR_QUOTE".to_string());
+    declared_vars.insert("_CHR_HT".to_string());
+    declared_vars.insert("_CHR_LF".to_string());
+
+    // Add dummy variables for LEN() type sizing (defined in runtime)
+    // Prevents user code from redeclaring them
+    declared_vars.insert("dummy".to_string());
+    declared_vars.insert("dummy_int_int".to_string());
+    declared_vars.insert("dummy_int".to_string());
+    declared_vars.insert("dummy_lng_lng".to_string());
+    declared_vars.insert("dummy_sng".to_string());
+    declared_vars.insert("dummy_dbl".to_string());
+    declared_vars.insert("dummy_dbl_dbl".to_string());
+    declared_vars.insert("dummy_int_lng".to_string());
+
     // Add parameter names to declared set
     for p in params {
         declared_vars.insert(c_identifier(&p.name));
