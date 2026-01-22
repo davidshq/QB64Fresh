@@ -15,19 +15,17 @@ This document outlines the strategy for compiling the QB64pe compiler using QB64
 
 **Approach:** Systematic gap analysis, incremental feature implementation, and progressive testing.
 
-**Current Status (2026-01-22):** **PHASE C IN PROGRESS!** Code generation validation underway. GCC errors reduced from 14,547 → 142 (**99.0% reduction**). Session 5 fixes include:
-- Added full set of `_ASC_*` ASCII constants (NUL through TILDE, 70+ constants)
-- Added full set of `_CHR_*` character string constants (matching ASCII constants)
-- Added `_KEY_LAPPLE`, `_KEY_RAPPLE` macOS keyboard constants
-- Added `_FONT` as zero-arg function macro
-- Fixed ON ERROR GOTO with `_LASTHANDLER` (QB64 error handler scoping)
-- Fixed ON ERROR GOTO with global labels in subroutines (disabled cross-function goto)
-- Fixed array parameter handling (arrays passed as pointers, not dereferenced)
-- Fixed SWAP statement for fixed-length strings (use strcpy instead of direct assignment)
-- Fixed array of fixed-length string parameters (correct C syntax `char (*arr)[N]`)
+**Current Status (2026-01-22):** **PHASE C IN PROGRESS!** Code generation validation underway. GCC errors reduced from 14,547 → 105 (**99.3% reduction**). Session 6 fixes include:
+- Fixed variable name suffix mismatch in symbol lookup (suffix fallback logic)
+- Symbol table now resolves `x$` to `x` when `DIM x AS STRING` was declared
+- All assignment types (scalar, array, field, array-field) use resolved symbol names
+- FileGet/FilePut target name resolution uses symbol's declared name
+- Removed experimental pass 3 expression variable collector (caused regression)
 
-**Ready for Phase C Session 6: Fix remaining 142 GCC errors - major issue:**
-- Variable name suffix mismatch (~140 errors) - Variables declared as `x AS STRING` but used as `x$` causing `x_str` vs `x` mismatch in generated C code
+**Ready for Phase C Session 7: Fix remaining 105 GCC errors - categories:**
+- Variable declarations not reaching code generator (~80 errors)
+- Function signature mismatches (~10 errors)
+- Type conflicts and missing constants (~15 errors)
 
 ---
 
@@ -231,75 +229,20 @@ QB64pe uses these metacommands that need verification:
 
 ## 3. Implementation Phases
 
-### Phase C: Code Generation Validation (2-4 sessions) - IN PROGRESS
+**Current Status:** **105 GCC errors remaining** (down from 14,547 = **99.3% reduction!**)
 
-**Objective:** Ensure generated C code is correct
-
-**Session 1 Progress (2026-01-21):**
-- [x] Generate C code for QB64pe source (3.9MB, 76K lines generated successfully)
-- [x] Review generated code for correctness - identified 14,547 initial GCC errors
-- [x] Fix code generation issues discovered:
-  - [x] TYPE definitions emitted before global variables that use them
-  - [x] Fixed-length STRING * N generates proper `char name[N]` syntax
-  - [x] Struct initialization uses `{0}` instead of `= 0`
-  - [x] Dots in variable names converted to underscores (`path.exe$` → `path_exe_str`)
-  - [x] Tilde in identifiers converted (`constval~&` → `constval_u_lng`)
-  - [x] C reserved words escaped (`default` → `default_`)
-  - [x] `_IIF` polymorphic handling - uses `qb_iif_str` for string return types
-  - [x] QB64 built-in constants added (`_TRUE`, `_FALSE`, `_EQUAL`, `_LESS`, `_GREATER`)
-  - [x] Function argument variants (`qb_mid2`, `qb_instr2`, `qb_command_n`)
-  - [x] Implicit local variable collection for function bodies
-
-**Session 2 Progress (2026-01-22):**
-- [x] Fixed duplicate variable declarations (two-pass implicit local collector)
-- [x] Fixed `qb_asc` two-argument variant (303 errors fixed)
-- [x] Fixed `qb_timer` with accuracy parameter (34 errors fixed)
-- [x] Fixed type/variable name collision with `qbt_` prefix (152 errors fixed)
-- [x] Fixed fixed-length string in struct field assignments (144 errors fixed)
-- [x] Fixed fixed-length string array declarations (`char name[N]` syntax)
-- [x] Fixed scalar fixed-length string assignments (use `strncpy`)
-- [x] Fixed byref parameter passing (added `&` for non-lvalue args with temps)
-- [x] Fixed REDIM SHARED global array declarations
-- [x] Fixed CONST definitions as global constants
-
-**Session 3 Progress (2026-01-22):**
-- [x] Fixed `END 1` and `SYSTEM 1` exit code parsing (was generating line number labels)
-- [x] Fixed static string initializers (use NULL, not qb_string_new())
-- [x] Fixed string CONST initialization (moved to main())
-- [x] Fixed duplicate labels (procedure-prefixed line number labels)
-- [x] Fixed label vs SUB call disambiguation (`label: x = 1` vs `Sub1: Sub2`)
-
-**Session 4 Progress (2026-01-22):**
-- [x] Fixed BYREF parameter passing in user-defined function calls (added `params` to `FunctionCall` IR)
-- [x] Added C standard library names to reserved word list (`isalpha`, `isdigit`, `malloc`, etc.)
-- [x] Fixed built-in constant BYREF handling (use temp vars for `_TRUE`, `_FALSE`, etc.)
-- [x] Added missing `_KEY_*` keyboard constants (F1-F12, arrows, modifiers)
-- [x] Added `_EXIT`, `_DEFAULTCOLOR`, `_BACKGROUNDCOLOR` as built-in functions
-- [x] Used C compound literals for BYREF non-lvalue expressions in function calls
-- [x] Added function variants: `_INSTRREV`, `_MESSAGEBOX`, `_LOADFONT`, `_WIDTH`, `_HEIGHT`
-- [x] Added dialog function variants: `_SAVEFILEDIALOG$`, `_OPENFILEDIALOG$`, `_SELECTFOLDERDIALOG$`
-- [x] Fixed array subscript type casting (always cast indices to int64_t)
-
-**Session 5 Progress (2026-01-22):**
-- [x] Added 70+ `_ASC_*` ASCII value constants (NUL=0 through DEL=127)
-- [x] Added 70+ `_CHR_*` character string constants (corresponding qb_string* macros)
-- [x] Added `_KEY_LAPPLE` (100310) and `_KEY_RAPPLE` (100309) keyboard constants
-- [x] Added `_FONT` macro (expands to `qb_font()` for zero-arg function call)
-- [x] Fixed `ON ERROR GOTO _LASTHANDLER` - restore previous error handler (disable for now)
-- [x] Fixed global error labels in subroutines (qberror_test, errhandler - disabled cross-function goto)
-- [x] Fixed array parameter handling - arrays remain as pointers, not dereferenced to scalars
-- [x] Fixed SWAP statement for fixed-length strings - use strcpy in a block
-- [x] Fixed array of fixed-length string parameter syntax - `char (*arr_ref)[N]` not `char[N]* arr_ref`
-
-**Current Status:** **142 GCC errors remaining** (down from 14,547 = **99.0% reduction!**)
-
-**Remaining Issues Analysis:**
-1. **Variable name suffix mismatch** (~140 errors) - Variables declared as `DIM x AS STRING` but used as `x$`
-   - Root cause: `x` stored in symbol table, but `x$` lookup produces `x_str` in C
-   - Example: `ideprogname` declared, `ideprogname$` used → `ideprogname_str` undeclared
-   - Fix options:
-     a. Semantic analyzer: Match suffixed names with unsuffixed declarations of same type
-     b. Code generator: Use canonical name from symbol table, not raw AST name
+**Remaining Issues Analysis (105 errors):**
+1. **Undeclared variables in complex contexts** (~80 errors)
+   - Variables used in expressions not getting implicit declarations
+   - Loop variables, temporary variables, function call arguments
+   - Examples: `hashresflags`, `hashresref`, `providedArgs`, `sourcetyp`
+2. **Function signature mismatches** (~10 errors)
+   - `qb_font` expects argument but called with none
+   - Type conflicts (`args` declared with different types)
+   - Missing function variants
+3. **String suffix variables not in symbol table** (~15 errors)
+   - Variables like `a$`, `b$`, `num$` generating literal `$` in C code
+   - These may be implicit declarations that weren't processed
 
 **Tasks:**
 1. [x] Generate C code for QB64pe source
@@ -386,7 +329,7 @@ Once QB64Fresh can compile QB64pe:
 ### Milestone 3: Code Generation Success
 - [x] C code generated for entire QB64pe (4.3MB, ~100K lines)
 - [x] No internal compiler errors
-- [~] Generated code compiles with C compiler (142 GCC errors remaining, 99.0% fixed)
+- [~] Generated code compiles with C compiler (105 GCC errors remaining, 99.3% fixed)
 
 ### Milestone 4: Functional Success
 - [ ] QB64Fresh-compiled QB64pe runs
@@ -415,11 +358,11 @@ Once QB64Fresh can compile QB64pe:
 
 | Phase | Sessions | Status | Notes |
 |-------|----------|--------|-------|
-| C: Code Gen | 2-4 | **In Progress** | 99.0% GCC errors fixed (Session 5) |
+| C: Code Gen | 2-4 | **In Progress** | 99.3% GCC errors fixed (Session 6) |
 | D: Testing | 2-4 | Pending | Build and validate |
 | E: Documentation | 1-2 | Pending | Write up results |
 
-**Progress:** Phases A, B complete. Phase C in progress (5 sessions, 142 errors remaining).
+**Progress:** Phases A, B complete. Phase C in progress (6 sessions, 105 errors remaining).
 
 ---
 

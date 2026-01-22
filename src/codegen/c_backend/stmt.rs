@@ -3882,8 +3882,12 @@ fn collect_implicit_locals(
         declared_vars.insert(c_identifier(&p.name));
     }
 
-    // PASS 1: Collect all DIM declarations first (they have function-wide scope in BASIC)
-    fn collect_dims(stmt: &TypedStatement, declared_vars: &mut HashSet<String>) {
+    // PASS 1: Collect all DIM/REDIM declarations first (they have function-wide scope in BASIC)
+    fn collect_dims(
+        stmt: &TypedStatement,
+        declared_vars: &mut HashSet<String>,
+        locals: &mut Vec<String>,
+    ) {
         match &stmt.kind {
             TypedStatementKind::Dim { variables, .. } => {
                 for var in variables {
@@ -3891,8 +3895,20 @@ fn collect_implicit_locals(
                 }
             }
             TypedStatementKind::Redim { variables, .. } => {
+                // REDIM creates dynamic arrays - emit declarations with NULL initialization
                 for var in variables {
-                    declared_vars.insert(c_identifier(&var.name));
+                    let c_name = c_identifier(&var.name);
+                    if !declared_vars.contains(&c_name) {
+                        // Dynamic arrays are pointers to element type
+                        // For arrays of fixed-length strings, use char (*name)[N] syntax
+                        if let BasicType::FixedString(n) = &var.element_type {
+                            locals.push(format!("char (*{})[{}] = NULL;", c_name, n + 1));
+                        } else {
+                            let c_ty = c_type(&var.element_type);
+                            locals.push(format!("{}* {} = NULL;", c_ty, c_name));
+                        }
+                        declared_vars.insert(c_name);
+                    }
                 }
             }
             TypedStatementKind::StaticStmt { variables, .. } => {
@@ -3903,7 +3919,7 @@ fn collect_implicit_locals(
             // Recurse into control flow structures
             TypedStatementKind::For { body, .. } => {
                 for s in body {
-                    collect_dims(s, declared_vars);
+                    collect_dims(s, declared_vars, locals);
                 }
             }
             TypedStatementKind::If {
@@ -3913,28 +3929,28 @@ fn collect_implicit_locals(
                 ..
             } => {
                 for s in then_branch {
-                    collect_dims(s, declared_vars);
+                    collect_dims(s, declared_vars, locals);
                 }
                 for (_, branch_body) in elseif_branches {
                     for s in branch_body {
-                        collect_dims(s, declared_vars);
+                        collect_dims(s, declared_vars, locals);
                     }
                 }
                 if let Some(else_stmts) = else_branch {
                     for s in else_stmts {
-                        collect_dims(s, declared_vars);
+                        collect_dims(s, declared_vars, locals);
                     }
                 }
             }
             TypedStatementKind::While { body, .. } | TypedStatementKind::DoLoop { body, .. } => {
                 for s in body {
-                    collect_dims(s, declared_vars);
+                    collect_dims(s, declared_vars, locals);
                 }
             }
             TypedStatementKind::SelectCase { cases, .. } => {
                 for case in cases {
                     for s in &case.body {
-                        collect_dims(s, declared_vars);
+                        collect_dims(s, declared_vars, locals);
                     }
                 }
             }
@@ -3944,7 +3960,7 @@ fn collect_implicit_locals(
 
     // Run pass 1
     for stmt in body {
-        collect_dims(stmt, &mut declared_vars);
+        collect_dims(stmt, &mut declared_vars, &mut locals);
     }
 
     // PASS 2: Collect implicit variables (assignments to non-declared variables)

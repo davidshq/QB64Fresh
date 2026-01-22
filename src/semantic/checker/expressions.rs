@@ -154,11 +154,17 @@ impl<'a> TypeChecker<'a> {
     /// This handles both regular identifiers and dotted identifiers.
     /// For dotted identifiers (e.g., `id.field`), we check if the prefix is a UDT variable.
     /// If so, we treat it as field access. Otherwise, it's a dotted variable name.
+    ///
+    /// When a symbol is found via suffix fallback (e.g., `x$` matches `x AS STRING`),
+    /// we use the symbol's declared name to ensure consistent C code generation.
     fn check_identifier(&mut self, name: &str, span: crate::ast::Span) -> TypedExpr {
-        // Check if it's an existing variable (exact match)
+        // Check if it's an existing variable (exact match or suffix fallback)
         if let Some(symbol) = self.symbols.lookup_symbol(name) {
+            // Use the symbol's declared name, not the reference name.
+            // This ensures consistency when a suffixed reference (e.g., `x$`)
+            // matches an unsuffixed declaration (e.g., `DIM x AS STRING`).
             return TypedExpr::new(
-                TypedExprKind::Variable(name.to_string()),
+                TypedExprKind::Variable(symbol.name.clone()),
                 symbol.basic_type.clone(),
                 span,
             );

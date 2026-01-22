@@ -707,3 +707,77 @@ Runtime Library (linked)
 ---
 
 *This plan will be updated as analysis progresses and more specific requirements are discovered.*
+
+### Phase C: Code Generation Validation (2-4 sessions) - IN PROGRESS
+
+**Objective:** Ensure generated C code is correct
+
+**Session 1 Progress (2026-01-21):**
+- [x] Generate C code for QB64pe source (3.9MB, 76K lines generated successfully)
+- [x] Review generated code for correctness - identified 14,547 initial GCC errors
+- [x] Fix code generation issues discovered:
+  - [x] TYPE definitions emitted before global variables that use them
+  - [x] Fixed-length STRING * N generates proper `char name[N]` syntax
+  - [x] Struct initialization uses `{0}` instead of `= 0`
+  - [x] Dots in variable names converted to underscores (`path.exe$` → `path_exe_str`)
+  - [x] Tilde in identifiers converted (`constval~&` → `constval_u_lng`)
+  - [x] C reserved words escaped (`default` → `default_`)
+  - [x] `_IIF` polymorphic handling - uses `qb_iif_str` for string return types
+  - [x] QB64 built-in constants added (`_TRUE`, `_FALSE`, `_EQUAL`, `_LESS`, `_GREATER`)
+  - [x] Function argument variants (`qb_mid2`, `qb_instr2`, `qb_command_n`)
+  - [x] Implicit local variable collection for function bodies
+
+**Session 2 Progress (2026-01-22):**
+- [x] Fixed duplicate variable declarations (two-pass implicit local collector)
+- [x] Fixed `qb_asc` two-argument variant (303 errors fixed)
+- [x] Fixed `qb_timer` with accuracy parameter (34 errors fixed)
+- [x] Fixed type/variable name collision with `qbt_` prefix (152 errors fixed)
+- [x] Fixed fixed-length string in struct field assignments (144 errors fixed)
+- [x] Fixed fixed-length string array declarations (`char name[N]` syntax)
+- [x] Fixed scalar fixed-length string assignments (use `strncpy`)
+- [x] Fixed byref parameter passing (added `&` for non-lvalue args with temps)
+- [x] Fixed REDIM SHARED global array declarations
+- [x] Fixed CONST definitions as global constants
+
+**Session 3 Progress (2026-01-22):**
+- [x] Fixed `END 1` and `SYSTEM 1` exit code parsing (was generating line number labels)
+- [x] Fixed static string initializers (use NULL, not qb_string_new())
+- [x] Fixed string CONST initialization (moved to main())
+- [x] Fixed duplicate labels (procedure-prefixed line number labels)
+- [x] Fixed label vs SUB call disambiguation (`label: x = 1` vs `Sub1: Sub2`)
+
+**Session 4 Progress (2026-01-22):**
+- [x] Fixed BYREF parameter passing in user-defined function calls (added `params` to `FunctionCall` IR)
+- [x] Added C standard library names to reserved word list (`isalpha`, `isdigit`, `malloc`, etc.)
+- [x] Fixed built-in constant BYREF handling (use temp vars for `_TRUE`, `_FALSE`, etc.)
+- [x] Added missing `_KEY_*` keyboard constants (F1-F12, arrows, modifiers)
+- [x] Added `_EXIT`, `_DEFAULTCOLOR`, `_BACKGROUNDCOLOR` as built-in functions
+- [x] Used C compound literals for BYREF non-lvalue expressions in function calls
+- [x] Added function variants: `_INSTRREV`, `_MESSAGEBOX`, `_LOADFONT`, `_WIDTH`, `_HEIGHT`
+- [x] Added dialog function variants: `_SAVEFILEDIALOG$`, `_OPENFILEDIALOG$`, `_SELECTFOLDERDIALOG$`
+- [x] Fixed array subscript type casting (always cast indices to int64_t)
+
+**Session 5 Progress (2026-01-22):**
+- [x] Added 70+ `_ASC_*` ASCII value constants (NUL=0 through DEL=127)
+- [x] Added 70+ `_CHR_*` character string constants (corresponding qb_string* macros)
+- [x] Added `_KEY_LAPPLE` (100310) and `_KEY_RAPPLE` (100309) keyboard constants
+- [x] Added `_FONT` macro (expands to `qb_font()` for zero-arg function call)
+- [x] Fixed `ON ERROR GOTO _LASTHANDLER` - restore previous error handler (disable for now)
+- [x] Fixed global error labels in subroutines (qberror_test, errhandler - disabled cross-function goto)
+- [x] Fixed array parameter handling - arrays remain as pointers, not dereferenced to scalars
+- [x] Fixed SWAP statement for fixed-length strings - use strcpy in a block
+- [x] Fixed array of fixed-length string parameter syntax - `char (*arr_ref)[N]` not `char[N]* arr_ref`
+
+**Session 6 Progress (2026-01-22):**
+- [x] Fixed variable name suffix mismatch in symbol lookup (142 → 105 errors)
+  - Added `suffix_matches_type()` helper to check if suffix matches declared type
+  - Modified `lookup_symbol`, `lookup_scalar`, `lookup_array`, `lookup_global_symbol`
+  - Fallback: if `x$` not found but `x` exists with STRING type, return `x`'s symbol
+- [x] Updated `check_identifier` to use `symbol.name.clone()` instead of raw reference name
+- [x] Updated all assignment handlers to use resolved symbol names:
+  - `check_assignment` returns `(resolved_name, target_type)` tuple
+  - `check_array_assignment` returns `(resolved_name, element_type, dimensions)`
+  - `check_field_assignment` returns `(resolved_name, var_type)`
+  - `check_array_field_assignment` returns `(resolved_name, element_type, dimensions)`
+- [x] Fixed FileGet/FilePut `InputTarget::Variable` name resolution
+- [x] Reverted experimental pass 3 (expression variable collector) - caused regression

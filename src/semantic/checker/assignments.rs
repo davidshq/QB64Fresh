@@ -65,10 +65,12 @@ impl<'a> TypeChecker<'a> {
 
         let typed_value = self.check_expr(value);
 
-        // Determine target type
+        // Determine target type and resolved name
         // Use lookup_scalar to avoid finding arrays with the same name (separate namespace)
-        let target_type = if let Some(symbol) = self.symbols.lookup_scalar(name) {
-            symbol.basic_type.clone()
+        // When a symbol is found via suffix fallback (e.g., `x$` matches `x AS STRING`),
+        // use the symbol's declared name for consistent C code generation.
+        let (resolved_name, target_type) = if let Some(symbol) = self.symbols.lookup_scalar(name) {
+            (symbol.name.clone(), symbol.basic_type.clone())
         } else {
             // New variable, infer from suffix or default
             let inferred =
@@ -84,7 +86,7 @@ impl<'a> TypeChecker<'a> {
             };
             let _ = self.symbols.define_symbol(symbol);
 
-            inferred
+            (name.to_string(), inferred)
         };
 
         // Check type compatibility
@@ -98,7 +100,7 @@ impl<'a> TypeChecker<'a> {
 
         TypedStatement::new(
             TypedStatementKind::Assignment {
-                name: name.to_string(),
+                name: resolved_name,
                 value: typed_value,
                 target_type,
             },
@@ -167,6 +169,8 @@ impl<'a> TypeChecker<'a> {
     ///
     /// In BASIC's dual namespace model, `name(i) = value` should look up the array
     /// namespace specifically, even if a scalar variable with the same name exists.
+    /// When a symbol is found via suffix fallback, use the symbol's declared name
+    /// for consistent C code generation.
     pub(super) fn check_array_assignment(
         &mut self,
         name: &str,
@@ -175,83 +179,84 @@ impl<'a> TypeChecker<'a> {
         span: crate::ast::Span,
     ) -> TypedStatement {
         // Look up the array using array-specific lookup (dual namespace model)
-        let (element_type, dimensions) = if let Some(symbol) = self.symbols.lookup_array(name) {
-            let dimensions = if let SymbolKind::ArrayVariable { dimensions } = &symbol.kind {
-                dimensions.clone()
-            } else {
-                vec![]
-            };
+        let (resolved_name, element_type, dimensions) =
+            if let Some(symbol) = self.symbols.lookup_array(name) {
+                let dimensions = if let SymbolKind::ArrayVariable { dimensions } = &symbol.kind {
+                    dimensions.clone()
+                } else {
+                    vec![]
+                };
 
-            // Verify dimension count - skip if dimensions are unknown (empty, for array params)
-            if !dimensions.is_empty() && indices.len() != dimensions.len() {
-                self.errors.push(SemanticError::ArrayDimensionMismatch {
+                // Verify dimension count - skip if dimensions are unknown (empty, for array params)
+                if !dimensions.is_empty() && indices.len() != dimensions.len() {
+                    self.errors.push(SemanticError::ArrayDimensionMismatch {
+                        name: name.to_string(),
+                        expected: dimensions.len(),
+                        found: indices.len(),
+                        span,
+                    });
+                }
+
+                // For dynamic arrays (empty dimensions), create placeholder dimensions
+                let typed_dims: Vec<TypedArrayDimension> = if dimensions.is_empty() {
+                    indices
+                        .iter()
+                        .map(|_| TypedArrayDimension { lower: 0, upper: 0 })
+                        .collect()
+                } else {
+                    dimensions
+                        .iter()
+                        .map(|d| TypedArrayDimension {
+                            lower: d.lower_bound,
+                            upper: d.upper_bound,
+                        })
+                        .collect()
+                };
+
+                (symbol.name.clone(), symbol.basic_type.clone(), typed_dims)
+            } else if self.symbols.lookup_scalar(name).is_some() {
+                // Scalar variable exists but no array with this name
+                self.errors.push(SemanticError::NotAnArray {
                     name: name.to_string(),
-                    expected: dimensions.len(),
-                    found: indices.len(),
                     span,
                 });
-            }
-
-            // For dynamic arrays (empty dimensions), create placeholder dimensions
-            let typed_dims: Vec<TypedArrayDimension> = if dimensions.is_empty() {
-                indices
-                    .iter()
-                    .map(|_| TypedArrayDimension { lower: 0, upper: 0 })
-                    .collect()
+                (name.to_string(), BasicType::Unknown, Vec::new())
             } else {
-                dimensions
+                // Classic BASIC: implicitly declare array on first use with default bounds (0-10)
+                // Determine type from name suffix (e.g., A$ -> String, X% -> Integer)
+                let element_type = type_from_suffix(name).unwrap_or(BasicType::Single);
+
+                // Create dimensions with default bounds (0 TO 10) for each index
+                let dim_info: Vec<ArrayDimInfo> = indices
+                    .iter()
+                    .map(|_| ArrayDimInfo {
+                        lower_bound: 0,
+                        upper_bound: 10,
+                    })
+                    .collect();
+
+                // Define the implicit array
+                let implicit_array = Symbol {
+                    name: name.to_string(),
+                    kind: SymbolKind::ArrayVariable {
+                        dimensions: dim_info.clone(),
+                    },
+                    basic_type: element_type.clone(),
+                    span,
+                    is_mutable: true,
+                };
+                self.symbols.update_or_define_symbol(implicit_array);
+
+                let typed_dims: Vec<TypedArrayDimension> = dim_info
                     .iter()
                     .map(|d| TypedArrayDimension {
                         lower: d.lower_bound,
                         upper: d.upper_bound,
                     })
-                    .collect()
+                    .collect();
+
+                (name.to_string(), element_type, typed_dims)
             };
-
-            (symbol.basic_type.clone(), typed_dims)
-        } else if self.symbols.lookup_scalar(name).is_some() {
-            // Scalar variable exists but no array with this name
-            self.errors.push(SemanticError::NotAnArray {
-                name: name.to_string(),
-                span,
-            });
-            (BasicType::Unknown, Vec::new())
-        } else {
-            // Classic BASIC: implicitly declare array on first use with default bounds (0-10)
-            // Determine type from name suffix (e.g., A$ -> String, X% -> Integer)
-            let element_type = type_from_suffix(name).unwrap_or(BasicType::Single);
-
-            // Create dimensions with default bounds (0 TO 10) for each index
-            let dim_info: Vec<ArrayDimInfo> = indices
-                .iter()
-                .map(|_| ArrayDimInfo {
-                    lower_bound: 0,
-                    upper_bound: 10,
-                })
-                .collect();
-
-            // Define the implicit array
-            let implicit_array = Symbol {
-                name: name.to_string(),
-                kind: SymbolKind::ArrayVariable {
-                    dimensions: dim_info.clone(),
-                },
-                basic_type: element_type.clone(),
-                span,
-                is_mutable: true,
-            };
-            self.symbols.update_or_define_symbol(implicit_array);
-
-            let typed_dims: Vec<TypedArrayDimension> = dim_info
-                .iter()
-                .map(|d| TypedArrayDimension {
-                    lower: d.lower_bound,
-                    upper: d.upper_bound,
-                })
-                .collect();
-
-            (element_type, typed_dims)
-        };
 
         // Check and type the indices
         let mut typed_indices = Vec::new();
@@ -280,7 +285,7 @@ impl<'a> TypeChecker<'a> {
 
         TypedStatement::new(
             TypedStatementKind::ArrayAssignment {
-                name: name.to_string(),
+                name: resolved_name,
                 indices: typed_indices,
                 value: typed_value,
                 dimensions,
@@ -291,6 +296,8 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Type checks a field assignment statement: `variable.field = value`
+    /// When a symbol is found via suffix fallback, use the symbol's declared name
+    /// for consistent C code generation.
     pub(super) fn check_field_assignment(
         &mut self,
         name: &str,
@@ -299,8 +306,8 @@ impl<'a> TypeChecker<'a> {
         span: crate::ast::Span,
     ) -> TypedStatement {
         // Look up the variable
-        let var_type = if let Some(symbol) = self.symbols.lookup_symbol(name) {
-            symbol.basic_type.clone()
+        let (resolved_name, var_type) = if let Some(symbol) = self.symbols.lookup_symbol(name) {
+            (symbol.name.clone(), symbol.basic_type.clone())
         } else {
             // Implicit declaration with default type
             let default_type = self.symbols.default_type_for(name);
@@ -313,7 +320,7 @@ impl<'a> TypeChecker<'a> {
                     is_mutable: true,
                 })
                 .ok();
-            default_type
+            (name.to_string(), default_type)
         };
 
         // Resolve field type by walking through the UDT definition
@@ -335,7 +342,7 @@ impl<'a> TypeChecker<'a> {
 
         TypedStatement::new(
             TypedStatementKind::FieldAssignment {
-                name: name.to_string(),
+                name: resolved_name,
                 fields: fields.to_vec(),
                 value: typed_value,
                 field_type,
@@ -347,7 +354,8 @@ impl<'a> TypeChecker<'a> {
     /// Type checks an array field assignment statement: `array(i).field = value`
     ///
     /// In BASIC's dual namespace model, `array(i).field = value` should look up
-    /// the array namespace specifically.
+    /// the array namespace specifically. When a symbol is found via suffix fallback,
+    /// use the symbol's declared name for consistent C code generation.
     pub(super) fn check_array_field_assignment(
         &mut self,
         name: &str,
@@ -357,47 +365,48 @@ impl<'a> TypeChecker<'a> {
         span: crate::ast::Span,
     ) -> TypedStatement {
         // Look up the array using array-specific lookup (dual namespace model)
-        let (element_type, dimensions) = if let Some(symbol) = self.symbols.lookup_array(name) {
-            let dimensions = if let SymbolKind::ArrayVariable { dimensions } = &symbol.kind {
-                dimensions.clone()
-            } else {
-                vec![]
-            };
+        let (resolved_name, element_type, dimensions) =
+            if let Some(symbol) = self.symbols.lookup_array(name) {
+                let dimensions = if let SymbolKind::ArrayVariable { dimensions } = &symbol.kind {
+                    dimensions.clone()
+                } else {
+                    vec![]
+                };
 
-            // Verify dimension count - skip if dimensions are unknown (empty, for array params)
-            if !dimensions.is_empty() && indices.len() != dimensions.len() {
-                self.errors.push(SemanticError::ArrayDimensionMismatch {
+                // Verify dimension count - skip if dimensions are unknown (empty, for array params)
+                if !dimensions.is_empty() && indices.len() != dimensions.len() {
+                    self.errors.push(SemanticError::ArrayDimensionMismatch {
+                        name: name.to_string(),
+                        expected: dimensions.len(),
+                        found: indices.len(),
+                        span,
+                    });
+                }
+
+                // For dynamic arrays (empty dimensions), create placeholder dimensions
+                let typed_dims: Vec<TypedArrayDimension> = if dimensions.is_empty() {
+                    indices
+                        .iter()
+                        .map(|_| TypedArrayDimension { lower: 0, upper: 0 })
+                        .collect()
+                } else {
+                    dimensions
+                        .iter()
+                        .map(|d| TypedArrayDimension {
+                            lower: d.lower_bound,
+                            upper: d.upper_bound,
+                        })
+                        .collect()
+                };
+
+                (symbol.name.clone(), symbol.basic_type.clone(), typed_dims)
+            } else {
+                self.errors.push(SemanticError::NotAnArray {
                     name: name.to_string(),
-                    expected: dimensions.len(),
-                    found: indices.len(),
                     span,
                 });
-            }
-
-            // For dynamic arrays (empty dimensions), create placeholder dimensions
-            let typed_dims: Vec<TypedArrayDimension> = if dimensions.is_empty() {
-                indices
-                    .iter()
-                    .map(|_| TypedArrayDimension { lower: 0, upper: 0 })
-                    .collect()
-            } else {
-                dimensions
-                    .iter()
-                    .map(|d| TypedArrayDimension {
-                        lower: d.lower_bound,
-                        upper: d.upper_bound,
-                    })
-                    .collect()
+                (name.to_string(), BasicType::Unknown, Vec::new())
             };
-
-            (symbol.basic_type.clone(), typed_dims)
-        } else {
-            self.errors.push(SemanticError::NotAnArray {
-                name: name.to_string(),
-                span,
-            });
-            (BasicType::Unknown, Vec::new())
-        };
 
         // Check and type the indices
         let mut typed_indices = Vec::new();
@@ -431,7 +440,7 @@ impl<'a> TypeChecker<'a> {
 
         TypedStatement::new(
             TypedStatementKind::ArrayFieldAssignment {
-                name: name.to_string(),
+                name: resolved_name,
                 indices: typed_indices,
                 fields: fields.to_vec(),
                 value: typed_value,

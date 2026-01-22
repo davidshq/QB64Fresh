@@ -28,7 +28,7 @@
 //! - Labels are scope-local (can't GOTO into/out of procedures)
 
 use crate::ast::Span;
-use crate::semantic::types::BasicType;
+use crate::semantic::types::{self, BasicType};
 use std::collections::{HashMap, HashSet};
 
 /// Strips the type suffix from an identifier name for DEFtype purposes only.
@@ -53,6 +53,27 @@ fn strip_suffix_for_deftype(name: &str) -> &str {
     }
 
     name
+}
+
+/// Checks if a type suffix is compatible with a declared type.
+///
+/// In BASIC, when a variable is declared with an explicit type (e.g., `DIM x AS STRING`),
+/// it can be referenced with a type suffix that matches its declared type (e.g., `x$`).
+/// This function returns true if the suffix-implied type matches the declared type.
+fn suffix_matches_type(suffix_type: &BasicType, declared_type: &BasicType) -> bool {
+    // Direct match
+    if suffix_type == declared_type {
+        return true;
+    }
+
+    // String types match (STRING and FixedString both use $ suffix)
+    if matches!(suffix_type, BasicType::String)
+        && matches!(declared_type, BasicType::String | BasicType::FixedString(_))
+    {
+        return true;
+    }
+
+    false
 }
 
 /// Unique identifier for a scope.
@@ -445,6 +466,10 @@ impl SymbolTable {
     ///
     /// Variables with different type suffixes are DIFFERENT variables:
     /// `x$`, `x%`, and `x&` are three separate variables. Lookups are case-insensitive.
+    ///
+    /// However, if a variable is declared with an explicit type (e.g., `DIM x AS STRING`),
+    /// it can be referenced with a matching type suffix (e.g., `x$`). This function
+    /// handles that case by falling back to base name lookup with type compatibility check.
     pub fn lookup_symbol(&self, name: &str) -> Option<&Symbol> {
         // Use FULL name (including suffix) for lookup, case-insensitive
         let name_upper = name.to_uppercase();
@@ -456,6 +481,26 @@ impl SymbolTable {
         }
         if let Some(sym) = scope.arrays.get(&name_upper) {
             return Some(sym);
+        }
+
+        // Fallback: If name has a type suffix, try looking up the base name
+        // and check if the type is compatible with the suffix.
+        // This handles cases like: DIM x AS STRING ... x$ = "hello"
+        if let Some(suffix_type) = types::type_from_suffix(&name_upper) {
+            let base_name = types::strip_suffix(&name_upper).to_uppercase();
+            if base_name != name_upper {
+                // Try to find base name in current scope
+                if let Some(sym) = scope.scalars.get(&base_name)
+                    && suffix_matches_type(&suffix_type, &sym.basic_type)
+                {
+                    return Some(sym);
+                }
+                if let Some(sym) = scope.arrays.get(&base_name)
+                    && suffix_matches_type(&suffix_type, &sym.basic_type)
+                {
+                    return Some(sym);
+                }
+            }
         }
 
         // If in a procedure scope, SHARED variables are visible from global
@@ -488,6 +533,45 @@ impl SymbolTable {
                 }
             }
 
+            // Fallback for SHARED variables: try base name lookup
+            if let Some(suffix_type) = types::type_from_suffix(&name_upper) {
+                let base_name = types::strip_suffix(&name_upper).to_uppercase();
+                if base_name != name_upper {
+                    // Check module shared vars with base name
+                    if self.module_shared_vars.contains(&base_name)
+                        && let Some(global) = self.scopes.get(&ScopeId::GLOBAL)
+                    {
+                        if let Some(sym) = global.scalars.get(&base_name)
+                            && suffix_matches_type(&suffix_type, &sym.basic_type)
+                        {
+                            return Some(sym);
+                        }
+                        if let Some(sym) = global.arrays.get(&base_name)
+                            && suffix_matches_type(&suffix_type, &sym.basic_type)
+                        {
+                            return Some(sym);
+                        }
+                    }
+
+                    // Check explicitly SHARED vars with base name
+                    if let Some(shared_names) = self.shared_vars.get(&self.current_scope)
+                        && shared_names.iter().any(|n| n.to_uppercase() == base_name)
+                        && let Some(global) = self.scopes.get(&ScopeId::GLOBAL)
+                    {
+                        if let Some(sym) = global.scalars.get(&base_name)
+                            && suffix_matches_type(&suffix_type, &sym.basic_type)
+                        {
+                            return Some(sym);
+                        }
+                        if let Some(sym) = global.arrays.get(&base_name)
+                            && suffix_matches_type(&suffix_type, &sym.basic_type)
+                        {
+                            return Some(sym);
+                        }
+                    }
+                }
+            }
+
             // Check for built-in constants in global scope (always visible)
             // Constants are immutable, so there's no scoping issue
             if let Some(global) = self.scopes.get(&ScopeId::GLOBAL)
@@ -510,6 +594,8 @@ impl SymbolTable {
     /// In BASIC, arrays and scalars are in separate namespaces. Use this method
     /// when looking up `name(args)` syntax which should find arrays specifically.
     /// If `x` is a scalar and `x()` is an array, `lookup_array("x")` returns the array.
+    ///
+    /// This also handles suffix-to-base-name matching: `x$()` will find `x()` if `x` is STRING array.
     pub fn lookup_array(&self, name: &str) -> Option<&Symbol> {
         let name_upper = name.to_uppercase();
         let scope = self.scopes.get(&self.current_scope)?;
@@ -517,6 +603,23 @@ impl SymbolTable {
         // Check current scope's array namespace
         if let Some(sym) = scope.arrays.get(&name_upper) {
             return Some(sym);
+        }
+
+        // Fallback: If name has a type suffix, try looking up the base name
+        if let Some(suffix_type) = types::type_from_suffix(&name_upper) {
+            let base_name = types::strip_suffix(&name_upper).to_uppercase();
+            if base_name != name_upper
+                && let Some(sym) = scope.arrays.get(&base_name)
+            {
+                // For arrays, check the element type
+                if let BasicType::Array { element_type, .. } = &sym.basic_type {
+                    if suffix_matches_type(&suffix_type, element_type) {
+                        return Some(sym);
+                    }
+                } else if suffix_matches_type(&suffix_type, &sym.basic_type) {
+                    return Some(sym);
+                }
+            }
         }
 
         // If in a procedure scope, check for SHARED arrays from global
@@ -537,6 +640,41 @@ impl SymbolTable {
             {
                 return Some(sym);
             }
+
+            // Fallback for SHARED: try base name lookup
+            if let Some(suffix_type) = types::type_from_suffix(&name_upper) {
+                let base_name = types::strip_suffix(&name_upper).to_uppercase();
+                if base_name != name_upper {
+                    // Check module shared with base name
+                    if self.module_shared_vars.contains(&base_name)
+                        && let Some(global) = self.scopes.get(&ScopeId::GLOBAL)
+                        && let Some(sym) = global.arrays.get(&base_name)
+                    {
+                        if let BasicType::Array { element_type, .. } = &sym.basic_type {
+                            if suffix_matches_type(&suffix_type, element_type) {
+                                return Some(sym);
+                            }
+                        } else if suffix_matches_type(&suffix_type, &sym.basic_type) {
+                            return Some(sym);
+                        }
+                    }
+
+                    // Check explicitly SHARED with base name
+                    if let Some(shared_names) = self.shared_vars.get(&self.current_scope)
+                        && shared_names.iter().any(|n| n.to_uppercase() == base_name)
+                        && let Some(global) = self.scopes.get(&ScopeId::GLOBAL)
+                        && let Some(sym) = global.arrays.get(&base_name)
+                    {
+                        if let BasicType::Array { element_type, .. } = &sym.basic_type {
+                            if suffix_matches_type(&suffix_type, element_type) {
+                                return Some(sym);
+                            }
+                        } else if suffix_matches_type(&suffix_type, &sym.basic_type) {
+                            return Some(sym);
+                        }
+                    }
+                }
+            }
         }
 
         None
@@ -551,6 +689,8 @@ impl SymbolTable {
     ///
     /// Use this method when looking up simple variable references (not array access).
     /// If `x` is a scalar and `x()` is an array, `lookup_scalar("x")` returns the scalar.
+    ///
+    /// This also handles suffix-to-base-name matching: `x$` will find `x` if `x` is STRING.
     pub fn lookup_scalar(&self, name: &str) -> Option<&Symbol> {
         let name_upper = name.to_uppercase();
         let scope = self.scopes.get(&self.current_scope)?;
@@ -558,6 +698,17 @@ impl SymbolTable {
         // Check current scope's scalar namespace
         if let Some(sym) = scope.scalars.get(&name_upper) {
             return Some(sym);
+        }
+
+        // Fallback: If name has a type suffix, try looking up the base name
+        if let Some(suffix_type) = types::type_from_suffix(&name_upper) {
+            let base_name = types::strip_suffix(&name_upper).to_uppercase();
+            if base_name != name_upper
+                && let Some(sym) = scope.scalars.get(&base_name)
+                && suffix_matches_type(&suffix_type, &sym.basic_type)
+            {
+                return Some(sym);
+            }
         }
 
         // If in a procedure scope, check for SHARED scalars from global
@@ -577,6 +728,31 @@ impl SymbolTable {
                 && let Some(sym) = global.scalars.get(&name_upper)
             {
                 return Some(sym);
+            }
+
+            // Fallback for SHARED: try base name lookup
+            if let Some(suffix_type) = types::type_from_suffix(&name_upper) {
+                let base_name = types::strip_suffix(&name_upper).to_uppercase();
+                if base_name != name_upper {
+                    // Check module shared with base name
+                    if self.module_shared_vars.contains(&base_name)
+                        && let Some(global) = self.scopes.get(&ScopeId::GLOBAL)
+                        && let Some(sym) = global.scalars.get(&base_name)
+                        && suffix_matches_type(&suffix_type, &sym.basic_type)
+                    {
+                        return Some(sym);
+                    }
+
+                    // Check explicitly SHARED with base name
+                    if let Some(shared_names) = self.shared_vars.get(&self.current_scope)
+                        && shared_names.iter().any(|n| n.to_uppercase() == base_name)
+                        && let Some(global) = self.scopes.get(&ScopeId::GLOBAL)
+                        && let Some(sym) = global.scalars.get(&base_name)
+                        && suffix_matches_type(&suffix_type, &sym.basic_type)
+                    {
+                        return Some(sym);
+                    }
+                }
             }
 
             // Check for built-in constants in global scope (always visible)
@@ -800,15 +976,43 @@ impl SymbolTable {
     ///
     /// This is used to validate SHARED statements - the variable must exist
     /// at module level to be shared. Checks both namespaces.
+    ///
+    /// This also handles suffix-to-base-name matching for compatibility.
     pub fn lookup_global_symbol(&self, name: &str) -> Option<&Symbol> {
         // Use full name including suffix since a$ and a& are different variables
         let name_upper = name.to_uppercase();
         let global = self.scopes.get(&ScopeId::GLOBAL)?;
+
         // Check scalars first, then arrays
-        global
-            .scalars
-            .get(&name_upper)
-            .or_else(|| global.arrays.get(&name_upper))
+        if let Some(sym) = global.scalars.get(&name_upper) {
+            return Some(sym);
+        }
+        if let Some(sym) = global.arrays.get(&name_upper) {
+            return Some(sym);
+        }
+
+        // Fallback: If name has a type suffix, try looking up the base name
+        if let Some(suffix_type) = types::type_from_suffix(&name_upper) {
+            let base_name = types::strip_suffix(&name_upper).to_uppercase();
+            if base_name != name_upper {
+                if let Some(sym) = global.scalars.get(&base_name)
+                    && suffix_matches_type(&suffix_type, &sym.basic_type)
+                {
+                    return Some(sym);
+                }
+                if let Some(sym) = global.arrays.get(&base_name) {
+                    if let BasicType::Array { element_type, .. } = &sym.basic_type {
+                        if suffix_matches_type(&suffix_type, element_type) {
+                            return Some(sym);
+                        }
+                    } else if suffix_matches_type(&suffix_type, &sym.basic_type) {
+                        return Some(sym);
+                    }
+                }
+            }
+        }
+
+        None
     }
 
     /// Gets the default type for a variable based on its first letter.
