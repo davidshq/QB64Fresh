@@ -181,6 +181,7 @@ impl<'a> TypeChecker<'a> {
                 TypedExprKind::FunctionCall {
                     name: name.to_string(),
                     args: vec![],
+                    params: vec![],
                 },
                 proc.return_type.clone().unwrap(),
                 span,
@@ -570,6 +571,7 @@ impl<'a> TypeChecker<'a> {
                         TypedExprKind::FunctionCall {
                             name: name.to_string(),
                             args: args.iter().map(|a| self.check_expr(a)).collect(),
+                            params: vec![],
                         },
                         basic_type,
                         span,
@@ -617,6 +619,7 @@ impl<'a> TypeChecker<'a> {
                 TypedExprKind::FunctionCall {
                     name: name.to_string(),
                     args: args.iter().map(|a| self.check_expr(a)).collect(),
+                    params: vec![],
                 },
                 BasicType::Void,
                 span,
@@ -665,10 +668,23 @@ impl<'a> TypeChecker<'a> {
             typed_args.push(typed_arg);
         }
 
+        // Convert procedure parameters to typed parameters for BYREF handling
+        let typed_params: Vec<TypedParameter> = proc
+            .params
+            .iter()
+            .map(|p| TypedParameter {
+                name: p.name.clone(),
+                basic_type: p.basic_type.clone(),
+                by_val: p.by_val,
+                is_array: p.is_array,
+            })
+            .collect();
+
         TypedExpr::new(
             TypedExprKind::FunctionCall {
                 name: name.to_string(),
                 args: typed_args,
+                params: typed_params,
             },
             proc.return_type.unwrap_or(BasicType::Void),
             span,
@@ -694,6 +710,7 @@ impl<'a> TypeChecker<'a> {
                 TypedExprKind::FunctionCall {
                     name: "_IIF".to_string(),
                     args: args.iter().map(|a| self.check_expr(a)).collect(),
+                    params: vec![],
                 },
                 BasicType::Double,
                 span,
@@ -740,6 +757,7 @@ impl<'a> TypeChecker<'a> {
             TypedExprKind::FunctionCall {
                 name: "_IIF".to_string(),
                 args: vec![cond_typed, true_typed, false_typed],
+                params: vec![], // Built-in, all args are BYVAL
             },
             result_type,
             span,

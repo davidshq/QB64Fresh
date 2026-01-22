@@ -1790,6 +1790,14 @@ impl SemanticAnalyzer {
         // _SCREENEXISTS returns -1 if graphics window exists, 0 otherwise
         self.register_builtin_function("_SCREENEXISTS", &[], BasicType::Integer);
 
+        // _EXIT returns exit request state (non-zero if user requested exit)
+        self.register_builtin_function("_EXIT", &[], BasicType::Long);
+
+        // _DEFAULTCOLOR returns the default foreground color for the current _DEST
+        self.register_builtin_function("_DEFAULTCOLOR", &[], BasicType::Long);
+        // _BACKGROUNDCOLOR returns the background color of the current _DEST
+        self.register_builtin_function("_BACKGROUNDCOLOR", &[], BasicType::Long);
+
         // _EXIT - exit program with specific return code
         self.register_builtin_sub("_EXIT", &[("code", BasicType::Long)]);
 
@@ -2644,6 +2652,9 @@ impl SemanticAnalyzer {
 
         // Register character constant strings
         self.register_character_constants();
+
+        // Register keyboard scan code constants
+        self.register_keyboard_constants();
     }
 
     /// Registers QB64 character constant strings (_CHR_CR, _CHR_LF, etc.).
@@ -2842,6 +2853,77 @@ impl SemanticAnalyzer {
         // 32-bit vs 64-bit based on pointer width
         define_platform("_32BIT", cfg!(target_pointer_width = "32"));
         define_platform("_64BIT", cfg!(target_pointer_width = "64"));
+    }
+
+    /// Registers keyboard scan code constants for _KEYHIT and _KEYDOWN.
+    ///
+    /// These constants represent keyboard keys and can be compared against
+    /// the values returned by _KEYHIT and _KEYDOWN functions.
+    fn register_keyboard_constants(&mut self) {
+        use symbols::{ConstValue, Symbol, SymbolKind};
+
+        // Helper to create a keyboard constant
+        let mut define_key = |name: &str, value: i64| {
+            let symbol = Symbol {
+                name: name.to_string(),
+                kind: SymbolKind::Constant {
+                    value: ConstValue::Integer(value),
+                },
+                basic_type: BasicType::Long,
+                span: crate::ast::Span::new(0, 0),
+                is_mutable: false,
+            };
+            let _ = self.symbols.define_symbol(symbol);
+        };
+
+        // Special keys (extended ASCII / scan codes)
+        define_key("_KEY_ESC", 27);
+        define_key("_KEY_BACKSPACE", 8);
+        define_key("_KEY_TAB", 9);
+        define_key("_KEY_ENTER", 13);
+
+        // Arrow keys
+        define_key("_KEY_UP", 18432);
+        define_key("_KEY_DOWN", 20480);
+        define_key("_KEY_LEFT", 19200);
+        define_key("_KEY_RIGHT", 19712);
+
+        // Navigation keys
+        define_key("_KEY_INSERT", 20992);
+        define_key("_KEY_DELETE", 21248);
+        define_key("_KEY_HOME", 18176);
+        define_key("_KEY_END", 20224);
+        define_key("_KEY_PAGEUP", 18688);
+        define_key("_KEY_PAGEDOWN", 20736);
+
+        // Function keys
+        define_key("_KEY_F1", 15104);
+        define_key("_KEY_F2", 15360);
+        define_key("_KEY_F3", 15616);
+        define_key("_KEY_F4", 15872);
+        define_key("_KEY_F5", 16128);
+        define_key("_KEY_F6", 16384);
+        define_key("_KEY_F7", 16640);
+        define_key("_KEY_F8", 16896);
+        define_key("_KEY_F9", 17152);
+        define_key("_KEY_F10", 17408);
+        define_key("_KEY_F11", 34048);
+        define_key("_KEY_F12", 34304);
+
+        // Modifier keys (use SDL scan codes + 100000 offset for QB64 compatibility)
+        define_key("_KEY_LSHIFT", 100304);
+        define_key("_KEY_RSHIFT", 100303);
+        define_key("_KEY_LCTRL", 100306);
+        define_key("_KEY_RCTRL", 100305);
+        define_key("_KEY_LALT", 100308);
+        define_key("_KEY_RALT", 100307);
+        define_key("_KEY_CAPSLOCK", 100301);
+        define_key("_KEY_NUMLOCK", 100300);
+        define_key("_KEY_SCROLLLOCK", 100302);
+
+        // Print Screen and Pause
+        define_key("_KEY_PRINT", 100316);
+        define_key("_KEY_PAUSE", 100319);
     }
 }
 

@@ -15,16 +15,17 @@ This document outlines the strategy for compiling the QB64pe compiler using QB64
 
 **Approach:** Systematic gap analysis, incremental feature implementation, and progressive testing.
 
-**Current Status (2026-01-22):** **PHASE C IN PROGRESS!** Code generation validation underway. GCC errors reduced from 14,547 → 325 (**97.8% reduction**). Major Session 2 fixes include:
-- Two-pass implicit variable collection (fixes duplicate declarations)
-- Fixed-length string handling with `strncpy()` instead of direct assignment
-- Type/variable name collision fix with `qbt_` prefix for UDT names
-- Byref parameter passing with temp variables for non-lvalue expressions
-- REDIM SHARED global array declarations
-- CONST definitions as global constants
-- `qb_asc2()` and `qb_timer_n()` runtime function variants
+**Current Status (2026-01-22):** **PHASE C IN PROGRESS!** Code generation validation underway. GCC errors reduced from 14,547 → 169 (**98.8% reduction**). Session 4 fixes include:
+- Fixed BYREF parameter passing in user-defined function calls (added `params` to IR)
+- Added C standard library names to reserved word list (`isalpha`, `isdigit`, etc.)
+- Fixed built-in constant BYREF handling (use temp vars for `_TRUE`, `_FALSE`)
+- Added keyboard constants `_KEY_*` (F1-F12, arrows, modifiers)
+- Added function variants: `_INSTRREV`, `_MESSAGEBOX`, `_LOADFONT`, `_WIDTH`, `_HEIGHT`
+- Fixed array subscript type casting (always cast to int64_t)
 
-**Ready for Phase C Session 3: Fix remaining 325 GCC errors.**
+**Ready for Phase C Session 5: Fix remaining 169 GCC errors - major issues:**
+- Implicit variable declarations from BYREF function outputs (~80 errors)
+- Type/assignment issues (~8 errors)
 
 ---
 
@@ -259,20 +260,40 @@ QB64pe uses these metacommands that need verification:
 - [x] Fixed REDIM SHARED global array declarations
 - [x] Fixed CONST definitions as global constants
 
-**Current Status:** **325 GCC errors remaining** (down from 14,547 = **97.8% reduction!**)
+**Session 3 Progress (2026-01-22):**
+- [x] Fixed `END 1` and `SYSTEM 1` exit code parsing (was generating line number labels)
+- [x] Fixed static string initializers (use NULL, not qb_string_new())
+- [x] Fixed string CONST initialization (moved to main())
+- [x] Fixed duplicate labels (procedure-prefixed line number labels)
+- [x] Fixed label vs SUB call disambiguation (`label: x = 1` vs `Sub1: Sub2`)
 
-**Remaining Issues:**
-1. **Static initializers** (~13 errors) - `static x = func()` not valid in C
-2. **Duplicate labels** (~12 errors) - Line number labels not unique per function
-3. **Function variants** (~10 errors) - `qb_instrrev`, `qb_messagebox`, `qb_loadfont` arg counts
-4. **Type mismatches** (~15 errors) - `qb_timeelapsedsince_dbl`, `qb_term_lng`, etc.
-5. **Missing local variables** (~20 errors) - Some vars not being collected
-6. **Label references** (~6 errors) - Labels used but not defined
+**Session 4 Progress (2026-01-22):**
+- [x] Fixed BYREF parameter passing in user-defined function calls (added `params` to `FunctionCall` IR)
+- [x] Added C standard library names to reserved word list (`isalpha`, `isdigit`, `malloc`, etc.)
+- [x] Fixed built-in constant BYREF handling (use temp vars for `_TRUE`, `_FALSE`, etc.)
+- [x] Added missing `_KEY_*` keyboard constants (F1-F12, arrows, modifiers)
+- [x] Added `_EXIT`, `_DEFAULTCOLOR`, `_BACKGROUNDCOLOR` as built-in functions
+- [x] Used C compound literals for BYREF non-lvalue expressions in function calls
+- [x] Added function variants: `_INSTRREV`, `_MESSAGEBOX`, `_LOADFONT`, `_WIDTH`, `_HEIGHT`
+- [x] Added dialog function variants: `_SAVEFILEDIALOG$`, `_OPENFILEDIALOG$`, `_SELECTFOLDERDIALOG$`
+- [x] Fixed array subscript type casting (always cast indices to int64_t)
+
+**Current Status:** **169 GCC errors remaining** (down from 14,547 = **98.8% reduction!**)
+
+**Remaining Issues Analysis:**
+1. **Implicit BYREF variable declarations** (~80 errors) - Variables like `hashresflags`, `hashresref`, `ideprogname_str` created implicitly through BYREF function calls
+   - Root cause: Semantic analyzer doesn't create variables when passed to BYREF params
+   - Fix: Detect BYREF outputs in call analysis, auto-declare needed variables
+2. **Type/assignment issues** (~8 errors):
+   - `subscripted value is neither array nor pointer` (2) - Non-array being subscripted
+   - `incompatible types when assigning` (2) - qb_string assignment issues
+   - `assignment to expression with array type` (2) - Fixed-length string field assignments
+   - `expected identifier or '(' before '['` (2) - Syntax issues
 
 **Tasks:**
 1. [x] Generate C code for QB64pe source
 2. [x] Review generated code for correctness
-3. [~] Fix code generation issues discovered (97.8% complete)
+3. [~] Fix code generation issues discovered (98.0% complete)
 4. [x] Ensure proper handling of:
    - Large string concatenations ✓ (working)
    - Complex nested expressions ✓ (working)
@@ -352,9 +373,9 @@ Once QB64Fresh can compile QB64pe:
 ## 6. Success Metrics
 
 ### Milestone 3: Code Generation Success
-- [x] C code generated for entire QB64pe (3.9MB, 76K lines)
+- [x] C code generated for entire QB64pe (4.3MB, ~100K lines)
 - [x] No internal compiler errors
-- [~] Generated code compiles with C compiler (325 GCC errors remaining)
+- [~] Generated code compiles with C compiler (169 GCC errors remaining, 98.8% fixed)
 
 ### Milestone 4: Functional Success
 - [ ] QB64Fresh-compiled QB64pe runs
@@ -383,11 +404,11 @@ Once QB64Fresh can compile QB64pe:
 
 | Phase | Sessions | Status | Notes |
 |-------|----------|--------|-------|
-| C: Code Gen | 2-4 | **In Progress** | 97.8% GCC errors fixed (Session 2) |
+| C: Code Gen | 2-4 | **In Progress** | 98.8% GCC errors fixed (Session 4) |
 | D: Testing | 2-4 | Pending | Build and validate |
 | E: Documentation | 1-2 | Pending | Write up results |
 
-**Progress:** Phases A, B complete. Phase C in progress (2 sessions, 325 errors remaining).
+**Progress:** Phases A, B complete. Phase C in progress (4 sessions, 169 errors remaining).
 
 ---
 

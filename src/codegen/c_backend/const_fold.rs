@@ -64,7 +64,7 @@ pub fn try_fold(expr: &TypedExpr) -> Option<FoldedValue> {
         }
 
         // Function calls - check if it's a pure built-in we can fold
-        TypedExprKind::FunctionCall { name, args } => try_fold_builtin(name, args),
+        TypedExprKind::FunctionCall { name, args, .. } => try_fold_builtin(name, args),
 
         // Everything else requires runtime evaluation
         TypedExprKind::Variable(_)
@@ -757,6 +757,7 @@ mod tests {
             kind: TypedExprKind::FunctionCall {
                 name: name.to_string(),
                 args,
+                params: vec![],
             },
             basic_type: BasicType::Long,
             span: Span::new(0, 1),
