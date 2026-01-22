@@ -114,12 +114,32 @@ pub(super) fn c_identifier(name: &str) -> String {
         .replace('.', "_") // QB64 allows dots in variable names; C doesn't
         .replace('~', "_u"); // Unsigned type prefix
 
-    // Handle C reserved words by appending underscore
+    // Handle C reserved words and standard library conflicts by appending underscore
     match result.to_lowercase().as_str() {
+        // C keywords
         "default" | "switch" | "case" | "break" | "continue" | "return" | "void" | "int"
         | "char" | "float" | "double" | "long" | "short" | "unsigned" | "signed" | "const"
         | "static" | "extern" | "register" | "volatile" | "auto" | "struct" | "union" | "enum"
-        | "typedef" | "sizeof" | "goto" | "if" | "else" | "for" | "while" | "do" => {
+        | "typedef" | "sizeof" | "goto" | "if" | "else" | "for" | "while" | "do"
+        // C standard library functions from <ctype.h>
+        | "isalpha" | "isdigit" | "isalnum" | "isspace" | "isupper" | "islower" | "isprint"
+        | "iscntrl" | "ispunct" | "isxdigit" | "isgraph" | "isblank" | "toupper" | "tolower"
+        // C standard library functions from <stdlib.h>
+        | "malloc" | "calloc" | "realloc" | "free" | "exit" | "abort" | "atoi" | "atol"
+        | "atof" | "strtol" | "strtod" | "rand" | "srand" | "qsort" | "bsearch" | "abs"
+        | "labs" | "div" | "ldiv" | "getenv" | "system"
+        // C standard library functions from <string.h>
+        | "memcpy" | "memmove" | "memset" | "memcmp" | "strlen" | "strcpy" | "strncpy"
+        | "strcat" | "strncat" | "strcmp" | "strncmp" | "strchr" | "strrchr" | "strstr"
+        | "strtok" | "sprintf" | "snprintf"
+        // C standard library functions from <stdio.h>
+        | "printf" | "fprintf" | "scanf" | "sscanf" | "fopen" | "fclose" | "fread" | "fwrite"
+        | "fgets" | "fputs" | "fgetc" | "fputc" | "fseek" | "ftell" | "rewind" | "feof"
+        | "ferror" | "clearerr" | "remove" | "rename" | "tmpfile" | "tmpnam"
+        // C standard library functions from <math.h>
+        | "sin" | "cos" | "tan" | "asin" | "acos" | "atan" | "atan2" | "sinh" | "cosh"
+        | "tanh" | "exp" | "log" | "log10" | "pow" | "sqrt" | "ceil" | "floor" | "fabs"
+        | "fmod" | "modf" | "frexp" | "ldexp" => {
             format!("{}_", result)
         }
         _ => result,

@@ -517,12 +517,18 @@ impl StmtEmitter {
                     if is_byref {
                         // For byref, we need to pass the address
                         // Check if expression is an lvalue (can take address of)
-                        let is_lvalue = matches!(
-                            arg.kind,
-                            TypedExprKind::Variable { .. }
-                                | TypedExprKind::ArrayAccess { .. }
-                                | TypedExprKind::FieldAccess { .. }
-                        );
+                        // Note: Built-in constants like _TRUE, _FALSE are Variables in the AST
+                        // but expand to C macros, so they're not true lvalues
+                        let is_builtin_const = matches!(&arg.kind, TypedExprKind::Variable(name)
+                            if name.starts_with('_') && name.chars().all(|c| c.is_uppercase() || c == '_'));
+
+                        let is_lvalue = !is_builtin_const
+                            && matches!(
+                                arg.kind,
+                                TypedExprKind::Variable { .. }
+                                    | TypedExprKind::ArrayAccess { .. }
+                                    | TypedExprKind::FieldAccess { .. }
+                            );
 
                         if is_lvalue {
                             // Variable/array/field can be addressed directly
@@ -2563,7 +2569,15 @@ impl StmtEmitter {
         let c_name = c_identifier(name);
         let value_code = emit_expr(value)?;
 
-        let indices_code: Result<Vec<_>, _> = indices.iter().map(emit_expr).collect();
+        // Cast indices to int64_t to ensure integer subscripts
+        // (C requires integer array subscripts, but BASIC allows any numeric type)
+        let indices_code: Result<Vec<_>, _> = indices
+            .iter()
+            .map(|idx| {
+                let code = emit_expr(idx)?;
+                Ok(format!("(int64_t)({})", code))
+            })
+            .collect();
         let indices_code = indices_code?;
 
         let index_expr = if dimensions.is_empty() || indices_code.len() == 1 {

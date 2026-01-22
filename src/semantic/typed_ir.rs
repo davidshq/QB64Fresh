@@ -62,7 +62,16 @@ pub enum TypedExprKind {
     Grouped(Box<TypedExpr>),
 
     /// Function call with typed arguments.
-    FunctionCall { name: String, args: Vec<TypedExpr> },
+    ///
+    /// For user-defined functions, params contains the parameter info needed
+    /// for BYREF argument passing. For built-in functions, params is empty
+    /// (all built-in args are BYVAL).
+    FunctionCall {
+        name: String,
+        args: Vec<TypedExpr>,
+        /// Parameter info for BYREF handling (empty for built-in functions).
+        params: Vec<TypedParameter>,
+    },
 
     /// Array access with typed indices.
     ///

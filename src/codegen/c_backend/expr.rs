@@ -88,13 +88,12 @@ pub(super) fn emit_expr(expr: &TypedExpr) -> Result<String, CodeGenError> {
             Ok(format!("({})", inner_code))
         }
 
-        TypedExprKind::FunctionCall { name, args } => {
-            let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
-            let args_str = args_code?.join(", ");
-
+        TypedExprKind::FunctionCall { name, args, params } => {
             // Special case: _IIF is polymorphic - use appropriate variant based on return type
             let upper_name = name.to_uppercase();
             if upper_name == "_IIF" {
+                let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
+                let args_str = args_code?.join(", ");
                 let c_name = if expr.basic_type.is_string() {
                     "qb_iif_str".to_string()
                 } else {
@@ -105,26 +104,114 @@ pub(super) fn emit_expr(expr: &TypedExpr) -> Result<String, CodeGenError> {
 
             // Special case: MID$ with 2 arguments (no length) uses qb_mid2
             if upper_name == "MID$" && args.len() == 2 {
+                let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
+                let args_str = args_code?.join(", ");
                 return Ok(format!("qb_mid2({})", args_str));
             }
 
             // Special case: INSTR with 2 arguments (no start) uses qb_instr2
             if upper_name == "INSTR" && args.len() == 2 {
+                let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
+                let args_str = args_code?.join(", ");
                 return Ok(format!("qb_instr2({})", args_str));
+            }
+
+            // Special case: _INSTRREV with 3 arguments (start, source, search) uses qb_instrrev3
+            if upper_name == "_INSTRREV" && args.len() == 3 {
+                let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
+                let args_str = args_code?.join(", ");
+                return Ok(format!("qb_instrrev3({})", args_str));
+            }
+
+            // Special case: _MESSAGEBOX with different argument counts
+            if upper_name == "_MESSAGEBOX" {
+                let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
+                let args_str = args_code?.join(", ");
+                return match args.len() {
+                    1 => Ok(format!("qb_messagebox1({})", args_str)),
+                    2 => Ok(format!("qb_messagebox2({})", args_str)),
+                    3 => Ok(format!("qb_messagebox({})", args_str)),
+                    4 => Ok(format!("qb_messagebox4({})", args_str)),
+                    _ => Ok(format!("qb_messagebox({})", args_str)),
+                };
+            }
+
+            // Special case: _LOADFONT with different argument counts
+            if upper_name == "_LOADFONT" {
+                let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
+                let args_str = args_code?.join(", ");
+                return match args.len() {
+                    2 => Ok(format!("qb_loadfont({})", args_str)),
+                    3 => Ok(format!("qb_loadfont3({})", args_str)),
+                    4 => Ok(format!("qb_loadfont4({})", args_str)),
+                    _ => Ok(format!("qb_loadfont({})", args_str)),
+                };
+            }
+
+            // Special case: _WIDTH without arguments uses current destination
+            if upper_name == "_WIDTH" && args.is_empty() {
+                return Ok("qb_gfx_image_width(0)".to_string());
+            }
+
+            // Special case: _HEIGHT without arguments uses current destination
+            if upper_name == "_HEIGHT" && args.is_empty() {
+                return Ok("qb_gfx_image_height(0)".to_string());
+            }
+
+            // Special case: _SAVEFILEDIALOG$ with different argument counts
+            if upper_name == "_SAVEFILEDIALOG$" {
+                let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
+                let args_str = args_code?.join(", ");
+                return match args.len() {
+                    2 => Ok(format!("qb_savefiledialog({})", args_str)),
+                    3 => Ok(format!("qb_savefiledialog3({})", args_str)),
+                    4 => Ok(format!("qb_savefiledialog4({})", args_str)),
+                    _ => Ok(format!("qb_savefiledialog({})", args_str)),
+                };
+            }
+
+            // Special case: _OPENFILEDIALOG$ with different argument counts
+            if upper_name == "_OPENFILEDIALOG$" {
+                let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
+                let args_str = args_code?.join(", ");
+                return match args.len() {
+                    2 => Ok(format!("qb_openfiledialog({})", args_str)),
+                    3 => Ok(format!("qb_openfiledialog3({})", args_str)),
+                    4 => Ok(format!("qb_openfiledialog4({})", args_str)),
+                    5 => Ok(format!("qb_openfiledialog5({})", args_str)),
+                    _ => Ok(format!("qb_openfiledialog({})", args_str)),
+                };
+            }
+
+            // Special case: _SELECTFOLDERDIALOG$ with different argument counts
+            if upper_name == "_SELECTFOLDERDIALOG$" {
+                let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
+                let args_str = args_code?.join(", ");
+                return match args.len() {
+                    1 => Ok(format!("qb_selectfolderdialog({})", args_str)),
+                    2 => Ok(format!("qb_selectfolderdialog2({})", args_str)),
+                    _ => Ok(format!("qb_selectfolderdialog({})", args_str)),
+                };
             }
 
             // Special case: COMMAND$ with argument uses qb_command_n
             if upper_name == "COMMAND$" && !args.is_empty() {
+                let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
+                let args_str = args_code?.join(", ");
                 return Ok(format!("qb_command_n({})", args_str));
             }
 
             // Special case: ASC with 2 arguments (position) uses qb_asc2
             if upper_name == "ASC" && args.len() == 2 {
+                let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
+                let args_str = args_code?.join(", ");
                 return Ok(format!("qb_asc2({})", args_str));
             }
 
             // Special case: TIMER with argument (accuracy) uses qb_timer_n
             if upper_name == "TIMER" && !args.is_empty() {
+                let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
+                let args_str = args_code?.join(", ");
                 return Ok(format!("qb_timer_n({})", args_str));
             }
 
@@ -134,6 +221,55 @@ pub(super) fn emit_expr(expr: &TypedExpr) -> Result<String, CodeGenError> {
             if name == "RND" && args.is_empty() {
                 return Ok(format!("{}(1.0f)", c_name));
             }
+
+            // For user-defined functions with BYREF parameters, add & for lvalue args
+            if !params.is_empty() {
+                let mut args_codes = Vec::new();
+                for (i, arg) in args.iter().enumerate() {
+                    let arg_code = emit_expr(arg)?;
+                    // Check if this parameter is byref (and not an array)
+                    let is_byref = params
+                        .get(i)
+                        .map(|p| !p.by_val && !p.is_array)
+                        .unwrap_or(false);
+
+                    if is_byref {
+                        // Check if expression is an lvalue (can take address of)
+                        // Note: Built-in constants like _TRUE, _FALSE are Variables in the AST
+                        // but expand to C macros, so they're not true lvalues
+                        let is_builtin_const = matches!(&arg.kind, TypedExprKind::Variable(name)
+                            if name.starts_with('_') && name.chars().all(|c| c.is_uppercase() || c == '_'));
+
+                        let is_lvalue = !is_builtin_const
+                            && matches!(
+                                arg.kind,
+                                TypedExprKind::Variable { .. }
+                                    | TypedExprKind::ArrayAccess { .. }
+                                    | TypedExprKind::FieldAccess { .. }
+                            );
+
+                        if is_lvalue {
+                            args_codes.push(format!("&({})", arg_code));
+                        } else {
+                            // Non-lvalue expression - use C compound literal to create addressable temp
+                            // Format: &(type){expr} creates a temporary that can be addressed
+                            let param_type = params.get(i).map(|p| &p.basic_type);
+                            let c_ty = param_type
+                                .map(c_type)
+                                .unwrap_or_else(|| "int32_t".to_string());
+                            args_codes.push(format!("&({}){{{}}}", c_ty, arg_code));
+                        }
+                    } else {
+                        args_codes.push(arg_code);
+                    }
+                }
+                let args_str = args_codes.join(", ");
+                return Ok(format!("{}({})", c_name, args_str));
+            }
+
+            // Built-in functions - all args are BYVAL
+            let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
+            let args_str = args_code?.join(", ");
 
             Ok(format!("{}({})", c_name, args_str))
         }
@@ -324,7 +460,20 @@ fn emit_array_access(
     dimensions: &[TypedArrayDimension],
 ) -> Result<String, CodeGenError> {
     let c_name = c_identifier(name);
-    let indices_code: Result<Vec<_>, _> = indices.iter().map(emit_expr).collect();
+
+    // Collect index codes, casting to int64_t to ensure integer subscripts
+    // (C requires integer array subscripts, but BASIC allows any numeric type)
+    // We always cast to ensure safety, even for seemingly integer types, because
+    // function calls like VAL() may return double even if wrapped in Convert
+    let indices_code: Result<Vec<_>, _> = indices
+        .iter()
+        .map(|idx| {
+            let code = emit_expr(idx)?;
+            // Cast to int64_t to ensure integer subscript
+            // This handles VAL(), floating-point expressions, and implicit conversions
+            Ok(format!("(int64_t)({})", code))
+        })
+        .collect();
     let indices_code = indices_code?;
 
     if dimensions.is_empty() || indices_code.len() == 1 {
@@ -749,6 +898,9 @@ pub(super) fn c_function_name(name: &str) -> String {
         // Color defaults
         "_DEFAULTCOLOR" => "qb_defaultcolor".to_string(),
         "_BACKGROUNDCOLOR" => "qb_backgroundcolor".to_string(),
+
+        // Exit state
+        "_EXIT" => "qb_exit_state".to_string(),
 
         // Short-circuit operators
         "_ANDALSO" => "qb_andalso".to_string(),

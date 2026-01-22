@@ -62,6 +62,43 @@ pub(super) fn emit_header(output: &mut String, runtime_mode: RuntimeMode) {
     writeln!(output, "#define _STR_CR qb_string_new(\"\\r\")").unwrap();
     writeln!(output, "#define _CHR_QUOTE qb_string_new(\"\\\"\")").unwrap();
     writeln!(output, "#define _CHR_HT qb_string_new(\"\\t\")").unwrap();
+    writeln!(output, "#define _CHR_LF qb_string_new(\"\\n\")").unwrap();
+    writeln!(output).unwrap();
+
+    // Keyboard scan code constants for _KEYHIT and _KEYDOWN
+    writeln!(output, "/* Keyboard constants */").unwrap();
+    writeln!(output, "#define _KEY_ESC (27)").unwrap();
+    writeln!(output, "#define _KEY_BACKSPACE (8)").unwrap();
+    writeln!(output, "#define _KEY_TAB (9)").unwrap();
+    writeln!(output, "#define _KEY_ENTER (13)").unwrap();
+    writeln!(output, "#define _KEY_UP (18432)").unwrap();
+    writeln!(output, "#define _KEY_DOWN (20480)").unwrap();
+    writeln!(output, "#define _KEY_LEFT (19200)").unwrap();
+    writeln!(output, "#define _KEY_RIGHT (19712)").unwrap();
+    writeln!(output, "#define _KEY_INSERT (20992)").unwrap();
+    writeln!(output, "#define _KEY_DELETE (21248)").unwrap();
+    writeln!(output, "#define _KEY_HOME (18176)").unwrap();
+    writeln!(output, "#define _KEY_END (20224)").unwrap();
+    writeln!(output, "#define _KEY_PAGEUP (18688)").unwrap();
+    writeln!(output, "#define _KEY_PAGEDOWN (20736)").unwrap();
+    writeln!(output, "#define _KEY_F1 (15104)").unwrap();
+    writeln!(output, "#define _KEY_F2 (15360)").unwrap();
+    writeln!(output, "#define _KEY_F3 (15616)").unwrap();
+    writeln!(output, "#define _KEY_F4 (15872)").unwrap();
+    writeln!(output, "#define _KEY_F5 (16128)").unwrap();
+    writeln!(output, "#define _KEY_F6 (16384)").unwrap();
+    writeln!(output, "#define _KEY_F7 (16640)").unwrap();
+    writeln!(output, "#define _KEY_F8 (16896)").unwrap();
+    writeln!(output, "#define _KEY_F9 (17152)").unwrap();
+    writeln!(output, "#define _KEY_F10 (17408)").unwrap();
+    writeln!(output, "#define _KEY_F11 (34048)").unwrap();
+    writeln!(output, "#define _KEY_F12 (34304)").unwrap();
+    writeln!(output, "#define _KEY_LSHIFT (100304)").unwrap();
+    writeln!(output, "#define _KEY_RSHIFT (100303)").unwrap();
+    writeln!(output, "#define _KEY_LCTRL (100306)").unwrap();
+    writeln!(output, "#define _KEY_RCTRL (100305)").unwrap();
+    writeln!(output, "#define _KEY_LALT (100308)").unwrap();
+    writeln!(output, "#define _KEY_RALT (100307)").unwrap();
     writeln!(output).unwrap();
 
     match runtime_mode {
