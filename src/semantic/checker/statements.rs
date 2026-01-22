@@ -162,11 +162,27 @@ impl<'a> TypeChecker<'a> {
 
             StatementKind::Exit { exit_type } => self.check_exit(*exit_type, stmt.span),
 
-            StatementKind::End => TypedStatement::new(TypedStatementKind::End, stmt.span),
+            StatementKind::End { exit_code } => {
+                let typed_exit_code = exit_code.as_ref().map(|e| self.check_expr(e));
+                TypedStatement::new(
+                    TypedStatementKind::End {
+                        exit_code: typed_exit_code,
+                    },
+                    stmt.span,
+                )
+            }
 
             StatementKind::Stop => TypedStatement::new(TypedStatementKind::Stop, stmt.span),
 
-            StatementKind::System => TypedStatement::new(TypedStatementKind::System, stmt.span),
+            StatementKind::System { exit_code } => {
+                let typed_exit_code = exit_code.as_ref().map(|e| self.check_expr(e));
+                TypedStatement::new(
+                    TypedStatementKind::System {
+                        exit_code: typed_exit_code,
+                    },
+                    stmt.span,
+                )
+            }
 
             StatementKind::Sleep { seconds } => {
                 let typed_seconds = seconds.as_ref().map(|s| self.check_expr(s));

@@ -275,14 +275,14 @@ pub enum StatementKind {
     /// `EXIT FOR`, `EXIT WHILE`, `EXIT DO`, `EXIT SUB`, `EXIT FUNCTION`
     Exit { exit_type: ExitType },
 
-    /// `END` - End program execution
-    End,
+    /// `END [exit_code]` - End program execution with optional exit code
+    End { exit_code: Option<Expr> },
 
     /// `STOP` - Stop execution (for debugging)
     Stop,
 
-    /// `SYSTEM` - Exit program immediately (returns to OS)
-    System,
+    /// `SYSTEM [exit_code]` - Exit program immediately with optional exit code
+    System { exit_code: Option<Expr> },
 
     /// `SLEEP [seconds]` - Pause execution
     Sleep {

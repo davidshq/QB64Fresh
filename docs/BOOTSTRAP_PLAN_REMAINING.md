@@ -1,7 +1,7 @@
 # Plan: Compiling QB64pe Using QB64Fresh
 
 *Created: 2026-01-20*
-*Updated: 2026-01-21*
+*Updated: 2026-01-22*
 
 This document outlines the strategy for compiling the QB64pe compiler using QB64Fresh, achieving a form of cross-compilation where a Rust-based BASIC compiler builds a C++-targeting BASIC compiler.
 
@@ -15,20 +15,16 @@ This document outlines the strategy for compiling the QB64pe compiler using QB64
 
 **Approach:** Systematic gap analysis, incremental feature implementation, and progressive testing.
 
-**Current Status (2026-01-21):** **PHASE B COMPLETE!** 🎉 Semantic analysis passes with **100% error reduction** (992 → 0 errors). QB64pe parses and type-checks successfully. Major fixes include:
-- Polymorphic `_IIF` handling
-- DEFTYPE preprocessing
-- Unsigned type suffix lookup (`~&`, `~%`)
-- `SHELL` function registration
-- `_STR_*` and `_CHR_*` character constants
-- Built-in constant scope visibility from functions
-- Function return base name aliasing (`FUNCTION foo$` allows `foo = value`)
-- Array re-DIM in same scope (valid QB64 pattern)
-- **Dual namespace model** - Separate storage for scalars and arrays (see QB64_LANGUAGE_SPECIFICATION.md §9.5)
-- **REDIM _PRESERVE on SHARED arrays** - Properly updates global scope instead of creating local copies
-- **_OPENHOST signature fix** - Takes STRING connection string, not LONG port
+**Current Status (2026-01-22):** **PHASE C IN PROGRESS!** Code generation validation underway. GCC errors reduced from 14,547 → 325 (**97.8% reduction**). Major Session 2 fixes include:
+- Two-pass implicit variable collection (fixes duplicate declarations)
+- Fixed-length string handling with `strncpy()` instead of direct assignment
+- Type/variable name collision fix with `qbt_` prefix for UDT names
+- Byref parameter passing with temp variables for non-lvalue expressions
+- REDIM SHARED global array declarations
+- CONST definitions as global constants
+- `qb_asc2()` and `qb_timer_n()` runtime function variants
 
-**Ready for Phase C: Code Generation Validation.**
+**Ready for Phase C Session 3: Fix remaining 325 GCC errors.**
 
 ---
 
@@ -356,9 +352,9 @@ Once QB64Fresh can compile QB64pe:
 ## 6. Success Metrics
 
 ### Milestone 3: Code Generation Success
-- [ ] C code generated for entire QB64pe
-- [ ] No internal compiler errors
-- [ ] Generated code compiles with C compiler
+- [x] C code generated for entire QB64pe (3.9MB, 76K lines)
+- [x] No internal compiler errors
+- [~] Generated code compiles with C compiler (325 GCC errors remaining)
 
 ### Milestone 4: Functional Success
 - [ ] QB64Fresh-compiled QB64pe runs
@@ -387,11 +383,11 @@ Once QB64Fresh can compile QB64pe:
 
 | Phase | Sessions | Status | Notes |
 |-------|----------|--------|-------|
-| C: Code Gen | 2-4 | Pending | C output correctness |
+| C: Code Gen | 2-4 | **In Progress** | 97.8% GCC errors fixed (Session 2) |
 | D: Testing | 2-4 | Pending | Build and validate |
 | E: Documentation | 1-2 | Pending | Write up results |
 
-**Progress:** Phases A and B complete. Ready for Phase C (code generation).
+**Progress:** Phases A, B complete. Phase C in progress (2 sessions, 325 errors remaining).
 
 ---
 

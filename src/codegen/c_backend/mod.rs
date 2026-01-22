@@ -135,8 +135,9 @@ impl CodeGenerator for CBackend {
             writeln!(output).unwrap();
         }
 
-        // Collect globals and forward declarations
-        let (globals, forward_decls) = analysis::collect_globals(program, emit_params);
+        // Collect globals, forward declarations, and string constant initializations
+        let (globals, forward_decls, string_const_inits) =
+            analysis::collect_globals(program, emit_params);
 
         // Global variables
         if !globals.is_empty() {
@@ -226,6 +227,15 @@ impl CodeGenerator for CBackend {
         writeln!(output, "int main(int argc, char** argv) {{").unwrap();
         writeln!(output, "    (void)argc; (void)argv;").unwrap();
         writeln!(output).unwrap();
+
+        // Initialize string constants (can't be done at global scope in C)
+        if !string_const_inits.is_empty() {
+            writeln!(output, "    /* Initialize string constants */").unwrap();
+            for init in &string_const_inits {
+                writeln!(output, "    {};", init).unwrap();
+            }
+            writeln!(output).unwrap();
+        }
 
         emitter.indent = 1;
 
