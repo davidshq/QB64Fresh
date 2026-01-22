@@ -123,6 +123,20 @@ pub(super) fn emit_expr(expr: &TypedExpr) -> Result<String, CodeGenError> {
                 return Ok(format!("qb_instrrev3({})", args_str));
             }
 
+            // Special case: LBOUND with 2 arguments (array, dimension) uses qb_lbound2
+            if upper_name == "LBOUND" && args.len() == 2 {
+                let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
+                let args_str = args_code?.join(", ");
+                return Ok(format!("qb_lbound2({})", args_str));
+            }
+
+            // Special case: UBOUND with 2 arguments (array, dimension) uses qb_ubound2
+            if upper_name == "UBOUND" && args.len() == 2 {
+                let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
+                let args_str = args_code?.join(", ");
+                return Ok(format!("qb_ubound2({})", args_str));
+            }
+
             // Special case: _MESSAGEBOX with different argument counts
             if upper_name == "_MESSAGEBOX" {
                 let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();

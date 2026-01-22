@@ -59,15 +59,16 @@ mod runtime;
 mod stmt;
 mod types;
 
+use std::collections::HashSet;
 use std::fmt::Write;
 
 use crate::codegen::error::CodeGenError;
 use crate::codegen::{CodeGenerator, GeneratedOutput};
-use crate::semantic::typed_ir::{TypedProgram, TypedStatementKind};
+use crate::semantic::typed_ir::{TypedProgram, TypedStatement, TypedStatementKind};
 
 use self::analysis::{collect_callback_wrappers, collect_data_values, collect_type_definitions};
 use self::runtime::emit_header;
-use self::stmt::{StmtEmitter, emit_params};
+use self::stmt::{StmtEmitter, collect_implicit_locals, emit_params};
 
 /// Runtime mode for code generation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -142,7 +143,7 @@ impl CodeGenerator for CBackend {
         // Global variables
         if !globals.is_empty() {
             writeln!(output, "/* Global Variables */").unwrap();
-            for decl in globals {
+            for decl in &globals {
                 writeln!(output, "{}", decl).unwrap();
             }
             writeln!(output).unwrap();
@@ -233,6 +234,65 @@ impl CodeGenerator for CBackend {
             writeln!(output, "    /* Initialize string constants */").unwrap();
             for init in &string_const_inits {
                 writeln!(output, "    {};", init).unwrap();
+            }
+            writeln!(output).unwrap();
+        }
+
+        // Collect main-level statements (excluding SUB/FUNCTION definitions)
+        let main_stmts: Vec<&TypedStatement> = program
+            .statements
+            .iter()
+            .filter(|s| {
+                !matches!(
+                    s.kind,
+                    TypedStatementKind::SubDefinition { .. }
+                        | TypedStatementKind::FunctionDefinition { .. }
+                )
+            })
+            .collect();
+
+        // Build set of global variable names for collect_implicit_locals
+        // Global declarations look like "type name = init;" or "const type name = init;"
+        let global_var_names: HashSet<String> = globals
+            .iter()
+            .filter_map(|decl| {
+                // Parse various declaration forms:
+                // "type name = init;" -> parts[1] is name
+                // "type name[N];" -> parts[1] is name
+                // "const type name = init;" -> parts[2] is name
+                // "type (*name)[N]" -> special case for function pointers/arrays
+                let decl = decl.trim_end_matches(';');
+                let parts: Vec<&str> = decl.split_whitespace().collect();
+
+                // Handle "const type name" form (const is parts[0])
+                let name_idx = if parts.first() == Some(&"const") {
+                    2
+                } else {
+                    1
+                };
+
+                if parts.len() > name_idx {
+                    // Get the name part (might have [N] or = suffix)
+                    let name = parts[name_idx].split('[').next()?.split('=').next()?.trim();
+                    if !name.is_empty() && !name.starts_with('(') {
+                        return Some(name.to_string());
+                    }
+                }
+                None
+            })
+            .collect();
+
+        // Collect implicit local declarations for main
+        // Convert Vec<&TypedStatement> to slice for collect_implicit_locals
+        let main_stmts_owned: Vec<TypedStatement> =
+            main_stmts.iter().map(|s| (*s).clone()).collect();
+        let implicit_locals = collect_implicit_locals(&main_stmts_owned, &[], &global_var_names);
+
+        // Emit implicit local declarations
+        if !implicit_locals.is_empty() {
+            writeln!(output, "    /* Implicit local variables */").unwrap();
+            for decl in &implicit_locals {
+                writeln!(output, "    {}", decl).unwrap();
             }
             writeln!(output).unwrap();
         }
