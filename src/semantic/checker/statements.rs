@@ -967,35 +967,43 @@ impl<'a> TypeChecker<'a> {
                 let typed_position = position.as_ref().map(|e| self.check_expr(e));
 
                 // Convert InputTarget to TypedInputTarget, inferring types
+                // When a symbol is found via suffix fallback, use the symbol's declared name
                 let typed_target = match target {
                     InputTarget::Variable(name) => {
-                        let var_type = if let Some(symbol) = self.symbols.lookup_symbol(name) {
-                            symbol.basic_type.clone()
-                        } else {
-                            let inferred = type_from_suffix(name)
-                                .unwrap_or_else(|| self.symbols.default_type_for(name));
-                            let symbol = Symbol {
-                                name: name.clone(),
-                                kind: SymbolKind::Variable,
-                                basic_type: inferred.clone(),
-                                span: stmt.span,
-                                is_mutable: true,
+                        let (resolved_name, var_type) =
+                            if let Some(symbol) = self.symbols.lookup_symbol(name) {
+                                (symbol.name.clone(), symbol.basic_type.clone())
+                            } else {
+                                let inferred = type_from_suffix(name)
+                                    .unwrap_or_else(|| self.symbols.default_type_for(name));
+                                let symbol = Symbol {
+                                    name: name.clone(),
+                                    kind: SymbolKind::Variable,
+                                    basic_type: inferred.clone(),
+                                    span: stmt.span,
+                                    is_mutable: true,
+                                };
+                                let _ = self.symbols.define_symbol(symbol);
+                                (name.clone(), inferred)
                             };
-                            let _ = self.symbols.define_symbol(symbol);
-                            inferred
-                        };
                         TypedInputTarget::Variable {
-                            name: name.clone(),
+                            name: resolved_name,
                             basic_type: var_type,
                         }
                     }
                     InputTarget::ArrayElement { name, indices } => {
                         let typed_indices: Vec<_> =
                             indices.iter().map(|i| self.check_expr(i)).collect();
-                        let element_type = type_from_suffix(name)
-                            .unwrap_or_else(|| self.symbols.default_type_for(name));
+                        let (resolved_name, element_type) =
+                            if let Some(symbol) = self.symbols.lookup_array(name) {
+                                (symbol.name.clone(), symbol.basic_type.clone())
+                            } else {
+                                let element_type = type_from_suffix(name)
+                                    .unwrap_or_else(|| self.symbols.default_type_for(name));
+                                (name.clone(), element_type)
+                            };
                         TypedInputTarget::ArrayElement {
-                            name: name.clone(),
+                            name: resolved_name,
                             indices: typed_indices,
                             element_type,
                         }
@@ -1007,18 +1015,28 @@ impl<'a> TypeChecker<'a> {
                     } => {
                         let typed_indices: Vec<_> =
                             indices.iter().map(|i| self.check_expr(i)).collect();
+                        let resolved_name = if let Some(symbol) = self.symbols.lookup_array(name) {
+                            symbol.name.clone()
+                        } else {
+                            name.clone()
+                        };
                         // Field type would need UDT lookup; use SINGLE as placeholder
                         TypedInputTarget::ArrayElementField {
-                            name: name.clone(),
+                            name: resolved_name,
                             indices: typed_indices,
                             fields: fields.clone(),
                             field_type: BasicType::Single,
                         }
                     }
                     InputTarget::Field { name, fields } => {
+                        let resolved_name = if let Some(symbol) = self.symbols.lookup_symbol(name) {
+                            symbol.name.clone()
+                        } else {
+                            name.clone()
+                        };
                         // Field type would need UDT lookup; use SINGLE as placeholder
                         TypedInputTarget::Field {
-                            name: name.clone(),
+                            name: resolved_name,
                             fields: fields.clone(),
                             field_type: BasicType::Single,
                         }
@@ -1047,35 +1065,43 @@ impl<'a> TypeChecker<'a> {
                 let typed_position = position.as_ref().map(|e| self.check_expr(e));
 
                 // Convert InputTarget to TypedInputTarget, inferring types
+                // When a symbol is found via suffix fallback, use the symbol's declared name
                 let typed_target = match target {
                     InputTarget::Variable(name) => {
-                        let var_type = if let Some(symbol) = self.symbols.lookup_symbol(name) {
-                            symbol.basic_type.clone()
-                        } else {
-                            let inferred = type_from_suffix(name)
-                                .unwrap_or_else(|| self.symbols.default_type_for(name));
-                            let symbol = Symbol {
-                                name: name.clone(),
-                                kind: SymbolKind::Variable,
-                                basic_type: inferred.clone(),
-                                span: stmt.span,
-                                is_mutable: true,
+                        let (resolved_name, var_type) =
+                            if let Some(symbol) = self.symbols.lookup_symbol(name) {
+                                (symbol.name.clone(), symbol.basic_type.clone())
+                            } else {
+                                let inferred = type_from_suffix(name)
+                                    .unwrap_or_else(|| self.symbols.default_type_for(name));
+                                let symbol = Symbol {
+                                    name: name.clone(),
+                                    kind: SymbolKind::Variable,
+                                    basic_type: inferred.clone(),
+                                    span: stmt.span,
+                                    is_mutable: true,
+                                };
+                                let _ = self.symbols.define_symbol(symbol);
+                                (name.clone(), inferred)
                             };
-                            let _ = self.symbols.define_symbol(symbol);
-                            inferred
-                        };
                         TypedInputTarget::Variable {
-                            name: name.clone(),
+                            name: resolved_name,
                             basic_type: var_type,
                         }
                     }
                     InputTarget::ArrayElement { name, indices } => {
                         let typed_indices: Vec<_> =
                             indices.iter().map(|i| self.check_expr(i)).collect();
-                        let element_type = type_from_suffix(name)
-                            .unwrap_or_else(|| self.symbols.default_type_for(name));
+                        let (resolved_name, element_type) =
+                            if let Some(symbol) = self.symbols.lookup_array(name) {
+                                (symbol.name.clone(), symbol.basic_type.clone())
+                            } else {
+                                let element_type = type_from_suffix(name)
+                                    .unwrap_or_else(|| self.symbols.default_type_for(name));
+                                (name.clone(), element_type)
+                            };
                         TypedInputTarget::ArrayElement {
-                            name: name.clone(),
+                            name: resolved_name,
                             indices: typed_indices,
                             element_type,
                         }
@@ -1087,18 +1113,28 @@ impl<'a> TypeChecker<'a> {
                     } => {
                         let typed_indices: Vec<_> =
                             indices.iter().map(|i| self.check_expr(i)).collect();
+                        let resolved_name = if let Some(symbol) = self.symbols.lookup_array(name) {
+                            symbol.name.clone()
+                        } else {
+                            name.clone()
+                        };
                         // Field type would need UDT lookup; use SINGLE as placeholder
                         TypedInputTarget::ArrayElementField {
-                            name: name.clone(),
+                            name: resolved_name,
                             indices: typed_indices,
                             fields: fields.clone(),
                             field_type: BasicType::Single,
                         }
                     }
                     InputTarget::Field { name, fields } => {
+                        let resolved_name = if let Some(symbol) = self.symbols.lookup_symbol(name) {
+                            symbol.name.clone()
+                        } else {
+                            name.clone()
+                        };
                         // Field type would need UDT lookup; use SINGLE as placeholder
                         TypedInputTarget::Field {
-                            name: name.clone(),
+                            name: resolved_name,
                             fields: fields.clone(),
                             field_type: BasicType::Single,
                         }
