@@ -445,7 +445,12 @@ pub enum TypedStatementKind {
     KeyClear,
 
     /// SUB procedure call.
-    Call { name: String, args: Vec<TypedExpr> },
+    /// `params` contains the parameter definitions so codegen knows which are byref.
+    Call {
+        name: String,
+        args: Vec<TypedExpr>,
+        params: Vec<TypedParameter>,
+    },
 
     /// SUB definition.
     SubDefinition {
@@ -1885,6 +1890,8 @@ pub struct TypedParameter {
     pub basic_type: BasicType,
     /// Whether BYVAL was specified.
     pub by_val: bool,
+    /// Whether this is an array parameter.
+    pub is_array: bool,
 }
 
 /// A typed array dimension.

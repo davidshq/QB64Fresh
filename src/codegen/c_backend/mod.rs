@@ -65,7 +65,7 @@ use crate::codegen::error::CodeGenError;
 use crate::codegen::{CodeGenerator, GeneratedOutput};
 use crate::semantic::typed_ir::{TypedProgram, TypedStatementKind};
 
-use self::analysis::{collect_callback_wrappers, collect_data_values};
+use self::analysis::{collect_callback_wrappers, collect_data_values, collect_type_definitions};
 use self::runtime::emit_header;
 use self::stmt::{StmtEmitter, emit_params};
 
@@ -124,6 +124,16 @@ impl CodeGenerator for CBackend {
 
         // Header
         emit_header(&mut output, self.runtime_mode);
+
+        // TYPE definitions (must come before global variables that use those types)
+        let type_defs = collect_type_definitions(program);
+        if !type_defs.is_empty() {
+            writeln!(output, "/* User-Defined Types */").unwrap();
+            for def in type_defs {
+                write!(output, "{}", def).unwrap();
+            }
+            writeln!(output).unwrap();
+        }
 
         // Collect globals and forward declarations
         let (globals, forward_decls) = analysis::collect_globals(program, emit_params);

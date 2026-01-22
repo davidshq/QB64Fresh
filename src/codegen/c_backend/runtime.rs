@@ -47,6 +47,23 @@ pub(super) fn emit_header(output: &mut String, runtime_mode: RuntimeMode) {
     writeln!(output, "#endif").unwrap();
     writeln!(output).unwrap();
 
+    // QB64 built-in constants
+    writeln!(output, "/* QB64 built-in constants */").unwrap();
+    writeln!(output, "#define _TRUE (-1)").unwrap();
+    writeln!(output, "#define _FALSE (0)").unwrap();
+    // Comparison result constants for _IIF
+    writeln!(output, "#define _EQUAL (0)").unwrap();
+    writeln!(output, "#define _GREATER (1)").unwrap();
+    writeln!(output, "#define _LESS (-1)").unwrap();
+    // String constants (initialized after qb_string type is defined)
+    writeln!(output, "#define _STR_EMPTY qb_string_new(\"\")").unwrap();
+    writeln!(output, "#define _STR_CRLF qb_string_new(\"\\r\\n\")").unwrap();
+    writeln!(output, "#define _STR_LF qb_string_new(\"\\n\")").unwrap();
+    writeln!(output, "#define _STR_CR qb_string_new(\"\\r\")").unwrap();
+    writeln!(output, "#define _CHR_QUOTE qb_string_new(\"\\\"\")").unwrap();
+    writeln!(output, "#define _CHR_HT qb_string_new(\"\\t\")").unwrap();
+    writeln!(output).unwrap();
+
     match runtime_mode {
         RuntimeMode::Inline => {
             // Inline runtime library declarations
@@ -543,6 +560,17 @@ fn emit_builtin_functions(output: &mut String) {
     .unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
+
+    // Two-argument version: ASC(string$, position%) - gets ASCII code at position
+    writeln!(output, "int32_t qb_asc2(qb_string* s, int32_t pos) {{").unwrap();
+    writeln!(
+        output,
+        "    if (!s || pos < 1 || pos > (int32_t)s->len) return 0;"
+    )
+    .unwrap();
+    writeln!(output, "    return (unsigned char)s->data[pos - 1];").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
 }
 
 /// Emits math helper functions.
@@ -897,6 +925,26 @@ fn emit_string_manipulation(output: &mut String) {
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
+    // MID$(s$, start) - 2-argument form returns from start to end
+    writeln!(output, "qb_string* qb_mid2(qb_string* s, int32_t start) {{").unwrap();
+    writeln!(
+        output,
+        "    if (!s || start < 1 || (size_t)start > s->len) return qb_string_new(\"\");"
+    )
+    .unwrap();
+    writeln!(output, "    size_t idx = (size_t)(start - 1);").unwrap();
+    writeln!(output, "    size_t len = s->len - idx;").unwrap();
+    writeln!(output, "    qb_string* result = malloc(sizeof(qb_string));").unwrap();
+    writeln!(output, "    result->len = len;").unwrap();
+    writeln!(output, "    result->capacity = len + 1;").unwrap();
+    writeln!(output, "    result->data = malloc(result->capacity);").unwrap();
+    writeln!(output, "    memcpy(result->data, s->data + idx, len);").unwrap();
+    writeln!(output, "    result->data[len] = '\\0';").unwrap();
+    writeln!(output, "    result->refcount = 1;").unwrap();
+    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
     // MID$ statement - in-place substring replacement
     // MID$(str$, start [, length]) = value$
     // Replaces up to 'length' characters starting at 'start' (1-based)
@@ -959,6 +1007,16 @@ fn emit_string_manipulation(output: &mut String) {
     )
     .unwrap();
     writeln!(output, "    return pos ? (int32_t)(pos - s->data + 1) : 0;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // INSTR(s$, find$) - 2-argument form, starts at beginning
+    writeln!(
+        output,
+        "int32_t qb_instr2(qb_string* s, qb_string* find) {{"
+    )
+    .unwrap();
+    writeln!(output, "    return qb_instr(1, s, find);").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
@@ -2021,6 +2079,22 @@ fn emit_keyboard_functions(output: &mut String) {
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
+    // COMMAND$(n) - get specific command-line argument (1-based)
+    writeln!(output, "qb_string* qb_command_n(int64_t n) {{").unwrap();
+    writeln!(
+        output,
+        "    if (n < 0 || n >= _qb_argc || !_qb_argv) return qb_string_new(\"\");"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (n == 0) return qb_command(); // Return all args"
+    )
+    .unwrap();
+    writeln!(output, "    return qb_string_new(_qb_argv[n]);").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
     // _CWD$ - current working directory
     writeln!(output, "#ifdef _WIN32").unwrap();
     writeln!(output, "#include <direct.h>").unwrap();
@@ -2249,6 +2323,18 @@ fn emit_keyboard_functions(output: &mut String) {
     .unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output, "#endif").unwrap();
+    writeln!(output).unwrap();
+
+    // TIMER with accuracy parameter - same as TIMER() but parameter is ignored
+    // In QB64, the accuracy parameter is a hint for timing resolution
+    writeln!(output, "float qb_timer_n(double accuracy) {{").unwrap();
+    writeln!(
+        output,
+        "    (void)accuracy; /* Ignored - max precision always used */"
+    )
+    .unwrap();
+    writeln!(output, "    return qb_timer();").unwrap();
+    writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
     // DATE$ - returns date in MM-DD-YYYY format (classic QBasic format)

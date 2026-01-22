@@ -52,7 +52,8 @@ pub(super) fn c_type(basic_type: &BasicType) -> String {
         BasicType::UnsignedInteger => "uint16_t".to_string(),
         BasicType::UnsignedLong => "uint32_t".to_string(),
         BasicType::UnsignedInteger64 => "uint64_t".to_string(),
-        BasicType::UserDefined(name) => format!("struct {}", name),
+        // Prefix with qbt_ to avoid collision with variable names
+        BasicType::UserDefined(name) => format!("qbt_{}", name),
         BasicType::Array { element_type, .. } => {
             format!("{}*", c_type(element_type))
         }
@@ -80,6 +81,7 @@ pub(super) fn default_init(basic_type: &BasicType) -> String {
         BasicType::FixedString(_) => "\"\"".to_string(),
         BasicType::Single | BasicType::Double | BasicType::Float => "0.0".to_string(),
         BasicType::Mem => "{0}".to_string(), // Zero-initialized struct
+        BasicType::UserDefined(_) => "{0}".to_string(), // User-defined TYPE - zero-initialized
         _ => "0".to_string(),
     }
 }
@@ -102,12 +104,26 @@ pub(super) fn default_init(basic_type: &BasicType) -> String {
 /// assert_eq!(c_identifier("myVar"), "myVar");
 /// ```
 pub(super) fn c_identifier(name: &str) -> String {
-    name.replace('$', "_str")
+    let result = name
+        .replace('$', "_str")
         .replace('%', "_int")
         .replace('&', "_lng")
         .replace('!', "_sng")
         .replace('#', "_dbl")
         .replace('`', "_bit")
+        .replace('.', "_") // QB64 allows dots in variable names; C doesn't
+        .replace('~', "_u"); // Unsigned type prefix
+
+    // Handle C reserved words by appending underscore
+    match result.to_lowercase().as_str() {
+        "default" | "switch" | "case" | "break" | "continue" | "return" | "void" | "int"
+        | "char" | "float" | "double" | "long" | "short" | "unsigned" | "signed" | "const"
+        | "static" | "extern" | "register" | "volatile" | "auto" | "struct" | "union" | "enum"
+        | "typedef" | "sizeof" | "goto" | "if" | "else" | "for" | "while" | "do" => {
+            format!("{}_", result)
+        }
+        _ => result,
+    }
 }
 
 #[cfg(test)]
@@ -125,7 +141,7 @@ mod tests {
         assert_eq!(c_type(&BasicType::UnsignedInteger), "uint16_t");
         assert_eq!(
             c_type(&BasicType::UserDefined("MyType".to_string())),
-            "struct MyType"
+            "qbt_MyType"
         );
     }
 
