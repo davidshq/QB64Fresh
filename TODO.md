@@ -75,6 +75,9 @@ for raw OpenGL access. These are **intentionally excluded** from QB64Fresh becau
 If raw OpenGL is needed, users can use `DECLARE LIBRARY` to call OpenGL functions directly.
 
 ---
+## Phase 8: Class VB RAD Visual Designer
+
+---
 
 ## Known Issues / Technical Debt
 

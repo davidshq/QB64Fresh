@@ -36,7 +36,6 @@ QB64Fresh supports two runtime modes:
 | **Mouse** | ⚠️ Returns 0 | ✅ Full | SDL2 input |
 | **Fonts** | ⚠️ Hardcoded 8×16 | ✅ Full | TrueType support |
 | **Clipboard** | ⚠️ Empty | ✅ Full | SDL2 clipboard |
-| **File I/O** | ✅ Full | ✅ Full | FIELD/LSET/RSET complete |
 | **Dialogs** | ⚠️ stdin fallback | ✅ Full | Native rfd dialogs |
 | **Joystick** | ⚠️ Center position | ✅ Full | SDL2 gamepad via joystick.rs |
 | **Legacy Hardware** | ⚠️ Safe defaults | ❌ Intentional | Port I/O, light pen obsolete |

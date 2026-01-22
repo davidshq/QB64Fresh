@@ -3,6 +3,7 @@
 //! This module provides functions for collecting program-wide information
 //! needed for code generation, including:
 //!
+//! - TYPE definitions (must be emitted before global variables)
 //! - Global variable declarations
 //! - Forward declarations for SUBs and FUNCTIONs
 //! - DATA pool values and label indices for RESTORE
@@ -11,10 +12,12 @@
 //! information needed for the C output's structure.
 
 use std::collections::HashMap;
+use std::fmt::Write;
 
 use crate::semantic::typed_ir::{
     TypedDataValue, TypedParameter, TypedProgram, TypedStatement, TypedStatementKind,
 };
+use crate::semantic::types::BasicType;
 
 use super::expr::{c_function_name, escape_string};
 use super::types::{c_identifier, c_type, default_init};
@@ -43,6 +46,125 @@ impl DataPoolInfo {
             label_indices: HashMap::new(),
         }
     }
+}
+
+/// Collects TYPE definitions from the program (user-defined types).
+///
+/// TYPE definitions must be emitted before global variables that use those types.
+/// This function recursively scans all statements including those inside
+/// SUB/FUNCTION bodies (since TYPEs can be defined in $INCLUDE files that
+/// are processed at any point in the program).
+///
+/// Returns a vector of C typedef strings in definition order.
+pub(super) fn collect_type_definitions(program: &TypedProgram) -> Vec<String> {
+    use std::collections::HashSet;
+
+    let mut type_defs = Vec::new();
+    let mut defined_types: HashSet<String> = HashSet::new();
+
+    // Recursively collect TYPE definitions from all statements
+    fn collect_from_stmt(
+        stmt: &TypedStatement,
+        type_defs: &mut Vec<String>,
+        defined_types: &mut HashSet<String>,
+    ) {
+        match &stmt.kind {
+            TypedStatementKind::TypeDefinition {
+                name,
+                members,
+                custom_type,
+            } => {
+                let base_name = c_identifier(name);
+                // Prefix with qbt_ to avoid collision with variable names
+                // (QB64 allows TYPE and DIM to use the same name)
+                let c_name = format!("qbt_{}", base_name);
+                if !defined_types.contains(&c_name) {
+                    let mut def = String::new();
+
+                    // CUSTOMTYPE modifier indicates C-compatible (packed) memory layout
+                    if *custom_type {
+                        writeln!(def, "#pragma pack(push, 1)").unwrap();
+                    }
+
+                    writeln!(def, "typedef struct {} {{", c_name).unwrap();
+
+                    for member in members {
+                        let c_member_name = c_identifier(&member.name);
+                        if let BasicType::FixedString(len) = &member.basic_type {
+                            writeln!(def, "    char {}[{}];", c_member_name, len + 1).unwrap();
+                        } else {
+                            let c_member_type = c_type(&member.basic_type);
+                            writeln!(def, "    {} {};", c_member_type, c_member_name).unwrap();
+                        }
+                    }
+
+                    writeln!(def, "}} {};", c_name).unwrap();
+
+                    if *custom_type {
+                        writeln!(def, "#pragma pack(pop)").unwrap();
+                    }
+
+                    type_defs.push(def);
+                    defined_types.insert(c_name);
+                }
+            }
+
+            // Recurse into SUB/FUNCTION bodies since $INCLUDE files may define TYPEs there
+            TypedStatementKind::SubDefinition { body, .. }
+            | TypedStatementKind::FunctionDefinition { body, .. } => {
+                for s in body {
+                    collect_from_stmt(s, type_defs, defined_types);
+                }
+            }
+
+            // Recurse into control flow bodies
+            TypedStatementKind::If {
+                then_branch,
+                elseif_branches,
+                else_branch,
+                ..
+            } => {
+                for s in then_branch {
+                    collect_from_stmt(s, type_defs, defined_types);
+                }
+                for (_, branch_body) in elseif_branches {
+                    for s in branch_body {
+                        collect_from_stmt(s, type_defs, defined_types);
+                    }
+                }
+                if let Some(else_stmts) = else_branch {
+                    for s in else_stmts {
+                        collect_from_stmt(s, type_defs, defined_types);
+                    }
+                }
+            }
+
+            TypedStatementKind::For { body, .. }
+            | TypedStatementKind::While { body, .. }
+            | TypedStatementKind::DoLoop { body, .. } => {
+                for s in body {
+                    collect_from_stmt(s, type_defs, defined_types);
+                }
+            }
+
+            TypedStatementKind::SelectCase { cases, .. } => {
+                for case in cases {
+                    for s in &case.body {
+                        collect_from_stmt(s, type_defs, defined_types);
+                    }
+                }
+            }
+
+            _ => {}
+        }
+    }
+
+    // Collect from all top-level statements
+    for stmt in &program.statements {
+        collect_from_stmt(stmt, &mut type_defs, &mut defined_types);
+    }
+
+    type_defs
 }
 
 /// Collects global variables and procedure forward declarations from the program.
@@ -81,14 +203,39 @@ pub(super) fn collect_globals(
                       globals: &mut Vec<String>| {
         let c_name = c_identifier(name);
         if !declared_vars.contains(&c_name) {
-            let c_ty = c_type(basic_type);
             // For strings, use NULL as initial value since function calls can't be
             // used as global initializers in C
             let init = match basic_type {
                 BasicType::String => "NULL".to_string(),
                 _ => default_init(basic_type),
             };
-            globals.push(format!("{} {} = {};", c_ty, c_name, init));
+            // Fixed-length strings need special handling: char name[N] syntax in C
+            if let BasicType::FixedString(len) = basic_type {
+                globals.push(format!("char {}[{}] = {};", c_name, len + 1, init));
+            } else {
+                let c_ty = c_type(basic_type);
+                globals.push(format!("{} {} = {};", c_ty, c_name, init));
+            }
+            declared_vars.insert(c_name);
+        }
+    };
+
+    // Helper closure to add a global array (pointer type)
+    let add_global_array = |name: &str,
+                            basic_type: &BasicType,
+                            declared_vars: &mut HashSet<String>,
+                            globals: &mut Vec<String>| {
+        let c_name = c_identifier(name);
+        if !declared_vars.contains(&c_name) {
+            // Arrays are declared as pointers initialized to NULL
+            // They will be allocated with malloc/realloc at runtime
+            if let BasicType::FixedString(len) = basic_type {
+                // Array of fixed-length strings: char (*name)[len+1]
+                globals.push(format!("char (*{})[{}] = NULL;", c_name, len + 1));
+            } else {
+                let c_ty = c_type(basic_type);
+                globals.push(format!("{}* {} = NULL;", c_ty, c_name));
+            }
             declared_vars.insert(c_name);
         }
     };
@@ -100,10 +247,35 @@ pub(super) fn collect_globals(
                 variables,
                 shared: _,
             } => {
-                // Simple global variables (non-array)
                 for var in variables {
                     if var.dimensions.is_empty() {
+                        // Simple global variables (non-array)
                         add_global(&var.name, &var.basic_type, &mut declared_vars, &mut globals);
+                    } else {
+                        // Global arrays (declared as pointers)
+                        add_global_array(
+                            &var.name,
+                            &var.basic_type,
+                            &mut declared_vars,
+                            &mut globals,
+                        );
+                    }
+                }
+            }
+
+            TypedStatementKind::Const { definitions } => {
+                // Emit CONST definitions as global constants
+                for (name, value_expr, _basic_type) in definitions {
+                    let c_name = c_identifier(name);
+                    if !declared_vars.contains(&c_name) {
+                        // Emit as const or #define depending on type
+                        // Use the value from the expression if it's a literal
+                        let c_ty = c_type(&value_expr.basic_type);
+                        // Try to evaluate as a constant expression
+                        let value_code =
+                            super::expr::emit_expr(value_expr).unwrap_or_else(|_| "0".to_string());
+                        globals.push(format!("const {} {} = {};", c_ty, c_name, value_code));
+                        declared_vars.insert(c_name);
                     }
                 }
             }
@@ -128,6 +300,81 @@ pub(super) fn collect_globals(
 
             _ => {}
         }
+    }
+
+    // Additional pass: collect REDIM SHARED arrays from within SUB/FUNCTION bodies
+    // In QB64, REDIM SHARED inside a procedure creates a global array
+    fn collect_redim_shared(
+        stmt: &TypedStatement,
+        declared_vars: &mut HashSet<String>,
+        globals: &mut Vec<String>,
+    ) {
+        match &stmt.kind {
+            TypedStatementKind::Redim {
+                variables, shared, ..
+            } if *shared => {
+                for var in variables {
+                    let c_name = c_identifier(&var.name);
+                    if !declared_vars.contains(&c_name) {
+                        // REDIM SHARED creates a global array pointer
+                        // TypedRedimVariable has element_type instead of basic_type
+                        if let BasicType::FixedString(len) = &var.element_type {
+                            globals.push(format!("char (*{})[{}] = NULL;", c_name, len + 1));
+                        } else {
+                            let c_ty = c_type(&var.element_type);
+                            globals.push(format!("{}* {} = NULL;", c_ty, c_name));
+                        }
+                        declared_vars.insert(c_name);
+                    }
+                }
+            }
+            TypedStatementKind::SubDefinition { body, .. }
+            | TypedStatementKind::FunctionDefinition { body, .. } => {
+                // Recurse into procedure bodies to find REDIM SHARED
+                for s in body {
+                    collect_redim_shared(s, declared_vars, globals);
+                }
+            }
+            TypedStatementKind::If {
+                then_branch,
+                elseif_branches,
+                else_branch,
+                ..
+            } => {
+                for s in then_branch {
+                    collect_redim_shared(s, declared_vars, globals);
+                }
+                for (_, branch) in elseif_branches {
+                    for s in branch {
+                        collect_redim_shared(s, declared_vars, globals);
+                    }
+                }
+                if let Some(branch) = else_branch {
+                    for s in branch {
+                        collect_redim_shared(s, declared_vars, globals);
+                    }
+                }
+            }
+            TypedStatementKind::For { body, .. }
+            | TypedStatementKind::While { body, .. }
+            | TypedStatementKind::DoLoop { body, .. } => {
+                for s in body {
+                    collect_redim_shared(s, declared_vars, globals);
+                }
+            }
+            TypedStatementKind::SelectCase { cases, .. } => {
+                for case in cases {
+                    for s in &case.body {
+                        collect_redim_shared(s, declared_vars, globals);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    for stmt in &program.statements {
+        collect_redim_shared(stmt, &mut declared_vars, &mut globals);
     }
 
     // Second pass: collect implicit variables from assignments and FOR loops
@@ -158,12 +405,17 @@ fn collect_implicit_vars_from_stmt(
         use crate::semantic::types::BasicType;
         let c_name = c_identifier(name);
         if !declared_vars.contains(&c_name) {
-            let c_ty = c_type(basic_type);
             let init = match basic_type {
                 BasicType::String => "NULL".to_string(),
                 _ => default_init(basic_type),
             };
-            globals.push(format!("{} {} = {};", c_ty, c_name, init));
+            // Fixed-length strings need special handling: char name[N] syntax in C
+            if let BasicType::FixedString(len) = basic_type {
+                globals.push(format!("char {}[{}] = {};", c_name, len + 1, init));
+            } else {
+                let c_ty = c_type(basic_type);
+                globals.push(format!("{} {} = {};", c_ty, c_name, init));
+            }
             declared_vars.insert(c_name);
         }
     };

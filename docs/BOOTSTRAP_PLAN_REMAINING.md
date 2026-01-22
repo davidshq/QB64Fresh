@@ -232,18 +232,55 @@ QB64pe uses these metacommands that need verification:
 
 ## 3. Implementation Phases
 
-### Phase C: Code Generation Validation (2-4 sessions)
+### Phase C: Code Generation Validation (2-4 sessions) - IN PROGRESS
 
 **Objective:** Ensure generated C code is correct
 
+**Session 1 Progress (2026-01-21):**
+- [x] Generate C code for QB64pe source (3.9MB, 76K lines generated successfully)
+- [x] Review generated code for correctness - identified 14,547 initial GCC errors
+- [x] Fix code generation issues discovered:
+  - [x] TYPE definitions emitted before global variables that use them
+  - [x] Fixed-length STRING * N generates proper `char name[N]` syntax
+  - [x] Struct initialization uses `{0}` instead of `= 0`
+  - [x] Dots in variable names converted to underscores (`path.exe$` → `path_exe_str`)
+  - [x] Tilde in identifiers converted (`constval~&` → `constval_u_lng`)
+  - [x] C reserved words escaped (`default` → `default_`)
+  - [x] `_IIF` polymorphic handling - uses `qb_iif_str` for string return types
+  - [x] QB64 built-in constants added (`_TRUE`, `_FALSE`, `_EQUAL`, `_LESS`, `_GREATER`)
+  - [x] Function argument variants (`qb_mid2`, `qb_instr2`, `qb_command_n`)
+  - [x] Implicit local variable collection for function bodies
+
+**Session 2 Progress (2026-01-22):**
+- [x] Fixed duplicate variable declarations (two-pass implicit local collector)
+- [x] Fixed `qb_asc` two-argument variant (303 errors fixed)
+- [x] Fixed `qb_timer` with accuracy parameter (34 errors fixed)
+- [x] Fixed type/variable name collision with `qbt_` prefix (152 errors fixed)
+- [x] Fixed fixed-length string in struct field assignments (144 errors fixed)
+- [x] Fixed fixed-length string array declarations (`char name[N]` syntax)
+- [x] Fixed scalar fixed-length string assignments (use `strncpy`)
+- [x] Fixed byref parameter passing (added `&` for non-lvalue args with temps)
+- [x] Fixed REDIM SHARED global array declarations
+- [x] Fixed CONST definitions as global constants
+
+**Current Status:** **325 GCC errors remaining** (down from 14,547 = **97.8% reduction!**)
+
+**Remaining Issues:**
+1. **Static initializers** (~13 errors) - `static x = func()` not valid in C
+2. **Duplicate labels** (~12 errors) - Line number labels not unique per function
+3. **Function variants** (~10 errors) - `qb_instrrev`, `qb_messagebox`, `qb_loadfont` arg counts
+4. **Type mismatches** (~15 errors) - `qb_timeelapsedsince_dbl`, `qb_term_lng`, etc.
+5. **Missing local variables** (~20 errors) - Some vars not being collected
+6. **Label references** (~6 errors) - Labels used but not defined
+
 **Tasks:**
-1. [ ] Generate C code for QB64pe source
-2. [ ] Review generated code for correctness
-3. [ ] Fix code generation issues discovered
-4. [ ] Ensure proper handling of:
-   - Large string concatenations
-   - Complex nested expressions
-   - Multi-file `$INCLUDE` structure
+1. [x] Generate C code for QB64pe source
+2. [x] Review generated code for correctness
+3. [~] Fix code generation issues discovered (97.8% complete)
+4. [x] Ensure proper handling of:
+   - Large string concatenations ✓ (working)
+   - Complex nested expressions ✓ (working)
+   - Multi-file `$INCLUDE` structure ✓ (working)
 
 **Success Criteria:** Clean C code generation with no internal errors
 

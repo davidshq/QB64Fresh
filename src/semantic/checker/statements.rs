@@ -1210,6 +1210,7 @@ impl<'a> TypeChecker<'a> {
                             name: p.name.clone(),
                             basic_type: param_type,
                             by_val: p.by_val,
+                            is_array: false, // DEF FN doesn't support array params
                         }
                     })
                     .collect();
@@ -1263,6 +1264,7 @@ impl<'a> TypeChecker<'a> {
                             name: p.name.clone(),
                             basic_type: param_type,
                             by_val: p.by_val,
+                            is_array: p.is_array,
                         }
                     })
                     .collect();

@@ -17,8 +17,8 @@ use crate::ast::{
 use crate::codegen::error::CodeGenError;
 use crate::semantic::typed_ir::{
     TypedArrayDimension, TypedCaseCompareOp, TypedCaseMatch, TypedDoCondition, TypedExpr,
-    TypedInputTarget, TypedMember, TypedParameter, TypedPrintItem, TypedReadTarget, TypedStatement,
-    TypedStatementKind,
+    TypedExprKind, TypedInputTarget, TypedParameter, TypedPrintItem, TypedReadTarget,
+    TypedStatement, TypedStatementKind,
 };
 use crate::semantic::types::BasicType;
 
@@ -114,10 +114,10 @@ impl StmtEmitter {
                 value,
                 dimensions,
                 element_type: _,
-                field_type: _,
+                field_type,
             } => {
                 self.emit_array_field_assignment(
-                    &indent, name, indices, fields, value, dimensions, output,
+                    &indent, name, indices, fields, value, dimensions, field_type, output,
                 )?;
             }
 
@@ -476,9 +476,50 @@ impl StmtEmitter {
                 writeln!(output, "{}qb_keyclear();", indent).unwrap();
             }
 
-            TypedStatementKind::Call { name, args } => {
-                let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
-                let args_str = args_code?.join(", ");
+            TypedStatementKind::Call { name, args, params } => {
+                // Generate arguments, adding & for byref parameters
+                // For non-lvalue expressions passed to byref, we need temp vars
+                let mut args_codes = Vec::new();
+                let mut temp_decls = Vec::new();
+                let mut temp_counter = 0;
+
+                for (i, arg) in args.iter().enumerate() {
+                    let arg_code = emit_expr(arg)?;
+                    // Check if this parameter is byref (and not an array ref which decays to pointer)
+                    let is_byref = params
+                        .get(i)
+                        .map(|p| !p.by_val && !p.is_array)
+                        .unwrap_or(false);
+                    if is_byref {
+                        // For byref, we need to pass the address
+                        // Check if expression is an lvalue (can take address of)
+                        let is_lvalue = matches!(
+                            arg.kind,
+                            TypedExprKind::Variable { .. }
+                                | TypedExprKind::ArrayAccess { .. }
+                                | TypedExprKind::FieldAccess { .. }
+                        );
+
+                        if is_lvalue {
+                            // Variable/array/field can be addressed directly
+                            args_codes.push(format!("&({})", arg_code));
+                        } else {
+                            // Non-lvalue expression - need a temporary variable
+                            let param_type = params.get(i).map(|p| &p.basic_type);
+                            let c_ty = param_type
+                                .map(c_type)
+                                .unwrap_or_else(|| "int32_t".to_string());
+                            let temp_name = format!("_tmp_arg_{}", temp_counter);
+                            temp_counter += 1;
+                            temp_decls.push(format!("{} {} = {};", c_ty, temp_name, arg_code));
+                            args_codes.push(format!("&{}", temp_name));
+                        }
+                    } else {
+                        args_codes.push(arg_code);
+                    }
+                }
+                let args_str = args_codes.join(", ");
+
                 // Check for built-in SUBs with special C function names
                 let c_name = match name.to_uppercase().as_str() {
                     "_WRITEFILE" => "qb_writefile".to_string(),
@@ -538,7 +579,18 @@ impl StmtEmitter {
                     // Default: user-defined SUBs use qb_sub_ prefix
                     _ => format!("qb_sub_{}", c_identifier(name).to_lowercase()),
                 };
-                writeln!(output, "{}{}({});", indent, c_name, args_str).unwrap();
+
+                // If we have temp declarations, wrap in a block
+                if temp_decls.is_empty() {
+                    writeln!(output, "{}{}({});", indent, c_name, args_str).unwrap();
+                } else {
+                    writeln!(output, "{}{{ ", indent).unwrap();
+                    for decl in temp_decls {
+                        writeln!(output, "{}    {}", indent, decl).unwrap();
+                    }
+                    writeln!(output, "{}    {}({});", indent, c_name, args_str).unwrap();
+                    writeln!(output, "{}}}", indent).unwrap();
+                }
             }
 
             TypedStatementKind::SubDefinition {
@@ -747,12 +799,9 @@ impl StmtEmitter {
                 writeln!(output, "{}continue;", indent).unwrap();
             }
 
-            TypedStatementKind::TypeDefinition {
-                name,
-                members,
-                custom_type,
-            } => {
-                self.emit_type_definition(&indent, name, members, *custom_type, output)?;
+            TypedStatementKind::TypeDefinition { .. } => {
+                // TYPE definitions are collected and emitted upfront by collect_type_definitions()
+                // in mod.rs before global variables, so we skip them here.
             }
 
             TypedStatementKind::Data { .. } => {
@@ -2453,7 +2502,16 @@ impl StmtEmitter {
         let c_name = c_identifier(name);
         let value_code = emit_expr(value)?;
 
-        if value.basic_type != *target_type {
+        // Handle fixed-length string assignment specially
+        if let BasicType::FixedString(len) = target_type {
+            // For fixed-length strings, we need to copy the string content
+            // The value is a qb_string*, we need to copy its data into the char array
+            writeln!(
+                output,
+                "{}{{ qb_string* _tmp = {}; strncpy({}, _tmp ? _tmp->data : \"\", {}); {}[{}] = '\\0'; qb_string_free(_tmp); }}",
+                indent, value_code, c_name, len, c_name, len
+            ).unwrap();
+        } else if value.basic_type != *target_type {
             let c_ty = c_type(target_type);
             writeln!(output, "{}{} = ({})({});", indent, c_name, c_ty, value_code).unwrap();
         } else {
@@ -2502,7 +2560,16 @@ impl StmtEmitter {
             linear_parts.join(" + ")
         };
 
-        if value.basic_type != *element_type {
+        // Handle fixed-length string array elements specially
+        if let BasicType::FixedString(len) = element_type {
+            // For fixed-length strings, we need to copy the string content
+            // The value is a qb_string*, we need to copy its data into the char array
+            writeln!(
+                output,
+                "{}{{ qb_string* _tmp = {}; strncpy({}[{}], _tmp ? _tmp->data : \"\", {}); {}[{}][{}] = '\\0'; qb_string_free(_tmp); }}",
+                indent, value_code, c_name, index_expr, len, c_name, index_expr, len
+            ).unwrap();
+        } else if value.basic_type != *element_type {
             let c_ty = c_type(element_type);
             writeln!(
                 output,
@@ -2531,6 +2598,7 @@ impl StmtEmitter {
         fields: &[String],
         value: &crate::semantic::typed_ir::TypedExpr,
         dimensions: &[TypedArrayDimension],
+        field_type: &BasicType,
         output: &mut String,
     ) -> Result<(), CodeGenError> {
         let c_name = c_identifier(name);
@@ -2569,12 +2637,23 @@ impl StmtEmitter {
             .map(|f| format!(".{}", c_identifier(f)))
             .collect();
 
-        writeln!(
-            output,
-            "{}{}[{}]{} = {};",
-            indent, c_name, index_expr, field_chain, value_code
-        )
-        .unwrap();
+        // Handle fixed-length string fields specially
+        if let BasicType::FixedString(len) = field_type {
+            // For fixed-length strings, we need to copy the string content
+            // The value is a qb_string*, we need to copy its data into the char array
+            writeln!(
+                output,
+                "{}{{ qb_string* _tmp = {}; strncpy({}[{}]{}, _tmp ? _tmp->data : \"\", {}); {}[{}]{}[{}] = '\\0'; qb_string_free(_tmp); }}",
+                indent, value_code, c_name, index_expr, field_chain, len, c_name, index_expr, field_chain, len
+            ).unwrap();
+        } else {
+            writeln!(
+                output,
+                "{}{}[{}]{} = {};",
+                indent, c_name, index_expr, field_chain, value_code
+            )
+            .unwrap();
+        }
 
         Ok(())
     }
@@ -3029,6 +3108,19 @@ impl StmtEmitter {
 
         writeln!(output, "{}void {}({}) {{", indent, c_name, params_str).unwrap();
 
+        // Create local copies of byref parameters
+        emit_byref_copies(params, output);
+
+        // Collect and emit implicit local variables
+        let existing_vars = std::collections::HashSet::new();
+        let implicit_locals = collect_implicit_locals(body, params, &existing_vars);
+        for decl in &implicit_locals {
+            writeln!(output, "    {}", decl).unwrap();
+        }
+        if !implicit_locals.is_empty() || params.iter().any(|p| !p.by_val) {
+            writeln!(output).unwrap();
+        }
+
         self.indent += 1;
         for stmt in body {
             self.emit_stmt(stmt, output)?;
@@ -3070,6 +3162,21 @@ impl StmtEmitter {
         )
         .unwrap();
 
+        // Create local copies of byref parameters
+        emit_byref_copies(params, output);
+
+        // Collect and emit implicit local variables
+        // Include the return variable as already declared
+        let mut existing_vars = std::collections::HashSet::new();
+        existing_vars.insert(ret_var.clone());
+        let implicit_locals = collect_implicit_locals(body, params, &existing_vars);
+        for decl in &implicit_locals {
+            writeln!(output, "    {}", decl).unwrap();
+        }
+        if !implicit_locals.is_empty() || params.iter().any(|p| !p.by_val) {
+            writeln!(output).unwrap();
+        }
+
         self.indent += 1;
         for stmt in body {
             self.emit_stmt(stmt, output)?;
@@ -3091,63 +3198,50 @@ impl StmtEmitter {
         output: &mut String,
     ) -> Result<(), CodeGenError> {
         let c_name = c_identifier(name);
-        let c_ty = c_type(basic_type);
 
         if dimensions.is_empty() {
-            let init = default_init(basic_type);
-            writeln!(output, "{}{} {} = {};", indent, c_ty, c_name, init).unwrap();
-        } else {
-            let sizes: Vec<String> = dimensions
-                .iter()
-                .map(|d| format!("({})", d.upper - d.lower + 1))
-                .collect();
-            let size_expr = sizes.join(" * ");
-            writeln!(
-                output,
-                "{}{}* {} = malloc(sizeof({}) * {});",
-                indent, c_ty, c_name, c_ty, size_expr
-            )
-            .unwrap();
-        }
-        Ok(())
-    }
-
-    fn emit_type_definition(
-        &self,
-        indent: &str,
-        name: &str,
-        members: &[TypedMember],
-        custom_type: bool,
-        output: &mut String,
-    ) -> Result<(), CodeGenError> {
-        let c_name = c_identifier(name);
-
-        // CUSTOMTYPE modifier indicates C-compatible (packed) memory layout
-        // This uses #pragma pack to ensure no padding between members
-        if custom_type {
-            writeln!(output, "{}#pragma pack(push, 1)", indent).unwrap();
-        }
-
-        writeln!(output, "{}typedef struct {} {{", indent, c_name).unwrap();
-
-        for member in members {
-            let c_member_type = c_type(&member.basic_type);
-            let c_member_name = c_identifier(&member.name);
-
-            if let BasicType::FixedString(len) = &member.basic_type {
-                writeln!(output, "{}    char {}[{}];", indent, c_member_name, len + 1).unwrap();
+            // Handle fixed-length strings specially: char name[N] = "";
+            if let BasicType::FixedString(len) = basic_type {
+                writeln!(output, "{}char {}[{}] = \"\";", indent, c_name, len + 1).unwrap();
             } else {
-                writeln!(output, "{}    {} {};", indent, c_member_type, c_member_name).unwrap();
+                let c_ty = c_type(basic_type);
+                let init = default_init(basic_type);
+                writeln!(output, "{}{} {} = {};", indent, c_ty, c_name, init).unwrap();
+            }
+        } else {
+            // Arrays - handle fixed-length string arrays specially
+            if let BasicType::FixedString(len) = basic_type {
+                let sizes: Vec<String> = dimensions
+                    .iter()
+                    .map(|d| format!("({})", d.upper - d.lower + 1))
+                    .collect();
+                let size_expr = sizes.join(" * ");
+                // Array of char arrays: char (*name)[len+1] = calloc(...)
+                writeln!(
+                    output,
+                    "{}char (*{})[{}] = calloc({}, sizeof(char[{}]));",
+                    indent,
+                    c_name,
+                    len + 1,
+                    size_expr,
+                    len + 1
+                )
+                .unwrap();
+            } else {
+                let c_ty = c_type(basic_type);
+                let sizes: Vec<String> = dimensions
+                    .iter()
+                    .map(|d| format!("({})", d.upper - d.lower + 1))
+                    .collect();
+                let size_expr = sizes.join(" * ");
+                writeln!(
+                    output,
+                    "{}{}* {} = malloc(sizeof({}) * {});",
+                    indent, c_ty, c_name, c_ty, size_expr
+                )
+                .unwrap();
             }
         }
-
-        writeln!(output, "{}}} {};", indent, c_name).unwrap();
-
-        if custom_type {
-            writeln!(output, "{}#pragma pack(pop)", indent).unwrap();
-        }
-
-        writeln!(output).unwrap();
         Ok(())
     }
 
@@ -3668,7 +3762,204 @@ impl StmtEmitter {
     }
 }
 
+/// Collects implicit local variable declarations from a function body.
+///
+/// In BASIC, variables can be used without explicit DIM. This function scans
+/// all statements in a function body to find assignments to undeclared variables,
+/// and returns their declarations.
+///
+/// Uses a two-pass approach:
+/// 1. First pass: collect all DIM declarations from the entire function body
+/// 2. Second pass: collect implicit variables (assignments to non-DIM'd variables)
+///
+/// This prevents duplicate declarations when a variable is assigned before its DIM.
+fn collect_implicit_locals(
+    body: &[TypedStatement],
+    params: &[TypedParameter],
+    existing_vars: &std::collections::HashSet<String>,
+) -> Vec<String> {
+    use std::collections::HashSet;
+
+    let mut locals = Vec::new();
+    let mut declared_vars: HashSet<String> = existing_vars.clone();
+
+    // Add parameter names to declared set
+    for p in params {
+        declared_vars.insert(c_identifier(&p.name));
+    }
+
+    // PASS 1: Collect all DIM declarations first (they have function-wide scope in BASIC)
+    fn collect_dims(stmt: &TypedStatement, declared_vars: &mut HashSet<String>) {
+        match &stmt.kind {
+            TypedStatementKind::Dim { variables, .. } => {
+                for var in variables {
+                    declared_vars.insert(c_identifier(&var.name));
+                }
+            }
+            TypedStatementKind::Redim { variables, .. } => {
+                for var in variables {
+                    declared_vars.insert(c_identifier(&var.name));
+                }
+            }
+            TypedStatementKind::StaticStmt { variables, .. } => {
+                for var in variables {
+                    declared_vars.insert(c_identifier(&var.name));
+                }
+            }
+            // Recurse into control flow structures
+            TypedStatementKind::For { body, .. } => {
+                for s in body {
+                    collect_dims(s, declared_vars);
+                }
+            }
+            TypedStatementKind::If {
+                then_branch,
+                elseif_branches,
+                else_branch,
+                ..
+            } => {
+                for s in then_branch {
+                    collect_dims(s, declared_vars);
+                }
+                for (_, branch_body) in elseif_branches {
+                    for s in branch_body {
+                        collect_dims(s, declared_vars);
+                    }
+                }
+                if let Some(else_stmts) = else_branch {
+                    for s in else_stmts {
+                        collect_dims(s, declared_vars);
+                    }
+                }
+            }
+            TypedStatementKind::While { body, .. } | TypedStatementKind::DoLoop { body, .. } => {
+                for s in body {
+                    collect_dims(s, declared_vars);
+                }
+            }
+            TypedStatementKind::SelectCase { cases, .. } => {
+                for case in cases {
+                    for s in &case.body {
+                        collect_dims(s, declared_vars);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // Run pass 1
+    for stmt in body {
+        collect_dims(stmt, &mut declared_vars);
+    }
+
+    // PASS 2: Collect implicit variables (assignments to non-declared variables)
+    fn collect_implicits(
+        stmt: &TypedStatement,
+        declared_vars: &mut HashSet<String>,
+        locals: &mut Vec<String>,
+    ) {
+        match &stmt.kind {
+            // Skip DIM - already handled in pass 1
+            TypedStatementKind::Dim { .. }
+            | TypedStatementKind::Redim { .. }
+            | TypedStatementKind::StaticStmt { .. } => {}
+
+            // Assignment to undeclared variable creates implicit local
+            TypedStatementKind::Assignment {
+                name, target_type, ..
+            } => {
+                let c_name = c_identifier(name);
+                if !declared_vars.contains(&c_name) {
+                    let init = match target_type {
+                        BasicType::String => "NULL".to_string(),
+                        BasicType::FixedString(len) => {
+                            locals.push(format!("char {}[{}] = \"\";", c_name, len + 1));
+                            declared_vars.insert(c_name);
+                            return;
+                        }
+                        BasicType::UserDefined(_) => "{0}".to_string(),
+                        BasicType::Single | BasicType::Double | BasicType::Float => {
+                            "0.0".to_string()
+                        }
+                        _ => "0".to_string(),
+                    };
+                    let c_ty = c_type(target_type);
+                    locals.push(format!("{} {} = {};", c_ty, c_name, init));
+                    declared_vars.insert(c_name);
+                }
+            }
+
+            // FOR loop counter
+            TypedStatementKind::For {
+                variable,
+                var_type,
+                body,
+                ..
+            } => {
+                let c_name = c_identifier(variable);
+                if !declared_vars.contains(&c_name) {
+                    let c_ty = c_type(var_type);
+                    let init = default_init(var_type);
+                    locals.push(format!("{} {} = {};", c_ty, c_name, init));
+                    declared_vars.insert(c_name);
+                }
+                for s in body {
+                    collect_implicits(s, declared_vars, locals);
+                }
+            }
+
+            // Recurse into control flow
+            TypedStatementKind::If {
+                then_branch,
+                elseif_branches,
+                else_branch,
+                ..
+            } => {
+                for s in then_branch {
+                    collect_implicits(s, declared_vars, locals);
+                }
+                for (_, branch_body) in elseif_branches {
+                    for s in branch_body {
+                        collect_implicits(s, declared_vars, locals);
+                    }
+                }
+                if let Some(else_stmts) = else_branch {
+                    for s in else_stmts {
+                        collect_implicits(s, declared_vars, locals);
+                    }
+                }
+            }
+
+            TypedStatementKind::While { body, .. } | TypedStatementKind::DoLoop { body, .. } => {
+                for s in body {
+                    collect_implicits(s, declared_vars, locals);
+                }
+            }
+
+            TypedStatementKind::SelectCase { cases, .. } => {
+                for case in cases {
+                    for s in &case.body {
+                        collect_implicits(s, declared_vars, locals);
+                    }
+                }
+            }
+
+            _ => {}
+        }
+    }
+
+    // Run pass 2
+    for stmt in body {
+        collect_implicits(stmt, &mut declared_vars, &mut locals);
+    }
+
+    locals
+}
+
 /// Emits function/sub parameters.
+/// For byref parameters, appends `_ref` to the name so the function body can
+/// create a local copy with the original name.
 pub(super) fn emit_params(params: &[TypedParameter]) -> String {
     if params.is_empty() {
         return "void".to_string();
@@ -3677,14 +3968,50 @@ pub(super) fn emit_params(params: &[TypedParameter]) -> String {
     params
         .iter()
         .map(|p| {
-            let c_ty = c_type(&p.basic_type);
             let c_name = c_identifier(&p.name);
-            if p.by_val {
-                format!("{} {}", c_ty, c_name)
+
+            // Fixed-length strings need special handling for array type in C
+            if let BasicType::FixedString(n) = p.basic_type {
+                if p.by_val {
+                    // Pass by value: char name[N] (array decays to pointer)
+                    format!("char {}[{}]", c_name, n + 1)
+                } else {
+                    // Pass by reference: pointer to array - char (*name_ref)[N]
+                    format!("char (*{}_ref)[{}]", c_name, n + 1)
+                }
             } else {
-                format!("{}* {}", c_ty, c_name)
+                let c_ty = c_type(&p.basic_type);
+                if p.by_val {
+                    format!("{} {}", c_ty, c_name)
+                } else {
+                    // Byref parameters get _ref suffix; we'll create a local copy with the original name
+                    format!("{}* {}_ref", c_ty, c_name)
+                }
             }
         })
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+/// Emits local copies for byref parameters.
+/// This allows the function body to use the parameter names directly without dereferencing.
+fn emit_byref_copies(params: &[TypedParameter], output: &mut String) {
+    for p in params {
+        if !p.by_val {
+            let c_name = c_identifier(&p.name);
+
+            // Fixed-length strings need special handling - use a pointer alias
+            // instead of copying (arrays can't be assigned directly in C)
+            if let BasicType::FixedString(n) = p.basic_type {
+                // Create pointer alias: char* name = (*name_ref);
+                // This allows direct access to the array contents
+                writeln!(output, "    char* {} = (*{}_ref);", c_name, c_name).unwrap();
+                let _ = n; // Silence unused warning
+            } else {
+                let c_ty = c_type(&p.basic_type);
+                // Create local copy: int32_t t1 = *t1_ref;
+                writeln!(output, "    {} {} = *{}_ref;", c_ty, c_name, c_name).unwrap();
+            }
+        }
+    }
 }

@@ -91,6 +91,43 @@ pub(super) fn emit_expr(expr: &TypedExpr) -> Result<String, CodeGenError> {
         TypedExprKind::FunctionCall { name, args } => {
             let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
             let args_str = args_code?.join(", ");
+
+            // Special case: _IIF is polymorphic - use appropriate variant based on return type
+            let upper_name = name.to_uppercase();
+            if upper_name == "_IIF" {
+                let c_name = if expr.basic_type.is_string() {
+                    "qb_iif_str".to_string()
+                } else {
+                    "qb_iif".to_string()
+                };
+                return Ok(format!("{}({})", c_name, args_str));
+            }
+
+            // Special case: MID$ with 2 arguments (no length) uses qb_mid2
+            if upper_name == "MID$" && args.len() == 2 {
+                return Ok(format!("qb_mid2({})", args_str));
+            }
+
+            // Special case: INSTR with 2 arguments (no start) uses qb_instr2
+            if upper_name == "INSTR" && args.len() == 2 {
+                return Ok(format!("qb_instr2({})", args_str));
+            }
+
+            // Special case: COMMAND$ with argument uses qb_command_n
+            if upper_name == "COMMAND$" && !args.is_empty() {
+                return Ok(format!("qb_command_n({})", args_str));
+            }
+
+            // Special case: ASC with 2 arguments (position) uses qb_asc2
+            if upper_name == "ASC" && args.len() == 2 {
+                return Ok(format!("qb_asc2({})", args_str));
+            }
+
+            // Special case: TIMER with argument (accuracy) uses qb_timer_n
+            if upper_name == "TIMER" && !args.is_empty() {
+                return Ok(format!("qb_timer_n({})", args_str));
+            }
+
             let c_name = c_function_name(name);
 
             // Special case: RND without arguments defaults to RND(1)
@@ -109,13 +146,20 @@ pub(super) fn emit_expr(expr: &TypedExpr) -> Result<String, CodeGenError> {
 
         TypedExprKind::Convert { expr, to_type } => {
             let inner_code = emit_expr(expr)?;
-            let c_ty = c_type(to_type);
 
             // Handle string-to-string conversion (no-op)
             if expr.basic_type.is_string() && to_type.is_string() {
                 return Ok(inner_code);
             }
 
+            // Handle conversion to fixed-length string
+            // In C, we can't cast to array types. The actual copying happens
+            // at the assignment point. In expression context, just pass the value.
+            if matches!(to_type, BasicType::FixedString(_)) {
+                return Ok(inner_code);
+            }
+
+            let c_ty = c_type(to_type);
             Ok(format!("(({})({}))", c_ty, inner_code))
         }
 
