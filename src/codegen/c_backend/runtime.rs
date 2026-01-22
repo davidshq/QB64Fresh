@@ -99,6 +99,170 @@ pub(super) fn emit_header(output: &mut String, runtime_mode: RuntimeMode) {
     writeln!(output, "#define _KEY_RCTRL (100305)").unwrap();
     writeln!(output, "#define _KEY_LALT (100308)").unwrap();
     writeln!(output, "#define _KEY_RALT (100307)").unwrap();
+    writeln!(output, "#define _KEY_LAPPLE (100310)").unwrap();
+    writeln!(output, "#define _KEY_RAPPLE (100309)").unwrap();
+    writeln!(output).unwrap();
+
+    // ASCII value constants
+    writeln!(output, "/* ASCII constants */").unwrap();
+    writeln!(output, "#define _ASC_NUL (0)").unwrap();
+    writeln!(output, "#define _ASC_SOH (1)").unwrap();
+    writeln!(output, "#define _ASC_STX (2)").unwrap();
+    writeln!(output, "#define _ASC_ETX (3)").unwrap();
+    writeln!(output, "#define _ASC_EOT (4)").unwrap();
+    writeln!(output, "#define _ASC_ENQ (5)").unwrap();
+    writeln!(output, "#define _ASC_ACK (6)").unwrap();
+    writeln!(output, "#define _ASC_BEL (7)").unwrap();
+    writeln!(output, "#define _ASC_BS (8)").unwrap();
+    writeln!(output, "#define _ASC_HT (9)").unwrap();
+    writeln!(output, "#define _ASC_LF (10)").unwrap();
+    writeln!(output, "#define _ASC_VT (11)").unwrap();
+    writeln!(output, "#define _ASC_FF (12)").unwrap();
+    writeln!(output, "#define _ASC_CR (13)").unwrap();
+    writeln!(output, "#define _ASC_SO (14)").unwrap();
+    writeln!(output, "#define _ASC_SI (15)").unwrap();
+    writeln!(output, "#define _ASC_DLE (16)").unwrap();
+    writeln!(output, "#define _ASC_DC1 (17)").unwrap();
+    writeln!(output, "#define _ASC_DC2 (18)").unwrap();
+    writeln!(output, "#define _ASC_DC3 (19)").unwrap();
+    writeln!(output, "#define _ASC_DC4 (20)").unwrap();
+    writeln!(output, "#define _ASC_NAK (21)").unwrap();
+    writeln!(output, "#define _ASC_SYN (22)").unwrap();
+    writeln!(output, "#define _ASC_ETB (23)").unwrap();
+    writeln!(output, "#define _ASC_CAN (24)").unwrap();
+    writeln!(output, "#define _ASC_EM (25)").unwrap();
+    writeln!(output, "#define _ASC_SUB (26)").unwrap();
+    writeln!(output, "#define _ASC_ESC (27)").unwrap();
+    writeln!(output, "#define _ASC_FS (28)").unwrap();
+    writeln!(output, "#define _ASC_GS (29)").unwrap();
+    writeln!(output, "#define _ASC_RS (30)").unwrap();
+    writeln!(output, "#define _ASC_US (31)").unwrap();
+    writeln!(output, "#define _ASC_SPACE (32)").unwrap();
+    writeln!(output, "#define _ASC_EXCLAMATION (33)").unwrap();
+    writeln!(output, "#define _ASC_QUOTE (34)").unwrap();
+    writeln!(output, "#define _ASC_HASH (35)").unwrap();
+    writeln!(output, "#define _ASC_DOLLAR (36)").unwrap();
+    writeln!(output, "#define _ASC_PERCENT (37)").unwrap();
+    writeln!(output, "#define _ASC_AMPERSAND (38)").unwrap();
+    writeln!(output, "#define _ASC_APOSTROPHE (39)").unwrap();
+    writeln!(output, "#define _ASC_LEFTBRACKET (40)").unwrap();
+    writeln!(output, "#define _ASC_RIGHTBRACKET (41)").unwrap();
+    writeln!(output, "#define _ASC_ASTERISK (42)").unwrap();
+    writeln!(output, "#define _ASC_PLUS (43)").unwrap();
+    writeln!(output, "#define _ASC_COMMA (44)").unwrap();
+    writeln!(output, "#define _ASC_MINUS (45)").unwrap();
+    writeln!(output, "#define _ASC_FULLSTOP (46)").unwrap();
+    writeln!(output, "#define _ASC_FORWARDSLASH (47)").unwrap();
+    writeln!(output, "#define _ASC_COLON (58)").unwrap();
+    writeln!(output, "#define _ASC_SEMICOLON (59)").unwrap();
+    writeln!(output, "#define _ASC_LESSTHAN (60)").unwrap();
+    writeln!(output, "#define _ASC_EQUAL (61)").unwrap();
+    writeln!(output, "#define _ASC_GREATERTHAN (62)").unwrap();
+    writeln!(output, "#define _ASC_QUESTION (63)").unwrap();
+    writeln!(output, "#define _ASC_ATSIGN (64)").unwrap();
+    writeln!(output, "#define _ASC_LEFTSQUAREBRACKET (91)").unwrap();
+    writeln!(output, "#define _ASC_BACKSLASH (92)").unwrap();
+    writeln!(output, "#define _ASC_RIGHTSQUAREBRACKET (93)").unwrap();
+    writeln!(output, "#define _ASC_CARET (94)").unwrap();
+    writeln!(output, "#define _ASC_UNDERSCORE (95)").unwrap();
+    writeln!(output, "#define _ASC_GRAVE (96)").unwrap();
+    writeln!(output, "#define _ASC_LEFTCURLYBRACKET (123)").unwrap();
+    writeln!(output, "#define _ASC_VERTICALBAR (124)").unwrap();
+    writeln!(output, "#define _ASC_RIGHTCURLYBRACKET (125)").unwrap();
+    writeln!(output, "#define _ASC_TILDE (126)").unwrap();
+    writeln!(output, "#define _ASC_DEL (127)").unwrap();
+    writeln!(output).unwrap();
+
+    // Character string constants (as qb_string*)
+    writeln!(output, "/* Character string constants */").unwrap();
+    writeln!(output, "#define _CHR_NUL qb_string_new(\"\\0\")").unwrap();
+    writeln!(output, "#define _CHR_SOH qb_string_new(\"\\x01\")").unwrap();
+    writeln!(output, "#define _CHR_STX qb_string_new(\"\\x02\")").unwrap();
+    writeln!(output, "#define _CHR_ETX qb_string_new(\"\\x03\")").unwrap();
+    writeln!(output, "#define _CHR_EOT qb_string_new(\"\\x04\")").unwrap();
+    writeln!(output, "#define _CHR_ENQ qb_string_new(\"\\x05\")").unwrap();
+    writeln!(output, "#define _CHR_ACK qb_string_new(\"\\x06\")").unwrap();
+    writeln!(output, "#define _CHR_BEL qb_string_new(\"\\x07\")").unwrap();
+    writeln!(output, "#define _CHR_BS qb_string_new(\"\\x08\")").unwrap();
+    writeln!(output, "#define _CHR_VT qb_string_new(\"\\x0B\")").unwrap();
+    writeln!(output, "#define _CHR_FF qb_string_new(\"\\x0C\")").unwrap();
+    writeln!(output, "#define _CHR_CR qb_string_new(\"\\r\")").unwrap();
+    writeln!(output, "#define _CHR_SO qb_string_new(\"\\x0E\")").unwrap();
+    writeln!(output, "#define _CHR_SI qb_string_new(\"\\x0F\")").unwrap();
+    writeln!(output, "#define _CHR_DLE qb_string_new(\"\\x10\")").unwrap();
+    writeln!(output, "#define _CHR_DC1 qb_string_new(\"\\x11\")").unwrap();
+    writeln!(output, "#define _CHR_DC2 qb_string_new(\"\\x12\")").unwrap();
+    writeln!(output, "#define _CHR_DC3 qb_string_new(\"\\x13\")").unwrap();
+    writeln!(output, "#define _CHR_DC4 qb_string_new(\"\\x14\")").unwrap();
+    writeln!(output, "#define _CHR_NAK qb_string_new(\"\\x15\")").unwrap();
+    writeln!(output, "#define _CHR_SYN qb_string_new(\"\\x16\")").unwrap();
+    writeln!(output, "#define _CHR_ETB qb_string_new(\"\\x17\")").unwrap();
+    writeln!(output, "#define _CHR_CAN qb_string_new(\"\\x18\")").unwrap();
+    writeln!(output, "#define _CHR_EM qb_string_new(\"\\x19\")").unwrap();
+    writeln!(output, "#define _CHR_SUB qb_string_new(\"\\x1A\")").unwrap();
+    writeln!(output, "#define _CHR_ESC qb_string_new(\"\\x1B\")").unwrap();
+    writeln!(output, "#define _CHR_FS qb_string_new(\"\\x1C\")").unwrap();
+    writeln!(output, "#define _CHR_GS qb_string_new(\"\\x1D\")").unwrap();
+    writeln!(output, "#define _CHR_RS qb_string_new(\"\\x1E\")").unwrap();
+    writeln!(output, "#define _CHR_US qb_string_new(\"\\x1F\")").unwrap();
+    writeln!(output, "#define _CHR_SPACE qb_string_new(\" \")").unwrap();
+    writeln!(output, "#define _CHR_EXCLAMATION qb_string_new(\"!\")").unwrap();
+    writeln!(output, "#define _CHR_HASH qb_string_new(\"#\")").unwrap();
+    writeln!(output, "#define _CHR_DOLLAR qb_string_new(\"$\")").unwrap();
+    writeln!(output, "#define _CHR_PERCENT qb_string_new(\"%\")").unwrap();
+    writeln!(output, "#define _CHR_AMPERSAND qb_string_new(\"&\")").unwrap();
+    writeln!(output, "#define _CHR_APOSTROPHE qb_string_new(\"'\")").unwrap();
+    writeln!(output, "#define _CHR_LEFTBRACKET qb_string_new(\"(\")").unwrap();
+    writeln!(output, "#define _CHR_RIGHTBRACKET qb_string_new(\")\")").unwrap();
+    writeln!(output, "#define _CHR_ASTERISK qb_string_new(\"*\")").unwrap();
+    writeln!(output, "#define _CHR_PLUS qb_string_new(\"+\")").unwrap();
+    writeln!(output, "#define _CHR_COMMA qb_string_new(\",\")").unwrap();
+    writeln!(output, "#define _CHR_MINUS qb_string_new(\"-\")").unwrap();
+    writeln!(output, "#define _CHR_FULLSTOP qb_string_new(\".\")").unwrap();
+    writeln!(output, "#define _CHR_FORWARDSLASH qb_string_new(\"/\")").unwrap();
+    writeln!(output, "#define _CHR_COLON qb_string_new(\":\")").unwrap();
+    writeln!(output, "#define _CHR_SEMICOLON qb_string_new(\";\")").unwrap();
+    writeln!(output, "#define _CHR_LESSTHAN qb_string_new(\"<\")").unwrap();
+    writeln!(output, "#define _CHR_EQUAL qb_string_new(\"=\")").unwrap();
+    writeln!(output, "#define _CHR_GREATERTHAN qb_string_new(\">\")").unwrap();
+    writeln!(output, "#define _CHR_QUESTION qb_string_new(\"?\")").unwrap();
+    writeln!(output, "#define _CHR_ATSIGN qb_string_new(\"@\")").unwrap();
+    writeln!(
+        output,
+        "#define _CHR_LEFTSQUAREBRACKET qb_string_new(\"[\")"
+    )
+    .unwrap();
+    writeln!(output, "#define _CHR_BACKSLASH qb_string_new(\"\\\\\")").unwrap();
+    writeln!(
+        output,
+        "#define _CHR_RIGHTSQUAREBRACKET qb_string_new(\"]\")"
+    )
+    .unwrap();
+    writeln!(output, "#define _CHR_CARET qb_string_new(\"^\")").unwrap();
+    writeln!(output, "#define _CHR_UNDERSCORE qb_string_new(\"_\")").unwrap();
+    writeln!(output, "#define _CHR_GRAVE qb_string_new(\"`\")").unwrap();
+    writeln!(
+        output,
+        "#define _CHR_LEFTCURLYBRACKET qb_string_new(\"{{\")"
+    )
+    .unwrap();
+    writeln!(output, "#define _CHR_VERTICALBAR qb_string_new(\"|\")").unwrap();
+    writeln!(
+        output,
+        "#define _CHR_RIGHTCURLYBRACKET qb_string_new(\"}}\")"
+    )
+    .unwrap();
+    writeln!(output, "#define _CHR_TILDE qb_string_new(\"~\")").unwrap();
+    writeln!(output, "#define _CHR_DEL qb_string_new(\"\\x7F\")").unwrap();
+    writeln!(output).unwrap();
+
+    // Graphics/font constants that can be used as no-arg function calls
+    writeln!(
+        output,
+        "/* Graphics pseudo-variables (zero-arg functions) */"
+    )
+    .unwrap();
+    writeln!(output, "#define _FONT qb_font()").unwrap();
     writeln!(output).unwrap();
 
     match runtime_mode {

@@ -816,12 +816,31 @@ impl StmtEmitter {
             TypedStatementKind::Swap { left, right } => {
                 let left_code = emit_expr(left)?;
                 let right_code = emit_expr(right)?;
-                let c_ty = c_type(&left.basic_type);
-
                 let temp_var = self.next_label("swap_temp");
-                writeln!(output, "{}{} {} = {};", indent, c_ty, temp_var, left_code).unwrap();
-                writeln!(output, "{}{} = {};", indent, left_code, right_code).unwrap();
-                writeln!(output, "{}{} = {};", indent, right_code, temp_var).unwrap();
+
+                // Fixed-length strings need special handling (C arrays can't be assigned directly)
+                if let BasicType::FixedString(n) = &left.basic_type {
+                    // For fixed-length strings, use strcpy for the swap
+                    writeln!(output, "{}{{ char {}[{}];", indent, temp_var, n + 1).unwrap();
+                    writeln!(output, "{}    strcpy({}, {});", indent, temp_var, left_code).unwrap();
+                    writeln!(
+                        output,
+                        "{}    strcpy({}, {});",
+                        indent, left_code, right_code
+                    )
+                    .unwrap();
+                    writeln!(
+                        output,
+                        "{}    strcpy({}, {}); }}",
+                        indent, right_code, temp_var
+                    )
+                    .unwrap();
+                } else {
+                    let c_ty = c_type(&left.basic_type);
+                    writeln!(output, "{}{} {} = {};", indent, c_ty, temp_var, left_code).unwrap();
+                    writeln!(output, "{}{} = {};", indent, left_code, right_code).unwrap();
+                    writeln!(output, "{}{} = {};", indent, right_code, temp_var).unwrap();
+                }
             }
 
             TypedStatementKind::Continue { continue_type } => {
@@ -3526,6 +3545,28 @@ impl StmtEmitter {
         if target == "0" {
             writeln!(output, "{}_qb_error_handler = NULL;", indent).unwrap();
             writeln!(output, "{}_qb_error_resume_next = 0;", indent).unwrap();
+        } else if target.eq_ignore_ascii_case("_LASTHANDLER") {
+            // QB64 extension: restore the previous error handler
+            // For now, just disable error handling (simpler behavior)
+            writeln!(output, "{}_qb_error_handler = NULL;", indent).unwrap();
+            writeln!(output, "{}_qb_error_resume_next = 0;", indent).unwrap();
+        } else if self.current_proc.is_some()
+            && (target.eq_ignore_ascii_case("qberror_test")
+                || target.eq_ignore_ascii_case("qberror")
+                || target.eq_ignore_ascii_case("errhandler")
+                || target.eq_ignore_ascii_case("errorhandler"))
+        {
+            // Known global error handler labels referenced from subroutines
+            // C doesn't support cross-function goto, so we disable error handling here
+            // In the future, this could use setjmp/longjmp or function pointer callbacks
+            writeln!(
+                output,
+                "{}/* Global error handler {} - disabled in subroutine context */",
+                indent, target
+            )
+            .unwrap();
+            writeln!(output, "{}_qb_error_handler = NULL;", indent).unwrap();
+            writeln!(output, "{}_qb_error_resume_next = 0;", indent).unwrap();
         } else {
             let label = self.proc_label(target);
             writeln!(output, "{}_qb_error_handler = &&{};", indent, label).unwrap();
@@ -4023,8 +4064,19 @@ pub(super) fn emit_params(params: &[TypedParameter]) -> String {
         .map(|p| {
             let c_name = c_identifier(&p.name);
 
-            // Fixed-length strings need special handling for array type in C
-            if let BasicType::FixedString(n) = p.basic_type {
+            // Array parameters are passed as pointers to the element type
+            if p.is_array {
+                // For arrays of fixed-length strings, element type is char[N]
+                // which can't be written as char[N]*, so use char (*name_ref)[N]
+                if let BasicType::FixedString(n) = p.basic_type {
+                    format!("char (*{}_ref)[{}]", c_name, n + 1)
+                } else {
+                    let c_ty = c_type(&p.basic_type);
+                    // Array parameter: int32_t* arr_ref (pointer to array data)
+                    format!("{}* {}_ref", c_ty, c_name)
+                }
+            } else if let BasicType::FixedString(n) = p.basic_type {
+                // Fixed-length strings need special handling for array type in C
                 if p.by_val {
                     // Pass by value: char name[N] (array decays to pointer)
                     format!("char {}[{}]", c_name, n + 1)
@@ -4053,9 +4105,26 @@ fn emit_byref_copies(params: &[TypedParameter], output: &mut String) {
         if !p.by_val {
             let c_name = c_identifier(&p.name);
 
-            // Fixed-length strings need special handling - use a pointer alias
-            // instead of copying (arrays can't be assigned directly in C)
-            if let BasicType::FixedString(n) = p.basic_type {
+            // Array parameters are passed as pointers - keep as pointer, don't dereference
+            if p.is_array {
+                // For arrays of fixed-length strings, use pointer to array type
+                if let BasicType::FixedString(n) = p.basic_type {
+                    writeln!(
+                        output,
+                        "    char (*{})[{}] = {}_ref;",
+                        c_name,
+                        n + 1,
+                        c_name
+                    )
+                    .unwrap();
+                } else {
+                    let c_ty = c_type(&p.basic_type);
+                    // Array remains as pointer: int32_t* arr = arr_ref;
+                    writeln!(output, "    {}* {} = {}_ref;", c_ty, c_name, c_name).unwrap();
+                }
+            } else if let BasicType::FixedString(n) = p.basic_type {
+                // Fixed-length strings need special handling - use a pointer alias
+                // instead of copying (arrays can't be assigned directly in C)
                 // Create pointer alias: char* name = (*name_ref);
                 // This allows direct access to the array contents
                 writeln!(output, "    char* {} = (*{}_ref);", c_name, c_name).unwrap();
