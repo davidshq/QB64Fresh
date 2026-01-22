@@ -286,6 +286,24 @@ pub enum SemanticError {
         span: Span,
     },
 
+    /// _IIF true and false parts have incompatible types.
+    ///
+    /// In _IIF(condition, true_value, false_value), both values must be
+    /// either both strings or both numeric types. Mixing string and numeric
+    /// types is not allowed.
+    ///
+    /// # BASIC Example
+    ///
+    /// ```basic
+    /// result = _IIF(x > 0, "positive", 123)  ' Error: types must match
+    /// ```
+    #[error("_IIF true and false parts have incompatible types: {true_type} vs {false_type}")]
+    IifTypeMismatch {
+        true_type: String,
+        false_type: String,
+        span: Span,
+    },
+
     /// Trying to call something that isn't a SUB or FUNCTION.
     ///
     /// Only procedures (SUB/FUNCTION) can be called. Variables and constants
@@ -518,6 +536,7 @@ impl SemanticError {
             SemanticError::InvalidUnaryOp { span, .. } => *span,
             SemanticError::ArgumentCountMismatch { span, .. } => *span,
             SemanticError::ArgumentTypeMismatch { span, .. } => *span,
+            SemanticError::IifTypeMismatch { span, .. } => *span,
             SemanticError::NotCallable { span, .. } => *span,
             SemanticError::SubUsedAsFunction { span, .. } => *span,
             SemanticError::ExitOutsideLoop { span, .. } => *span,

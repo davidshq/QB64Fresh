@@ -811,6 +811,52 @@ OPTION BASE 0                       ' Arrays start at 0 (default)
 OPTION BASE 1                       ' Arrays start at 1
 ```
 
+### 9.5 Dual Namespace Model (Scalars vs Arrays)
+
+BASIC uses a **dual namespace model** where scalar variables and arrays occupy separate namespaces. This means a scalar variable and an array can share the same base name but refer to different storage:
+
+```basic
+DIM x AS STRING                     ' Scalar variable "x"
+DIM x(10) AS INTEGER                ' Array "x()" - DIFFERENT from scalar x!
+
+x = "hello"                         ' Assigns to scalar x (STRING)
+x(1) = 42                           ' Assigns to array element x(1) (INTEGER)
+
+PRINT x                             ' Prints "hello" (scalar)
+PRINT x(1)                          ' Prints 42 (array element)
+```
+
+**Key Points:**
+
+1. **Separate Storage:** `x` (scalar) and `x()` (array) are completely independent variables with potentially different types.
+
+2. **Context-Based Resolution:**
+   - `x` (no parentheses) always refers to the scalar
+   - `x(i)` (with parentheses) always refers to the array
+
+3. **Common Pattern in QB64pe:** This is frequently used when a procedure parameter has the same name as a local array:
+   ```basic
+   SUB ProcessData (data AS STRING)      ' Parameter: scalar STRING
+       DIM data(100) AS INTEGER          ' Local array: different namespace!
+
+       PRINT data                        ' Uses scalar parameter (STRING)
+       data(1) = 5                       ' Uses local array (INTEGER)
+   END SUB
+   ```
+
+4. **Scope Interaction:** When a procedure uses `SHARED` arrays from module level, local scalars with the same name don't interfere:
+   ```basic
+   REDIM SHARED T(100) AS INTEGER        ' Module-level shared array
+
+   FUNCTION Example$
+       T = 5                             ' Creates local scalar T (SINGLE by DEFLNG)
+       T(1) = 10                         ' Uses shared array T()
+       Example$ = STR$(T) + STR$(T(1))   ' "5" + "10"
+   END FUNCTION
+   ```
+
+**Implementation Note:** QB64Fresh's semantic analyzer maintains separate symbol tables for scalars and arrays within each scope. When resolving `name`, it checks the scalar namespace; when resolving `name(...)`, it checks the array namespace first.
+
 ---
 
 ## 10. File I/O

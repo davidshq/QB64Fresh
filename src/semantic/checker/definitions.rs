@@ -140,6 +140,8 @@ impl<'a> TypeChecker<'a> {
                 // DIM is used later to declare an array with the same name.
                 // Also, local DIM can shadow function parameters (e.g., args AS STRING parameter
                 // shadowed by DIM args(5) AS ParseNum).
+                // In QB64, multiple DIM for the same variable in the same scope is allowed -
+                // subsequent DIMs just reinitialize the variable. This is common in BASIC.
                 let is_array_replacing_simple_or_param =
                     matches!(new.kind, SymbolKind::ArrayVariable { .. })
                         && matches!(
@@ -147,7 +149,12 @@ impl<'a> TypeChecker<'a> {
                             SymbolKind::Variable | SymbolKind::Parameter { .. }
                         );
 
-                if is_array_replacing_simple_or_param {
+                // Allow re-DIM of the same array (both are ArrayVariable) - this is
+                // valid in QB64 and just reinitializes the array
+                let is_array_reinit = matches!(new.kind, SymbolKind::ArrayVariable { .. })
+                    && matches!(existing.kind, SymbolKind::ArrayVariable { .. });
+
+                if is_array_replacing_simple_or_param || is_array_reinit {
                     // Allow the redefinition by updating the symbol
                     self.symbols.update_or_define_symbol(new);
                 } else {
@@ -443,6 +450,7 @@ impl<'a> TypeChecker<'a> {
         self.collect_labels_from_body(body);
 
         // Define function name as local variable for return value
+        // QB64 allows assigning to either the full name (foo$) or base name (foo)
         let return_var = Symbol {
             name: name.to_string(),
             kind: SymbolKind::Variable,
@@ -451,6 +459,20 @@ impl<'a> TypeChecker<'a> {
             is_mutable: true,
         };
         let _ = self.symbols.define_symbol(return_var);
+
+        // Also define the base name (without type suffix) for return value assignment
+        // e.g., FUNCTION foo$() allows both `foo$ = value` and `foo = value`
+        let base_name = crate::semantic::types::strip_suffix(name);
+        if base_name != name {
+            let return_var_base = Symbol {
+                name: base_name.to_string(),
+                kind: SymbolKind::Variable,
+                basic_type: ret_type.clone(),
+                span,
+                is_mutable: true,
+            };
+            let _ = self.symbols.define_symbol(return_var_base);
+        }
 
         // Define parameters
         let typed_params: Vec<TypedParameter> = params

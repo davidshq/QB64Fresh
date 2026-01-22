@@ -172,6 +172,12 @@ impl BasicType {
         matches!(self, BasicType::String | BasicType::FixedString(_))
     }
 
+    /// Returns true if this type is string-like (STRING or STRING * N).
+    /// Alias for is_string() used for clarity in _IIF handling.
+    pub fn is_string_like(&self) -> bool {
+        self.is_string()
+    }
+
     /// Returns true if this type is an integer type (not floating-point).
     pub fn is_integer(&self) -> bool {
         use BasicType::*;
@@ -203,7 +209,7 @@ impl BasicType {
     /// Used for determining widening conversions and common types.
     /// Floating-point ranks are higher than integer ranks to ensure
     /// integer-to-float promotion.
-    fn numeric_rank(&self) -> Option<u8> {
+    pub(crate) fn numeric_rank(&self) -> Option<u8> {
         use BasicType::*;
         match self {
             Bit | UnsignedBit => Some(1),
@@ -217,6 +223,29 @@ impl BasicType {
             Float => Some(12),
             _ => None,
         }
+    }
+}
+
+/// Promotes two numeric types to their common wider type.
+///
+/// Used for operations like _IIF where both branches must produce a compatible type.
+/// Returns the wider of the two types based on numeric rank.
+///
+/// # Examples
+/// ```ignore
+/// promote_numeric_types(&BasicType::Integer, &BasicType::Long)  // -> Long
+/// promote_numeric_types(&BasicType::Long, &BasicType::Single)   // -> Single
+/// promote_numeric_types(&BasicType::Single, &BasicType::Double) // -> Double
+/// ```
+pub fn promote_numeric_types(a: &BasicType, b: &BasicType) -> BasicType {
+    // Use numeric_rank to determine which type is wider
+    let rank_a = a.numeric_rank().unwrap_or(0);
+    let rank_b = b.numeric_rank().unwrap_or(0);
+
+    if rank_a >= rank_b {
+        a.clone()
+    } else {
+        b.clone()
     }
 }
 

@@ -493,41 +493,60 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Type checks a function call or array access.
+    ///
+    /// In BASIC, `name(args)` syntax can be:
+    /// 1. Array access - if `name` is an array variable
+    /// 2. External function call - if `name` is from DECLARE LIBRARY
+    /// 3. Built-in or user-defined function call
+    ///
+    /// Due to BASIC's dual namespace model, a scalar `x` and array `x()` can coexist.
+    /// When we see `x(args)`, we must check the array namespace first.
     pub(super) fn check_function_call(
         &mut self,
         name: &str,
         args: &[Expr],
         span: crate::ast::Span,
     ) -> TypedExpr {
-        // First check if it's an array access
-        if let Some(symbol) = self.symbols.lookup_symbol(name) {
-            match &symbol.kind {
-                SymbolKind::ArrayVariable { dimensions } => {
-                    return self.check_array_access(
-                        name,
-                        args,
-                        dimensions.clone(),
-                        symbol.basic_type.clone(),
-                        span,
-                    );
-                }
-                SymbolKind::ExternalFunction {
-                    c_name,
-                    params,
-                    return_type,
-                } => {
-                    // External function from DECLARE LIBRARY
-                    return self.check_external_function_call(
-                        name,
-                        c_name.clone(),
-                        args,
-                        params.clone(),
-                        return_type.clone(),
-                        span,
-                    );
-                }
-                _ => {}
-            }
+        // First check the ARRAY namespace - `name(...)` syntax should find arrays first
+        // This is critical for BASIC's dual namespace model where `x` (scalar) and
+        // `x()` (array) can coexist.
+        if let Some(symbol) = self.symbols.lookup_array(name) {
+            let dimensions = if let SymbolKind::ArrayVariable { dimensions } = &symbol.kind {
+                dimensions.clone()
+            } else {
+                vec![]
+            };
+            return self.check_array_access(
+                name,
+                args,
+                dimensions,
+                symbol.basic_type.clone(),
+                span,
+            );
+        }
+
+        // Check for external functions (these are stored as scalars but have special handling)
+        if let Some(symbol) = self.symbols.lookup_scalar(name)
+            && let SymbolKind::ExternalFunction {
+                c_name,
+                params,
+                return_type,
+            } = &symbol.kind
+        {
+            // External function from DECLARE LIBRARY
+            return self.check_external_function_call(
+                name,
+                c_name.clone(),
+                args,
+                params.clone(),
+                return_type.clone(),
+                span,
+            );
+        }
+
+        // Special handling for _IIF - it's polymorphic (accepts any type for args 2 and 3)
+        if name.eq_ignore_ascii_case("_IIF") {
+            return self.check_iif_call(args, span);
         }
 
         // Look up procedure
@@ -535,10 +554,12 @@ impl<'a> TypeChecker<'a> {
             Some(p) => p.clone(),
             None => {
                 // Check if there's a scalar variable with this name (NotAnArray error)
+                // We use lookup_scalar here because in the dual namespace model,
+                // if there was an array `name()`, we would have found it above.
                 // Clone the type early to avoid borrow issues
                 if let Some(basic_type) = self
                     .symbols
-                    .lookup_symbol(name)
+                    .lookup_scalar(name)
                     .map(|s| s.basic_type.clone())
                 {
                     self.errors.push(SemanticError::NotAnArray {
@@ -654,6 +675,77 @@ impl<'a> TypeChecker<'a> {
         )
     }
 
+    /// Special handling for _IIF (polymorphic inline conditional).
+    ///
+    /// _IIF(condition, true_value, false_value) is QB64's ternary operator.
+    /// Unlike regular functions, it accepts any type for true_value and false_value,
+    /// as long as they are compatible. The return type is the common type of both.
+    fn check_iif_call(&mut self, args: &[Expr], span: crate::ast::Span) -> TypedExpr {
+        // Must have exactly 3 arguments
+        if args.len() != 3 {
+            self.errors.push(SemanticError::ArgumentCountMismatch {
+                name: "_IIF".to_string(),
+                expected_min: 3,
+                expected_max: 3,
+                found: args.len(),
+                span,
+            });
+            return TypedExpr::new(
+                TypedExprKind::FunctionCall {
+                    name: "_IIF".to_string(),
+                    args: args.iter().map(|a| self.check_expr(a)).collect(),
+                },
+                BasicType::Double,
+                span,
+            );
+        }
+
+        // Check condition (first arg) - must be numeric (treated as boolean)
+        let cond_typed = self.check_expr(&args[0]);
+        if !cond_typed.basic_type.is_numeric() {
+            self.errors.push(SemanticError::TypeMismatch {
+                expected: "numeric".to_string(),
+                found: cond_typed.basic_type.to_string(),
+                span: args[0].span,
+            });
+        }
+
+        // Check true and false values
+        let true_typed = self.check_expr(&args[1]);
+        let false_typed = self.check_expr(&args[2]);
+
+        // Determine result type - both must be compatible
+        let result_type =
+            if true_typed.basic_type.is_string_like() && false_typed.basic_type.is_string_like() {
+                // Both are strings - result is string
+                BasicType::String
+            } else if true_typed.basic_type.is_numeric() && false_typed.basic_type.is_numeric() {
+                // Both are numeric - promote to wider type
+                crate::semantic::types::promote_numeric_types(
+                    &true_typed.basic_type,
+                    &false_typed.basic_type,
+                )
+            } else {
+                // Type mismatch between true and false parts
+                self.errors.push(SemanticError::IifTypeMismatch {
+                    true_type: true_typed.basic_type.to_string(),
+                    false_type: false_typed.basic_type.to_string(),
+                    span,
+                });
+                // Default to Double for error recovery
+                BasicType::Double
+            };
+
+        TypedExpr::new(
+            TypedExprKind::FunctionCall {
+                name: "_IIF".to_string(),
+                args: vec![cond_typed, true_typed, false_typed],
+            },
+            result_type,
+            span,
+        )
+    }
+
     /// Attempts to check an expression as an array reference (arr() syntax).
     ///
     /// In BASIC, `arr()` means "pass the entire array" to a procedure.
@@ -667,8 +759,8 @@ impl<'a> TypeChecker<'a> {
         if let ExprKind::FunctionCall { name, args } = &expr.kind
             && args.is_empty()
         {
-            // Check if this name refers to a declared array
-            if let Some(symbol) = self.symbols.lookup_symbol(name)
+            // Check if this name refers to a declared array (use array namespace)
+            if let Some(symbol) = self.symbols.lookup_array(name)
                 && let SymbolKind::ArrayVariable { dimensions } = &symbol.kind
             {
                 let typed_dimensions: Vec<TypedArrayDimension> = dimensions

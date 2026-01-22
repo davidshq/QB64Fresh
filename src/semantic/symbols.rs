@@ -163,6 +163,8 @@ pub enum ProcedureKind {
     Function,
     /// Built-in function (LEN, CHR$, etc.)
     BuiltIn,
+    /// External function from DECLARE LIBRARY
+    External,
 }
 
 /// Information about a procedure parameter.
@@ -226,6 +228,10 @@ pub enum ScopeKind {
 }
 
 /// A single scope containing symbols and labels.
+///
+/// BASIC uses a dual namespace model where scalars and arrays are in separate
+/// namespaces. This means `x` (scalar) and `x()` (array) can coexist with
+/// different types. The scope maintains separate storage for each namespace.
 #[derive(Debug)]
 struct Scope {
     /// Unique scope identifier (kept for Debug output).
@@ -233,8 +239,12 @@ struct Scope {
     id: ScopeId,
     /// What kind of scope this is.
     kind: ScopeKind,
-    /// Symbols in this scope (uppercase names for case-insensitive lookup).
-    symbols: HashMap<String, Symbol>,
+    /// Scalar symbols (variables, constants, parameters) - uppercase names.
+    /// In BASIC, `x` refers to a scalar even if `x()` array exists.
+    scalars: HashMap<String, Symbol>,
+    /// Array symbols (ArrayVariable kind only) - uppercase names.
+    /// In BASIC, `x()` refers to an array even if `x` scalar exists.
+    arrays: HashMap<String, Symbol>,
     /// Labels in this scope (uppercase names).
     labels: HashMap<String, LabelEntry>,
     /// Parent scope (None for global).
@@ -291,7 +301,8 @@ impl SymbolTable {
             Scope {
                 id: global_id,
                 kind: ScopeKind::Global,
-                symbols: HashMap::new(),
+                scalars: HashMap::new(),
+                arrays: HashMap::new(),
                 labels: HashMap::new(),
                 parent: None,
             },
@@ -324,7 +335,8 @@ impl SymbolTable {
             Scope {
                 id,
                 kind,
-                symbols: HashMap::new(),
+                scalars: HashMap::new(),
+                arrays: HashMap::new(),
                 labels: HashMap::new(),
                 parent: Some(self.current_scope),
             },
@@ -368,7 +380,9 @@ impl SymbolTable {
 
     /// Defines a symbol in the current scope.
     ///
-    /// Returns `Err((existing, new))` if a symbol with this name already exists.
+    /// Returns `Err((existing, new))` if a symbol with this name already exists
+    /// **in the same namespace**. Arrays and scalars are in separate namespaces,
+    /// so `DIM x AS INTEGER` and `DIM x(10) AS STRING` can coexist.
     ///
     /// Note: In BASIC, variables with different type suffixes are DIFFERENT variables:
     /// `x%`, `x$`, and `x&` are three separate variables. However, lookups are
@@ -381,11 +395,22 @@ impl SymbolTable {
         // Use the FULL name (including suffix) for uniqueness, but case-insensitive
         let name_upper = symbol.name.to_uppercase();
 
-        if let Some(existing) = scope.symbols.get(&name_upper) {
-            return Err(Box::new((existing.clone(), symbol)));
-        }
+        // Determine which namespace based on symbol kind
+        let is_array = matches!(symbol.kind, SymbolKind::ArrayVariable { .. });
 
-        scope.symbols.insert(name_upper, symbol);
+        if is_array {
+            // Array namespace
+            if let Some(existing) = scope.arrays.get(&name_upper) {
+                return Err(Box::new((existing.clone(), symbol)));
+            }
+            scope.arrays.insert(name_upper, symbol);
+        } else {
+            // Scalar namespace (variables, constants, parameters)
+            if let Some(existing) = scope.scalars.get(&name_upper) {
+                return Err(Box::new((existing.clone(), symbol)));
+            }
+            scope.scalars.insert(name_upper, symbol);
+        }
         Ok(())
     }
 
@@ -399,10 +424,21 @@ impl SymbolTable {
             .get_mut(&self.current_scope)
             .expect("current_scope must always exist in scopes map");
         let name_upper = symbol.name.to_uppercase();
-        scope.symbols.insert(name_upper, symbol);
+
+        // Determine which namespace based on symbol kind
+        let is_array = matches!(symbol.kind, SymbolKind::ArrayVariable { .. });
+
+        if is_array {
+            scope.arrays.insert(name_upper, symbol);
+        } else {
+            scope.scalars.insert(name_upper, symbol);
+        }
     }
 
-    /// Looks up a symbol by name, searching up the scope chain.
+    /// Looks up a symbol by name, searching in BOTH namespaces.
+    ///
+    /// This is a general lookup that returns any matching symbol (scalar or array).
+    /// For context-specific lookups, use `lookup_scalar()` or `lookup_array()`.
     ///
     /// In BASIC, procedure scopes (SUB/FUNCTION) are isolated from global scope.
     /// Variables from global scope are only visible if explicitly SHARED.
@@ -414,8 +450,11 @@ impl SymbolTable {
         let name_upper = name.to_uppercase();
         let scope = self.scopes.get(&self.current_scope)?;
 
-        // Check current scope first
-        if let Some(sym) = scope.symbols.get(&name_upper) {
+        // Check current scope - scalars first (more common), then arrays
+        if let Some(sym) = scope.scalars.get(&name_upper) {
+            return Some(sym);
+        }
+        if let Some(sym) = scope.arrays.get(&name_upper) {
             return Some(sym);
         }
 
@@ -425,7 +464,13 @@ impl SymbolTable {
             if self.module_shared_vars.contains(&name_upper)
                 && let Some(global) = self.scopes.get(&ScopeId::GLOBAL)
             {
-                return global.symbols.get(&name_upper);
+                // Check both namespaces in global scope
+                if let Some(sym) = global.scalars.get(&name_upper) {
+                    return Some(sym);
+                }
+                if let Some(sym) = global.arrays.get(&name_upper) {
+                    return Some(sym);
+                }
             }
 
             // Check if this variable is explicitly SHARED in this scope
@@ -434,9 +479,24 @@ impl SymbolTable {
             {
                 // Look up in global scope only
                 if let Some(global) = self.scopes.get(&ScopeId::GLOBAL) {
-                    return global.symbols.get(&name_upper);
+                    if let Some(sym) = global.scalars.get(&name_upper) {
+                        return Some(sym);
+                    }
+                    if let Some(sym) = global.arrays.get(&name_upper) {
+                        return Some(sym);
+                    }
                 }
             }
+
+            // Check for built-in constants in global scope (always visible)
+            // Constants are immutable, so there's no scoping issue
+            if let Some(global) = self.scopes.get(&ScopeId::GLOBAL)
+                && let Some(sym) = global.scalars.get(&name_upper)
+                && matches!(sym.kind, SymbolKind::Constant { .. })
+            {
+                return Some(sym);
+            }
+
             // Not SHARED, not found in local scope -> not visible
             return None;
         }
@@ -445,15 +505,102 @@ impl SymbolTable {
         None
     }
 
+    /// Looks up an array symbol by name (array namespace only).
+    ///
+    /// In BASIC, arrays and scalars are in separate namespaces. Use this method
+    /// when looking up `name(args)` syntax which should find arrays specifically.
+    /// If `x` is a scalar and `x()` is an array, `lookup_array("x")` returns the array.
+    pub fn lookup_array(&self, name: &str) -> Option<&Symbol> {
+        let name_upper = name.to_uppercase();
+        let scope = self.scopes.get(&self.current_scope)?;
+
+        // Check current scope's array namespace
+        if let Some(sym) = scope.arrays.get(&name_upper) {
+            return Some(sym);
+        }
+
+        // If in a procedure scope, check for SHARED arrays from global
+        if matches!(scope.kind, ScopeKind::Sub | ScopeKind::Function) {
+            // Check if this array was declared with DIM SHARED at module level
+            if self.module_shared_vars.contains(&name_upper)
+                && let Some(global) = self.scopes.get(&ScopeId::GLOBAL)
+                && let Some(sym) = global.arrays.get(&name_upper)
+            {
+                return Some(sym);
+            }
+
+            // Check if this variable is explicitly SHARED in this scope
+            if let Some(shared_names) = self.shared_vars.get(&self.current_scope)
+                && shared_names.iter().any(|n| n.to_uppercase() == name_upper)
+                && let Some(global) = self.scopes.get(&ScopeId::GLOBAL)
+                && let Some(sym) = global.arrays.get(&name_upper)
+            {
+                return Some(sym);
+            }
+        }
+
+        None
+    }
+
+    /// Looks up a scalar (non-array) symbol by name (scalar namespace only).
+    ///
+    /// In BASIC, arrays and scalars are in separate namespaces. `DIM x AS STRING`
+    /// and `DIM x(10) AS INTEGER` can coexist:
+    /// - `x` refers to the STRING scalar
+    /// - `x(...)` refers to the INTEGER array
+    ///
+    /// Use this method when looking up simple variable references (not array access).
+    /// If `x` is a scalar and `x()` is an array, `lookup_scalar("x")` returns the scalar.
+    pub fn lookup_scalar(&self, name: &str) -> Option<&Symbol> {
+        let name_upper = name.to_uppercase();
+        let scope = self.scopes.get(&self.current_scope)?;
+
+        // Check current scope's scalar namespace
+        if let Some(sym) = scope.scalars.get(&name_upper) {
+            return Some(sym);
+        }
+
+        // If in a procedure scope, check for SHARED scalars from global
+        if matches!(scope.kind, ScopeKind::Sub | ScopeKind::Function) {
+            // Check if this variable was declared with DIM SHARED at module level
+            if self.module_shared_vars.contains(&name_upper)
+                && let Some(global) = self.scopes.get(&ScopeId::GLOBAL)
+                && let Some(sym) = global.scalars.get(&name_upper)
+            {
+                return Some(sym);
+            }
+
+            // Check if this variable is explicitly SHARED in this scope
+            if let Some(shared_names) = self.shared_vars.get(&self.current_scope)
+                && shared_names.iter().any(|n| n.to_uppercase() == name_upper)
+                && let Some(global) = self.scopes.get(&ScopeId::GLOBAL)
+                && let Some(sym) = global.scalars.get(&name_upper)
+            {
+                return Some(sym);
+            }
+
+            // Check for built-in constants in global scope (always visible)
+            if let Some(global) = self.scopes.get(&ScopeId::GLOBAL)
+                && let Some(sym) = global.scalars.get(&name_upper)
+                && matches!(sym.kind, SymbolKind::Constant { .. })
+            {
+                return Some(sym);
+            }
+        }
+
+        None
+    }
+
     /// Checks if a symbol exists in the current scope only (not parent scopes).
     ///
+    /// Checks both scalar and array namespaces.
     /// Variables with different type suffixes are DIFFERENT variables.
     pub fn symbol_in_current_scope(&self, name: &str) -> bool {
         // Use FULL name (including suffix) for lookup, case-insensitive
         let name_upper = name.to_uppercase();
         self.scopes
             .get(&self.current_scope)
-            .map(|s| s.symbols.contains_key(&name_upper))
+            .map(|s| s.scalars.contains_key(&name_upper) || s.arrays.contains_key(&name_upper))
             .unwrap_or(false)
     }
 
@@ -565,6 +712,14 @@ impl SymbolTable {
                     return Some(proc);
                 }
             }
+
+            // Try unsigned type suffixes (QB64 extension: ~% ~& ~%% ~&& ~`)
+            for suffix in ["~%", "~&", "~%%", "~&&", "~`"] {
+                let name_with_suffix = format!("{}{}", name_upper, suffix);
+                if let Some(proc) = self.procedures.get(&name_with_suffix) {
+                    return Some(proc);
+                }
+            }
         }
 
         None
@@ -595,24 +750,65 @@ impl SymbolTable {
     /// 2. Registered as module-shared so it's visible from all procedures
     pub fn define_shared_symbol(&mut self, symbol: Symbol) {
         let name_upper = symbol.name.to_uppercase();
-        // Always define in global scope
+        let is_array = matches!(symbol.kind, SymbolKind::ArrayVariable { .. });
+
+        // Always define in global scope, in the appropriate namespace
         let global = self
             .scopes
             .get_mut(&ScopeId::GLOBAL)
             .expect("global scope must always exist");
-        global.symbols.insert(name_upper.clone(), symbol);
+
+        if is_array {
+            global.arrays.insert(name_upper.clone(), symbol);
+        } else {
+            global.scalars.insert(name_upper.clone(), symbol);
+        }
         // Mark as module-shared
         self.module_shared_vars.insert(name_upper);
+    }
+
+    /// Checks if a variable is a module-level SHARED variable.
+    ///
+    /// Returns true if the variable was declared with DIM SHARED or REDIM SHARED
+    /// at module level, making it visible to all procedures.
+    pub fn is_module_shared(&self, name: &str) -> bool {
+        self.module_shared_vars.contains(&name.to_uppercase())
+    }
+
+    /// Updates a module-level SHARED symbol (array) in the global scope.
+    ///
+    /// This is used for REDIM _PRESERVE on SHARED arrays from within a SUB/FUNCTION.
+    /// The array is updated in the global scope, not the current local scope.
+    pub fn update_shared_symbol(&mut self, symbol: Symbol) {
+        let name_upper = symbol.name.to_uppercase();
+        let is_array = matches!(symbol.kind, SymbolKind::ArrayVariable { .. });
+
+        // Update in global scope, in the appropriate namespace
+        let global = self
+            .scopes
+            .get_mut(&ScopeId::GLOBAL)
+            .expect("global scope must always exist");
+
+        if is_array {
+            global.arrays.insert(name_upper, symbol);
+        } else {
+            global.scalars.insert(name_upper, symbol);
+        }
     }
 
     /// Looks up a symbol specifically in the global scope.
     ///
     /// This is used to validate SHARED statements - the variable must exist
-    /// at module level to be shared.
+    /// at module level to be shared. Checks both namespaces.
     pub fn lookup_global_symbol(&self, name: &str) -> Option<&Symbol> {
         // Use full name including suffix since a$ and a& are different variables
         let name_upper = name.to_uppercase();
-        self.scopes.get(&ScopeId::GLOBAL)?.symbols.get(&name_upper)
+        let global = self.scopes.get(&ScopeId::GLOBAL)?;
+        // Check scalars first, then arrays
+        global
+            .scalars
+            .get(&name_upper)
+            .or_else(|| global.arrays.get(&name_upper))
     }
 
     /// Gets the default type for a variable based on its first letter.
@@ -727,11 +923,12 @@ impl SymbolTable {
 
     /// Returns an iterator over all global symbols (variables at module level).
     ///
-    /// Used by the LSP server for document symbols/outline.
+    /// Used by the LSP server for document symbols/outline. Returns symbols from
+    /// both scalar and array namespaces.
     pub fn iter_global_symbols(&self) -> impl Iterator<Item = &Symbol> {
         self.scopes
             .get(&ScopeId::GLOBAL)
-            .map(|s| s.symbols.values())
+            .map(|s| s.scalars.values().chain(s.arrays.values()))
             .into_iter()
             .flatten()
     }

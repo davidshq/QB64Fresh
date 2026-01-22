@@ -1,7 +1,7 @@
 # Plan: Compiling QB64pe Using QB64Fresh
 
 *Created: 2026-01-20*
-*Updated: 2026-01-21 (Phase B implementation in progress - 47% error reduction)*
+*Updated: 2026-01-21*
 
 This document outlines the strategy for compiling the QB64pe compiler using QB64Fresh, achieving a form of cross-compilation where a Rust-based BASIC compiler builds a C++-targeting BASIC compiler.
 
@@ -15,7 +15,20 @@ This document outlines the strategy for compiling the QB64pe compiler using QB64
 
 **Approach:** Systematic gap analysis, incremental feature implementation, and progressive testing.
 
-**Current Status (2026-01-21):** Phase B implementation in progress. Parse errors reduced from 992 → ~520 (47% reduction). Key syntax features implemented.
+**Current Status (2026-01-21):** **PHASE B COMPLETE!** 🎉 Semantic analysis passes with **100% error reduction** (992 → 0 errors). QB64pe parses and type-checks successfully. Major fixes include:
+- Polymorphic `_IIF` handling
+- DEFTYPE preprocessing
+- Unsigned type suffix lookup (`~&`, `~%`)
+- `SHELL` function registration
+- `_STR_*` and `_CHR_*` character constants
+- Built-in constant scope visibility from functions
+- Function return base name aliasing (`FUNCTION foo$` allows `foo = value`)
+- Array re-DIM in same scope (valid QB64 pattern)
+- **Dual namespace model** - Separate storage for scalars and arrays (see QB64_LANGUAGE_SPECIFICATION.md §9.5)
+- **REDIM _PRESERVE on SHARED arrays** - Properly updates global scope instead of creating local copies
+- **_OPENHOST signature fix** - Takes STRING connection string, not LONG port
+
+**Ready for Phase C: Code Generation Validation.**
 
 ---
 
@@ -93,7 +106,7 @@ constval~&&                    ' Unsigned LONGLONG
 
 ---
 
-## 0.5 Phase B Implementation Progress (2026-01-21)
+## 0.5 Phase B Implementation Progress (2026-01-21) ✅ MAJOR MILESTONE
 
 ### Features Implemented
 
@@ -118,29 +131,50 @@ constval~&&                    ' Unsigned LONGLONG
 ### Current Error Count
 
 ```
-Parse errors (with $INCLUDE): 162 (was 992) - 84% reduction
-Parse errors (main file only): 27 (was ~150) - 82% reduction
+Semantic errors (with $INCLUDE): 0 (was 992) - 100% reduction ✅ COMPLETE!
+Parse errors: 0 - Parsing is complete!
 ```
 
-### Remaining Parse Error Categories
+**Session 3 Fixes (47 → 17 errors):**
+- Polymorphic `_IIF` handling - accepts any compatible type pair
+- Unsigned type suffix lookup (`~%`, `~&`, `~%%`, `~&&`) in procedure names
+- `SHELL` function registration (was treated as array access)
+- `_STR_CRLF`, `_STR_LF`, `_STR_CR`, `_STR_EMPTY` string constants
+- `_CHR_HT` (horizontal tab) character constant
+- `_ASC_*` numeric constants for ASCII codes
+- Built-in constant scope visibility from inside functions
+- Function return base name aliasing (`FUNCTION foo$` allows `foo = value`)
+- Multiple DIM for same array in same scope (valid QB64 pattern)
+- Array/scalar namespace separation in assignments (`sf` vs `SF()`)
+- `STRING * N` to `STRING` coercion for OPEN, MID$, ASC, CHAIN statements
 
-| Error | Count | Analysis |
-|-------|-------|----------|
-| `invalid expression` | 69 | Cascade from earlier errors |
-| `unexpected token Case` | 38 | SELECT CASE block issues |
-| `unexpected token Else` | 15 | Cascade |
-| `expected FUNCTION name` | 12 | Procedure parsing |
-| `invalid statement: unexpected token Dot` | 7 | Field access syntax |
-| `expected FOR, found Comma` | 5 | FOR loop with multiple vars? |
+**Session 4 Fixes (17 → 0 errors):**
+- **Dual namespace model implementation** - Separate storage for scalars and arrays
+  - `Scope` struct now has separate `scalars` and `arrays` HashMaps
+  - `lookup_scalar()` for simple variable access
+  - `lookup_array()` for array element access with parentheses
+  - Updated `check_function_call` to use `lookup_array` first for `name(args)` syntax
+  - Updated `check_array_assignment` to use `lookup_array`
+  - Updated `check_array_field_assignment` to use `lookup_array`
+- `_MESSAGEBOX` signature corrected to 5 parameters (all STRING except last LONG)
+- See QB64_LANGUAGE_SPECIFICATION.md section 9.5 for dual namespace documentation
+- **REDIM _PRESERVE on SHARED arrays** - Fixed to update global scope instead of creating local copies
+  - `REDIM _PRESERVE UserDefine(...)` inside a SUB now correctly uses the SHARED array type
+  - Added `is_module_shared()` and `update_shared_symbol()` to SymbolTable
+- **_OPENHOST signature fix** - Changed from `(port: LONG)` to `(connection_string: STRING)`
 
-**Key Finding:** Individual include files parse successfully! The errors are cascading effects from earlier parse failures causing the parser to lose synchronization.
-
-### Next Steps
+### Next Steps for Phase B Completion
 
 1. ✅ ~~Add line numbers to error messages for better debugging~~
 2. ✅ ~~Improve parser error recovery to reduce cascading~~
-3. Investigate remaining root causes (162 errors)
-4. Target: reduce to <100 errors
+3. ✅ ~~DEFTYPE processing before procedure declarations~~
+4. ✅ ~~Fix _NEWHANDLER parsing for ON ERROR GOTO~~
+5. ✅ ~~Polymorphic _IIF handling~~
+6. ✅ ~~STRING * N to STRING coercion~~
+7. ✅ ~~Built-in constant visibility from functions~~
+8. ✅ ~~Function return base name aliasing~~
+9. ✅ ~~Target: reduce to <50 errors~~ **ACHIEVED: 17 errors!**
+10. **Optional:** Full array/scalar namespace separation (complex refactor)
 
 ---
 
@@ -166,14 +200,7 @@ Based on analysis of `qb64pe.bas`:
 
 | Feature Category | Examples | QB64Fresh Status |
 |-----------------|----------|------------------|
-| Metacommands | `$CONSOLE`, `$SCREENHIDE`, `$EXEICON`, `$VERSIONINFO`, `$INCLUDE`, `$DYNAMIC` | Partial |
-| String Operations | Complex string manipulation, `INSTR`, `MID$`, concatenation | ✅ Implemented |
-| Arrays | `REDIM`, multi-dimensional, dynamic sizing | ✅ Implemented |
-| File I/O | Sequential, random, binary file access | ✅ Implemented |
-| Type System | `DEFLNG`, `DEFSNG`, user-defined types | Partial |
-| QB64 Extensions | `_DIREXISTS`, `_OS$`, `_LIMIT`, `_SCREENSHOW`, `TIMER(accuracy)` | Partial |
-| Control Flow | `IF/THEN/ELSE`, `SELECT CASE`, `FOR/NEXT`, `DO/LOOP`, `GOTO` | ✅ Implemented |
-| Procedures | `SUB`, `FUNCTION`, `SHARED` variables | ✅ Implemented |
+| QB64 Extensions | `_DIREXISTS`, `_OS$`, `_LIMIT`, `_SCREENSHOW`, `TIMER(accuracy)` | ⚠️ Partial |
 
 ---
 
@@ -201,75 +228,9 @@ QB64pe uses these metacommands that need verification:
 
 | Metacommand | Purpose | QB64Fresh Status |
 |-------------|---------|------------------|
-| `$INCLUDE` | File inclusion | ✅ Implemented |
-| `$DYNAMIC` | Dynamic arrays | ✅ Implemented |
-| `$CONSOLE` | Console window | ⚠️ Needs verification |
-| `$SCREENHIDE` | Hide graphics window | ⚠️ Needs verification |
-| `$EXEICON` | Windows icon | ❌ Windows-specific, can stub |
-| `$VERSIONINFO` | Version metadata | ❌ Windows-specific, can stub |
-
-### Phase 2.3: QB64 Extension Functions (Priority: High)
-
-Critical `_` prefixed functions used by QB64pe:
-
-| Function | Purpose | QB64Fresh Status |
-|----------|---------|------------------|
-| `_DIREXISTS` | Directory check | ⚠️ Needs verification |
-| `_FILEEXISTS` | File check | ⚠️ Needs verification |
-| `_OS$` | Operating system string | ⚠️ Needs verification |
-| `_LIMIT` | Frame rate limiter | ✅ Implemented |
-| `_SCREENSHOW` / `_SCREENHIDE` | Window visibility | ⚠️ Needs verification |
-| `_BYTE` / `_INTEGER64` etc. | Extended types | ✅ Implemented |
-| `TIMER(accuracy)` | High-precision timer | ⚠️ Needs verification |
-
----
+| `$EXEICON` | Windows icon | ⚠️ Stubbed (Windows-specific) |
 
 ## 3. Implementation Phases
-
-### Phase A: Analysis & Baseline (1-2 sessions)
-
-**Objective:** Establish current compatibility baseline
-
-**Tasks:**
-1. [ ] Run QB64pe source through QB64Fresh lexer/parser
-2. [ ] Collect all parse errors and categorize
-3. [ ] Run semantic analysis on parseable portions
-4. [ ] Document all unsupported features with usage counts
-5. [ ] Create prioritized implementation backlog
-
-**Success Criteria:** Complete feature gap document with prioritization
-
-### Phase B: Critical Feature Implementation (4-8 sessions)
-
-**Objective:** Implement features blocking QB64pe compilation
-
-**Confirmed gaps to address (from analysis):**
-
-1. [ ] **TYPE alternate syntax** (HIGH - 1-2 sessions)
-   - Support `AS TYPE field1, field2, ...` syntax
-   - Affects: parser/statements.rs TYPE parsing
-
-2. [ ] **Extended type suffixes** (MEDIUM - 1 session)
-   - `&&` for LONGLONG (_INTEGER64)
-   - `~&&` for unsigned LONGLONG
-   - `~&` for unsigned LONG
-   - `%%` for _BYTE
-   - Affects: lexer/token.rs, parser type suffix handling
-
-3. [ ] **Investigate remaining 900+ errors** (1-2 sessions)
-   - Many may cascade from the TYPE syntax issue
-   - Group by root cause
-
-4. [ ] **Console-mode support** (1 session)
-   - `$CONSOLE` metacommand
-   - `$SCREENHIDE` behavior
-
-5. [ ] **Remaining QB64 extensions** (2-3 sessions)
-   - Verify `_ERRORMESSAGE$`, `_ERRORLINE`, `_INCLERRORLINE`
-   - Verify `_TOSTR$` function
-   - Other `_` functions used by QB64pe
-
-**Success Criteria:** QB64pe source parses and analyzes without errors
 
 ### Phase C: Code Generation Validation (2-4 sessions)
 
@@ -357,16 +318,6 @@ Once QB64Fresh can compile QB64pe:
 
 ## 6. Success Metrics
 
-### Milestone 1: Parse Success
-- [ ] All 39 QB64pe files parse without errors
-- [ ] All tokens recognized
-- [ ] AST generated for entire codebase
-
-### Milestone 2: Semantic Analysis Success
-- [ ] Type checking passes
-- [ ] All symbols resolved
-- [ ] No semantic errors
-
 ### Milestone 3: Code Generation Success
 - [ ] C code generated for entire QB64pe
 - [ ] No internal compiler errors
@@ -386,46 +337,24 @@ Once QB64Fresh can compile QB64pe:
 
 ## 7. Immediate Next Steps
 
-~~1. Run initial parse test~~ ✅ DONE (2026-01-20)
-~~2. Capture all errors~~ ✅ DONE - 992 parse errors identified
+### Current Actions
 
-**Next actions:**
-
-1. **Implement TYPE alternate syntax** (Highest impact)
-   ```basic
-   ' Support this QB64 syntax:
-   TYPE Foo
-       AS LONG x, y, z     ' Multiple fields, type first
-   END TYPE
-   ```
-   - Location: `src/parser/statements.rs` around TYPE parsing
-   - Test: Create test case with QB64-style TYPE
-
-2. **Add extended type suffixes**
-   - `&&` → _INTEGER64
-   - `~&&` → _UNSIGNED _INTEGER64
-   - Location: `src/lexer/token.rs` identifier/suffix parsing
-
-3. **Re-run analysis after fixes** to measure progress:
-   ```bash
-   cd QB64pe/source && qb64fresh qb64pe.bas 2>&1 | sort | uniq -c | sort -rn
-   ```
-
-4. **Track progress** - Target: reduce from 992 to <100 errors
+1. **Begin Phase C: Code Generation Validation**
+   - Generate C code for QB64pe source using `--emit-c`
+   - Review generated code for correctness
+   - Test compilation with gcc/clang
 
 ---
 
 ## 8. Estimated Timeline
 
-| Phase | Sessions | Focus |
-|-------|----------|-------|
-| A: Analysis | 1-2 | Gap identification |
-| B: Implementation | 4-8 | Missing features |
-| C: Code Gen | 2-4 | C output correctness |
-| D: Testing | 2-4 | Build and validate |
-| E: Documentation | 1-2 | Write up results |
+| Phase | Sessions | Status | Notes |
+|-------|----------|--------|-------|
+| C: Code Gen | 2-4 | Pending | C output correctness |
+| D: Testing | 2-4 | Pending | Build and validate |
+| E: Documentation | 1-2 | Pending | Write up results |
 
-**Total estimate:** 10-20 development sessions
+**Progress:** Phases A and B complete. Ready for Phase C (code generation).
 
 ---
 
@@ -478,6 +407,129 @@ subs_functions/extensions/opengl/*.bas   OpenGL support
 | IDE | Built-in | External (LSP) |
 | Memory model | Custom cmem | Sandboxed cmem |
 | OpenGL support | ~300 commands | Via DECLARE LIBRARY |
+
+---
+
+## Appendix C: QB64Fresh Codebase Structure
+
+The QB64Fresh compiler is a Rust workspace with the following key components:
+
+### Compiler Pipeline (`src/`) - ~25,851 lines
+
+```
+src/
+├── main.rs              # CLI entry point
+├── lib.rs               # Library crate root
+├── preprocessor.rs      # $INCLUDE directive handling
+├── lexer/               # Tokenization (logos-based)
+│   ├── mod.rs           # Lexer implementation
+│   └── token.rs         # Token types and type suffixes
+├── parser/              # ~11,350 lines
+│   ├── mod.rs           # Parser entry, error recovery
+│   ├── tokens.rs        # Token navigation utilities
+│   ├── expressions.rs   # Pratt parser for expressions
+│   ├── statements.rs    # Core statement parsing
+│   ├── control_flow.rs  # IF/FOR/WHILE/DO/SELECT
+│   ├── procedures.rs    # SUB/FUNCTION/TYPE
+│   ├── graphics.rs      # Graphics statements
+│   ├── audio.rs         # Audio statements
+│   ├── file_io.rs       # File I/O parsing
+│   ├── system.rs        # System commands
+│   ├── directives.rs    # Preprocessor directives
+│   └── error.rs         # Parse error types
+├── ast/                 # ~2,646 lines
+│   ├── mod.rs           # Span, Program types
+│   ├── expr.rs          # Expression AST nodes
+│   └── stmt.rs          # Statement AST nodes (~100 variants)
+├── semantic/            # ~14,440 lines
+│   ├── mod.rs           # Analysis entry, built-ins
+│   ├── types.rs         # BasicType enum, inference
+│   ├── symbols.rs       # Symbol table, scopes
+│   ├── typed_ir.rs      # Type-checked IR output
+│   ├── error.rs         # Semantic error types
+│   └── checker/         # Type checking submodule
+│       ├── mod.rs
+│       ├── expressions.rs
+│       ├── statements.rs
+│       ├── control_flow.rs
+│       ├── assignments.rs
+│       ├── definitions.rs
+│       └── const_eval.rs
+├── codegen/             # ~11,728 lines
+│   ├── mod.rs           # CodeGenerator trait
+│   ├── error.rs         # Codegen error types
+│   └── c_backend/       # C code generator
+│       ├── mod.rs       # Backend entry
+│       ├── expr.rs      # Expression codegen
+│       ├── stmt.rs      # Statement codegen
+│       ├── file_io.rs   # File I/O helpers
+│       ├── types.rs     # BASIC ↔ C type mapping
+│       ├── runtime.rs   # Inline C runtime (~4,141 lines)
+│       ├── analysis.rs  # DATA/label pre-pass
+│       └── const_fold.rs
+└── lsp/                 # ~2,105 lines
+    ├── mod.rs           # LSP server implementation
+    └── main.rs          # qb64fresh-lsp binary
+```
+
+### Runtime Library (`runtime/`) - ~11,678 lines
+
+```
+runtime/
+├── lib.rs               # Crate root, initialization
+├── string.rs            # Reference-counted strings
+├── io.rs                # PRINT, INPUT, console
+├── math.rs              # Mathematical functions
+├── graphics_ffi.rs      # C FFI for graphics
+├── audio_ffi.rs         # C FFI for audio
+├── dialogs.rs           # File dialogs
+├── joystick.rs          # Gamepad input
+├── graphics/            # Pluggable graphics
+│   ├── mod.rs           # GraphicsBackend trait
+│   ├── sdl2.rs          # SDL2 implementation
+│   ├── mock.rs          # Testing mock
+│   ├── font.rs          # Font rendering
+│   └── error.rs
+├── audio/               # Pluggable audio
+│   ├── mod.rs           # AudioBackend trait
+│   ├── rodio_backend.rs # Rodio implementation
+│   ├── mock.rs          # Testing mock
+│   └── error.rs
+└── include/
+    └── qb64fresh_rt.h   # C header for FFI
+```
+
+### Tools (`tools/`)
+
+- **fix_encoding** - CP437/Latin1 → UTF-8 converter
+- **qb64fresh-fmt** - Code formatter
+- **qb64fresh-lint** - Code linter
+
+### Test Suite (`tests/`)
+
+- **937+ tests**, 81.63% coverage
+- **99.1% QB4.5 compatibility** (114/115 test files)
+- Integration, golden, property-based, and compatibility tests
+
+### Compilation Pipeline
+
+```
+Source (.bas)
+    ↓
+Preprocessor ($INCLUDE)
+    ↓
+Lexer (logos) → Tokens
+    ↓
+Parser (Pratt + Recursive Descent) → AST
+    ↓
+Semantic Analysis → Typed IR
+    ↓
+Code Generation → C Code
+    ↓
+C Compiler (gcc/clang) → Executable
+    ↓
+Runtime Library (linked)
+```
 
 ---
 

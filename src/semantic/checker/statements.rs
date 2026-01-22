@@ -70,10 +70,10 @@ impl<'a> TypeChecker<'a> {
                 newline,
             } => {
                 let typed_format = self.check_expr(format);
-                // Format string should be a string type
-                if typed_format.basic_type != BasicType::String {
+                // Format string should be a string type (STRING or STRING * N)
+                if !typed_format.basic_type.is_string() {
                     self.errors.push(SemanticError::type_mismatch(
-                        "String",
+                        "STRING",
                         format!("{:?}", typed_format.basic_type),
                         stmt.span,
                     ));
@@ -650,7 +650,7 @@ impl<'a> TypeChecker<'a> {
 
                 // Seed should be a numeric type (but we'll allow any for flexibility)
                 if let Some(ref typed) = typed_seed
-                    && typed.basic_type == BasicType::String
+                    && typed.basic_type.is_string()
                 {
                     self.errors
                         .push(SemanticError::type_mismatch("numeric", "STRING", stmt.span));
@@ -675,10 +675,10 @@ impl<'a> TypeChecker<'a> {
                 let typed_file_num = self.check_expr(file_num);
                 let typed_record_len = record_len.as_ref().map(|e| self.check_expr(e));
 
-                // Filename should be a string
-                if typed_filename.basic_type != BasicType::String {
+                // Filename should be a string (STRING or STRING * N)
+                if !typed_filename.basic_type.is_string() {
                     self.errors.push(SemanticError::TypeMismatch {
-                        expected: "String".to_string(),
+                        expected: "STRING".to_string(),
                         found: typed_filename.basic_type.to_string(),
                         span: typed_filename.span,
                     });
@@ -708,19 +708,19 @@ impl<'a> TypeChecker<'a> {
                 let typed_filename = self.check_expr(filename);
                 let typed_record_len = record_len.as_ref().map(|e| self.check_expr(e));
 
-                // Mode should be a string
-                if typed_mode.basic_type != BasicType::String {
+                // Mode should be a string (STRING or STRING * N)
+                if !typed_mode.basic_type.is_string() {
                     self.errors.push(SemanticError::TypeMismatch {
-                        expected: "String".to_string(),
+                        expected: "STRING".to_string(),
                         found: typed_mode.basic_type.to_string(),
                         span: typed_mode.span,
                     });
                 }
 
-                // Filename should be a string
-                if typed_filename.basic_type != BasicType::String {
+                // Filename should be a string (STRING or STRING * N)
+                if !typed_filename.basic_type.is_string() {
                     self.errors.push(SemanticError::TypeMismatch {
-                        expected: "String".to_string(),
+                        expected: "STRING".to_string(),
                         found: typed_filename.basic_type.to_string(),
                         span: typed_filename.span,
                     });
@@ -1524,11 +1524,27 @@ impl<'a> TypeChecker<'a> {
                 let mut typed_vars = Vec::new();
 
                 for var in variables {
-                    // Determine element type
+                    // For REDIM _PRESERVE, the array must already exist.
+                    // Look up the existing array first (including SHARED arrays).
+                    let existing_array = self.symbols.lookup_array(&var.name);
+
+                    // Determine element type:
+                    // 1. If explicit type spec provided, use it
+                    // 2. If _PRESERVE and array exists, use existing type
+                    // 3. If type suffix on name, use that
+                    // 4. Fall back to default type
                     let element_type = var
                         .type_spec
                         .as_ref()
                         .map(from_type_spec)
+                        .or_else(|| {
+                            // For _PRESERVE, inherit type from existing array
+                            if *preserve {
+                                existing_array.map(|sym| sym.basic_type.clone())
+                            } else {
+                                None
+                            }
+                        })
                         .or_else(|| type_from_suffix(&var.name))
                         .unwrap_or_else(|| self.symbols.default_type_for(&var.name));
 
@@ -1544,6 +1560,9 @@ impl<'a> TypeChecker<'a> {
                     // REDIM can resize existing arrays (including array parameters),
                     // so we use update_or_define to replace any existing symbol.
                     // For SHARED arrays, define at module scope.
+                    //
+                    // IMPORTANT: If this is REDIM _PRESERVE on a module-level SHARED array,
+                    // we should update the GLOBAL scope entry, not create a local copy.
                     let symbol = Symbol {
                         name: var.name.clone(),
                         kind: SymbolKind::ArrayVariable {
@@ -1561,6 +1580,10 @@ impl<'a> TypeChecker<'a> {
                     };
                     if *shared {
                         self.symbols.define_shared_symbol(symbol);
+                    } else if *preserve && self.symbols.is_module_shared(&var.name) {
+                        // REDIM _PRESERVE on a module-level SHARED array:
+                        // Update the global scope entry, not create a local copy
+                        self.symbols.update_shared_symbol(symbol);
                     } else {
                         self.symbols.update_or_define_symbol(symbol);
                     }
@@ -2362,9 +2385,10 @@ impl<'a> TypeChecker<'a> {
 
             StatementKind::Chain { filename } => {
                 let typed_filename = self.check_expr(filename);
-                if typed_filename.basic_type != BasicType::String {
+                // Filename should be a string (STRING or STRING * N)
+                if !typed_filename.basic_type.is_string() {
                     self.errors.push(SemanticError::type_mismatch(
-                        "String",
+                        "STRING",
                         format!("{:?}", typed_filename.basic_type),
                         stmt.span,
                     ));

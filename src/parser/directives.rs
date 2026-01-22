@@ -75,6 +75,19 @@ impl<'a> Parser<'a> {
         // Handle $CONSOLE / $CONSOLE:ONLY that may come through as MetaCommand
         // due to lexer issues (workaround for logos bug with exact "$CONSOLE" string)
         if command == "CONSOLE" {
+            // Check for :ONLY suffix (tokenized separately as Colon + Only)
+            if self.check(&TokenKind::Colon) {
+                self.advance(); // consume ':'
+                if self.check(&TokenKind::Only) {
+                    self.advance(); // consume 'ONLY'
+                    return Ok(Statement::new(
+                        StatementKind::MetaConsole { only: true },
+                        span,
+                    ));
+                }
+                // Colon without ONLY - just $CONSOLE with statement separator
+                // Return $CONSOLE and let the colon be handled by caller
+            }
             return Ok(Statement::new(
                 StatementKind::MetaConsole { only: false },
                 span,

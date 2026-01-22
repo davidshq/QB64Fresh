@@ -53,7 +53,8 @@ impl<'a> TypeChecker<'a> {
 
         // Regular variable assignment
         // Check if assigning to a constant
-        if let Some(symbol) = self.symbols.lookup_symbol(name)
+        // Use lookup_scalar to avoid finding arrays with the same name (separate namespace)
+        if let Some(symbol) = self.symbols.lookup_scalar(name)
             && !symbol.is_mutable
         {
             self.errors.push(SemanticError::AssignmentToConst {
@@ -65,7 +66,8 @@ impl<'a> TypeChecker<'a> {
         let typed_value = self.check_expr(value);
 
         // Determine target type
-        let target_type = if let Some(symbol) = self.symbols.lookup_symbol(name) {
+        // Use lookup_scalar to avoid finding arrays with the same name (separate namespace)
+        let target_type = if let Some(symbol) = self.symbols.lookup_scalar(name) {
             symbol.basic_type.clone()
         } else {
             // New variable, infer from suffix or default
@@ -162,6 +164,9 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Type checks an array element assignment.
+    ///
+    /// In BASIC's dual namespace model, `name(i) = value` should look up the array
+    /// namespace specifically, even if a scalar variable with the same name exists.
     pub(super) fn check_array_assignment(
         &mut self,
         name: &str,
@@ -169,10 +174,14 @@ impl<'a> TypeChecker<'a> {
         value: &Expr,
         span: crate::ast::Span,
     ) -> TypedStatement {
-        // Look up the array
-        let (element_type, dimensions) = if let Some(symbol) = self.symbols.lookup_symbol(name)
-            && let SymbolKind::ArrayVariable { dimensions } = &symbol.kind
-        {
+        // Look up the array using array-specific lookup (dual namespace model)
+        let (element_type, dimensions) = if let Some(symbol) = self.symbols.lookup_array(name) {
+            let dimensions = if let SymbolKind::ArrayVariable { dimensions } = &symbol.kind {
+                dimensions.clone()
+            } else {
+                vec![]
+            };
+
             // Verify dimension count - skip if dimensions are unknown (empty, for array params)
             if !dimensions.is_empty() && indices.len() != dimensions.len() {
                 self.errors.push(SemanticError::ArrayDimensionMismatch {
@@ -200,8 +209,8 @@ impl<'a> TypeChecker<'a> {
             };
 
             (symbol.basic_type.clone(), typed_dims)
-        } else if self.symbols.lookup_symbol(name).is_some() {
-            // Scalar variable exists but is not an array
+        } else if self.symbols.lookup_scalar(name).is_some() {
+            // Scalar variable exists but no array with this name
             self.errors.push(SemanticError::NotAnArray {
                 name: name.to_string(),
                 span,
@@ -336,6 +345,9 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Type checks an array field assignment statement: `array(i).field = value`
+    ///
+    /// In BASIC's dual namespace model, `array(i).field = value` should look up
+    /// the array namespace specifically.
     pub(super) fn check_array_field_assignment(
         &mut self,
         name: &str,
@@ -344,10 +356,14 @@ impl<'a> TypeChecker<'a> {
         value: &Expr,
         span: crate::ast::Span,
     ) -> TypedStatement {
-        // Look up the array
-        let (element_type, dimensions) = if let Some(symbol) = self.symbols.lookup_symbol(name)
-            && let SymbolKind::ArrayVariable { dimensions } = &symbol.kind
-        {
+        // Look up the array using array-specific lookup (dual namespace model)
+        let (element_type, dimensions) = if let Some(symbol) = self.symbols.lookup_array(name) {
+            let dimensions = if let SymbolKind::ArrayVariable { dimensions } = &symbol.kind {
+                dimensions.clone()
+            } else {
+                vec![]
+            };
+
             // Verify dimension count - skip if dimensions are unknown (empty, for array params)
             if !dimensions.is_empty() && indices.len() != dimensions.len() {
                 self.errors.push(SemanticError::ArrayDimensionMismatch {
@@ -443,11 +459,9 @@ impl<'a> TypeChecker<'a> {
         value: &Expr,
         span: crate::ast::Span,
     ) -> TypedStatement {
-        // Type check the target expression - it must be a string lvalue
+        // Type check the target expression - it must be a string lvalue (STRING or STRING * N)
         let typed_target = self.check_expr(target);
-        if typed_target.basic_type != BasicType::String
-            && typed_target.basic_type != BasicType::Unknown
-        {
+        if !typed_target.basic_type.is_string() && typed_target.basic_type != BasicType::Unknown {
             self.errors.push(SemanticError::TypeMismatch {
                 expected: "STRING".to_string(),
                 found: typed_target.basic_type.to_string(),
@@ -478,11 +492,9 @@ impl<'a> TypeChecker<'a> {
             typed_len
         });
 
-        // Type check value - must be string
+        // Type check value - must be string (STRING or STRING * N)
         let typed_value = self.check_expr(value);
-        if typed_value.basic_type != BasicType::String
-            && typed_value.basic_type != BasicType::Unknown
-        {
+        if !typed_value.basic_type.is_string() && typed_value.basic_type != BasicType::Unknown {
             self.errors.push(SemanticError::TypeMismatch {
                 expected: "STRING".to_string(),
                 found: typed_value.basic_type.to_string(),
@@ -512,11 +524,9 @@ impl<'a> TypeChecker<'a> {
         value: &Expr,
         span: crate::ast::Span,
     ) -> TypedStatement {
-        // Type check the target expression - it must be a string lvalue
+        // Type check the target expression - it must be a string lvalue (STRING or STRING * N)
         let typed_target = self.check_expr(target);
-        if typed_target.basic_type != BasicType::String
-            && typed_target.basic_type != BasicType::Unknown
-        {
+        if !typed_target.basic_type.is_string() && typed_target.basic_type != BasicType::Unknown {
             self.errors.push(SemanticError::TypeMismatch {
                 expected: "STRING".to_string(),
                 found: typed_target.basic_type.to_string(),

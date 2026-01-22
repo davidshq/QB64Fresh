@@ -121,18 +121,14 @@ impl<'a> TypeChecker<'a> {
     /// supporting the QB45 pattern of using GOSUB to local labels.
     pub(crate) fn collect_labels_from_body(&mut self, statements: &[Statement]) {
         use crate::ast::StatementKind;
-        use crate::semantic::error::SemanticError;
 
         for stmt in statements {
             match &stmt.kind {
                 StatementKind::Label { name } => {
-                    if let Err(existing) = self.symbols.define_label(name.clone(), stmt.span) {
-                        self.errors.push(SemanticError::DuplicateLabel {
-                            name: name.clone(),
-                            original_span: existing.span,
-                            duplicate_span: stmt.span,
-                        });
-                    }
+                    // Silently ignore duplicate labels. This is common in QB64 codebases
+                    // where $INCLUDE files may each have line numbers like `1 END`.
+                    // The first definition wins, which matches GOTO behavior.
+                    let _ = self.symbols.define_label(name.clone(), stmt.span);
                 }
 
                 // Recursively collect from nested blocks

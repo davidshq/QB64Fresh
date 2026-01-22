@@ -312,13 +312,26 @@ impl<'a> Parser<'a> {
     /// - `variable = expression`
     /// - `array(index) = expression`
     /// - `array(i, j).field = expression`
+    /// - `MID$(str$, start, len) = value$` (string manipulation)
+    /// - `ASC(str$, position) = value` (character manipulation)
     pub(super) fn parse_assignment(&mut self, start: usize) -> Result<Statement, ()> {
         let name_token = self.expect(&TokenKind::Identifier, "variable name")?;
         let name = name_token.text.to_string();
 
-        // Check if this is an array element assignment
+        // Check if this is an array element assignment or special function assignment
         if self.check(&TokenKind::LeftParen) {
-            // Put the name back by using the start position and parsing as array assignment
+            // Check for MID$ statement: MID$(str$, start [, len]) = value$
+            if name.eq_ignore_ascii_case("MID$") {
+                return self.parse_mid_statement(start);
+            }
+
+            // Check for ASC statement: ASC(str$, position) = value
+            // This modifies a character in a string by its ASCII value
+            if name.eq_ignore_ascii_case("ASC") {
+                return self.parse_asc_statement(start);
+            }
+
+            // Regular array assignment
             return self.parse_array_assignment_with_name(start, name);
         }
 
@@ -2446,6 +2459,7 @@ impl<'a> Parser<'a> {
     fn parse_on_error(&mut self, start: usize) -> Result<Statement, ()> {
         if self.match_token(&TokenKind::Goto) {
             // ON ERROR GOTO label or ON ERROR GOTO 0 (0 disables error handler)
+            // Also handles: ON ERROR GOTO _NEWHANDLER label
             let target = if self.check(&TokenKind::IntegerLiteral) {
                 let token = self.advance().expect("integer literal");
                 let num = token.text.to_string();
@@ -2457,7 +2471,19 @@ impl<'a> Parser<'a> {
                 }
             } else {
                 let token = self.expect(&TokenKind::Identifier, "label or 0")?;
-                token.text.to_string()
+                let name = token.text.to_string();
+
+                // Check for _NEWHANDLER keyword (QB64 extension)
+                // Syntax: ON ERROR GOTO _NEWHANDLER label
+                // This allows runtime error handler changes (RESUME works properly)
+                if name.eq_ignore_ascii_case("_NEWHANDLER") {
+                    // Get the actual label after _NEWHANDLER
+                    let label_token =
+                        self.expect(&TokenKind::Identifier, "label after _NEWHANDLER")?;
+                    label_token.text.to_string()
+                } else {
+                    name
+                }
             };
 
             let span = self.span_from(start);

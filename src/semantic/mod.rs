@@ -177,6 +177,7 @@ impl SemanticAnalyzer {
                 symbols::ProcedureKind::Sub => "SUB",
                 symbols::ProcedureKind::Function => "FUNCTION",
                 symbols::ProcedureKind::BuiltIn => "Built-in",
+                symbols::ProcedureKind::External => "External",
             };
 
             let params: Vec<String> = proc
@@ -266,6 +267,7 @@ impl SemanticAnalyzer {
                 symbols::ProcedureKind::Sub => DocumentSymbolKind::Sub,
                 symbols::ProcedureKind::Function => DocumentSymbolKind::Function,
                 symbols::ProcedureKind::BuiltIn => continue, // Skip built-ins
+                symbols::ProcedureKind::External => DocumentSymbolKind::Function, // External functions
             };
             symbols.push(DocumentSymbolInfo {
                 name: proc.name.clone(),
@@ -331,16 +333,130 @@ impl SemanticAnalyzer {
     ///
     /// This enables forward references - procedures and labels can be used
     /// before their definitions appear in the source.
+    ///
+    /// This method uses a two-pass approach:
+    /// 1. First, process DEFTYPE statements (DEFINT, DEFLNG, etc.) to set default types
+    /// 2. Then, collect SUB/FUNCTION definitions with correct parameter types
     fn collect_declarations(&mut self, statements: &[Statement]) {
+        // Pass 1a: Process DEFTYPE statements first so default types are set
+        // before we register procedures (which need correct default types for params)
+        self.collect_deftype_declarations(statements);
+
+        // Pass 1b: Now collect procedure declarations with correct types
+        self.collect_procedure_declarations(statements);
+    }
+
+    /// Collects DEFTYPE statements (DEFINT, DEFLNG, DEFSNG, DEFDBL, DEFSTR, _DEFINE).
+    ///
+    /// These must be processed before procedure declarations because they affect
+    /// the default type of untyped parameters.
+    fn collect_deftype_declarations(&mut self, statements: &[Statement]) {
+        for stmt in statements {
+            match &stmt.kind {
+                StatementKind::DefType { type_kind, ranges } => {
+                    use crate::ast::DefTypeKind;
+                    let basic_type = match type_kind {
+                        DefTypeKind::Integer => BasicType::Integer,
+                        DefTypeKind::Long => BasicType::Long,
+                        DefTypeKind::Single => BasicType::Single,
+                        DefTypeKind::Double => BasicType::Double,
+                        DefTypeKind::String => BasicType::String,
+                    };
+                    for &(start, end) in ranges {
+                        self.symbols
+                            .set_default_type(start, end, basic_type.clone());
+                    }
+                }
+                StatementKind::Define { type_spec, ranges } => {
+                    // Handle _DEFINE A-Z AS type
+                    let upper = type_spec.to_uppercase();
+                    let (is_unsigned, base) = if upper.starts_with("_UNSIGNED ") {
+                        (true, upper.trim_start_matches("_UNSIGNED "))
+                    } else {
+                        (false, upper.as_str())
+                    };
+
+                    let base_type = match base {
+                        "INTEGER" => BasicType::Integer,
+                        "LONG" => BasicType::Long,
+                        "SINGLE" => BasicType::Single,
+                        "DOUBLE" => BasicType::Double,
+                        "STRING" => BasicType::String,
+                        "_BYTE" => BasicType::Byte,
+                        "_BIT" => BasicType::Bit,
+                        "_INTEGER64" => BasicType::Integer64,
+                        "_FLOAT" => BasicType::Float,
+                        "_OFFSET" => BasicType::Offset,
+                        _ => BasicType::Single, // fallback
+                    };
+
+                    let basic_type = if is_unsigned {
+                        match base_type {
+                            BasicType::Bit => BasicType::UnsignedBit,
+                            BasicType::Byte => BasicType::UnsignedByte,
+                            BasicType::Integer => BasicType::UnsignedInteger,
+                            BasicType::Long => BasicType::UnsignedLong,
+                            BasicType::Integer64 => BasicType::UnsignedInteger64,
+                            other => other,
+                        }
+                    } else {
+                        base_type
+                    };
+
+                    for &(start, end) in ranges {
+                        self.symbols
+                            .set_default_type(start, end, basic_type.clone());
+                    }
+                }
+                // Recursively collect from nested blocks
+                StatementKind::If {
+                    then_branch,
+                    elseif_branches,
+                    else_branch,
+                    ..
+                } => {
+                    self.collect_deftype_declarations(then_branch);
+                    for (_, branch) in elseif_branches {
+                        self.collect_deftype_declarations(branch);
+                    }
+                    if let Some(eb) = else_branch {
+                        self.collect_deftype_declarations(eb);
+                    }
+                }
+                StatementKind::For { body, .. }
+                | StatementKind::While { body, .. }
+                | StatementKind::DoLoop { body, .. } => {
+                    self.collect_deftype_declarations(body);
+                }
+                StatementKind::SelectCase {
+                    cases, case_else, ..
+                } => {
+                    for case in cases {
+                        self.collect_deftype_declarations(&case.body);
+                    }
+                    if let Some(ce) = case_else {
+                        self.collect_deftype_declarations(ce);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Collects procedure and label declarations.
+    fn collect_procedure_declarations(&mut self, statements: &[Statement]) {
         for stmt in statements {
             match &stmt.kind {
                 StatementKind::SubDefinition {
                     name,
                     params,
                     is_static,
-                    ..
+                    body,
                 } => {
                     self.register_sub(name, params, *is_static, stmt.span);
+                    // Also collect DECLARE LIBRARY inside SUB bodies (external functions
+                    // declared inside a SUB are typically available program-wide in QB64)
+                    self.collect_declarations(body);
                 }
 
                 StatementKind::FunctionDefinition {
@@ -348,19 +464,19 @@ impl SemanticAnalyzer {
                     params,
                     return_type,
                     is_static,
-                    ..
+                    body,
                 } => {
                     self.register_function(name, params, return_type, *is_static, stmt.span);
+                    // Also collect DECLARE LIBRARY inside FUNCTION bodies
+                    self.collect_declarations(body);
                 }
 
                 StatementKind::Label { name } => {
-                    if let Err(existing) = self.symbols.define_label(name.clone(), stmt.span) {
-                        self.errors.push(SemanticError::DuplicateLabel {
-                            name: name.clone(),
-                            original_span: existing.span,
-                            duplicate_span: stmt.span,
-                        });
-                    }
+                    // Silently ignore duplicate labels at the top level.
+                    // This is common in QB64 codebases where $INCLUDE files may each
+                    // have line numbers like `1 END` for error handling. The first
+                    // definition wins, which matches GOTO behavior.
+                    let _ = self.symbols.define_label(name.clone(), stmt.span);
                 }
 
                 // DECLARE SUB - forward declaration of a subroutine
@@ -371,6 +487,13 @@ impl SemanticAnalyzer {
                 // DECLARE FUNCTION - forward declaration of a function
                 StatementKind::DeclareFunction { name, params, .. } => {
                     self.register_declared_function(name, params, stmt.span);
+                }
+
+                // DECLARE LIBRARY - register external functions/subs
+                StatementKind::DeclareLibrary { declarations, .. } => {
+                    for decl in declarations {
+                        self.register_external_declaration(decl, stmt.span);
+                    }
                 }
 
                 // Recursively collect from nested blocks
@@ -600,6 +723,46 @@ impl SemanticAnalyzer {
         };
 
         // For DECLARE, we don't error on duplicates
+        let _ = self.symbols.define_procedure(entry);
+    }
+
+    /// Registers an external function/sub from DECLARE LIBRARY.
+    ///
+    /// This makes C library functions callable from BASIC code.
+    fn register_external_declaration(
+        &mut self,
+        decl: &crate::ast::ExternalDeclaration,
+        span: crate::ast::Span,
+    ) {
+        use crate::semantic::types::from_type_spec;
+
+        let param_infos: Vec<ParameterInfo> = decl
+            .params
+            .iter()
+            .map(|p| ParameterInfo {
+                name: p.name.clone(),
+                basic_type: from_type_spec(&p.type_spec),
+                by_val: p.is_byval,
+                is_optional: false,
+                is_array: false,
+            })
+            .collect();
+
+        let return_type = if decl.is_function {
+            decl.return_type.as_ref().map(from_type_spec)
+        } else {
+            None
+        };
+
+        let entry = ProcedureEntry {
+            name: decl.name.clone(),
+            kind: ProcedureKind::External,
+            params: param_infos,
+            return_type,
+            span,
+            is_static: false,
+        };
+
         let _ = self.symbols.define_procedure(entry);
     }
 
@@ -1079,6 +1242,11 @@ impl SemanticAnalyzer {
             BasicType::Integer,
         );
         self.register_builtin_function("_DIR$", &[("spec", BasicType::String)], BasicType::String);
+
+        // SHELL function form: ret% = SHELL(command$)
+        // Returns the exit code of the command (0 = success)
+        self.register_builtin_function("SHELL", &[("command", BasicType::String)], BasicType::Long);
+
         // File content helpers
         self.register_builtin_function(
             "_READFILE$",
@@ -1203,17 +1371,21 @@ impl SemanticAnalyzer {
         self.register_builtin_function("_SCREENCLICK", &[], BasicType::Long);
 
         // Dialog boxes
-        // _MESSAGEBOX can be called with 2-4 arguments:
-        // _MESSAGEBOX(title$, message$) - simple message box
-        // _MESSAGEBOX(title$, message$, type$) - with OK/Cancel etc.
-        // _MESSAGEBOX(title$, message$, type$, default%) - with default button
+        // _MESSAGEBOX can be called with 0-5 arguments (all optional):
+        // _MESSAGEBOX() - simple message box with defaults
+        // _MESSAGEBOX(title$) - with title
+        // _MESSAGEBOX(title$, message$) - with message
+        // _MESSAGEBOX(title$, message$, dialogType$) - with OK/Cancel etc.
+        // _MESSAGEBOX(title$, message$, dialogType$, iconType$) - with icon
+        // _MESSAGEBOX(title$, message$, dialogType$, iconType$, defaultButton&) - full
         self.register_builtin_function_with_optionals(
             "_MESSAGEBOX",
             &[
-                ("title", BasicType::String, false),
-                ("message", BasicType::String, false),
-                ("type", BasicType::String, true),
-                ("default", BasicType::Long, true),
+                ("title", BasicType::String, true),
+                ("message", BasicType::String, true),
+                ("dialogType", BasicType::String, true),
+                ("iconType", BasicType::String, true),
+                ("defaultButton", BasicType::Long, true),
             ],
             BasicType::Long,
         );
@@ -1252,7 +1424,12 @@ impl SemanticAnalyzer {
         );
 
         // Phase 5: Networking
-        self.register_builtin_function("_OPENHOST", &[("port", BasicType::Long)], BasicType::Long);
+        // _OPENHOST takes a connection string like "TCP/IP:port", not a numeric port
+        self.register_builtin_function(
+            "_OPENHOST",
+            &[("connection_string", BasicType::String)],
+            BasicType::Long,
+        );
         self.register_builtin_function(
             "_OPENCONNECTION",
             &[("host_handle", BasicType::Long)],
@@ -1484,6 +1661,54 @@ impl SemanticAnalyzer {
         // ==========================================
         // QB64 Extension Functions (Session 031+)
         // ==========================================
+
+        // Color creation functions
+        // _RGB(r, g, b) or _RGB(r, g, b, handle) - creates a color value
+        // _RGB32 has variants: _RGB32(i), _RGB32(i, a), _RGB32(r, g, b), _RGB32(r, g, b, a)
+        self.register_builtin_function_with_optionals(
+            "_RGB",
+            &[
+                ("red", BasicType::Long, false),
+                ("green", BasicType::Long, false),
+                ("blue", BasicType::Long, false),
+                ("handle", BasicType::Long, true),
+            ],
+            BasicType::Long,
+        );
+        // _RGB32 is complex - can take 1, 2, 3, or 4 arguments
+        // For now, register the 3-4 argument variant (most common)
+        self.register_builtin_function_with_optionals(
+            "_RGB32",
+            &[
+                ("red", BasicType::Long, false),
+                ("green", BasicType::Long, false),
+                ("blue", BasicType::Long, false),
+                ("alpha", BasicType::Long, true),
+            ],
+            BasicType::Long,
+        );
+        // _RGBA and _RGBA32 - explicit alpha channel
+        self.register_builtin_function_with_optionals(
+            "_RGBA",
+            &[
+                ("red", BasicType::Long, false),
+                ("green", BasicType::Long, false),
+                ("blue", BasicType::Long, false),
+                ("alpha", BasicType::Long, false),
+                ("handle", BasicType::Long, true),
+            ],
+            BasicType::Long,
+        );
+        self.register_builtin_function(
+            "_RGBA32",
+            &[
+                ("red", BasicType::Long),
+                ("green", BasicType::Long),
+                ("blue", BasicType::Long),
+                ("alpha", BasicType::Long),
+            ],
+            BasicType::Long,
+        );
 
         // Color component extraction functions
         // _RED, _GREEN, _BLUE, _ALPHA extract color components (0-255)
@@ -1742,7 +1967,13 @@ impl SemanticAnalyzer {
         // ==========================================
 
         // Drag and drop control
-        self.register_builtin_sub("_ACCEPTFILEDROP", &[("enable", BasicType::Integer)]);
+        // _ACCEPTFILEDROP can be called with 0 or 1 argument as a statement:
+        // _ACCEPTFILEDROP - enable file drop with default settings
+        // _ACCEPTFILEDROP ON/OFF - explicitly enable/disable
+        self.register_builtin_sub_with_optionals(
+            "_ACCEPTFILEDROP",
+            &[("enable", BasicType::Integer, true)],
+        );
         self.register_builtin_sub("_FINISHDROP", &[]);
 
         // Console mode statements
@@ -2334,6 +2565,32 @@ impl SemanticAnalyzer {
         let _ = self.symbols.define_procedure(entry);
     }
 
+    /// Registers a built-in SUB with optional parameters.
+    fn register_builtin_sub_with_optionals(
+        &mut self,
+        name: &str,
+        params: &[(&str, BasicType, bool)],
+    ) {
+        let entry = ProcedureEntry {
+            name: name.to_string(),
+            kind: ProcedureKind::BuiltIn,
+            params: params
+                .iter()
+                .map(|(n, t, opt)| ParameterInfo {
+                    name: (*n).to_string(),
+                    basic_type: t.clone(),
+                    by_val: true,
+                    is_optional: *opt,
+                    is_array: false,
+                })
+                .collect(),
+            return_type: None, // SUBs have no return type
+            span: crate::ast::Span::new(0, 0),
+            is_static: false,
+        };
+        let _ = self.symbols.define_procedure(entry);
+    }
+
     /// Registers built-in constants (_TRUE, _FALSE, etc.).
     ///
     /// In QB64, _TRUE is -1 and _FALSE is 0 (following BASIC tradition where
@@ -2384,6 +2641,74 @@ impl SemanticAnalyzer {
         // Register standard QB error code constants
         // These match the ERR values returned by the ERR function
         self.register_error_constants();
+
+        // Register character constant strings
+        self.register_character_constants();
+    }
+
+    /// Registers QB64 character constant strings (_CHR_CR, _CHR_LF, etc.).
+    ///
+    /// These are single-character string constants for common control characters.
+    fn register_character_constants(&mut self) {
+        use symbols::{ConstValue, Symbol, SymbolKind};
+
+        let char_constants = [
+            ("_CHR_CR", "\r"),     // Carriage return (ASCII 13)
+            ("_CHR_LF", "\n"),     // Line feed (ASCII 10)
+            ("_CHR_SUB", "\x1A"),  // Substitute/EOF (ASCII 26)
+            ("_CHR_QUOTE", "\""),  // Double quote (ASCII 34)
+            ("_CHR_TAB", "\t"),    // Tab (ASCII 9)
+            ("_CHR_HT", "\t"),     // Horizontal Tab (alias for _CHR_TAB)
+            ("_CHR_ESC", "\x1B"),  // Escape (ASCII 27)
+            ("_CHR_BELL", "\x07"), // Bell (ASCII 7)
+            ("_CHR_BS", "\x08"),   // Backspace (ASCII 8)
+            ("_CHR_NUL", "\x00"),  // Null (ASCII 0)
+            // Multi-character string constants
+            ("_STR_CRLF", "\r\n"), // Windows line ending (CR+LF)
+            ("_STR_LF", "\n"),     // Unix line ending (LF only)
+            ("_STR_CR", "\r"),     // Classic Mac line ending (CR only)
+            ("_STR_EMPTY", ""),    // Empty string
+        ];
+
+        for (name, value) in char_constants {
+            let symbol = Symbol {
+                name: name.to_string(),
+                kind: SymbolKind::Constant {
+                    value: ConstValue::String(value.to_string()),
+                },
+                basic_type: BasicType::String,
+                span: crate::ast::Span::new(0, 0),
+                is_mutable: false,
+            };
+            let _ = self.symbols.define_symbol(symbol);
+        }
+
+        // Register _ASC_* numeric constants (ASCII codes)
+        let asc_constants: &[(&str, i64)] = &[
+            ("_ASC_CR", 13),    // Carriage return
+            ("_ASC_LF", 10),    // Line feed
+            ("_ASC_SUB", 26),   // Substitute/EOF
+            ("_ASC_QUOTE", 34), // Double quote
+            ("_ASC_TAB", 9),    // Tab
+            ("_ASC_HT", 9),     // Horizontal Tab (alias)
+            ("_ASC_ESC", 27),   // Escape
+            ("_ASC_BELL", 7),   // Bell
+            ("_ASC_BS", 8),     // Backspace
+            ("_ASC_NUL", 0),    // Null
+        ];
+
+        for (name, value) in asc_constants {
+            let symbol = Symbol {
+                name: name.to_string(),
+                kind: SymbolKind::Constant {
+                    value: ConstValue::Integer(*value),
+                },
+                basic_type: BasicType::Long,
+                span: crate::ast::Span::new(0, 0),
+                is_mutable: false,
+            };
+            let _ = self.symbols.define_symbol(symbol);
+        }
     }
 
     /// Registers standard QBasic/QB64 error code constants.
