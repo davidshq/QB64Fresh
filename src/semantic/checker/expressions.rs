@@ -518,18 +518,17 @@ impl<'a> TypeChecker<'a> {
         // This is critical for BASIC's dual namespace model where `x` (scalar) and
         // `x()` (array) can coexist.
         if let Some(symbol) = self.symbols.lookup_array(name) {
+            // Clone values upfront to release borrow before calling check_array_access
+            let resolved_name = symbol.name.clone();
+            let element_type = symbol.basic_type.clone();
             let dimensions = if let SymbolKind::ArrayVariable { dimensions } = &symbol.kind {
                 dimensions.clone()
             } else {
                 vec![]
             };
-            return self.check_array_access(
-                name,
-                args,
-                dimensions,
-                symbol.basic_type.clone(),
-                span,
-            );
+            // Use resolved_name (from symbol) instead of raw 'name' for consistent C code generation
+            // This handles suffix mismatch: separgslayout2$(i) -> separgslayout2[i] when array is STRING
+            return self.check_array_access(&resolved_name, args, dimensions, element_type, span);
         }
 
         // Check for external functions (these are stored as scalars but have special handling)
