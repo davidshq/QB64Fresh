@@ -15,17 +15,18 @@ This document outlines the strategy for compiling the QB64pe compiler using QB64
 
 **Approach:** Systematic gap analysis, incremental feature implementation, and progressive testing.
 
-**Current Status (2026-01-22):** **PHASE C IN PROGRESS!** Code generation validation underway. GCC errors reduced from 14,547 → 105 (**99.3% reduction**). Session 6 fixes include:
-- Fixed variable name suffix mismatch in symbol lookup (suffix fallback logic)
-- Symbol table now resolves `x$` to `x` when `DIM x AS STRING` was declared
-- All assignment types (scalar, array, field, array-field) use resolved symbol names
-- FileGet/FilePut target name resolution uses symbol's declared name
-- Removed experimental pass 3 expression variable collector (caused regression)
+**Current Status (2026-01-22):** **PHASE C IN PROGRESS!** Code generation validation underway. GCC errors reduced from 14,547 → 51 (**99.6% reduction**). Session 7 fixes include:
+- Fixed LSET/RSET variable name resolution (symbol lookup + c_identifier)
+- Fixed array access name resolution (use resolved symbol name, not raw name)
+- Added targeted ByRef argument variable collection for implicit declarations
+- Added SHARED variable handling to prevent duplicate local declarations
+- Properly handle FixedString type in implicit variable declarations
 
-**Ready for Phase C Session 7: Fix remaining 105 GCC errors - categories:**
-- Variable declarations not reaching code generator (~80 errors)
-- Function signature mismatches (~10 errors)
-- Type conflicts and missing constants (~15 errors)
+**Ready for Phase C Session 8: Fix remaining 51 GCC errors - categories:**
+- Variables not passed as ByRef args still missing declarations (~30 errors)
+- Function signature mismatches (qb_font, etc.) (~5 errors)
+- Type suffix issues (double suffixes like `tmpB_int_int`) (~10 errors)
+- Symbol lookup edge cases (hashresflags in one location) (~6 errors)
 
 ---
 
@@ -229,20 +230,29 @@ QB64pe uses these metacommands that need verification:
 
 ## 3. Implementation Phases
 
-**Current Status:** **105 GCC errors remaining** (down from 14,547 = **99.3% reduction!**)
+**Current Status:** **51 GCC errors remaining** (down from 14,547 = **99.6% reduction!**)
 
-**Remaining Issues Analysis (105 errors):**
-1. **Undeclared variables in complex contexts** (~80 errors)
-   - Variables used in expressions not getting implicit declarations
-   - Loop variables, temporary variables, function call arguments
-   - Examples: `hashresflags`, `hashresref`, `providedArgs`, `sourcetyp`
-2. **Function signature mismatches** (~10 errors)
+**Session 7 Progress (105 → 51 errors = 51% reduction this session):**
+- Fixed LSET/RSET: Variable names now resolved through symbol lookup + c_identifier
+- Fixed array access: Now uses resolved symbol name instead of raw input name
+- Added ByRef argument collection: Variables passed as ByRef function args get declared
+- Added SHARED handling: SHARED variables not re-declared as local scalars
+- Fixed FixedString declarations: Proper C syntax for char arrays
+
+**Remaining Issues Analysis (51 errors):**
+1. **Undeclared variables not in ByRef contexts** (~30 errors)
+   - Variables like `dummy_int_int`, `pp2l`, `upl`, `fg`, `bg`
+   - These are used but never passed as ByRef args or assigned
+   - May need broader implicit variable collection
+2. **Function signature mismatches** (~5 errors)
    - `qb_font` expects argument but called with none
    - Type conflicts (`args` declared with different types)
-   - Missing function variants
-3. **String suffix variables not in symbol table** (~15 errors)
-   - Variables like `a$`, `b$`, `num$` generating literal `$` in C code
-   - These may be implicit declarations that weren't processed
+3. **Symbol lookup edge cases** (~10 errors)
+   - `hashresflags` at line 71737 - ByRef params not propagating
+   - Double suffixes like `tmpB_int_int` not recognized
+4. **Miscellaneous** (~6 errors)
+   - FOR loop syntax error with `qb_lbound`
+   - Typo `IDEErrroColor` vs `IDEErrorColor`
 
 **Tasks:**
 1. [x] Generate C code for QB64pe source

@@ -2500,9 +2500,15 @@ impl<'a> TypeChecker<'a> {
 
             StatementKind::Lset { variable, value } => {
                 let typed_value = self.check_expr(value);
+                // Resolve variable name through symbol lookup (handles suffix mismatch)
+                let resolved_name = if let Some(symbol) = self.symbols.lookup_symbol(variable) {
+                    symbol.name.clone()
+                } else {
+                    variable.clone()
+                };
                 TypedStatement::new(
                     TypedStatementKind::Lset {
-                        variable: variable.clone(),
+                        variable: resolved_name,
                         value: typed_value,
                     },
                     stmt.span,
@@ -2511,9 +2517,15 @@ impl<'a> TypeChecker<'a> {
 
             StatementKind::Rset { variable, value } => {
                 let typed_value = self.check_expr(value);
+                // Resolve variable name through symbol lookup (handles suffix mismatch)
+                let resolved_name = if let Some(symbol) = self.symbols.lookup_symbol(variable) {
+                    symbol.name.clone()
+                } else {
+                    variable.clone()
+                };
                 TypedStatement::new(
                     TypedStatementKind::Rset {
-                        variable: variable.clone(),
+                        variable: resolved_name,
                         value: typed_value,
                     },
                     stmt.span,

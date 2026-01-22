@@ -2078,12 +2078,14 @@ impl StmtEmitter {
 
             TypedStatementKind::Lset { variable, value } => {
                 let value_code = emit_expr(value)?;
-                writeln!(output, "{}qb_lset(&{}, {});", indent, variable, value_code).unwrap();
+                let c_var = c_identifier(variable);
+                writeln!(output, "{}qb_lset(&{}, {});", indent, c_var, value_code).unwrap();
             }
 
             TypedStatementKind::Rset { variable, value } => {
                 let value_code = emit_expr(value)?;
-                writeln!(output, "{}qb_rset(&{}, {});", indent, variable, value_code).unwrap();
+                let c_var = c_identifier(variable);
+                writeln!(output, "{}qb_rset(&{}, {});", indent, c_var, value_code).unwrap();
             }
 
             TypedStatementKind::OnKey { key_num, target } => {
@@ -3916,6 +3918,12 @@ fn collect_implicit_locals(
                     declared_vars.insert(c_identifier(&var.name));
                 }
             }
+            // SHARED variables are already declared at global/module scope
+            TypedStatementKind::SharedStmt { variables } => {
+                for var_name in variables {
+                    declared_vars.insert(c_identifier(var_name));
+                }
+            }
             // Recurse into control flow structures
             TypedStatementKind::For { body, .. } => {
                 for s in body {
@@ -3976,8 +3984,12 @@ fn collect_implicit_locals(
             | TypedStatementKind::StaticStmt { .. } => {}
 
             // Assignment to undeclared variable creates implicit local
+            // Also scan the value expression for ByRef function arguments
             TypedStatementKind::Assignment {
-                name, target_type, ..
+                name,
+                target_type,
+                value,
+                ..
             } => {
                 let c_name = c_identifier(name);
                 if !declared_vars.contains(&c_name) {
@@ -3985,7 +3997,9 @@ fn collect_implicit_locals(
                         BasicType::String => "NULL".to_string(),
                         BasicType::FixedString(len) => {
                             locals.push(format!("char {}[{}] = \"\";", c_name, len + 1));
-                            declared_vars.insert(c_name);
+                            declared_vars.insert(c_name.clone());
+                            // Scan for ByRef function arguments in value
+                            collect_byref_vars(value, declared_vars, locals);
                             return;
                         }
                         BasicType::UserDefined(_) => "{0}".to_string(),
@@ -3998,12 +4012,17 @@ fn collect_implicit_locals(
                     locals.push(format!("{} {} = {};", c_ty, c_name, init));
                     declared_vars.insert(c_name);
                 }
+                // Scan for ByRef function arguments in value
+                collect_byref_vars(value, declared_vars, locals);
             }
 
-            // FOR loop counter
+            // FOR loop counter and expressions
             TypedStatementKind::For {
                 variable,
                 var_type,
+                start,
+                end,
+                step,
                 body,
                 ..
             } => {
@@ -4014,22 +4033,30 @@ fn collect_implicit_locals(
                     locals.push(format!("{} {} = {};", c_ty, c_name, init));
                     declared_vars.insert(c_name);
                 }
+                // Scan FOR loop expressions for ByRef function args
+                collect_byref_vars(start, declared_vars, locals);
+                collect_byref_vars(end, declared_vars, locals);
+                if let Some(step_expr) = step {
+                    collect_byref_vars(step_expr, declared_vars, locals);
+                }
                 for s in body {
                     collect_implicits(s, declared_vars, locals);
                 }
             }
 
-            // Recurse into control flow
+            // Recurse into control flow - also scan conditions
             TypedStatementKind::If {
+                condition,
                 then_branch,
                 elseif_branches,
                 else_branch,
-                ..
             } => {
+                collect_byref_vars(condition, declared_vars, locals);
                 for s in then_branch {
                     collect_implicits(s, declared_vars, locals);
                 }
-                for (_, branch_body) in elseif_branches {
+                for (cond, branch_body) in elseif_branches {
+                    collect_byref_vars(cond, declared_vars, locals);
                     for s in branch_body {
                         collect_implicits(s, declared_vars, locals);
                     }
@@ -4041,20 +4068,244 @@ fn collect_implicit_locals(
                 }
             }
 
-            TypedStatementKind::While { body, .. } | TypedStatementKind::DoLoop { body, .. } => {
+            TypedStatementKind::While { condition, body } => {
+                collect_byref_vars(condition, declared_vars, locals);
                 for s in body {
                     collect_implicits(s, declared_vars, locals);
                 }
             }
 
-            TypedStatementKind::SelectCase { cases, .. } => {
+            TypedStatementKind::DoLoop {
+                pre_condition,
+                post_condition,
+                body,
+            } => {
+                if let Some(cond) = pre_condition {
+                    collect_byref_vars(&cond.condition, declared_vars, locals);
+                }
+                if let Some(cond) = post_condition {
+                    collect_byref_vars(&cond.condition, declared_vars, locals);
+                }
+                for s in body {
+                    collect_implicits(s, declared_vars, locals);
+                }
+            }
+
+            TypedStatementKind::SelectCase {
+                test_expr,
+                cases,
+                case_else,
+            }
+            | TypedStatementKind::SelectEveryCase {
+                test_expr,
+                cases,
+                case_else,
+            } => {
+                // Collect variables from test expression
+                collect_byref_vars(test_expr, declared_vars, locals);
                 for case in cases {
+                    for m in &case.matches {
+                        collect_case_match_byref(m, declared_vars, locals);
+                    }
                     for s in &case.body {
+                        collect_implicits(s, declared_vars, locals);
+                    }
+                }
+                if let Some(else_stmts) = case_else {
+                    for s in else_stmts {
                         collect_implicits(s, declared_vars, locals);
                     }
                 }
             }
 
+            // Collect implicit variables from ByRef function args in other statements
+            TypedStatementKind::Call { args, .. } => {
+                for arg in args {
+                    collect_byref_vars(arg, declared_vars, locals);
+                }
+            }
+
+            TypedStatementKind::Print { items, .. } => {
+                for item in items {
+                    collect_byref_vars(&item.expr, declared_vars, locals);
+                }
+            }
+
+            _ => {
+                // For other statements, collect ByRef args from any expressions they contain
+                collect_stmt_byref(stmt, declared_vars, locals);
+            }
+        }
+    }
+
+    // Helper to collect ByRef variables from CASE match conditions
+    fn collect_case_match_byref(
+        m: &crate::semantic::typed_ir::TypedCaseMatch,
+        declared_vars: &mut HashSet<String>,
+        locals: &mut Vec<String>,
+    ) {
+        use crate::semantic::typed_ir::TypedCaseMatch;
+        match m {
+            TypedCaseMatch::Single(expr) => {
+                collect_byref_vars(expr, declared_vars, locals);
+            }
+            TypedCaseMatch::Range { from, to } => {
+                collect_byref_vars(from, declared_vars, locals);
+                collect_byref_vars(to, declared_vars, locals);
+            }
+            TypedCaseMatch::Comparison { value, .. } => {
+                collect_byref_vars(value, declared_vars, locals);
+            }
+        }
+    }
+
+    /// Helper to collect implicit variables from ByRef function arguments.
+    ///
+    /// This is a targeted approach that only declares variables when they're
+    /// passed by reference to function calls. This avoids incorrectly declaring
+    /// global/shared arrays as local scalars.
+    fn collect_byref_vars(
+        expr: &crate::semantic::typed_ir::TypedExpr,
+        declared_vars: &mut HashSet<String>,
+        locals: &mut Vec<String>,
+    ) {
+        use crate::semantic::typed_ir::TypedExprKind;
+
+        match &expr.kind {
+            // For function calls, check if any ByRef argument is a simple variable
+            TypedExprKind::FunctionCall { args, params, .. } => {
+                for (i, arg) in args.iter().enumerate() {
+                    // Check if this parameter is ByRef (not ByVal)
+                    let is_byref = params
+                        .get(i)
+                        .map(|p| !p.by_val && !p.is_array)
+                        .unwrap_or(false);
+
+                    if is_byref {
+                        // If the argument is a simple variable, declare it
+                        if let TypedExprKind::Variable(name) = &arg.kind {
+                            let c_name = c_identifier(name);
+                            if !declared_vars.contains(&c_name) {
+                                if let BasicType::FixedString(len) = &arg.basic_type {
+                                    locals.push(format!("char {}[{}] = \"\";", c_name, len + 1));
+                                } else {
+                                    let c_ty = c_type(&arg.basic_type);
+                                    let init = default_init(&arg.basic_type);
+                                    locals.push(format!("{} {} = {};", c_ty, c_name, init));
+                                }
+                                declared_vars.insert(c_name);
+                            }
+                        }
+                    }
+                    // Recurse into arg expressions to find nested function calls
+                    collect_byref_vars(arg, declared_vars, locals);
+                }
+            }
+            // Recurse into sub-expressions to find nested function calls
+            TypedExprKind::Binary { left, right, .. } => {
+                collect_byref_vars(left, declared_vars, locals);
+                collect_byref_vars(right, declared_vars, locals);
+            }
+            TypedExprKind::Unary { operand, .. } => {
+                collect_byref_vars(operand, declared_vars, locals);
+            }
+            TypedExprKind::Grouped(inner) => {
+                collect_byref_vars(inner, declared_vars, locals);
+            }
+            TypedExprKind::ArrayAccess { indices, .. } => {
+                for idx in indices {
+                    collect_byref_vars(idx, declared_vars, locals);
+                }
+            }
+            TypedExprKind::ExternalFunctionCall { args, .. } => {
+                for arg in args {
+                    collect_byref_vars(arg, declared_vars, locals);
+                }
+            }
+            TypedExprKind::Convert { expr: inner, .. }
+            | TypedExprKind::CvFunc { value: inner, .. }
+            | TypedExprKind::MkDollarFunc { value: inner, .. }
+            | TypedExprKind::CastFunc { value: inner, .. }
+            | TypedExprKind::ValWithType { value: inner, .. } => {
+                collect_byref_vars(inner, declared_vars, locals);
+            }
+            TypedExprKind::FieldAccess { object, .. } => {
+                collect_byref_vars(object, declared_vars, locals);
+            }
+            // Literals, Variables (not as ByRef args), and other nodes
+            _ => {}
+        }
+    }
+
+    // Helper to collect ByRef vars from expressions in various statement kinds
+    fn collect_stmt_byref(
+        stmt: &TypedStatement,
+        declared_vars: &mut HashSet<String>,
+        locals: &mut Vec<String>,
+    ) {
+        match &stmt.kind {
+            TypedStatementKind::Assignment { value, .. } => {
+                collect_byref_vars(value, declared_vars, locals);
+            }
+            TypedStatementKind::If {
+                condition,
+                then_branch,
+                elseif_branches,
+                else_branch,
+            } => {
+                collect_byref_vars(condition, declared_vars, locals);
+                for s in then_branch {
+                    collect_implicits(s, declared_vars, locals);
+                }
+                for (cond, branch_body) in elseif_branches {
+                    collect_byref_vars(cond, declared_vars, locals);
+                    for s in branch_body {
+                        collect_implicits(s, declared_vars, locals);
+                    }
+                }
+                if let Some(else_stmts) = else_branch {
+                    for s in else_stmts {
+                        collect_implicits(s, declared_vars, locals);
+                    }
+                }
+            }
+            TypedStatementKind::While { condition, body } => {
+                collect_byref_vars(condition, declared_vars, locals);
+                for s in body {
+                    collect_implicits(s, declared_vars, locals);
+                }
+            }
+            TypedStatementKind::DoLoop {
+                pre_condition,
+                post_condition,
+                body,
+            } => {
+                if let Some(cond) = pre_condition {
+                    collect_byref_vars(&cond.condition, declared_vars, locals);
+                }
+                if let Some(cond) = post_condition {
+                    collect_byref_vars(&cond.condition, declared_vars, locals);
+                }
+                for s in body {
+                    collect_implicits(s, declared_vars, locals);
+                }
+            }
+            TypedStatementKind::For {
+                start,
+                end,
+                step,
+                body,
+                ..
+            } => {
+                collect_byref_vars(start, declared_vars, locals);
+                collect_byref_vars(end, declared_vars, locals);
+                if let Some(step_expr) = step {
+                    collect_byref_vars(step_expr, declared_vars, locals);
+                }
+                for s in body {
+                    collect_implicits(s, declared_vars, locals);
+                }
+            }
             _ => {}
         }
     }
