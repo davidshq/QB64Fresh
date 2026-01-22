@@ -182,15 +182,20 @@ pub(super) fn collect_type_definitions(program: &TypedProgram) -> Vec<String> {
 /// implicitly-declared variables are also collected by scanning Assignment
 /// and FOR loop statements to ensure all variables are properly declared
 /// in the generated C code.
+/// Returns (globals, forward_decls, string_const_inits)
+/// - globals: Global variable declarations
+/// - forward_decls: Forward declarations for SUBs/FUNCTIONs
+/// - string_const_inits: String constant initializations to run at program start
 pub(super) fn collect_globals(
     program: &TypedProgram,
     emit_params_fn: impl Fn(&[TypedParameter]) -> String,
-) -> (Vec<String>, Vec<String>) {
+) -> (Vec<String>, Vec<String>, Vec<String>) {
     use crate::semantic::types::BasicType;
     use std::collections::HashSet;
 
     let mut globals = Vec::new();
     let mut forward_decls = Vec::new();
+    let mut string_const_inits = Vec::new();
     // Track already-declared variable names to avoid duplicates
     let mut declared_vars: HashSet<String> = HashSet::new();
 
@@ -268,13 +273,19 @@ pub(super) fn collect_globals(
                 for (name, value_expr, _basic_type) in definitions {
                     let c_name = c_identifier(name);
                     if !declared_vars.contains(&c_name) {
-                        // Emit as const or #define depending on type
-                        // Use the value from the expression if it's a literal
                         let c_ty = c_type(&value_expr.basic_type);
                         // Try to evaluate as a constant expression
                         let value_code =
                             super::expr::emit_expr(value_expr).unwrap_or_else(|_| "0".to_string());
-                        globals.push(format!("const {} {} = {};", c_ty, c_name, value_code));
+
+                        // For string constants, we can't use function calls as initializers
+                        // in C. Declare without initializer and add initialization to run at start.
+                        if matches!(value_expr.basic_type, BasicType::String) {
+                            globals.push(format!("qb_string* {} = NULL;", c_name));
+                            string_const_inits.push(format!("{} = {};", c_name, value_code));
+                        } else {
+                            globals.push(format!("const {} {} = {};", c_ty, c_name, value_code));
+                        }
                         declared_vars.insert(c_name);
                     }
                 }
@@ -383,7 +394,7 @@ pub(super) fn collect_globals(
         collect_implicit_vars_from_stmt(stmt, &mut declared_vars, &mut globals, false);
     }
 
-    (globals, forward_decls)
+    (globals, forward_decls, string_const_inits)
 }
 
 /// Recursively collects implicit variable declarations from a statement.

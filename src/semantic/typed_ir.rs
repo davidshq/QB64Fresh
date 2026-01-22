@@ -398,14 +398,14 @@ pub enum TypedStatementKind {
     /// EXIT statement.
     Exit { exit_type: ExitType },
 
-    /// END statement.
-    End,
+    /// END statement with optional exit code.
+    End { exit_code: Option<TypedExpr> },
 
     /// STOP statement.
     Stop,
 
-    /// SYSTEM statement (exit immediately).
-    System,
+    /// SYSTEM statement (exit immediately) with optional exit code.
+    System { exit_code: Option<TypedExpr> },
 
     /// SLEEP statement (pause execution).
     Sleep {

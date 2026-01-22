@@ -47,6 +47,8 @@ pub(super) struct StmtEmitter {
     pub loop_stack: Vec<LoopContext>,
     /// Map of DATA labels to their indices (for RESTORE with label).
     pub data_label_indices: HashMap<String, usize>,
+    /// Current procedure name (for unique label generation).
+    pub current_proc: Option<String>,
 }
 
 impl StmtEmitter {
@@ -57,6 +59,7 @@ impl StmtEmitter {
             indent: 0,
             loop_stack: Vec::new(),
             data_label_indices: HashMap::new(),
+            current_proc: None,
         }
     }
 
@@ -65,6 +68,17 @@ impl StmtEmitter {
         let label = format!("_qb_{}_{}", prefix, self.label_counter);
         self.label_counter += 1;
         label
+    }
+
+    /// Converts a BASIC label to a C label, prefixing with procedure name if in a procedure.
+    /// This ensures line number labels (e.g., _line_1) are unique per procedure.
+    fn proc_label(&self, label: &str) -> String {
+        let base_label = c_identifier(label);
+        if let Some(ref proc) = self.current_proc {
+            format!("{}_{}", proc, base_label)
+        } else {
+            base_label
+        }
     }
 
     /// Returns the current indentation string.
@@ -375,12 +389,12 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::Goto { target } => {
-                let c_label = c_identifier(target);
+                let c_label = self.proc_label(target);
                 writeln!(output, "{}goto {};", indent, c_label).unwrap();
             }
 
             TypedStatementKind::Gosub { target } => {
-                let c_label = c_identifier(target);
+                let c_label = self.proc_label(target);
                 let return_label = self.next_label("gosub_ret");
                 // Push return address onto stack and jump to subroutine
                 writeln!(
@@ -407,8 +421,13 @@ impl StmtEmitter {
                 self.emit_exit(&indent, exit_type, output)?;
             }
 
-            TypedStatementKind::End => {
-                writeln!(output, "{}exit(0);", indent).unwrap();
+            TypedStatementKind::End { exit_code } => {
+                if let Some(code) = exit_code {
+                    let code_expr = emit_expr(code)?;
+                    writeln!(output, "{}exit((int){});", indent, code_expr).unwrap();
+                } else {
+                    writeln!(output, "{}exit(0);", indent).unwrap();
+                }
             }
 
             TypedStatementKind::Stop => {
@@ -416,8 +435,13 @@ impl StmtEmitter {
                 writeln!(output, "{}exit(1);", indent).unwrap();
             }
 
-            TypedStatementKind::System => {
-                writeln!(output, "{}exit(0);", indent).unwrap();
+            TypedStatementKind::System { exit_code } => {
+                if let Some(code) = exit_code {
+                    let code_expr = emit_expr(code)?;
+                    writeln!(output, "{}exit((int){});", indent, code_expr).unwrap();
+                } else {
+                    writeln!(output, "{}exit(0);", indent).unwrap();
+                }
             }
 
             TypedStatementKind::Sleep { seconds } => {
@@ -683,7 +707,7 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::Label { name } => {
-                let c_label = c_identifier(name);
+                let c_label = self.proc_label(name);
                 writeln!(output, "{}:", c_label).unwrap();
             }
 
@@ -989,7 +1013,12 @@ impl StmtEmitter {
 
                     if var.dimensions.is_empty() {
                         // Simple static variable
-                        let init = default_init(&var.basic_type);
+                        // For strings, we must use NULL because function calls
+                        // are not valid in static initializers in C
+                        let init = match var.basic_type {
+                            BasicType::String => "NULL".to_string(),
+                            _ => default_init(&var.basic_type),
+                        };
                         writeln!(output, "{}static {} {} = {};", indent, c_ty, c_name, init)
                             .unwrap();
                     } else {
@@ -3121,11 +3150,16 @@ impl StmtEmitter {
             writeln!(output).unwrap();
         }
 
+        // Set current procedure name for unique label generation
+        self.current_proc = Some(c_name.clone());
+
         self.indent += 1;
         for stmt in body {
             self.emit_stmt(stmt, output)?;
         }
         self.indent -= 1;
+
+        self.current_proc = None;
 
         writeln!(output, "{}}}", indent).unwrap();
         writeln!(output).unwrap();
@@ -3177,11 +3211,16 @@ impl StmtEmitter {
             writeln!(output).unwrap();
         }
 
+        // Set current procedure name for unique label generation
+        self.current_proc = Some(c_name.clone());
+
         self.indent += 1;
         for stmt in body {
             self.emit_stmt(stmt, output)?;
         }
         self.indent -= 1;
+
+        self.current_proc = None;
 
         writeln!(output, "    return {};", ret_var).unwrap();
         writeln!(output, "{}}}", indent).unwrap();
@@ -3474,7 +3513,7 @@ impl StmtEmitter {
             writeln!(output, "{}_qb_error_handler = NULL;", indent).unwrap();
             writeln!(output, "{}_qb_error_resume_next = 0;", indent).unwrap();
         } else {
-            let label = c_identifier(target);
+            let label = self.proc_label(target);
             writeln!(output, "{}_qb_error_handler = &&{};", indent, label).unwrap();
             writeln!(output, "{}_qb_error_resume_next = 0;", indent).unwrap();
         }
@@ -3515,7 +3554,7 @@ impl StmtEmitter {
                 writeln!(output, "{}/* RESUME NEXT - continue execution */", indent).unwrap();
             }
             Some(crate::ast::ResumeTarget::Label(label)) => {
-                let c_label = c_identifier(label);
+                let c_label = self.proc_label(label);
                 writeln!(output, "{}_qb_err = 0;", indent).unwrap();
                 writeln!(output, "{}goto {};", indent, c_label).unwrap();
             }
@@ -3549,7 +3588,7 @@ impl StmtEmitter {
 
         writeln!(output, "{}switch ((int32_t)({}) - 1) {{", indent, sel_code).unwrap();
         for (i, target) in targets.iter().enumerate() {
-            let c_label = c_identifier(target);
+            let c_label = self.proc_label(target);
             writeln!(output, "{}    case {}: goto {}; break;", indent, i, c_label).unwrap();
         }
         writeln!(output, "{}    default: break;", indent).unwrap();
@@ -3571,7 +3610,7 @@ impl StmtEmitter {
 
         writeln!(output, "{}switch ((int32_t)({}) - 1) {{", indent, sel_code).unwrap();
         for (i, target) in targets.iter().enumerate() {
-            let c_label = c_identifier(target);
+            let c_label = self.proc_label(target);
             writeln!(
                 output,
                 "{}    case {}: _gosub_stack[_gosub_sp++] = &&{}; goto {}; break;",
