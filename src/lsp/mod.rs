@@ -4,7 +4,8 @@
 //! - Real-time error diagnostics
 //! - Hover information (types, documentation)
 //! - Go to definition
-//! - Document symbols (outline)
+//! - Document symbols (outline view, Ctrl+Shift+O)
+//! - Workspace symbols (Ctrl+T search)
 //! - Inlay hints (type annotations)
 //!
 //! # Architecture
@@ -561,6 +562,8 @@ impl LanguageServer for QbLanguageServer {
                 definition_provider: Some(OneOf::Left(true)),
                 // Document symbol support (outline)
                 document_symbol_provider: Some(OneOf::Left(true)),
+                // Workspace symbol support (Ctrl+T)
+                workspace_symbol_provider: Some(OneOf::Left(true)),
                 // Code completion support
                 completion_provider: Some(CompletionOptions {
                     trigger_characters: Some(vec![".".to_string()]),
@@ -727,6 +730,46 @@ impl LanguageServer for QbLanguageServer {
         }
 
         Ok(None)
+    }
+
+    async fn symbol(
+        &self,
+        params: WorkspaceSymbolParams,
+    ) -> Result<Option<Vec<SymbolInformation>>> {
+        let query = params.query.to_lowercase();
+        let mut all_symbols = Vec::new();
+
+        // Search across all open documents
+        let documents = {
+            let state = self.state.read().await;
+            state
+                .documents
+                .iter()
+                .map(|(uri, doc)| (uri.clone(), doc.content.clone()))
+                .collect::<Vec<_>>()
+        };
+
+        for (uri, content) in documents {
+            let mut symbols = self.get_document_symbols(&content);
+
+            // Filter by query if provided
+            if !query.is_empty() {
+                symbols.retain(|s| s.name.to_lowercase().contains(&query));
+            }
+
+            // Set the correct URI on each symbol
+            for sym in &mut symbols {
+                sym.location.uri = uri.clone();
+            }
+
+            all_symbols.extend(symbols);
+        }
+
+        if all_symbols.is_empty() {
+            return Ok(None);
+        }
+
+        Ok(Some(all_symbols))
     }
 
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
