@@ -105,7 +105,7 @@ fn check_unreachable_in_block(
 
         // Check if this statement terminates execution
         match &stmt.kind {
-            StatementKind::End | StatementKind::System | StatementKind::Stop => {
+            StatementKind::End { .. } | StatementKind::System { .. } | StatementKind::Stop => {
                 found_terminator = true;
                 terminator_span = Some(stmt.span.start);
             }

@@ -510,12 +510,22 @@ IF condition GOTO label
 IF condition THEN
     statements
 END IF
+' or
+IF condition THEN
+    statements
+ENDIF
 
 IF condition THEN
     statements
 ELSE
     statements
 END IF
+' or
+IF condition THEN
+    statements
+ELSE
+    statements
+ENDIF
 
 IF condition THEN
     statements
@@ -526,6 +536,7 @@ ELSEIF condition THEN
 ELSE
     statements
 END IF
+' Note: ENDIF (without space) is also valid as an alternative to END IF
 ```
 
 ### 6.2 SELECT CASE
@@ -545,6 +556,8 @@ SELECT CASE testExpression
     CASE ELSE
         statements
 END SELECT
+' Note: ENDIF, ENDSELECT, ENDSUB, ENDFUNCTION, ENDTYPE, ENDDECLARE (without spaces)
+' are also valid alternatives, but END IF, END SELECT, etc. (with spaces) are preferred
 ```
 
 **QB64 extension:**
@@ -1075,7 +1088,14 @@ WRITE #filenum, expr1, expr2        ' Comma delimited with quotes
 ' Reading
 INPUT #filenum, variable
 INPUT #filenum, var1, var2
-LINE INPUT #filenum, lineString$
+LINE INPUT #filenum, lineString$      ' Read entire line from file
+
+' Console Input
+INPUT variable                         ' Prompt and read from console
+INPUT "Prompt: ", variable             ' Custom prompt
+INPUT var1, var2                       ' Multiple variables
+LINE INPUT variable$                   ' Read entire line from console (no prompt)
+LINE INPUT "Prompt: ", variable$       ' Read line with prompt
 ```
 
 ### 10.3 Random Access I/O
