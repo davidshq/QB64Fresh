@@ -99,7 +99,7 @@ These can be worked on independently of the compiler/runtime:
 - [x] Code actions (quick fixes from linter suggestions)
 - [x] Workspace symbol search (Ctrl+T)
 - [x] Document symbols outline (Ctrl+Shift+O)
-- [ ] Rename symbol *(Medium - requires LSP enhancement)*
+- [x] Rename symbol
 - [x] Snippet expansion improvements
 
 ---
@@ -114,8 +114,8 @@ Potential future work for a VB-style RAD visual designer.
 
 ### Low Priority
 
-- [ ] Unicode support: Currently ASCII-focused *(Large - 4-6 sessions for full Unicode)*
-- [ ] Windows-specific path handling in file I/O *(Small - 1 session)*
+- [ ] Unicode support: UCASE$/LCASE$ now UTF-8 safe, added char counting helpers. Full Unicode support still needed *(Large - 4-6 sessions)*
+- [x] Windows-specific path handling in file I/O (fixed type mismatch in declarations)
 
 ---
 
