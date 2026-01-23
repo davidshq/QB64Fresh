@@ -23,7 +23,7 @@ use crate::semantic::typed_ir::{
 use crate::semantic::types::BasicType;
 
 use super::expr::{c_function_name, emit_expr, escape_string};
-use super::types::{c_identifier, c_type, default_init};
+use super::types::{add_reserved_identifiers, c_identifier, c_type, default_init};
 
 /// Context for the current loop (for EXIT statement handling).
 #[derive(Clone)]
@@ -3984,33 +3984,8 @@ pub(super) fn collect_implicit_locals(
     let mut locals = Vec::new();
     let mut declared_vars: HashSet<String> = existing_vars.clone();
 
-    // Add built-in constants that are already #defined as macros
-    // These must not be declared as local variables
-    declared_vars.insert("_TRUE".to_string());
-    declared_vars.insert("_FALSE".to_string());
-    declared_vars.insert("_EQUAL".to_string());
-    declared_vars.insert("_GREATER".to_string());
-    declared_vars.insert("_LESS".to_string());
-
-    // String constant macros
-    declared_vars.insert("_STR_EMPTY".to_string());
-    declared_vars.insert("_STR_CRLF".to_string());
-    declared_vars.insert("_STR_LF".to_string());
-    declared_vars.insert("_STR_CR".to_string());
-    declared_vars.insert("_CHR_QUOTE".to_string());
-    declared_vars.insert("_CHR_HT".to_string());
-    declared_vars.insert("_CHR_LF".to_string());
-
-    // Add dummy variables for LEN() type sizing (defined in runtime)
-    // Prevents user code from redeclaring them
-    declared_vars.insert("dummy".to_string());
-    declared_vars.insert("dummy_int_int".to_string());
-    declared_vars.insert("dummy_int".to_string());
-    declared_vars.insert("dummy_lng_lng".to_string());
-    declared_vars.insert("dummy_sng".to_string());
-    declared_vars.insert("dummy_dbl".to_string());
-    declared_vars.insert("dummy_dbl_dbl".to_string());
-    declared_vars.insert("dummy_int_lng".to_string());
+    // Add built-in constants and runtime variables that should not be redeclared
+    add_reserved_identifiers(&mut declared_vars);
 
     // Add parameter names to declared set
     for p in params {

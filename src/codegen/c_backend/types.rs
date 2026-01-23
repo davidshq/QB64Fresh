@@ -20,7 +20,63 @@
 //! BASIC allows type suffix characters in identifiers (`$`, `%`, `&`, etc.)
 //! which are invalid in C. These are converted to descriptive suffixes.
 
+use std::collections::HashSet;
+
 use crate::semantic::types::BasicType;
+
+/// Built-in constants and runtime variables that should never be redeclared.
+///
+/// These identifiers are either:
+/// - Defined as `#define` macros in the runtime header
+/// - Reserved for internal runtime use
+/// - Used as dummy variables for `LEN()` type sizing
+///
+/// When collecting implicit variable declarations, these names must be skipped
+/// to avoid redeclaration errors in the generated C code.
+pub(super) const RESERVED_IDENTIFIERS: &[&str] = &[
+    // Boolean constants (defined as macros)
+    "_TRUE",
+    "_FALSE",
+    // Comparison result constants (defined as macros)
+    "_EQUAL",
+    "_GREATER",
+    "_LESS",
+    // String constant macros
+    "_STR_EMPTY",
+    "_STR_CRLF",
+    "_STR_LF",
+    "_STR_CR",
+    "_CHR_QUOTE",
+    "_CHR_HT",
+    "_CHR_LF",
+    // Dummy variables for LEN() type sizing (defined in runtime)
+    "dummy",
+    "dummy_int_int",
+    "dummy_int",
+    "dummy_lng_lng",
+    "dummy_sng",
+    "dummy_dbl",
+    "dummy_dbl_dbl",
+    "dummy_int_lng",
+];
+
+/// Adds all reserved identifiers to a HashSet.
+///
+/// This should be called when building the set of "already declared" variables
+/// before collecting implicit declarations.
+///
+/// # Example
+///
+/// ```ignore
+/// let mut declared_vars: HashSet<String> = HashSet::new();
+/// add_reserved_identifiers(&mut declared_vars);
+/// // Now declared_vars contains all reserved names
+/// ```
+pub(super) fn add_reserved_identifiers(set: &mut HashSet<String>) {
+    for &name in RESERVED_IDENTIFIERS {
+        set.insert(name.to_string());
+    }
+}
 
 /// Maps a BASIC type to its C representation.
 ///
