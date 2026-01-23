@@ -3473,6 +3473,31 @@ impl StmtEmitter {
                     .unwrap();
                 }
             }
+
+            // Register array bounds for UBOUND/LBOUND
+            if dimensions.len() == 1 {
+                // Single dimension: use simple register function
+                writeln!(
+                    output,
+                    "{}qb_array_register({}, {}, {});",
+                    indent, c_name, dimensions[0].lower, dimensions[0].upper
+                )
+                .unwrap();
+            } else {
+                // Multi-dimensional: use qb_array_register_md
+                let lowers: Vec<String> = dimensions.iter().map(|d| d.lower.to_string()).collect();
+                let uppers: Vec<String> = dimensions.iter().map(|d| d.upper.to_string()).collect();
+                writeln!(
+                    output,
+                    "{}{{ int32_t _lb[] = {{{}}}; int32_t _ub[] = {{{}}}; qb_array_register_md({}, {}, _lb, _ub); }}",
+                    indent,
+                    lowers.join(", "),
+                    uppers.join(", "),
+                    c_name,
+                    dimensions.len()
+                )
+                .unwrap();
+            }
         }
         Ok(())
     }
@@ -4012,6 +4037,45 @@ impl StmtEmitter {
             .collect::<Result<Vec<_>, CodeGenError>>()?
             .join(" * ");
 
+        // Generate bounds registration code for after realloc
+        let bounds_reg = if dimensions.len() == 1 {
+            // Single dimension: use simple register function
+            let lower_code = dimensions[0]
+                .lower
+                .as_ref()
+                .map(emit_expr)
+                .transpose()?
+                .unwrap_or_else(|| "0".to_string());
+            let upper_code = emit_expr(&dimensions[0].upper)?;
+            format!(
+                "    qb_array_register({}, {}, {});",
+                c_name, lower_code, upper_code
+            )
+        } else {
+            // Multi-dimensional: use qb_array_register_md
+            let lowers: Result<Vec<String>, CodeGenError> = dimensions
+                .iter()
+                .map(|d| {
+                    d.lower
+                        .as_ref()
+                        .map(emit_expr)
+                        .transpose()
+                        .map(|opt| opt.unwrap_or_else(|| "0".to_string()))
+                })
+                .collect();
+            let uppers: Result<Vec<String>, CodeGenError> =
+                dimensions.iter().map(|d| emit_expr(&d.upper)).collect();
+            let lowers = lowers?;
+            let uppers = uppers?;
+            format!(
+                "    {{ int32_t _lb[] = {{{}}}; int32_t _ub[] = {{{}}}; qb_array_register_md({}, {}, _lb, _ub); }}",
+                lowers.join(", "),
+                uppers.join(", "),
+                c_name,
+                dimensions.len()
+            )
+        };
+
         if preserve {
             // REDIM _PRESERVE: Keep existing values, zero only new elements
             // We track the old byte size with a static variable
@@ -4037,6 +4101,8 @@ impl StmtEmitter {
             )
             .unwrap();
             writeln!(output, "{}    {} = new_sz__;", indent, size_var).unwrap();
+            // Register new bounds
+            writeln!(output, "{}{}", indent, bounds_reg).unwrap();
             writeln!(output, "{}}}", indent).unwrap();
         } else {
             // Regular REDIM: Reallocate and zero entire array
@@ -4054,6 +4120,8 @@ impl StmtEmitter {
             )
             .unwrap();
             writeln!(output, "{}    memset({}, 0, new_sz__);", indent, c_name).unwrap();
+            // Register new bounds
+            writeln!(output, "{}{}", indent, bounds_reg).unwrap();
             writeln!(output, "{}}}", indent).unwrap();
         }
 

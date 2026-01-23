@@ -509,14 +509,19 @@ pub unsafe extern "C" fn qb_shell_hide(command: *const c_char) -> i32 {
 /// Returns -1 (true) if file exists, 0 (false) otherwise.
 ///
 /// # Safety
-/// - `path` must be a valid null-terminated C string
+/// - `path` must be a valid QbString pointer or null
 #[no_mangle]
-pub unsafe extern "C" fn qb_file_exists(path: *const c_char) -> i32 {
+pub unsafe extern "C" fn qb_file_exists(path: *const QbString) -> i32 {
     if path.is_null() {
         return 0;
     }
 
-    let path_str = match std::ffi::CStr::from_ptr(path).to_str() {
+    let path_ptr = qb_string_data(path);
+    if path_ptr.is_null() {
+        return 0;
+    }
+
+    let path_str = match std::ffi::CStr::from_ptr(path_ptr).to_str() {
         Ok(s) => s,
         Err(_) => return 0,
     };
@@ -534,14 +539,19 @@ pub unsafe extern "C" fn qb_file_exists(path: *const c_char) -> i32 {
 /// Returns -1 (true) if directory exists, 0 (false) otherwise.
 ///
 /// # Safety
-/// - `path` must be a valid null-terminated C string
+/// - `path` must be a valid QbString pointer or null
 #[no_mangle]
-pub unsafe extern "C" fn qb_dir_exists(path: *const c_char) -> i32 {
+pub unsafe extern "C" fn qb_dir_exists(path: *const QbString) -> i32 {
     if path.is_null() {
         return 0;
     }
 
-    let path_str = match std::ffi::CStr::from_ptr(path).to_str() {
+    let path_ptr = qb_string_data(path);
+    if path_ptr.is_null() {
+        return 0;
+    }
+
+    let path_str = match std::ffi::CStr::from_ptr(path_ptr).to_str() {
         Ok(s) => s,
         Err(_) => return 0,
     };
@@ -559,10 +569,10 @@ pub unsafe extern "C" fn qb_dir_exists(path: *const c_char) -> i32 {
 /// First call with a filespec (e.g., "*.txt"), subsequent calls with empty string.
 ///
 /// # Safety
-/// - `spec` must be a valid null-terminated C string
+/// - `spec` must be a valid QbString pointer or null
 /// - The returned string must be released with `qb_string_release`
 #[no_mangle]
-pub unsafe extern "C" fn qb_dir(spec: *const c_char) -> *mut QbString {
+pub unsafe extern "C" fn qb_dir(spec: *const QbString) -> *mut QbString {
     // This is a simplified implementation using a static iterator
     // A full implementation would need to handle the iterator state properly
     use std::sync::Mutex;
@@ -575,7 +585,12 @@ pub unsafe extern "C" fn qb_dir(spec: *const c_char) -> *mut QbString {
         return qb_string_from_bytes(std::ptr::null(), 0);
     }
 
-    let spec_str = match std::ffi::CStr::from_ptr(spec).to_str() {
+    let spec_ptr = qb_string_data(spec);
+    if spec_ptr.is_null() {
+        return qb_string_from_bytes(std::ptr::null(), 0);
+    }
+
+    let spec_str = match std::ffi::CStr::from_ptr(spec_ptr).to_str() {
         Ok(s) => s,
         Err(_) => return qb_string_from_bytes(std::ptr::null(), 0),
     };
