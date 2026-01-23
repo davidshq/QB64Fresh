@@ -301,6 +301,7 @@ fn emit_runtime_declarations(output: &mut String) {
     writeln!(output).unwrap();
 
     emit_string_type(output);
+    emit_stub_declarations(output);
     emit_type_size_dummies(output);
     emit_string_functions(output);
     emit_print_functions(output);
@@ -329,6 +330,99 @@ fn emit_string_type(output: &mut String) {
     writeln!(output, "    size_t capacity;").unwrap();
     writeln!(output, "    int refcount;").unwrap();
     writeln!(output, "}} qb_string;").unwrap();
+    writeln!(output).unwrap();
+}
+
+/// Emits forward declarations for external stub functions.
+///
+/// These functions are provided by the stubs file (qb64_stubs.c) and must be
+/// declared before use to ensure proper return types (especially for functions
+/// returning qb_string* which would otherwise be assumed to return int).
+fn emit_stub_declarations(output: &mut String) {
+    writeln!(output, "/* External stub function declarations */").unwrap();
+    // File system functions
+    writeln!(output, "int32_t qb_file_exists(qb_string* path);").unwrap();
+    writeln!(output, "int32_t qb_dir_exists(qb_string* path);").unwrap();
+    writeln!(output, "qb_string* qb_fullpath(qb_string* path);").unwrap();
+    writeln!(output, "qb_string* qb_dir(qb_string* spec);").unwrap();
+    writeln!(output, "void qb_chdir(qb_string* path);").unwrap();
+    writeln!(output, "void qb_mkdir(qb_string* path);").unwrap();
+    writeln!(output, "void qb_file_kill(qb_string* path);").unwrap();
+    // Console/shell functions
+    // qb_console: when called with -1 (default), returns console handle
+    // when called with 0/1, shows/hides console and returns handle
+    writeln!(output, "int32_t qb_console(int32_t mode);").unwrap();
+    writeln!(output, "void qb_shell(qb_string* cmd);").unwrap();
+    writeln!(output, "void qb_shell_hide(qb_string* cmd);").unwrap();
+    writeln!(output, "void qb_shellhide(qb_string* cmd);").unwrap();
+    writeln!(output, "int32_t qb_echo(int32_t state);").unwrap();
+    writeln!(output, "void qb_controlchr(int32_t state);").unwrap();
+    // String functions
+    writeln!(
+        output,
+        "void qb_asc_assign(qb_string** s, int32_t pos, int32_t ch);"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "int32_t qb_instrrev3(qb_string* s, qb_string* sub, int32_t start);"
+    )
+    .unwrap();
+    // Font functions
+    writeln!(output, "void qb_sub__font(int32_t handle);").unwrap();
+    writeln!(output, "void qb_sub__freefont(int32_t handle);").unwrap();
+    writeln!(
+        output,
+        "int32_t qb_loadfont3(qb_string* path, int32_t size, qb_string* req);"
+    )
+    .unwrap();
+    writeln!(output, "void qb_mapunicode(int32_t code, int32_t chr);").unwrap();
+    writeln!(
+        output,
+        "int32_t qb__mapunicode(int32_t code, int32_t fontpage);"
+    )
+    .unwrap();
+    // Window functions
+    writeln!(output, "void qb_sub__title(qb_string* title);").unwrap();
+    writeln!(output, "void qb_sub__screenmove(int32_t x, int32_t y);").unwrap();
+    writeln!(output, "void qb_sub__screenshow(void);").unwrap();
+    writeln!(output, "void qb_icon(int32_t handle, qb_string* cmd);").unwrap();
+    // Environment functions
+    writeln!(output, "void qb_sub_environ(qb_string* env);").unwrap();
+    // Error functions
+    writeln!(output, "int32_t qb_inclerrorline(void);").unwrap();
+    writeln!(output, "qb_string* qb_inclerrorfile(void);").unwrap();
+    writeln!(output, "int32_t qb_exit_state(void);").unwrap();
+    writeln!(output, "int32_t qb_statuscode(void);").unwrap();
+    // Network functions
+    writeln!(output, "int32_t qb_net_openhost(qb_string* port);").unwrap();
+    writeln!(output, "int32_t qb_net_openconnection(int32_t host);").unwrap();
+    writeln!(output, "int32_t qb_net_openclient(qb_string* addr);").unwrap();
+    writeln!(output, "int32_t qb_net_connected(int32_t handle);").unwrap();
+    // Drag and drop functions
+    writeln!(output, "int32_t qb_totaldroppedfiles(void);").unwrap();
+    writeln!(output, "qb_string* qb_droppedfile_str(int32_t index);").unwrap();
+    writeln!(output, "void qb_finishdrop(void);").unwrap();
+    writeln!(output, "void qb_acceptfiledrop(int32_t state);").unwrap();
+    // Dialog functions
+    writeln!(
+        output,
+        "int32_t qb_messagebox4(qb_string* title, qb_string* msg, qb_string* btns, int32_t def);"
+    )
+    .unwrap();
+    writeln!(output, "qb_string* qb_savefiledialog4(qb_string* title, qb_string* filter, qb_string* def, int32_t flags);").unwrap();
+    writeln!(output, "qb_string* qb_openfiledialog5(qb_string* title, qb_string* filter, qb_string* def, qb_string* opts, int32_t flags);").unwrap();
+    // Number conversion functions
+    writeln!(output, "int64_t qb_val_int64(qb_string* s);").unwrap();
+    writeln!(output, "uint64_t qb_val_uint64(qb_string* s);").unwrap();
+    writeln!(output, "double qb_fix(double x);").unwrap();
+    writeln!(output, "qb_string* qb_mkq(double val);").unwrap();
+    writeln!(output, "double qb_cvq(qb_string* s);").unwrap();
+    // Compression functions
+    writeln!(output, "qb_string* qb_deflate(qb_string* data);").unwrap();
+    writeln!(output, "qb_string* qb_md5(qb_string* data);").unwrap();
+    // Windows specific functions
+    writeln!(output, "qb_string* logical_drives(void);").unwrap();
     writeln!(output).unwrap();
 }
 

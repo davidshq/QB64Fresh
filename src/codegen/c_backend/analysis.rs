@@ -415,6 +415,21 @@ pub(super) fn collect_globals(
         collect_implicit_vars_from_stmt(stmt, &mut declared_vars, &mut globals, false);
     }
 
+    // Add initialization for all global string variables
+    // In BASIC, uninitialized strings are empty (""), not null.
+    // We can't initialize qb_string* at global scope in C, so we do it at program start.
+    for decl in &globals {
+        // Match declarations like "qb_string* name = NULL;" or "qb_string* name_str = NULL;"
+        if decl.starts_with("qb_string* ") && decl.ends_with(" = NULL;") {
+            // Extract variable name: "qb_string* foo = NULL;" -> "foo"
+            let after_type = &decl["qb_string* ".len()..];
+            if let Some(name) = after_type.strip_suffix(" = NULL;") {
+                // Add initialization: foo = qb_string_new("");
+                string_const_inits.push(format!("{} = qb_string_new(\"\");", name));
+            }
+        }
+    }
+
     (globals, forward_decls, string_const_inits)
 }
 
