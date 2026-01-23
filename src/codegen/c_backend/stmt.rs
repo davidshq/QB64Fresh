@@ -50,6 +50,8 @@ pub(super) struct StmtEmitter {
     pub data_label_indices: HashMap<String, usize>,
     /// Current procedure name (for unique label generation).
     pub current_proc: Option<String>,
+    /// Current function's return variable (for EXIT FUNCTION).
+    pub current_func_ret_var: Option<String>,
     /// Global variable names (to avoid re-declaring as locals).
     pub global_var_names: std::collections::HashSet<String>,
 }
@@ -63,6 +65,7 @@ impl StmtEmitter {
             loop_stack: Vec::new(),
             data_label_indices: HashMap::new(),
             current_proc: None,
+            current_func_ret_var: None,
             global_var_names: std::collections::HashSet::new(),
         }
     }
@@ -3258,8 +3261,11 @@ impl StmtEmitter {
 
         if let Some(label) = label {
             writeln!(output, "{}goto {};", indent, label).unwrap();
+        } else if let Some(ret_var) = &self.current_func_ret_var {
+            // EXIT FUNCTION - return the function's return variable
+            writeln!(output, "{}return {};", indent, ret_var).unwrap();
         } else {
-            // EXIT SUB or EXIT FUNCTION
+            // EXIT SUB - just return
             writeln!(output, "{}return;", indent).unwrap();
         }
         Ok(())
@@ -3354,6 +3360,8 @@ impl StmtEmitter {
 
         // Set current procedure name for unique label generation
         self.current_proc = Some(c_name.clone());
+        // Set return variable for EXIT FUNCTION
+        self.current_func_ret_var = Some(ret_var.clone());
 
         self.indent += 1;
         for stmt in body {
@@ -3362,6 +3370,7 @@ impl StmtEmitter {
         self.indent -= 1;
 
         self.current_proc = None;
+        self.current_func_ret_var = None;
 
         writeln!(output, "    return {};", ret_var).unwrap();
         writeln!(output, "{}}}", indent).unwrap();
@@ -3865,6 +3874,10 @@ impl StmtEmitter {
         let init = default_init(return_type);
         writeln!(output, "    {} {} = {};", c_return_type, return_var, init).unwrap();
 
+        // Set return variable for EXIT FUNCTION
+        let old_ret_var = self.current_func_ret_var.take();
+        self.current_func_ret_var = Some(return_var.clone());
+
         // Emit body statements
         let old_indent = self.indent;
         self.indent = 1;
@@ -3872,6 +3885,7 @@ impl StmtEmitter {
             self.emit_stmt(stmt, output)?;
         }
         self.indent = old_indent;
+        self.current_func_ret_var = old_ret_var;
 
         // Return the result
         writeln!(output, "    return {};", return_var).unwrap();
