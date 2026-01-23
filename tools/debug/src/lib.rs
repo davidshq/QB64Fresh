@@ -29,10 +29,32 @@
 //! ```
 
 mod config;
+pub mod dap;
 mod error;
+pub mod frames;
+pub mod sources;
+pub mod symbols;
+pub mod values;
+pub mod watch;
 
 pub use config::{Breakpoint, BreakpointKind, DebugConfig, Verbosity};
 pub use error::{DebugError, DebugResult};
+pub use frames::{
+    AccessPathElement, CallStack, FrameId, ScopeInfo, StackFrame, VariableCategory, VariableGroup,
+    VariableReference,
+};
+pub use sources::{IncludeInfo, SourceFileInfo, SourceManager, SourcePosition};
+pub use symbols::{
+    DebugArrayDimension, DebugLabel, DebugParameter, DebugProcedure, DebugScope, DebugScopeId,
+    DebugScopeKind, DebugSymbols, DebugType, DebugTypeMember, DebugUserType, DebugVariable,
+    DebugVariableKind,
+};
+pub use values::{
+    ArrayBounds, ArrayValue, DebugValue, DisplayFormat, NumberFormat, UdtValue, VariableInfo,
+};
+pub use watch::{
+    IndexExpr, Watch, WatchExpression, WatchFormat, WatchId, WatchManager, WatchResult,
+};
 
 use qb64fresh::ast::{Program, Span, Statement, StatementKind};
 use qb64fresh::lexer::lex;

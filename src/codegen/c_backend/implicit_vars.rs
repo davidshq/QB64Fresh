@@ -42,10 +42,15 @@ use super::types::{add_reserved_identifiers, c_identifier, declare_array_var, de
 /// 2. Second pass: collect implicit variables (assignments to non-DIM'd variables)
 ///
 /// This prevents duplicate declarations when a variable is assigned before its DIM.
+///
+/// The `is_main_program` flag indicates if this is the main program (not a SUB/FUNCTION).
+/// In main, arrays with existing globals should use the global (for cross-function sharing).
+/// In SUB/FUNCTIONs, DIM always creates locals even if a global with the same name exists.
 pub(super) fn collect_implicit_locals(
     body: &[TypedStatement],
     params: &[TypedParameter],
     existing_vars: &HashSet<String>,
+    is_main_program: bool,
 ) -> Vec<String> {
     let mut locals = Vec::new();
 
@@ -61,8 +66,15 @@ pub(super) fn collect_implicit_locals(
 
     // PASS 1: Collect all DIM/REDIM declarations first (they have function-wide scope in BASIC)
     // Note: We do NOT include globals here - DIM should always create a local that shadows globals
+    // EXCEPT in main program: arrays with existing globals use the global (for cross-function sharing)
     for stmt in body {
-        collect_dims(stmt, &mut dim_declared, &mut locals);
+        collect_dims(
+            stmt,
+            &mut dim_declared,
+            &mut locals,
+            existing_vars,
+            is_main_program,
+        );
     }
 
     // Now combine with globals for implicit variable collection
@@ -84,10 +96,16 @@ pub(super) fn collect_implicit_locals(
 ///
 /// DIM statements in BASIC have function-wide scope (they're "hoisted"), so we
 /// collect them first before looking for implicit variables.
+///
+/// The `is_main_program` flag affects REDIM array handling:
+/// - In main: if a global array exists, don't create local (use global for cross-function sharing)
+/// - In SUB/FUNCTION: always create local (DIM/REDIM inside procedure = local scope)
 fn collect_dims(
     stmt: &TypedStatement,
     declared_vars: &mut HashSet<String>,
     locals: &mut Vec<String>,
+    existing_vars: &HashSet<String>,
+    is_main_program: bool,
 ) {
     match &stmt.kind {
         TypedStatementKind::Dim { variables, .. } => {
@@ -108,10 +126,18 @@ fn collect_dims(
             // REDIM creates dynamic arrays - emit declarations with NULL initialization
             // If no dimensions, treat as scalar (REDIM can be used for scalars in QB64)
             for var in variables {
+                let c_name = c_identifier(&var.name);
                 if var.dimensions.is_empty() {
                     // Scalar REDIM - just a type declaration, no array
                     declare_scalar_var(&var.name, &var.element_type, declared_vars, locals);
+                } else if is_main_program && existing_vars.contains(&c_name) {
+                    // In main program with existing global: use global instead of creating
+                    // a local that would shadow it. This is critical for arrays used by
+                    // subroutines - they access the global, so main must allocate to the
+                    // global, not a shadowing local.
+                    declared_vars.insert(c_name);
                 } else {
+                    // In SUB/FUNCTION or no global: create local array declaration
                     declare_array_var(&var.name, &var.element_type, declared_vars, locals);
                 }
             }
@@ -130,7 +156,7 @@ fn collect_dims(
         // Recurse into control flow structures
         TypedStatementKind::For { body, .. } => {
             for s in body {
-                collect_dims(s, declared_vars, locals);
+                collect_dims(s, declared_vars, locals, existing_vars, is_main_program);
             }
         }
         TypedStatementKind::If {
@@ -140,28 +166,28 @@ fn collect_dims(
             ..
         } => {
             for s in then_branch {
-                collect_dims(s, declared_vars, locals);
+                collect_dims(s, declared_vars, locals, existing_vars, is_main_program);
             }
             for (_, branch_body) in elseif_branches {
                 for s in branch_body {
-                    collect_dims(s, declared_vars, locals);
+                    collect_dims(s, declared_vars, locals, existing_vars, is_main_program);
                 }
             }
             if let Some(else_stmts) = else_branch {
                 for s in else_stmts {
-                    collect_dims(s, declared_vars, locals);
+                    collect_dims(s, declared_vars, locals, existing_vars, is_main_program);
                 }
             }
         }
         TypedStatementKind::While { body, .. } | TypedStatementKind::DoLoop { body, .. } => {
             for s in body {
-                collect_dims(s, declared_vars, locals);
+                collect_dims(s, declared_vars, locals, existing_vars, is_main_program);
             }
         }
         TypedStatementKind::SelectCase { cases, .. } => {
             for case in cases {
                 for s in &case.body {
-                    collect_dims(s, declared_vars, locals);
+                    collect_dims(s, declared_vars, locals, existing_vars, is_main_program);
                 }
             }
         }
@@ -638,7 +664,7 @@ mod tests {
             Span::new(0, 6),
         )];
 
-        let locals = collect_implicit_locals(&body, &[], &HashSet::new());
+        let locals = collect_implicit_locals(&body, &[], &HashSet::new(), false);
 
         assert_eq!(locals.len(), 1);
         assert!(locals[0].contains("x"));
@@ -657,7 +683,7 @@ mod tests {
             Span::new(0, 9),
         )];
 
-        let locals = collect_implicit_locals(&body, &[], &HashSet::new());
+        let locals = collect_implicit_locals(&body, &[], &HashSet::new(), false);
 
         // _TRUE should not be in locals because it's a reserved identifier
         assert!(
@@ -684,7 +710,7 @@ mod tests {
             is_array: false,
         }];
 
-        let locals = collect_implicit_locals(&body, &params, &HashSet::new());
+        let locals = collect_implicit_locals(&body, &params, &HashSet::new(), false);
 
         // param1 should not be in locals because it's a parameter
         assert!(

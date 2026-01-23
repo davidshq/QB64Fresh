@@ -291,7 +291,10 @@ impl CodeGenerator for CBackend {
         // Convert Vec<&TypedStatement> to slice for collect_implicit_locals
         let main_stmts_owned: Vec<TypedStatement> =
             main_stmts.iter().map(|s| (*s).clone()).collect();
-        let implicit_locals = collect_implicit_locals(&main_stmts_owned, &[], &global_var_names);
+        // Pass is_main_program=true so arrays with existing globals use the global
+        // (for cross-function sharing) instead of creating shadowing locals
+        let implicit_locals =
+            collect_implicit_locals(&main_stmts_owned, &[], &global_var_names, true);
 
         // Emit implicit local declarations
         if !implicit_locals.is_empty() {

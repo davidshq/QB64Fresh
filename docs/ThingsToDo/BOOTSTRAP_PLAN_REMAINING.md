@@ -1,6 +1,6 @@
 # QB64pe Bootstrap: Remaining Work
 
-*Updated: 2026-01-22*
+*Updated: 2026-01-23*
 
 This document tracks what remains to complete the QB64pe bootstrap project. For full history, see [BOOTSTRAP_PLAN_FULL.md](../archive/BOOTSTRAP_PLAN_FULL.md).
 
@@ -45,13 +45,16 @@ This document tracks what remains to complete the QB64pe bootstrap project. For 
 The current executable uses stub functions. For full functionality, these need real implementations:
 
 **Critical for QB64pe to actually work:**
-- `qb_console()` - Returns console handle
-- `qb_dir_exists()` - Check if directory exists
-- `qb_fullpath()` - Get full path of file
+- ✅ `qb_console()` - Returns console handle (fixed)
+- ✅ `qb_dir_exists()` - Check if directory exists (implemented)
+- ✅ `qb_fullpath()` - Get full path of file (implemented)
+- ✅ **Array scoping bug** - FIXED! Arrays in main now use globals for cross-function sharing
+  - `menu$`, `menuDesc$`, etc. now allocate to global (not shadowing local)
+  - Executable runs past menu initialization without crashing
 - Graphics initialization (QB64pe expects graphical mode)
 
 **Nice to have (warnings only):**
-- Clean up `char*` vs `qb_string*` type warnings
+- Clean up `char*` vs `qb_string*` type warnings (~100+ occurrences)
 - Implement remaining `_KEY_*` constants
 
 ---
@@ -68,5 +71,40 @@ The current executable uses stub functions. For full functionality, these need r
 ## Notes
 
 - The QB64pe IDE component requires graphics support (SDL2)
-- Consider compiler-only mode (`-c`) first to reduce complexity
+- Compiler-only mode (`-c`) still initializes the IDE, doesn't help avoid crashes
 - Real runtime implementations needed for QB64pe to compile BASIC programs
+
+### Array Scoping Issue - FIXED (2026-01-23)
+
+The issue was array scoping. In QB64, when you use `menu$(m, i)` in main without explicit
+DIM, it creates a module-level array accessible to called subroutines.
+
+**Before fix:**
+```c
+// Global (line 2934)
+qb_string** menu_str = NULL;
+
+// Local in main - SHADOWED global
+qb_string** menu_str = malloc(sizeof(qb_string*) * (12) * (21));
+
+// In subroutine - uses GLOBAL (NULL!) → CRASH
+menu_str[...] = qb_string_new("File");
+```
+
+**After fix:**
+```c
+// Global (line 2934)
+qb_string** menu_str = NULL;
+
+// In main - allocates to GLOBAL (no redeclaration)
+menu_str = malloc(sizeof(qb_string*) * (12) * (21));
+
+// In subroutine - uses GLOBAL (allocated!) → WORKS
+menu_str[...] = qb_string_new("File");
+```
+
+**Fix implemented in:**
+- `implicit_vars.rs`: Added `is_main_program` parameter to distinguish main from SUB/FUNCTION
+- `stmt.rs`: `emit_dim` checks `current_proc.is_none()` for main context
+- Key insight: DIM in main uses globals (for cross-function sharing), DIM in SUB/FUNCTION
+  creates locals (even if a global with the same name exists)
