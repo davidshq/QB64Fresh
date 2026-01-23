@@ -97,8 +97,8 @@ These can be worked on independently of the compiler/runtime:
 - [x] Build error integration (Problems panel)
 - [x] Settings validation on startup
 - [ ] Code actions (quick fixes from linter suggestions) *(Medium)*
-- [ ] Workspace symbol search *(Small - LSP already supports it)*
-- [ ] Document symbols outline *(Small - LSP already supports it)*
+- [x] Workspace symbol search (Ctrl+T)
+- [x] Document symbols outline (Ctrl+Shift+O)
 - [ ] Rename symbol *(Medium - requires LSP enhancement)*
 - [ ] Snippet expansion improvements *(Small)*
 
