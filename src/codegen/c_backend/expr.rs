@@ -70,7 +70,16 @@ pub(super) fn emit_expr(expr: &TypedExpr) -> Result<String, CodeGenError> {
             Ok(format!("qb_string_new(\"{}\")", escaped))
         }
 
-        TypedExprKind::Variable(name) => Ok(c_identifier(name)),
+        TypedExprKind::Variable(name) => {
+            let c_name = c_identifier(name);
+            // Fixed-length strings are char arrays in C, but need to be wrapped
+            // when used in contexts expecting qb_string* (e.g., string concatenation)
+            if matches!(expr.basic_type, BasicType::FixedString(_)) {
+                Ok(format!("qb_str_from_c({})", c_name))
+            } else {
+                Ok(c_name)
+            }
+        }
 
         TypedExprKind::Binary { left, op, right } => emit_binary_expr(left, op, right),
 
@@ -181,6 +190,18 @@ pub(super) fn emit_expr(expr: &TypedExpr) -> Result<String, CodeGenError> {
             // Special case: _HEIGHT without arguments uses current destination
             if upper_name == "_HEIGHT" && args.is_empty() {
                 return Ok("qb_gfx_image_height(0)".to_string());
+            }
+
+            // Special case: STRING$ with 2 args - use numeric variant if second arg is not a string
+            // STRING$(n, code) fills with ASCII code, STRING$(n, c$) fills with first char of string
+            if upper_name == "STRING$" && args.len() == 2 {
+                let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
+                let args_str = args_code?.join(", ");
+                if !args[1].basic_type.is_string() {
+                    return Ok(format!("qb_string_fill_code({})", args_str));
+                } else {
+                    return Ok(format!("qb_string_fill({})", args_str));
+                }
             }
 
             // Special case: _SAVEFILEDIALOG$ with different argument counts
@@ -311,7 +332,12 @@ pub(super) fn emit_expr(expr: &TypedExpr) -> Result<String, CodeGenError> {
                         let is_builtin_const = matches!(&arg.kind, TypedExprKind::Variable(name)
                             if name.starts_with('_') && name.chars().all(|c| c.is_uppercase() || c == '_'));
 
+                        // Fixed-length string variables are wrapped with qb_str_from_c(),
+                        // making them function call results (not lvalues)
+                        let is_fixed_string = matches!(arg.basic_type, BasicType::FixedString(_));
+
                         let is_lvalue = !is_builtin_const
+                            && !is_fixed_string
                             && matches!(
                                 arg.kind,
                                 TypedExprKind::Variable { .. }

@@ -1482,6 +1482,28 @@ fn emit_string_manipulation(output: &mut String) {
     writeln!(output, "    return result;").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
+
+    // STRING$(n, code) - fill with ASCII code
+    writeln!(
+        output,
+        "qb_string* qb_string_fill_code(int32_t n, int32_t code) {{"
+    )
+    .unwrap();
+    writeln!(output, "    if (n <= 0) return qb_string_new(\"\");").unwrap();
+    writeln!(output, "    qb_string* result = malloc(sizeof(qb_string));").unwrap();
+    writeln!(output, "    result->len = (size_t)n;").unwrap();
+    writeln!(output, "    result->capacity = result->len + 1;").unwrap();
+    writeln!(output, "    result->data = malloc(result->capacity);").unwrap();
+    writeln!(
+        output,
+        "    memset(result->data, (unsigned char)code, result->len);"
+    )
+    .unwrap();
+    writeln!(output, "    result->data[result->len] = '\\0';").unwrap();
+    writeln!(output, "    result->refcount = 1;").unwrap();
+    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
 }
 
 /// Emits utility functions used by DATA/READ and other constructs.
