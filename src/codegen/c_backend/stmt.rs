@@ -556,12 +556,22 @@ impl StmtEmitter {
                     }
                 }
                 let args_str = args_codes.join(", ");
+                let upper_name = name.to_uppercase();
 
                 // Check for built-in SUBs with special C function names
-                let c_name = match name.to_uppercase().as_str() {
+                // Some have variable argument counts requiring different function names
+                let c_name = match upper_name.as_str() {
+                    "_ICON" => match args.len() {
+                        0 => "qb_icon".to_string(),
+                        1 => "qb_icon1".to_string(),
+                        _ => "qb_icon2".to_string(),
+                    },
+                    "_ACCEPTFILEDROP" => match args.len() {
+                        0 => "qb_acceptfiledrop".to_string(),
+                        _ => "qb_acceptfiledrop1".to_string(),
+                    },
                     "_WRITEFILE" => "qb_writefile".to_string(),
                     "_EXIT" => "qb_exit".to_string(),
-                    "_ACCEPTFILEDROP" => "qb_acceptfiledrop".to_string(),
                     "_FINISHDROP" => "qb_finishdrop".to_string(),
                     "_CONSOLECURSOR" => "qb_consolecursor".to_string(),
                     "_CONSOLEFONT" => "qb_consolefont".to_string(),
@@ -575,7 +585,6 @@ impl StmtEmitter {
                     "_DEPTHBUFFER" => "qb_depthbuffer".to_string(),
                     "_DISPLAYORDER" => "qb_displayorder".to_string(),
                     "_SNDLIMIT" => "qb_sndlimit".to_string(),
-                    "_ICON" => "qb_icon".to_string(),
                     "_HIDE" => "qb_hide".to_string(),
                     "_SHOW" => "qb_show".to_string(),
                     "_ONTOP" => "qb_ontop".to_string(),

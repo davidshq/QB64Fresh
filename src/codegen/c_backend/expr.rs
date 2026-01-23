@@ -240,6 +240,52 @@ pub(super) fn emit_expr(expr: &TypedExpr) -> Result<String, CodeGenError> {
                 return Ok(format!("qb_timer_n({})", args_str));
             }
 
+            // Special case: _CONSOLE - use qb_console_get() for no args, qb_console(mode) with args
+            if upper_name == "_CONSOLE" {
+                if args.is_empty() {
+                    return Ok("qb_console_get()".to_string());
+                } else {
+                    let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
+                    let args_str = args_code?.join(", ");
+                    return Ok(format!("qb_console({})", args_str));
+                }
+            }
+
+            // Special case: _MAPUNICODE - use different functions based on arg count
+            if upper_name == "_MAPUNICODE" {
+                let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
+                let args_str = args_code?.join(", ");
+                return match args.len() {
+                    1 => Ok(format!("qb__mapunicode1({})", args_str)),
+                    2 => Ok(format!("qb__mapunicode2({})", args_str)),
+                    3 => Ok(format!("qb__mapunicode({})", args_str)),
+                    _ => Ok(format!("qb__mapunicode({})", args_str)),
+                };
+            }
+
+            // Special case: _ICON - use different functions based on arg count
+            if upper_name == "_ICON" {
+                let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
+                let args_str = args_code?.join(", ");
+                return match args.len() {
+                    0 => Ok("qb_icon()".to_string()),
+                    1 => Ok(format!("qb_icon1({})", args_str)),
+                    2 => Ok(format!("qb_icon2({})", args_str)),
+                    _ => Ok(format!("qb_icon({})", args_str)),
+                };
+            }
+
+            // Special case: _ACCEPTFILEDROP - use different functions based on arg count
+            if upper_name == "_ACCEPTFILEDROP" {
+                let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
+                let args_str = args_code?.join(", ");
+                return match args.len() {
+                    0 => Ok("qb_acceptfiledrop()".to_string()),
+                    1 => Ok(format!("qb_acceptfiledrop1({})", args_str)),
+                    _ => Ok(format!("qb_acceptfiledrop({})", args_str)),
+                };
+            }
+
             let c_name = c_function_name(name);
 
             // Special case: RND without arguments defaults to RND(1)
