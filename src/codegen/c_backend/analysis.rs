@@ -20,7 +20,9 @@ use crate::semantic::typed_ir::{
 use crate::semantic::types::BasicType;
 
 use super::expr::{c_function_name, escape_string};
-use super::types::{add_reserved_identifiers, c_identifier, c_type, default_init};
+use super::types::{
+    add_reserved_identifiers, c_identifier, c_type, declare_array_var, declare_scalar_var,
+};
 
 /// Information collected from DATA statements for code generation.
 ///
@@ -202,52 +204,6 @@ pub(super) fn collect_globals(
     // Add built-in constants and runtime variables that should not be redeclared
     add_reserved_identifiers(&mut declared_vars);
 
-    // Helper to add a global variable if not already declared
-    // Note: For strings, we initialize to NULL since qb_string_new() is not a constant
-    // expression in C. The generated code should handle NULL strings safely.
-    let add_global = |name: &str,
-                      basic_type: &BasicType,
-                      declared_vars: &mut HashSet<String>,
-                      globals: &mut Vec<String>| {
-        let c_name = c_identifier(name);
-        if !declared_vars.contains(&c_name) {
-            // For strings, use NULL as initial value since function calls can't be
-            // used as global initializers in C
-            let init = match basic_type {
-                BasicType::String => "NULL".to_string(),
-                _ => default_init(basic_type),
-            };
-            // Fixed-length strings need special handling: char name[N] syntax in C
-            if let BasicType::FixedString(len) = basic_type {
-                globals.push(format!("char {}[{}] = {};", c_name, len + 1, init));
-            } else {
-                let c_ty = c_type(basic_type);
-                globals.push(format!("{} {} = {};", c_ty, c_name, init));
-            }
-            declared_vars.insert(c_name);
-        }
-    };
-
-    // Helper closure to add a global array (pointer type)
-    let add_global_array = |name: &str,
-                            basic_type: &BasicType,
-                            declared_vars: &mut HashSet<String>,
-                            globals: &mut Vec<String>| {
-        let c_name = c_identifier(name);
-        if !declared_vars.contains(&c_name) {
-            // Arrays are declared as pointers initialized to NULL
-            // They will be allocated with malloc/realloc at runtime
-            if let BasicType::FixedString(len) = basic_type {
-                // Array of fixed-length strings: char (*name)[len+1]
-                globals.push(format!("char (*{})[{}] = NULL;", c_name, len + 1));
-            } else {
-                let c_ty = c_type(basic_type);
-                globals.push(format!("{}* {} = NULL;", c_ty, c_name));
-            }
-            declared_vars.insert(c_name);
-        }
-    };
-
     // First pass: collect explicit DIM declarations and SUB/FUNCTION forward decls
     for stmt in &program.statements {
         match &stmt.kind {
@@ -258,10 +214,15 @@ pub(super) fn collect_globals(
                 for var in variables {
                     if var.dimensions.is_empty() {
                         // Simple global variables (non-array)
-                        add_global(&var.name, &var.basic_type, &mut declared_vars, &mut globals);
+                        declare_scalar_var(
+                            &var.name,
+                            &var.basic_type,
+                            &mut declared_vars,
+                            &mut globals,
+                        );
                     } else {
                         // Global arrays (declared as pointers)
-                        add_global_array(
+                        declare_array_var(
                             &var.name,
                             &var.basic_type,
                             &mut declared_vars,
@@ -328,18 +289,8 @@ pub(super) fn collect_globals(
                 variables, shared, ..
             } if *shared => {
                 for var in variables {
-                    let c_name = c_identifier(&var.name);
-                    if !declared_vars.contains(&c_name) {
-                        // REDIM SHARED creates a global array pointer
-                        // TypedRedimVariable has element_type instead of basic_type
-                        if let BasicType::FixedString(len) = &var.element_type {
-                            globals.push(format!("char (*{})[{}] = NULL;", c_name, len + 1));
-                        } else {
-                            let c_ty = c_type(&var.element_type);
-                            globals.push(format!("{}* {} = NULL;", c_ty, c_name));
-                        }
-                        declared_vars.insert(c_name);
-                    }
+                    // REDIM SHARED creates a global array pointer
+                    declare_array_var(&var.name, &var.element_type, declared_vars, globals);
                 }
             }
             TypedStatementKind::SubDefinition { body, .. }
@@ -423,20 +374,10 @@ pub(super) fn collect_globals(
         match &stmt.kind {
             TypedStatementKind::SharedStmt { variables } => {
                 for var_name in variables {
-                    let c_name = c_identifier(var_name);
-                    if !declared_vars.contains(&c_name) {
-                        // Implicitly create module-level variable
-                        // Infer type from the variable name suffix
-                        let basic_type = infer_type_from_name(var_name);
-                        if matches!(basic_type, BasicType::String) {
-                            globals.push(format!("qb_string* {} = NULL;", c_name));
-                        } else {
-                            let c_ty = c_type(&basic_type);
-                            let init = default_init(&basic_type);
-                            globals.push(format!("{} {} = {};", c_ty, c_name, init));
-                        }
-                        declared_vars.insert(c_name);
-                    }
+                    // Implicitly create module-level variable
+                    // Infer type from the variable name suffix
+                    let basic_type = infer_type_from_name(var_name);
+                    declare_scalar_var(var_name, &basic_type, declared_vars, globals);
                 }
             }
             TypedStatementKind::SubDefinition { body, .. }
@@ -506,30 +447,6 @@ fn collect_implicit_vars_from_stmt(
     globals: &mut Vec<String>,
     inside_procedure: bool,
 ) {
-    // Helper to add a variable
-    // For strings, use NULL since function calls aren't valid global initializers in C
-    let add_var = |name: &str,
-                   basic_type: &crate::semantic::types::BasicType,
-                   declared_vars: &mut std::collections::HashSet<String>,
-                   globals: &mut Vec<String>| {
-        use crate::semantic::types::BasicType;
-        let c_name = c_identifier(name);
-        if !declared_vars.contains(&c_name) {
-            let init = match basic_type {
-                BasicType::String => "NULL".to_string(),
-                _ => default_init(basic_type),
-            };
-            // Fixed-length strings need special handling: char name[N] syntax in C
-            if let BasicType::FixedString(len) = basic_type {
-                globals.push(format!("char {}[{}] = {};", c_name, len + 1, init));
-            } else {
-                let c_ty = c_type(basic_type);
-                globals.push(format!("{} {} = {};", c_ty, c_name, init));
-            }
-            declared_vars.insert(c_name);
-        }
-    };
-
     match &stmt.kind {
         // Skip SUB/FUNCTION bodies - local variables don't need global declarations
         TypedStatementKind::SubDefinition { .. }
@@ -542,7 +459,7 @@ fn collect_implicit_vars_from_stmt(
             name, target_type, ..
         } => {
             if !inside_procedure {
-                add_var(name, target_type, declared_vars, globals);
+                declare_scalar_var(name, target_type, declared_vars, globals);
             }
         }
 
@@ -554,7 +471,7 @@ fn collect_implicit_vars_from_stmt(
             ..
         } => {
             if !inside_procedure {
-                add_var(variable, var_type, declared_vars, globals);
+                declare_scalar_var(variable, var_type, declared_vars, globals);
             }
             // Recurse into body (still at module level if we're at module level)
             for s in body {
@@ -637,24 +554,12 @@ fn collect_vars_from_expr(
     globals: &mut Vec<String>,
 ) {
     use crate::semantic::typed_ir::TypedExprKind;
-    use crate::semantic::types::BasicType;
 
     match &expr.kind {
         TypedExprKind::Variable(name) => {
             // Skip variables starting with _ (built-in constants)
             if !name.starts_with('_') {
-                let c_name = c_identifier(name);
-                if !declared_vars.contains(&c_name) {
-                    let basic_type = &expr.basic_type;
-                    if matches!(basic_type, BasicType::String) {
-                        globals.push(format!("qb_string* {} = NULL;", c_name));
-                    } else {
-                        let c_ty = c_type(basic_type);
-                        let init = default_init(basic_type);
-                        globals.push(format!("{} {} = {};", c_ty, c_name, init));
-                    }
-                    declared_vars.insert(c_name);
-                }
+                declare_scalar_var(name, &expr.basic_type, declared_vars, globals);
             }
         }
         TypedExprKind::Binary { left, right, .. } => {

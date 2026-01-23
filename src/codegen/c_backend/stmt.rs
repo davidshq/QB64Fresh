@@ -23,7 +23,10 @@ use crate::semantic::typed_ir::{
 use crate::semantic::types::BasicType;
 
 use super::expr::{c_function_name, emit_expr, escape_string};
-use super::types::{add_reserved_identifiers, c_identifier, c_type, default_init};
+use super::types::{
+    add_reserved_identifiers, c_identifier, c_type, declare_array_var, declare_scalar_var,
+    default_init,
+};
 
 /// Context for the current loop (for EXIT statement handling).
 #[derive(Clone)]
@@ -4002,21 +4005,13 @@ pub(super) fn collect_implicit_locals(
             TypedStatementKind::Dim { variables, .. } => {
                 // Hoist DIM declarations to function scope (BASIC semantics)
                 for var in variables {
-                    let c_name = c_identifier(&var.name);
-                    if !declared_vars.contains(&c_name) {
-                        if var.dimensions.is_empty() {
-                            // Scalar variable
-                            if let BasicType::FixedString(len) = &var.basic_type {
-                                locals.push(format!("char {}[{}] = \"\";", c_name, len + 1));
-                            } else {
-                                let c_ty = c_type(&var.basic_type);
-                                let init = default_init(&var.basic_type);
-                                locals.push(format!("{} {} = {};", c_ty, c_name, init));
-                            }
-                        } else {
-                            // Array - mark as declared, emit at statement location
-                            // (arrays need runtime allocation)
-                        }
+                    if var.dimensions.is_empty() {
+                        // Scalar variable
+                        declare_scalar_var(&var.name, &var.basic_type, declared_vars, locals);
+                    } else {
+                        // Array - mark as declared only, emit at statement location
+                        // (arrays need runtime allocation)
+                        let c_name = c_identifier(&var.name);
                         declared_vars.insert(c_name);
                     }
                 }
@@ -4024,18 +4019,7 @@ pub(super) fn collect_implicit_locals(
             TypedStatementKind::Redim { variables, .. } => {
                 // REDIM creates dynamic arrays - emit declarations with NULL initialization
                 for var in variables {
-                    let c_name = c_identifier(&var.name);
-                    if !declared_vars.contains(&c_name) {
-                        // Dynamic arrays are pointers to element type
-                        // For arrays of fixed-length strings, use char (*name)[N] syntax
-                        if let BasicType::FixedString(n) = &var.element_type {
-                            locals.push(format!("char (*{})[{}] = NULL;", c_name, n + 1));
-                        } else {
-                            let c_ty = c_type(&var.element_type);
-                            locals.push(format!("{}* {} = NULL;", c_ty, c_name));
-                        }
-                        declared_vars.insert(c_name);
-                    }
+                    declare_array_var(&var.name, &var.element_type, declared_vars, locals);
                 }
             }
             TypedStatementKind::StaticStmt { variables, .. } => {
@@ -4116,27 +4100,7 @@ pub(super) fn collect_implicit_locals(
                 value,
                 ..
             } => {
-                let c_name = c_identifier(name);
-                if !declared_vars.contains(&c_name) {
-                    let init = match target_type {
-                        BasicType::String => "NULL".to_string(),
-                        BasicType::FixedString(len) => {
-                            locals.push(format!("char {}[{}] = \"\";", c_name, len + 1));
-                            declared_vars.insert(c_name.clone());
-                            // Scan for ByRef function arguments in value
-                            collect_byref_vars(value, declared_vars, locals);
-                            return;
-                        }
-                        BasicType::UserDefined(_) => "{0}".to_string(),
-                        BasicType::Single | BasicType::Double | BasicType::Float => {
-                            "0.0".to_string()
-                        }
-                        _ => "0".to_string(),
-                    };
-                    let c_ty = c_type(target_type);
-                    locals.push(format!("{} {} = {};", c_ty, c_name, init));
-                    declared_vars.insert(c_name);
-                }
+                declare_scalar_var(name, target_type, declared_vars, locals);
                 // Scan for ByRef function arguments in value
                 collect_byref_vars(value, declared_vars, locals);
             }
@@ -4151,13 +4115,7 @@ pub(super) fn collect_implicit_locals(
                 body,
                 ..
             } => {
-                let c_name = c_identifier(variable);
-                if !declared_vars.contains(&c_name) {
-                    let c_ty = c_type(var_type);
-                    let init = default_init(var_type);
-                    locals.push(format!("{} {} = {};", c_ty, c_name, init));
-                    declared_vars.insert(c_name);
-                }
+                declare_scalar_var(variable, var_type, declared_vars, locals);
                 // Scan FOR loop expressions for ByRef function args
                 collect_byref_vars(start, declared_vars, locals);
                 collect_byref_vars(end, declared_vars, locals);
@@ -4255,17 +4213,7 @@ pub(super) fn collect_implicit_locals(
                     if is_byref {
                         // If the argument is a simple variable, declare it
                         if let TypedExprKind::Variable(name) = &arg.kind {
-                            let c_name = c_identifier(name);
-                            if !declared_vars.contains(&c_name) {
-                                if let BasicType::FixedString(len) = &arg.basic_type {
-                                    locals.push(format!("char {}[{}] = \"\";", c_name, len + 1));
-                                } else {
-                                    let c_ty = c_type(&arg.basic_type);
-                                    let init = default_init(&arg.basic_type);
-                                    locals.push(format!("{} {} = {};", c_ty, c_name, init));
-                                }
-                                declared_vars.insert(c_name);
-                            }
+                            declare_scalar_var(name, &arg.basic_type, declared_vars, locals);
                         }
                     }
                     // Also recursively collect from nested function calls in the arg
@@ -4332,17 +4280,7 @@ pub(super) fn collect_implicit_locals(
                     if is_byref {
                         // If the argument is a simple variable, declare it
                         if let TypedExprKind::Variable(name) = &arg.kind {
-                            let c_name = c_identifier(name);
-                            if !declared_vars.contains(&c_name) {
-                                if let BasicType::FixedString(len) = &arg.basic_type {
-                                    locals.push(format!("char {}[{}] = \"\";", c_name, len + 1));
-                                } else {
-                                    let c_ty = c_type(&arg.basic_type);
-                                    let init = default_init(&arg.basic_type);
-                                    locals.push(format!("{} {} = {};", c_ty, c_name, init));
-                                }
-                                declared_vars.insert(c_name);
-                            }
+                            declare_scalar_var(name, &arg.basic_type, declared_vars, locals);
                         }
                     }
                     // Recurse into arg expressions to find nested function calls
@@ -4385,17 +4323,7 @@ pub(super) fn collect_implicit_locals(
             // Skip variables starting with '_' - these are QB64 built-in constants (#defined)
             TypedExprKind::Variable(name) => {
                 if !name.starts_with('_') {
-                    let c_name = c_identifier(name);
-                    if !declared_vars.contains(&c_name) {
-                        if let BasicType::FixedString(len) = &expr.basic_type {
-                            locals.push(format!("char {}[{}] = \"\";", c_name, len + 1));
-                        } else {
-                            let c_ty = c_type(&expr.basic_type);
-                            let init = default_init(&expr.basic_type);
-                            locals.push(format!("{} {} = {};", c_ty, c_name, init));
-                        }
-                        declared_vars.insert(c_name);
-                    }
+                    declare_scalar_var(name, &expr.basic_type, declared_vars, locals);
                 }
             }
             // Literals and other nodes
@@ -4587,17 +4515,7 @@ pub(super) fn collect_implicit_locals(
     ) {
         match target {
             TypedInputTarget::Variable { name, basic_type } => {
-                let c_name = c_identifier(name);
-                if !declared_vars.contains(&c_name) {
-                    if let BasicType::FixedString(len) = basic_type {
-                        locals.push(format!("char {}[{}] = \"\";", c_name, len + 1));
-                    } else {
-                        let c_ty = c_type(basic_type);
-                        let init = default_init(basic_type);
-                        locals.push(format!("{} {} = {};", c_ty, c_name, init));
-                    }
-                    declared_vars.insert(c_name);
-                }
+                declare_scalar_var(name, basic_type, declared_vars, locals);
             }
             // Array elements don't need declaration - the array itself is already declared
             TypedInputTarget::ArrayElement { .. } => {}

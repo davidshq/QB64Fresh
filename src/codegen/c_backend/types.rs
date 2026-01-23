@@ -78,6 +78,88 @@ pub(super) fn add_reserved_identifiers(set: &mut HashSet<String>) {
     }
 }
 
+/// Declares a scalar variable if not already declared.
+///
+/// Returns `true` if the variable was newly declared, `false` if it already existed.
+///
+/// # Generated declarations
+///
+/// | Type | Declaration |
+/// |------|-------------|
+/// | `String` | `qb_string* name = NULL;` |
+/// | `FixedString(N)` | `char name[N+1] = "";` |
+/// | `UserDefined` | `type name = {0};` |
+/// | Others | `type name = default_init;` |
+pub(super) fn declare_scalar_var(
+    name: &str,
+    basic_type: &BasicType,
+    declared_vars: &mut HashSet<String>,
+    decls: &mut Vec<String>,
+) -> bool {
+    let c_name = c_identifier(name);
+    if declared_vars.contains(&c_name) {
+        return false;
+    }
+
+    let decl = match basic_type {
+        BasicType::FixedString(len) => format!("char {}[{}] = \"\";", c_name, len + 1),
+        BasicType::String => format!("qb_string* {} = NULL;", c_name),
+        BasicType::UserDefined(_) => {
+            let c_ty = c_type(basic_type);
+            format!("{} {} = {{0}};", c_ty, c_name)
+        }
+        _ => {
+            let c_ty = c_type(basic_type);
+            let init = default_init(basic_type);
+            format!("{} {} = {};", c_ty, c_name, init)
+        }
+    };
+
+    decls.push(decl);
+    declared_vars.insert(c_name);
+    true
+}
+
+/// Declares an array pointer variable if not already declared.
+///
+/// Arrays in C are declared as pointers initialized to NULL.
+/// They will be allocated with malloc/realloc at runtime.
+///
+/// Returns `true` if the variable was newly declared, `false` if it already existed.
+///
+/// # Generated declarations
+///
+/// | Element Type | Declaration |
+/// |--------------|-------------|
+/// | `FixedString(N)` | `char (*name)[N+1] = NULL;` |
+/// | Others | `type* name = NULL;` |
+pub(super) fn declare_array_var(
+    name: &str,
+    element_type: &BasicType,
+    declared_vars: &mut HashSet<String>,
+    decls: &mut Vec<String>,
+) -> bool {
+    let c_name = c_identifier(name);
+    if declared_vars.contains(&c_name) {
+        return false;
+    }
+
+    let decl = match element_type {
+        BasicType::FixedString(len) => {
+            // Array of fixed-length strings: char (*name)[len+1]
+            format!("char (*{})[{}] = NULL;", c_name, len + 1)
+        }
+        _ => {
+            let c_ty = c_type(element_type);
+            format!("{}* {} = NULL;", c_ty, c_name)
+        }
+    };
+
+    decls.push(decl);
+    declared_vars.insert(c_name);
+    true
+}
+
 /// Maps a BASIC type to its C representation.
 ///
 /// This function handles all BASIC types including unsigned variants,
