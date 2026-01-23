@@ -3146,20 +3146,15 @@ impl StmtEmitter {
         writeln!(output, "{}{} {} = {};", indent, c_ty, end_var, end_code).unwrap();
         writeln!(output, "{}{} {} = {};", indent, c_ty, step_var, step_code).unwrap();
 
+        // In BASIC, the FOR loop variable retains its value after the loop ends.
+        // We assign the start value before the loop and use the existing variable,
+        // rather than declaring a new variable in the for statement (which would
+        // create a shadowing local that loses its value after the loop).
+        writeln!(output, "{}{} = {};", indent, c_var, start_code).unwrap();
         writeln!(
             output,
-            "{}for ({} {} = {}; ({} > 0) ? ({} <= {}) : ({} >= {}); {} += {}) {{",
-            indent,
-            c_ty,
-            c_var,
-            start_code,
-            step_var,
-            c_var,
-            end_var,
-            c_var,
-            end_var,
-            c_var,
-            step_var
+            "{}for (; ({} > 0) ? ({} <= {}) : ({} >= {}); {} += {}) {{",
+            indent, step_var, c_var, end_var, c_var, end_var, c_var, step_var
         )
         .unwrap();
 
