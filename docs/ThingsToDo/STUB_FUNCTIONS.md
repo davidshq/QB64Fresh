@@ -1,5 +1,7 @@
 # QB64Fresh Runtime Functions Reference
 
+*Updated: 2026-01-23*
+
 This document lists functions that have **stub implementations in the inline runtime** but are **fully implemented in the external runtime library**.
 
 ## Understanding the Two Runtime Modes
@@ -15,14 +17,15 @@ QB64Fresh supports two runtime modes:
 - Embeds minimal C code directly in the generated program
 - Functions return safe defaults (0, empty strings, -1 for invalid handles)
 - Logs warnings when graphics/audio functions are called
-- **Location:** `src/codegen/c_backend/runtime.rs` (~4,500 lines)
+- **Location:** `src/codegen/c_backend/runtime.rs` (~4,637 lines)
 - Core functions (string, math, I/O) are fully implemented inline
 
 ### External Runtime (Full Implementation)
 - Links against `libqb64fresh_rt.a` static library
 - Complete SDL2-based graphics with hardware acceleration
 - Full Rodio-based audio with MML parsing and file playback
-- **Location:** `runtime/src/` (~16,000+ lines total)
+- **Location:** `runtime/src/` (~13,000 lines total)
+- **Header:** `runtime/include/qb64fresh_rt.h` (104 function declarations)
 
 ---
 
@@ -78,7 +81,7 @@ QB64Fresh supports two runtime modes:
 | `_BIN$()` | Convert to binary |
 | `_INSTRREV()` | Reverse string search |
 
-**External Runtime:** `runtime/src/string.rs` (~600 lines)
+**External Runtime:** `runtime/src/string.rs` (1,572 lines)
 
 ---
 
@@ -100,7 +103,7 @@ QB64Fresh supports two runtime modes:
 | **Random** | RND, RANDOMIZE |
 | **Timer** | TIMER, SLEEP, DELAY |
 
-**External Runtime:** `runtime/src/math.rs` (~320 lines)
+**External Runtime:** `runtime/src/math.rs` (641 lines)
 
 ---
 
@@ -145,14 +148,14 @@ QB64Fresh supports two runtime modes:
 | `_KEYDOWN()` | Check if key is held |
 | `_CINP()` | Read character without echo |
 
-**External Runtime:** `runtime/src/io.rs` (~850 lines)
+**External Runtime:** `runtime/src/io.rs` (1,378 lines)
 
 ---
 
 ### Audio Functions (~20 functions)
 
-**External Runtime:** `runtime/src/audio/rodio_backend.rs` (543 lines)  
-**External Runtime FFI:** `runtime/src/audio_ffi.rs` (~420 lines)
+**External Runtime:** `runtime/src/audio/rodio_backend.rs` (543 lines)
+**External Runtime FFI:** `runtime/src/audio_ffi.rs` (439 lines)
 
 | Function | Inline Returns | External Status | Purpose |
 |----------|----------------|-----------------|---------|
@@ -182,8 +185,8 @@ QB64Fresh supports two runtime modes:
 
 ### Graphics Functions (~80 functions)
 
-**External Runtime:** `runtime/src/graphics/sdl2.rs` (2,144 lines)  
-**External Runtime FFI:** `runtime/src/graphics_ffi.rs` (~1,600 lines)
+**External Runtime:** `runtime/src/graphics/sdl2.rs` (2,144 lines)
+**External Runtime FFI:** `runtime/src/graphics_ffi.rs` (1,597 lines)
 
 #### Core Graphics
 
@@ -295,7 +298,7 @@ QB64Fresh supports two runtime modes:
 
 ### Joystick Functions (~6 functions)
 
-**External Runtime:** `runtime/src/joystick.rs` (306 lines)
+**External Runtime:** `runtime/src/joystick.rs` (306 lines, SDL2 gamepad API)
 
 | Function | Inline Returns | External Status | Purpose |
 |----------|----------------|-----------------|---------|
@@ -429,17 +432,19 @@ Not supported on modern systems for security reasons.
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `src/codegen/c_backend/runtime.rs` | ~4,500 | Inline runtime (stubs & core functions) |
-| `runtime/src/string.rs` | ~600 | String operations |
-| `runtime/src/math.rs` | ~320 | Math functions |
-| `runtime/src/io.rs` | ~850 | Console I/O, file I/O, networking |
+| `src/codegen/c_backend/runtime.rs` | 4,637 | Inline runtime (stubs & core functions) |
+| `runtime/src/string.rs` | 1,572 | String operations |
+| `runtime/src/math.rs` | 641 | Math functions |
+| `runtime/src/io.rs` | 1,378 | Console I/O, file I/O, networking |
 | `runtime/src/graphics/sdl2.rs` | 2,144 | SDL2 graphics backend |
-| `runtime/src/graphics_ffi.rs` | ~1,600 | Graphics C FFI layer |
+| `runtime/src/graphics/font.rs` | 600 | Font rendering support |
+| `runtime/src/graphics_ffi.rs` | 1,597 | Graphics C FFI layer |
 | `runtime/src/audio/rodio_backend.rs` | 543 | Rodio audio backend |
-| `runtime/src/audio_ffi.rs` | ~420 | Audio C FFI layer |
+| `runtime/src/audio_ffi.rs` | 439 | Audio C FFI layer |
 | `runtime/src/dialogs.rs` | 348 | Native file dialogs (rfd) |
-| `runtime/src/joystick.rs` | 306 | Gamepad/joystick support |
-| **External runtime total** | **~16,000+** | All runtime/src/ files |
+| `runtime/src/joystick.rs` | 306 | Gamepad/joystick support (SDL2) |
+| `runtime/include/qb64fresh_rt.h` | 259 | External runtime header (104 functions) |
+| **External runtime total** | **~13,000** | All runtime/src/ files |
 
 ---
 
