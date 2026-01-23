@@ -3298,7 +3298,8 @@ impl StmtEmitter {
 
         // Collect and emit implicit local variables
         // Use global_var_names to avoid re-declaring globals as locals
-        let implicit_locals = collect_implicit_locals(body, params, &self.global_var_names);
+        // Pass is_main_program=false: SUB creates locals even if globals with same name exist
+        let implicit_locals = collect_implicit_locals(body, params, &self.global_var_names, false);
         for decl in &implicit_locals {
             writeln!(output, "    {}", decl).unwrap();
         }
@@ -3359,7 +3360,8 @@ impl StmtEmitter {
         // Include the return variable as already declared, plus all global variables
         let mut existing_vars = self.global_var_names.clone();
         existing_vars.insert(ret_var.clone());
-        let implicit_locals = collect_implicit_locals(body, params, &existing_vars);
+        // Pass is_main_program=false: FUNCTION creates locals even if globals with same name exist
+        let implicit_locals = collect_implicit_locals(body, params, &existing_vars, false);
         for decl in &implicit_locals {
             writeln!(output, "    {}", decl).unwrap();
         }
@@ -3407,6 +3409,11 @@ impl StmtEmitter {
                 writeln!(output, "{}{} {} = {};", indent, c_ty, c_name, init).unwrap();
             }
         } else {
+            // Determine if we should use an existing global:
+            // - In main (current_proc is None): use global if it exists (for arrays shared across functions)
+            // - In SUB/FUNCTION: always create local (DIM inside procedure = local scope)
+            let use_global = self.current_proc.is_none() && self.global_var_names.contains(&c_name);
+
             // Arrays - handle fixed-length string arrays specially
             if let BasicType::FixedString(len) = basic_type {
                 let sizes: Vec<String> = dimensions
@@ -3415,16 +3422,28 @@ impl StmtEmitter {
                     .collect();
                 let size_expr = sizes.join(" * ");
                 // Array of char arrays: char (*name)[len+1] = calloc(...)
-                writeln!(
-                    output,
-                    "{}char (*{})[{}] = calloc({}, sizeof(char[{}]));",
-                    indent,
-                    c_name,
-                    len + 1,
-                    size_expr,
-                    len + 1
-                )
-                .unwrap();
+                if use_global {
+                    writeln!(
+                        output,
+                        "{}{} = calloc({}, sizeof(char[{}]));",
+                        indent,
+                        c_name,
+                        size_expr,
+                        len + 1
+                    )
+                    .unwrap();
+                } else {
+                    writeln!(
+                        output,
+                        "{}char (*{})[{}] = calloc({}, sizeof(char[{}]));",
+                        indent,
+                        c_name,
+                        len + 1,
+                        size_expr,
+                        len + 1
+                    )
+                    .unwrap();
+                }
             } else {
                 let c_ty = c_type(basic_type);
                 let sizes: Vec<String> = dimensions
@@ -3432,12 +3451,25 @@ impl StmtEmitter {
                     .map(|d| format!("({})", d.upper - d.lower + 1))
                     .collect();
                 let size_expr = sizes.join(" * ");
-                writeln!(
-                    output,
-                    "{}{}* {} = malloc(sizeof({}) * {});",
-                    indent, c_ty, c_name, c_ty, size_expr
-                )
-                .unwrap();
+
+                if use_global {
+                    // In main with existing global: allocate to global (don't create shadowing local)
+                    // This is critical for arrays used by subroutines - they access the global
+                    writeln!(
+                        output,
+                        "{}{} = malloc(sizeof({}) * {});",
+                        indent, c_name, c_ty, size_expr
+                    )
+                    .unwrap();
+                } else {
+                    // In SUB/FUNCTION or no global exists: create local array
+                    writeln!(
+                        output,
+                        "{}{}* {} = malloc(sizeof({}) * {});",
+                        indent, c_ty, c_name, c_ty, size_expr
+                    )
+                    .unwrap();
+                }
             }
         }
         Ok(())
