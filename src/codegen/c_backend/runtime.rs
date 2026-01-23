@@ -345,9 +345,9 @@ fn emit_stub_declarations(output: &mut String) {
     writeln!(output, "int32_t qb_dir_exists(qb_string* path);").unwrap();
     writeln!(output, "qb_string* qb_fullpath(qb_string* path);").unwrap();
     writeln!(output, "qb_string* qb_dir(qb_string* spec);").unwrap();
-    writeln!(output, "void qb_chdir(qb_string* path);").unwrap();
-    writeln!(output, "void qb_mkdir(qb_string* path);").unwrap();
-    writeln!(output, "void qb_file_kill(qb_string* path);").unwrap();
+    writeln!(output, "int32_t qb_chdir(const char* path);").unwrap();
+    writeln!(output, "int32_t qb_mkdir(const char* path);").unwrap();
+    writeln!(output, "int32_t qb_file_kill(const char* filename);").unwrap();
     // Console/shell functions
     // qb_console: two variants - with and without mode argument
     // qb_console_get() returns console handle without changing visibility
@@ -1401,35 +1401,61 @@ fn emit_string_manipulation(output: &mut String) {
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
-    // UCASE$(s$)
+    // UCASE$(s$) - UTF-8 safe: only converts ASCII a-z to A-Z
+    // Multi-byte UTF-8 sequences are preserved unchanged
     writeln!(output, "qb_string* qb_ucase(qb_string* s) {{").unwrap();
     writeln!(output, "    if (!s) return qb_string_new(\"\");").unwrap();
     writeln!(output, "    qb_string* result = malloc(sizeof(qb_string));").unwrap();
     writeln!(output, "    result->len = s->len;").unwrap();
     writeln!(output, "    result->capacity = s->len + 1;").unwrap();
     writeln!(output, "    result->data = malloc(result->capacity);").unwrap();
+    writeln!(output, "    for (size_t i = 0; i < s->len; i++) {{").unwrap();
     writeln!(
         output,
-        "    for (size_t i = 0; i < s->len; i++) result->data[i] = toupper(s->data[i]);"
+        "        unsigned char c = (unsigned char)s->data[i];"
     )
     .unwrap();
+    writeln!(
+        output,
+        "        // Only convert ASCII lowercase (single-byte chars)"
+    )
+    .unwrap();
+    writeln!(output, "        if (c >= 'a' && c <= 'z') {{").unwrap();
+    writeln!(output, "            result->data[i] = c - 32;").unwrap();
+    writeln!(output, "        }} else {{").unwrap();
+    writeln!(output, "            result->data[i] = s->data[i];").unwrap();
+    writeln!(output, "        }}").unwrap();
+    writeln!(output, "    }}").unwrap();
     writeln!(output, "    result->data[s->len] = '\\0';").unwrap();
     writeln!(output, "    return result;").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
-    // LCASE$(s$)
+    // LCASE$(s$) - UTF-8 safe: only converts ASCII A-Z to a-z
+    // Multi-byte UTF-8 sequences are preserved unchanged
     writeln!(output, "qb_string* qb_lcase(qb_string* s) {{").unwrap();
     writeln!(output, "    if (!s) return qb_string_new(\"\");").unwrap();
     writeln!(output, "    qb_string* result = malloc(sizeof(qb_string));").unwrap();
     writeln!(output, "    result->len = s->len;").unwrap();
     writeln!(output, "    result->capacity = s->len + 1;").unwrap();
     writeln!(output, "    result->data = malloc(result->capacity);").unwrap();
+    writeln!(output, "    for (size_t i = 0; i < s->len; i++) {{").unwrap();
     writeln!(
         output,
-        "    for (size_t i = 0; i < s->len; i++) result->data[i] = tolower(s->data[i]);"
+        "        unsigned char c = (unsigned char)s->data[i];"
     )
     .unwrap();
+    writeln!(
+        output,
+        "        // Only convert ASCII uppercase (single-byte chars)"
+    )
+    .unwrap();
+    writeln!(output, "        if (c >= 'A' && c <= 'Z') {{").unwrap();
+    writeln!(output, "            result->data[i] = c + 32;").unwrap();
+    writeln!(output, "        }} else {{").unwrap();
+    writeln!(output, "            result->data[i] = s->data[i];").unwrap();
+    writeln!(output, "        }}").unwrap();
+    writeln!(output, "    }}").unwrap();
     writeln!(output, "    result->data[s->len] = '\\0';").unwrap();
     writeln!(output, "    return result;").unwrap();
     writeln!(output, "}}").unwrap();
@@ -1514,6 +1540,95 @@ fn emit_string_manipulation(output: &mut String) {
     writeln!(output, "    result->data[result->len] = '\\0';").unwrap();
     writeln!(output, "    result->refcount = 1;").unwrap();
     writeln!(output, "    return result;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // UTF-8 helper: Count UTF-8 characters (codepoints) in a string
+    // Returns the number of characters, not bytes
+    writeln!(output, "// UTF-8 helper functions").unwrap();
+    writeln!(output, "size_t qb_utf8_char_count(qb_string* s) {{").unwrap();
+    writeln!(output, "    if (!s) return 0;").unwrap();
+    writeln!(output, "    size_t count = 0;").unwrap();
+    writeln!(output, "    for (size_t i = 0; i < s->len; ) {{").unwrap();
+    writeln!(
+        output,
+        "        unsigned char c = (unsigned char)s->data[i];"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "        if ((c & 0x80) == 0) i += 1;        // ASCII"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "        else if ((c & 0xE0) == 0xC0) i += 2; // 2-byte"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "        else if ((c & 0xF0) == 0xE0) i += 3; // 3-byte"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "        else if ((c & 0xF8) == 0xF0) i += 4; // 4-byte"
+    )
+    .unwrap();
+    writeln!(output, "        else i += 1; // Invalid UTF-8, skip byte").unwrap();
+    writeln!(output, "        count++;").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    return count;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // UTF-8 helper: Convert character position to byte position
+    // Returns byte offset for the n-th character (1-based)
+    writeln!(
+        output,
+        "size_t qb_utf8_char_to_byte(qb_string* s, size_t char_pos) {{"
+    )
+    .unwrap();
+    writeln!(output, "    if (!s || char_pos < 1) return 0;").unwrap();
+    writeln!(output, "    size_t byte_pos = 0;").unwrap();
+    writeln!(output, "    size_t char_count = 0;").unwrap();
+    writeln!(
+        output,
+        "    while (byte_pos < s->len && char_count < char_pos - 1) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "        unsigned char c = (unsigned char)s->data[byte_pos];"
+    )
+    .unwrap();
+    writeln!(output, "        if ((c & 0x80) == 0) byte_pos += 1;").unwrap();
+    writeln!(
+        output,
+        "        else if ((c & 0xE0) == 0xC0) byte_pos += 2;"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "        else if ((c & 0xF0) == 0xE0) byte_pos += 3;"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "        else if ((c & 0xF8) == 0xF0) byte_pos += 4;"
+    )
+    .unwrap();
+    writeln!(output, "        else byte_pos += 1;").unwrap();
+    writeln!(output, "        char_count++;").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    return byte_pos;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _STRLEN - Returns character count (not byte count like LEN)
+    // This is a QB64Fresh extension for Unicode-aware string length
+    writeln!(output, "int32_t qb_strlen_chars(qb_string* s) {{").unwrap();
+    writeln!(output, "    return (int32_t)qb_utf8_char_count(s);").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 }
@@ -3140,68 +3255,225 @@ fn emit_timing_functions(output: &mut String) {
     writeln!(output).unwrap();
 }
 
-/// Emits array helper functions.
+/// Emits array helper functions with bounds tracking.
+///
+/// This implementation uses a hash table to track array bounds by pointer address.
+/// When arrays are allocated via DIM/REDIM, bounds are registered using qb_array_register().
+/// UBOUND/LBOUND look up bounds from this registry.
 fn emit_array_functions(output: &mut String) {
+    writeln!(output, "/* Array Bounds Registry */").unwrap();
+    writeln!(
+        output,
+        "/* Tracks lower/upper bounds for each array dimension */"
+    )
+    .unwrap();
+    writeln!(output).unwrap();
+
+    // Define the maximum number of dimensions (QB64 supports up to 63)
+    writeln!(output, "#define QBA_MAX_DIMS 8").unwrap();
+    writeln!(output, "#define QBA_REGISTRY_SIZE 1024").unwrap();
+    writeln!(output).unwrap();
+
+    // Array metadata structure
+    writeln!(output, "typedef struct {{").unwrap();
+    writeln!(
+        output,
+        "    void* ptr;                           /* Array pointer (key) */"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    int32_t num_dims;                    /* Number of dimensions */"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    int32_t lower[QBA_MAX_DIMS];         /* Lower bounds per dimension */"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    int32_t upper[QBA_MAX_DIMS];         /* Upper bounds per dimension */"
+    )
+    .unwrap();
+    writeln!(output, "}} _qba_meta;").unwrap();
+    writeln!(output).unwrap();
+
+    // Simple hash table for array metadata
+    writeln!(output, "static _qba_meta _qba_registry[QBA_REGISTRY_SIZE];").unwrap();
+    writeln!(output, "static int _qba_count = 0;").unwrap();
+    writeln!(output).unwrap();
+
+    // Hash function
+    writeln!(output, "static int _qba_hash(void* ptr) {{").unwrap();
+    writeln!(
+        output,
+        "    return (int)(((uintptr_t)ptr >> 3) % QBA_REGISTRY_SIZE);"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // Find metadata for an array pointer (linear probing)
+    writeln!(output, "static _qba_meta* _qba_find(void* ptr) {{").unwrap();
+    writeln!(output, "    if (!ptr) return NULL;").unwrap();
+    writeln!(output, "    int start = _qba_hash(ptr);").unwrap();
+    writeln!(output, "    for (int i = 0; i < QBA_REGISTRY_SIZE; i++) {{").unwrap();
+    writeln!(output, "        int idx = (start + i) % QBA_REGISTRY_SIZE;").unwrap();
+    writeln!(
+        output,
+        "        if (_qba_registry[idx].ptr == ptr) return &_qba_registry[idx];"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "        if (_qba_registry[idx].ptr == NULL) return NULL;"
+    )
+    .unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    return NULL;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // Register array bounds (1D version - most common)
+    writeln!(
+        output,
+        "void qb_array_register(void* ptr, int32_t lower, int32_t upper) {{"
+    )
+    .unwrap();
+    writeln!(output, "    if (!ptr) return;").unwrap();
+    writeln!(output, "    _qba_meta* existing = _qba_find(ptr);").unwrap();
+    writeln!(output, "    if (existing) {{").unwrap();
+    writeln!(output, "        existing->num_dims = 1;").unwrap();
+    writeln!(output, "        existing->lower[0] = lower;").unwrap();
+    writeln!(output, "        existing->upper[0] = upper;").unwrap();
+    writeln!(output, "        return;").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    int start = _qba_hash(ptr);").unwrap();
+    writeln!(output, "    for (int i = 0; i < QBA_REGISTRY_SIZE; i++) {{").unwrap();
+    writeln!(output, "        int idx = (start + i) % QBA_REGISTRY_SIZE;").unwrap();
+    writeln!(output, "        if (_qba_registry[idx].ptr == NULL) {{").unwrap();
+    writeln!(output, "            _qba_registry[idx].ptr = ptr;").unwrap();
+    writeln!(output, "            _qba_registry[idx].num_dims = 1;").unwrap();
+    writeln!(output, "            _qba_registry[idx].lower[0] = lower;").unwrap();
+    writeln!(output, "            _qba_registry[idx].upper[0] = upper;").unwrap();
+    writeln!(output, "            _qba_count++;").unwrap();
+    writeln!(output, "            return;").unwrap();
+    writeln!(output, "        }}").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // Register array bounds (multi-dimensional version)
+    writeln!(output, "void qb_array_register_md(void* ptr, int32_t num_dims, int32_t* lowers, int32_t* uppers) {{").unwrap();
+    writeln!(
+        output,
+        "    if (!ptr || num_dims <= 0 || num_dims > QBA_MAX_DIMS) return;"
+    )
+    .unwrap();
+    writeln!(output, "    _qba_meta* existing = _qba_find(ptr);").unwrap();
+    writeln!(output, "    _qba_meta* meta = existing;").unwrap();
+    writeln!(output, "    if (!meta) {{").unwrap();
+    writeln!(output, "        int start = _qba_hash(ptr);").unwrap();
+    writeln!(
+        output,
+        "        for (int i = 0; i < QBA_REGISTRY_SIZE; i++) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "            int idx = (start + i) % QBA_REGISTRY_SIZE;"
+    )
+    .unwrap();
+    writeln!(output, "            if (_qba_registry[idx].ptr == NULL) {{").unwrap();
+    writeln!(output, "                meta = &_qba_registry[idx];").unwrap();
+    writeln!(output, "                meta->ptr = ptr;").unwrap();
+    writeln!(output, "                _qba_count++;").unwrap();
+    writeln!(output, "                break;").unwrap();
+    writeln!(output, "            }}").unwrap();
+    writeln!(output, "        }}").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    if (meta) {{").unwrap();
+    writeln!(output, "        meta->num_dims = num_dims;").unwrap();
+    writeln!(output, "        for (int d = 0; d < num_dims; d++) {{").unwrap();
+    writeln!(output, "            meta->lower[d] = lowers[d];").unwrap();
+    writeln!(output, "            meta->upper[d] = uppers[d];").unwrap();
+    writeln!(output, "        }}").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // Update array bounds after REDIM (pointer may change due to realloc)
+    writeln!(
+        output,
+        "void qb_array_update(void* old_ptr, void* new_ptr, int32_t lower, int32_t upper) {{"
+    )
+    .unwrap();
+    writeln!(output, "    if (old_ptr == new_ptr) {{").unwrap();
+    writeln!(output, "        _qba_meta* meta = _qba_find(old_ptr);").unwrap();
+    writeln!(
+        output,
+        "        if (meta) {{ meta->lower[0] = lower; meta->upper[0] = upper; }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "        else qb_array_register(new_ptr, lower, upper);"
+    )
+    .unwrap();
+    writeln!(output, "    }} else {{").unwrap();
+    writeln!(output, "        _qba_meta* meta = _qba_find(old_ptr);").unwrap();
+    writeln!(output, "        if (meta) meta->ptr = NULL;").unwrap();
+    writeln!(output, "        qb_array_register(new_ptr, lower, upper);").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
     writeln!(output, "/* Array Functions */").unwrap();
     writeln!(output).unwrap();
 
-    // LBOUND - return lower bound of array dimension
-    // QB64 arrays are 0-based by default (unless OPTION BASE 1)
-    // For bootstrap, we use 0 as the universal lower bound
+    // LBOUND - return lower bound of array (first dimension)
     writeln!(output, "int32_t qb_lbound(void* arr) {{").unwrap();
-    writeln!(output, "    (void)arr;").unwrap();
-    writeln!(output, "    return 0; /* Arrays are 0-based */").unwrap();
+    writeln!(output, "    _qba_meta* meta = _qba_find(arr);").unwrap();
+    writeln!(output, "    return meta ? meta->lower[0] : 0;").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
+    // LBOUND with dimension parameter
     writeln!(output, "int32_t qb_lbound2(void* arr, int32_t dim) {{").unwrap();
-    writeln!(output, "    (void)arr; (void)dim;").unwrap();
-    writeln!(output, "    return 0; /* Arrays are 0-based */").unwrap();
+    writeln!(output, "    _qba_meta* meta = _qba_find(arr);").unwrap();
+    writeln!(
+        output,
+        "    if (!meta || dim < 1 || dim > meta->num_dims) return 0;"
+    )
+    .unwrap();
+    writeln!(output, "    return meta->lower[dim - 1];").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
-    // UBOUND - return upper bound of array dimension
-    // For bootstrap, arrays are used dynamically so we return a placeholder.
-    // In practice, QB64pe tracks array bounds separately.
-    // Note: This is a stub - actual array bounds need metadata tracking
+    // UBOUND - return upper bound of array (first dimension)
     writeln!(output, "int32_t qb_ubound(void* arr) {{").unwrap();
-    writeln!(output, "    (void)arr;").unwrap();
-    writeln!(
-        output,
-        "    return 0; /* Stub - actual bounds need metadata */"
-    )
-    .unwrap();
+    writeln!(output, "    _qba_meta* meta = _qba_find(arr);").unwrap();
+    writeln!(output, "    return meta ? meta->upper[0] : 0;").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
+    // UBOUND with dimension parameter
     writeln!(output, "int32_t qb_ubound2(void* arr, int32_t dim) {{").unwrap();
-    writeln!(output, "    (void)arr; (void)dim;").unwrap();
+    writeln!(output, "    _qba_meta* meta = _qba_find(arr);").unwrap();
     writeln!(
         output,
-        "    return 0; /* Stub - actual bounds need metadata */"
+        "    if (!meta || dim < 1 || dim > meta->num_dims) return 0;"
     )
     .unwrap();
+    writeln!(output, "    return meta->upper[dim - 1];").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
-    // ERASE - reset array to initial state
-    // This is a placeholder that works with our array struct pattern
+    // ERASE - reset array to initial state and clear metadata
     writeln!(output, "void qb_array_erase(void* arr) {{").unwrap();
-    writeln!(
-        output,
-        "    // Arrays are heap-allocated via malloc() in emit_dim()"
-    )
-    .unwrap();
-    writeln!(
-        output,
-        "    // ERASE should free and reallocate to reset the array"
-    )
-    .unwrap();
-    writeln!(
-        output,
-        "    // TODO: Implement proper free/realloc when array metadata is tracked"
-    )
-    .unwrap();
+    writeln!(output, "    _qba_meta* meta = _qba_find(arr);").unwrap();
+    writeln!(output, "    if (meta) meta->ptr = NULL;  /* Clear entry */").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 }

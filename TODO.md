@@ -96,11 +96,11 @@ These can be worked on independently of the compiler/runtime:
 - [x] Lint on save / lint on type
 - [x] Build error integration (Problems panel)
 - [x] Settings validation on startup
-- [ ] Code actions (quick fixes from linter suggestions) *(Medium)*
+- [x] Code actions (quick fixes from linter suggestions)
 - [x] Workspace symbol search (Ctrl+T)
 - [x] Document symbols outline (Ctrl+Shift+O)
 - [ ] Rename symbol *(Medium - requires LSP enhancement)*
-- [ ] Snippet expansion improvements *(Small)*
+- [x] Snippet expansion improvements
 
 ---
 
