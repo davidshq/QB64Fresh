@@ -349,12 +349,15 @@ fn emit_stub_declarations(output: &mut String) {
     writeln!(output, "void qb_mkdir(qb_string* path);").unwrap();
     writeln!(output, "void qb_file_kill(qb_string* path);").unwrap();
     // Console/shell functions
-    // qb_console: when called with -1 (default), returns console handle
-    // when called with 0/1, shows/hides console and returns handle
+    // qb_console: two variants - with and without mode argument
+    // qb_console_get() returns console handle without changing visibility
+    // qb_console(mode) sets visibility (0=hide, 1=show) and returns handle
+    writeln!(output, "int32_t qb_console_get(void);").unwrap();
     writeln!(output, "int32_t qb_console(int32_t mode);").unwrap();
-    writeln!(output, "void qb_shell(qb_string* cmd);").unwrap();
-    writeln!(output, "void qb_shell_hide(qb_string* cmd);").unwrap();
-    writeln!(output, "void qb_shellhide(qb_string* cmd);").unwrap();
+    // Shell functions return exit code when used as functions
+    writeln!(output, "int32_t qb_shell(qb_string* cmd);").unwrap();
+    writeln!(output, "int32_t qb_shell_hide(qb_string* cmd);").unwrap();
+    writeln!(output, "int32_t qb_shellhide(qb_string* cmd);").unwrap();
     writeln!(output, "int32_t qb_echo(int32_t state);").unwrap();
     writeln!(output, "void qb_controlchr(int32_t state);").unwrap();
     // String functions
@@ -377,23 +380,34 @@ fn emit_stub_declarations(output: &mut String) {
     )
     .unwrap();
     writeln!(output, "void qb_mapunicode(int32_t code, int32_t chr);").unwrap();
+    // _MAPUNICODE function - 1, 2, and 3 arg versions
+    writeln!(output, "int32_t qb__mapunicode1(int32_t code);").unwrap();
     writeln!(
         output,
-        "int32_t qb__mapunicode(int32_t code, int32_t fontpage);"
+        "int32_t qb__mapunicode2(int32_t code, int32_t fontpage);"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "int32_t qb__mapunicode(int32_t code, int32_t fontpage, int32_t chr);"
     )
     .unwrap();
     // Window functions
     writeln!(output, "void qb_sub__title(qb_string* title);").unwrap();
     writeln!(output, "void qb_sub__screenmove(int32_t x, int32_t y);").unwrap();
     writeln!(output, "void qb_sub__screenshow(void);").unwrap();
-    writeln!(output, "void qb_icon(int32_t handle, qb_string* cmd);").unwrap();
+    // _ICON with different argument counts
+    writeln!(output, "void qb_icon(void);").unwrap();
+    writeln!(output, "void qb_icon1(int32_t handle);").unwrap();
+    writeln!(output, "void qb_icon2(int32_t handle, qb_string* cmd);").unwrap();
     // Environment functions
     writeln!(output, "void qb_sub_environ(qb_string* env);").unwrap();
     // Error functions
     writeln!(output, "int32_t qb_inclerrorline(void);").unwrap();
     writeln!(output, "qb_string* qb_inclerrorfile(void);").unwrap();
     writeln!(output, "int32_t qb_exit_state(void);").unwrap();
-    writeln!(output, "int32_t qb_statuscode(void);").unwrap();
+    // _STATUSCODE takes a network handle
+    writeln!(output, "int32_t qb_statuscode(int32_t handle);").unwrap();
     // Network functions
     writeln!(output, "int32_t qb_net_openhost(qb_string* port);").unwrap();
     writeln!(output, "int32_t qb_net_openconnection(int32_t host);").unwrap();
@@ -403,7 +417,9 @@ fn emit_stub_declarations(output: &mut String) {
     writeln!(output, "int32_t qb_totaldroppedfiles(void);").unwrap();
     writeln!(output, "qb_string* qb_droppedfile_str(int32_t index);").unwrap();
     writeln!(output, "void qb_finishdrop(void);").unwrap();
-    writeln!(output, "void qb_acceptfiledrop(int32_t state);").unwrap();
+    // _ACCEPTFILEDROP with optional argument
+    writeln!(output, "void qb_acceptfiledrop(void);").unwrap();
+    writeln!(output, "void qb_acceptfiledrop1(int32_t state);").unwrap();
     // Dialog functions
     writeln!(
         output,
@@ -422,7 +438,8 @@ fn emit_stub_declarations(output: &mut String) {
     writeln!(output, "qb_string* qb_deflate(qb_string* data);").unwrap();
     writeln!(output, "qb_string* qb_md5(qb_string* data);").unwrap();
     // Windows specific functions
-    writeln!(output, "qb_string* logical_drives(void);").unwrap();
+    // Windows-specific - returns bitmask of available drive letters
+    writeln!(output, "int32_t logical_drives(void);").unwrap();
     writeln!(output).unwrap();
 }
 
