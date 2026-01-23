@@ -188,6 +188,40 @@ impl CodeGenerator for CBackend {
             writeln!(output).unwrap();
         }
 
+        // Build set of global variable names for use by SUB/FUNCTION implicit local detection
+        // Global declarations look like "type name = init;" or "const type name = init;"
+        let global_var_names: HashSet<String> = globals
+            .iter()
+            .filter_map(|decl| {
+                // Parse various declaration forms:
+                // "type name = init;" -> parts[1] is name
+                // "type name[N];" -> parts[1] is name
+                // "const type name = init;" -> parts[2] is name
+                // "type (*name)[N]" -> special case for function pointers/arrays
+                let decl = decl.trim_end_matches(';');
+                let parts: Vec<&str> = decl.split_whitespace().collect();
+
+                // Handle "const type name" form (const is parts[0])
+                let name_idx = if parts.first() == Some(&"const") {
+                    2
+                } else {
+                    1
+                };
+
+                if parts.len() > name_idx {
+                    // Get the name part (might have [N] or = suffix)
+                    let name = parts[name_idx].split('[').next()?.split('=').next()?.trim();
+                    if !name.is_empty() && !name.starts_with('(') {
+                        return Some(name.to_string());
+                    }
+                }
+                None
+            })
+            .collect();
+
+        // Set global variable names on emitter for SUB/FUNCTION implicit local detection
+        emitter.global_var_names = global_var_names.clone();
+
         // SUB/FUNCTION definitions (emit before main)
         for stmt in &program.statements {
             match &stmt.kind {
@@ -248,37 +282,6 @@ impl CodeGenerator for CBackend {
                     TypedStatementKind::SubDefinition { .. }
                         | TypedStatementKind::FunctionDefinition { .. }
                 )
-            })
-            .collect();
-
-        // Build set of global variable names for collect_implicit_locals
-        // Global declarations look like "type name = init;" or "const type name = init;"
-        let global_var_names: HashSet<String> = globals
-            .iter()
-            .filter_map(|decl| {
-                // Parse various declaration forms:
-                // "type name = init;" -> parts[1] is name
-                // "type name[N];" -> parts[1] is name
-                // "const type name = init;" -> parts[2] is name
-                // "type (*name)[N]" -> special case for function pointers/arrays
-                let decl = decl.trim_end_matches(';');
-                let parts: Vec<&str> = decl.split_whitespace().collect();
-
-                // Handle "const type name" form (const is parts[0])
-                let name_idx = if parts.first() == Some(&"const") {
-                    2
-                } else {
-                    1
-                };
-
-                if parts.len() > name_idx {
-                    // Get the name part (might have [N] or = suffix)
-                    let name = parts[name_idx].split('[').next()?.split('=').next()?.trim();
-                    if !name.is_empty() && !name.starts_with('(') {
-                        return Some(name.to_string());
-                    }
-                }
-                None
             })
             .collect();
 
