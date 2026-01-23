@@ -1,6 +1,6 @@
 # QB64Fresh TODO
 
-*Last updated: 2026-01-21 (Session 043)*
+*Last updated: 2026-01-23 (Session 044)*
 
 A prioritized roadmap for QB64Fresh development. For completed features, see [TODO-completed.md](TODO-completed.md).
 
@@ -40,11 +40,20 @@ A prioritized roadmap for QB64Fresh development. For completed features, see [TO
 
 ## Phase 6: Tooling & Ecosystem
 
-### Debugging
-- [ ] Source-level debugging support *(X-Large - 10+ sessions, requires debug info generation)*
-  - [ ] Breakpoints *(included above)*
-  - [ ] Variable inspection *(included above)*
-  - [ ] Step execution *(included above)*
+### Debugging (`tools/debug`)
+Debugger infrastructure has been scaffolded as a workspace member (44 tests passing):
+- [x] Debug symbol extraction from AST (`symbols.rs`) - types, variables, scopes, procedures
+- [x] Value representation types (`values.rs`) - scalars, arrays, UDTs, display formatting
+- [x] Call stack frame structures (`frames.rs`) - stack frames, frame navigation, variable groups
+- [x] Debug Adapter Protocol types (`dap.rs`) - full DAP message types for IDE integration
+- [x] Multi-file source management (`sources.rs`) - $INCLUDE handling, line mapping
+- [x] Watch expression parsing (`watch.rs`) - variables, array indices, UDT member access
+
+**Still needs runtime integration:**
+- [ ] Runtime state capture *(requires debug info in generated C)*
+- [ ] Live breakpoint execution *(requires runtime hooks)*
+- [ ] Variable value reading *(requires memory access protocol)*
+- [ ] Step execution *(requires instruction-level control)*
 
 ### Optimization
 - [ ] Dead code elimination *(Medium - 2-3 sessions)*
@@ -75,7 +84,29 @@ for raw OpenGL access. These are **intentionally excluded** from QB64Fresh becau
 If raw OpenGL is needed, users can use `DECLARE LIBRARY` to call OpenGL functions directly.
 
 ---
-## Phase 8: Class VB RAD Visual Designer
+
+## Phase 8: VSCode Extension Enhancements
+
+These can be worked on independently of the compiler/runtime:
+
+- [ ] Debugger support (DAP) *(Large - requires runtime integration, see Phase 6)*
+- [x] Formatter integration (qb64fresh-fmt)
+- [x] Linter integration (qb64fresh-lint)
+- [x] Format on save
+- [x] Lint on save / lint on type
+- [x] Build error integration (Problems panel)
+- [x] Settings validation on startup
+- [ ] Code actions (quick fixes from linter suggestions) *(Medium)*
+- [ ] Workspace symbol search *(Small - LSP already supports it)*
+- [ ] Document symbols outline *(Small - LSP already supports it)*
+- [ ] Rename symbol *(Medium - requires LSP enhancement)*
+- [ ] Snippet expansion improvements *(Small)*
+
+---
+
+## Phase 9: Future - Visual Designer
+
+Potential future work for a VB-style RAD visual designer.
 
 ---
 
@@ -121,15 +152,3 @@ If raw OpenGL is needed, users can use `DECLARE LIBRARY` to call OpenGL function
 
 **Stub Functions:** Many graphics/audio/input functions are stubs returning safe defaults.
 This is intentional for compatibility. See runtime.rs for implementation guidance.
-
-It IS a genuine bug. Look at the results:
-
-IDEErrorColor (correct) - declared at cfg_global.bas:30 and used in 8 places
-IDEErrroColor (typo) - used in only 1 place, on the same line that uses the correct spelling twice!
-
-TempDarkerErrorColor~& = _RGB32(_RED32(IDEErrorColor) * .5, _GREEN32(IDEErrroColor) * .5, _BLUE32(IDEErrorColor) * .5)
-★ Insight ─────────────────────────────────────
-
-This is a real bug in QB64PE. The typo IDEErrroColor is never declared, so BASIC treats it as an implicit variable initialized to 0. This means the green component of TempDarkerErrorColor is always 0 * 0.5 = 0 instead of using the actual green value from IDEErrorColor. The darker error color ends up more purple/magenta than intended.
-
-QB64PE compiles it without error because BASIC allows undeclared variables - they're just implicitly created. Our compiler does the same, which is why this isn't causing a compilation error for us either.
