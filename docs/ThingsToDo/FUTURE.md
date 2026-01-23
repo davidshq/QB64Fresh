@@ -1,6 +1,6 @@
 # QB64Fresh Future Development
 
-*Last updated: 2026-01-22*
+*Last updated: 2026-01-23*
 
 This document outlines features that are planned but not yet implemented, along with known limitations and design considerations for future work.
 
@@ -54,12 +54,21 @@ QB64Fresh is in **active development** with the core compiler pipeline complete:
 
 ## Tooling & Ecosystem
 
-### Debugging
-- [ ] **Source-level debugging support** *(X-Large)*
-      Requires debug info generation (DWARF/PDB).
-      - Breakpoints
-      - Variable inspection
-      - Step execution
+### Debugging (`tools/debug`)
+
+**Infrastructure Complete** - The debugger tool is scaffolded as a workspace member with 44 tests passing:
+- [x] **Debug symbol extraction** (`symbols.rs`) - Extracts types, variables, scopes, and procedures from AST
+- [x] **Value representation** (`values.rs`) - Scalars, arrays, UDTs with hex/binary/char display formats
+- [x] **Call stack structures** (`frames.rs`) - Stack frames, navigation, variable grouping by category
+- [x] **DAP protocol types** (`dap.rs`) - Full Debug Adapter Protocol message types for IDE integration
+- [x] **Multi-file source management** (`sources.rs`) - $INCLUDE handling, source line mapping
+- [x] **Watch expressions** (`watch.rs`) - Parse variables, array indices `arr(i,j)`, UDT members `player.x`
+
+**Needs Runtime Integration:**
+- [ ] **Runtime state capture** - Requires debug info emission in generated C code
+- [ ] **Live breakpoint execution** - Requires runtime hooks to pause execution
+- [ ] **Variable value reading** - Requires memory access protocol between debugger and runtime
+- [ ] **Step execution** - Requires instruction-level control (step into/over/out)
 
 ### Optimization
 - [x] **Constant folding** - Implemented

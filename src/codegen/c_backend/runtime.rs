@@ -878,16 +878,28 @@ fn emit_input_functions(output: &mut String) {
 }
 
 /// Emits string comparison function.
+///
+/// In BASIC, uninitialized strings are equivalent to empty strings.
+/// Our C code initializes `qb_string*` to NULL, so we treat NULL
+/// as equivalent to "" in comparisons.
 fn emit_string_comparison(output: &mut String) {
     writeln!(
         output,
         "int qb_string_compare(qb_string* a, qb_string* b) {{"
     )
     .unwrap();
-    writeln!(output, "    if (!a && !b) return 0;").unwrap();
-    writeln!(output, "    if (!a) return -1;").unwrap();
-    writeln!(output, "    if (!b) return 1;").unwrap();
-    writeln!(output, "    return strcmp(a->data, b->data);").unwrap();
+    // Treat NULL as empty string (BASIC semantics)
+    writeln!(
+        output,
+        "    const char* a_data = (a && a->data) ? a->data : \"\";"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    const char* b_data = (b && b->data) ? b->data : \"\";"
+    )
+    .unwrap();
+    writeln!(output, "    return strcmp(a_data, b_data);").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 }

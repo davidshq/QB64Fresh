@@ -451,7 +451,7 @@ pub trait CodeGenerator {
 
 ## Key Files Reference
 
-### Current Implementation (as of 2026-01-21)
+### Current Implementation (as of 2026-01-23)
 
 | File | Purpose | Status |
 |------|---------|--------|
@@ -499,6 +499,14 @@ pub trait CodeGenerator {
 | `src/codegen/c_backend/const_fold.rs` | Constant folding optimization | ✓ Complete |
 | `examples/hello.bas` | Test BASIC file for development | ✓ Complete |
 | `examples/simple.bas` | Simpler test BASIC file | ✓ Complete |
+| `tools/debug/src/lib.rs` | Debugger library root | ✓ Complete |
+| `tools/debug/src/main.rs` | Debugger CLI entry point | ✓ Complete |
+| `tools/debug/src/symbols.rs` | Debug symbol extraction from AST | ✓ Complete |
+| `tools/debug/src/values.rs` | Variable value representations | ✓ Complete |
+| `tools/debug/src/frames.rs` | Call stack frame structures | ✓ Complete |
+| `tools/debug/src/dap.rs` | Debug Adapter Protocol types | ✓ Complete |
+| `tools/debug/src/sources.rs` | Multi-file source management | ✓ Complete |
+| `tools/debug/src/watch.rs` | Watch expression parsing | ✓ Complete |
 
 ### Configuration Files
 
@@ -598,6 +606,22 @@ QB64Fresh/                    # Main compiler workspace
 │   │       └── error.rs      # Audio errors
 │   └── include/
 │       └── qb64fresh_rt.h    # C header for FFI
+├── tools/                    # ✓ Auxiliary tools (workspace members)
+│   ├── README.md             # Tool documentation
+│   ├── fmt/                  # ✓ Code formatter
+│   │   └── src/lib.rs, main.rs
+│   ├── lint/                 # ✓ Static analyzer/linter
+│   │   └── src/lib.rs, main.rs
+│   └── debug/                # ✓ Debugger (infrastructure complete)
+│       └── src/
+│           ├── lib.rs        # Library root
+│           ├── main.rs       # CLI entry point
+│           ├── symbols.rs    # Debug symbol extraction from AST
+│           ├── values.rs     # Variable value representations
+│           ├── frames.rs     # Call stack frame structures
+│           ├── dap.rs        # Debug Adapter Protocol types
+│           ├── sources.rs    # Multi-file source management
+│           └── watch.rs      # Watch expression parsing
 └── examples/                 # Test BASIC files
 
 vscode-qb64fresh/             # VSCode extension (sibling project)
@@ -609,6 +633,35 @@ vscode-qb64fresh/             # VSCode extension (sibling project)
 ### Dual Binary Architecture
 - `qb64fresh` - Compiler CLI (lexer → parser → semantic → codegen)
 - `qb64fresh-lsp` - Language server for IDE integration (stdio JSON-RPC)
+
+### Tools (Workspace Members)
+
+See `tools/README.md` for complete documentation of all tools.
+
+**Formatter (`tools/fmt`)** - Code formatter for BASIC source files
+- Keyword capitalization (UPPERCASE, lowercase, Title Case, preserve)
+- Operator spacing, indentation (spaces/tabs)
+- Style presets: default, minimal, qb64, pretty
+- Usage: `qb64fresh-fmt --check *.bas` or `qb64fresh-fmt --diff myfile.bas`
+
+**Linter (`tools/lint`)** - Static analysis for BASIC programs
+- Detects common issues and potential bugs
+- Integrates with the semantic analyzer
+
+**Debugger (`tools/debug`)** - Source-level debugging support (44 tests passing)
+
+Infrastructure complete, awaiting runtime integration:
+- `symbols.rs` - Extracts debug symbols (types, variables, scopes, procedures) from AST
+- `values.rs` - Represents runtime values (scalars, arrays, UDTs) with display formatting
+- `frames.rs` - Call stack structures with frame navigation
+- `dap.rs` - Full Debug Adapter Protocol message types for IDE integration
+- `sources.rs` - Multi-file source management with $INCLUDE handling
+- `watch.rs` - Parses watch expressions: `x`, `arr(i,j)`, `player.x`
+
+**Runtime integration needed:** The debugger infrastructure is ready but requires:
+1. Debug info emission in generated C code (line mappings, variable locations)
+2. Runtime hooks to pause execution at breakpoints
+3. Memory access protocol to read variable values
 
 ### Runtime Modes
 Code generation supports two modes via `--runtime` flag:
