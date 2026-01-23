@@ -49,6 +49,8 @@ pub(super) struct StmtEmitter {
     pub data_label_indices: HashMap<String, usize>,
     /// Current procedure name (for unique label generation).
     pub current_proc: Option<String>,
+    /// Global variable names (to avoid re-declaring as locals).
+    pub global_var_names: std::collections::HashSet<String>,
 }
 
 impl StmtEmitter {
@@ -60,6 +62,7 @@ impl StmtEmitter {
             loop_stack: Vec::new(),
             data_label_indices: HashMap::new(),
             current_proc: None,
+            global_var_names: std::collections::HashSet::new(),
         }
     }
 
@@ -646,8 +649,18 @@ impl StmtEmitter {
                 variables,
                 shared: _,
             } => {
+                // Scalar DIMs are hoisted to function scope by collect_implicit_locals
+                // Only emit arrays here (they need runtime allocation)
                 for var in variables {
-                    self.emit_dim(&indent, &var.name, &var.basic_type, &var.dimensions, output)?;
+                    if !var.dimensions.is_empty() {
+                        self.emit_dim(
+                            &indent,
+                            &var.name,
+                            &var.basic_type,
+                            &var.dimensions,
+                            output,
+                        )?;
+                    }
                 }
             }
 
@@ -2537,12 +2550,104 @@ impl StmtEmitter {
             params.join(", ")
         };
 
-        writeln!(
-            output,
-            "{}extern {} {}({});",
-            indent, return_type, decl.c_name, params_str
-        )
-        .unwrap();
+        // Skip functions that are already declared in C standard library headers
+        // These would conflict with the system declarations
+        let skip_system_functions = [
+            "getpid",
+            "getppid",
+            "getuid",
+            "getgid",
+            "geteuid",
+            "getegid",
+            "fork",
+            "exec",
+            "execl",
+            "execv",
+            "execle",
+            "execve",
+            "exit",
+            "abort",
+            "_exit",
+            "sleep",
+            "usleep",
+            "nanosleep",
+            "malloc",
+            "calloc",
+            "realloc",
+            "free",
+            "printf",
+            "fprintf",
+            "sprintf",
+            "snprintf",
+            "scanf",
+            "fscanf",
+            "sscanf",
+            "fopen",
+            "fclose",
+            "fread",
+            "fwrite",
+            "fseek",
+            "ftell",
+            "strlen",
+            "strcpy",
+            "strncpy",
+            "strcat",
+            "strncat",
+            "strcmp",
+            "strncmp",
+            "memcpy",
+            "memmove",
+            "memset",
+            "memcmp",
+            "sin",
+            "cos",
+            "tan",
+            "asin",
+            "acos",
+            "atan",
+            "atan2",
+            "sinh",
+            "cosh",
+            "tanh",
+            "exp",
+            "log",
+            "log10",
+            "pow",
+            "sqrt",
+            "ceil",
+            "floor",
+            "fabs",
+            "fmod",
+            "time",
+            "clock",
+            "difftime",
+            "mktime",
+            "localtime",
+            "gmtime",
+            "rand",
+            "srand",
+            "abs",
+            "labs",
+            "atoi",
+            "atol",
+            "atof",
+        ];
+
+        if skip_system_functions.contains(&decl.c_name.as_str()) {
+            writeln!(
+                output,
+                "{}// extern {} {}({}); // already declared in system headers",
+                indent, return_type, decl.c_name, params_str
+            )
+            .unwrap();
+        } else {
+            writeln!(
+                output,
+                "{}extern {} {}({});",
+                indent, return_type, decl.c_name, params_str
+            )
+            .unwrap();
+        }
     }
 
     // Helper methods for complex statements
@@ -3176,8 +3281,8 @@ impl StmtEmitter {
         emit_byref_copies(params, output);
 
         // Collect and emit implicit local variables
-        let existing_vars = std::collections::HashSet::new();
-        let implicit_locals = collect_implicit_locals(body, params, &existing_vars);
+        // Use global_var_names to avoid re-declaring globals as locals
+        let implicit_locals = collect_implicit_locals(body, params, &self.global_var_names);
         for decl in &implicit_locals {
             writeln!(output, "    {}", decl).unwrap();
         }
@@ -3235,8 +3340,8 @@ impl StmtEmitter {
         emit_byref_copies(params, output);
 
         // Collect and emit implicit local variables
-        // Include the return variable as already declared
-        let mut existing_vars = std::collections::HashSet::new();
+        // Include the return variable as already declared, plus all global variables
+        let mut existing_vars = self.global_var_names.clone();
         existing_vars.insert(ret_var.clone());
         let implicit_locals = collect_implicit_locals(body, params, &existing_vars);
         for decl in &implicit_locals {
@@ -3883,6 +3988,9 @@ pub(super) fn collect_implicit_locals(
     // These must not be declared as local variables
     declared_vars.insert("_TRUE".to_string());
     declared_vars.insert("_FALSE".to_string());
+    declared_vars.insert("_EQUAL".to_string());
+    declared_vars.insert("_GREATER".to_string());
+    declared_vars.insert("_LESS".to_string());
 
     // String constant macros
     declared_vars.insert("_STR_EMPTY".to_string());
@@ -3917,8 +4025,25 @@ pub(super) fn collect_implicit_locals(
     ) {
         match &stmt.kind {
             TypedStatementKind::Dim { variables, .. } => {
+                // Hoist DIM declarations to function scope (BASIC semantics)
                 for var in variables {
-                    declared_vars.insert(c_identifier(&var.name));
+                    let c_name = c_identifier(&var.name);
+                    if !declared_vars.contains(&c_name) {
+                        if var.dimensions.is_empty() {
+                            // Scalar variable
+                            if let BasicType::FixedString(len) = &var.basic_type {
+                                locals.push(format!("char {}[{}] = \"\";", c_name, len + 1));
+                            } else {
+                                let c_ty = c_type(&var.basic_type);
+                                let init = default_init(&var.basic_type);
+                                locals.push(format!("{} {} = {};", c_ty, c_name, init));
+                            }
+                        } else {
+                            // Array - mark as declared, emit at statement location
+                            // (arrays need runtime allocation)
+                        }
+                        declared_vars.insert(c_name);
+                    }
                 }
             }
             TypedStatementKind::Redim { variables, .. } => {
@@ -4280,7 +4405,25 @@ pub(super) fn collect_implicit_locals(
             TypedExprKind::FieldAccess { object, .. } => {
                 collect_byref_vars(object, declared_vars, locals);
             }
-            // Literals, Variables (not as ByRef args), and other nodes
+            // Variables that are READ but never assigned - common BASIC pattern
+            // Declare them with default initialization (matches QB64 implicit declaration)
+            // Skip variables starting with '_' - these are QB64 built-in constants (#defined)
+            TypedExprKind::Variable(name) => {
+                if !name.starts_with('_') {
+                    let c_name = c_identifier(name);
+                    if !declared_vars.contains(&c_name) {
+                        if let BasicType::FixedString(len) = &expr.basic_type {
+                            locals.push(format!("char {}[{}] = \"\";", c_name, len + 1));
+                        } else {
+                            let c_ty = c_type(&expr.basic_type);
+                            let init = default_init(&expr.basic_type);
+                            locals.push(format!("{} {} = {};", c_ty, c_name, init));
+                        }
+                        declared_vars.insert(c_name);
+                    }
+                }
+            }
+            // Literals and other nodes
             _ => {}
         }
     }
@@ -4376,6 +4519,85 @@ pub(super) fn collect_implicit_locals(
             TypedStatementKind::FileInput { targets, .. } => {
                 for target in targets {
                     declare_input_target(target, declared_vars, locals);
+                }
+            }
+            // Color statement - scan foreground/background expressions
+            TypedStatementKind::Color {
+                foreground,
+                background,
+                border,
+            } => {
+                if let Some(fg) = foreground {
+                    collect_byref_vars(fg, declared_vars, locals);
+                }
+                if let Some(bg) = background {
+                    collect_byref_vars(bg, declared_vars, locals);
+                }
+                if let Some(b) = border {
+                    collect_byref_vars(b, declared_vars, locals);
+                }
+            }
+            // Print statement - scan print items for expressions
+            TypedStatementKind::Print { items, .. } => {
+                for item in items {
+                    collect_byref_vars(&item.expr, declared_vars, locals);
+                }
+            }
+            // PrintStringStmt (_PRINTSTRING) - scan position and text expressions
+            TypedStatementKind::PrintStringStmt { x, y, text } => {
+                collect_byref_vars(x, declared_vars, locals);
+                collect_byref_vars(y, declared_vars, locals);
+                collect_byref_vars(text, declared_vars, locals);
+            }
+            // SelectCase - scan test expression and case conditions
+            TypedStatementKind::SelectCase {
+                test_expr, cases, ..
+            } => {
+                collect_byref_vars(test_expr, declared_vars, locals);
+                for case in cases {
+                    for m in &case.matches {
+                        match m {
+                            crate::semantic::typed_ir::TypedCaseMatch::Single(expr) => {
+                                collect_byref_vars(expr, declared_vars, locals);
+                            }
+                            crate::semantic::typed_ir::TypedCaseMatch::Range { from, to } => {
+                                collect_byref_vars(from, declared_vars, locals);
+                                collect_byref_vars(to, declared_vars, locals);
+                            }
+                            crate::semantic::typed_ir::TypedCaseMatch::Comparison {
+                                value, ..
+                            } => {
+                                collect_byref_vars(value, declared_vars, locals);
+                            }
+                        }
+                    }
+                    for s in &case.body {
+                        collect_implicits(s, declared_vars, locals);
+                    }
+                }
+            }
+            // Call - scan arguments for variables
+            TypedStatementKind::Call { args, .. } => {
+                for arg in args {
+                    collect_byref_vars(arg, declared_vars, locals);
+                }
+            }
+            // ArrayAssignment - scan value and indices
+            TypedStatementKind::ArrayAssignment { value, indices, .. } => {
+                collect_byref_vars(value, declared_vars, locals);
+                for idx in indices {
+                    collect_byref_vars(idx, declared_vars, locals);
+                }
+            }
+            // FieldAssignment - scan value expression
+            TypedStatementKind::FieldAssignment { value, .. } => {
+                collect_byref_vars(value, declared_vars, locals);
+            }
+            // ArrayFieldAssignment - scan value and indices
+            TypedStatementKind::ArrayFieldAssignment { value, indices, .. } => {
+                collect_byref_vars(value, declared_vars, locals);
+                for idx in indices {
+                    collect_byref_vars(idx, declared_vars, locals);
                 }
             }
             _ => {}

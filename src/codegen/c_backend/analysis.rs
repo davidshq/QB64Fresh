@@ -409,6 +409,102 @@ pub(super) fn collect_globals(
         collect_redim_shared(stmt, &mut declared_vars, &mut globals);
     }
 
+    // Additional pass: collect SHARED variables from within SUB/FUNCTION bodies
+    // In BASIC, SHARED inside a procedure declares access to a module-level variable.
+    // If the variable doesn't exist at module level, it's implicitly created.
+
+    // Helper to infer type from variable name suffix
+    fn infer_type_from_name(name: &str) -> BasicType {
+        if name.ends_with('$') {
+            BasicType::String
+        } else if name.ends_with('%') {
+            BasicType::Integer
+        } else if name.ends_with('&') {
+            BasicType::Long
+        } else if name.ends_with('!') {
+            BasicType::Single
+        } else if name.ends_with('#') {
+            BasicType::Double
+        } else if name.ends_with('`') {
+            BasicType::Bit
+        } else {
+            // Default to Single (QB64's default without DEFINT/etc.)
+            BasicType::Single
+        }
+    }
+
+    fn collect_shared_vars(
+        stmt: &TypedStatement,
+        declared_vars: &mut HashSet<String>,
+        globals: &mut Vec<String>,
+    ) {
+        match &stmt.kind {
+            TypedStatementKind::SharedStmt { variables } => {
+                for var_name in variables {
+                    let c_name = c_identifier(var_name);
+                    if !declared_vars.contains(&c_name) {
+                        // Implicitly create module-level variable
+                        // Infer type from the variable name suffix
+                        let basic_type = infer_type_from_name(var_name);
+                        if matches!(basic_type, BasicType::String) {
+                            globals.push(format!("qb_string* {} = NULL;", c_name));
+                        } else {
+                            let c_ty = c_type(&basic_type);
+                            let init = default_init(&basic_type);
+                            globals.push(format!("{} {} = {};", c_ty, c_name, init));
+                        }
+                        declared_vars.insert(c_name);
+                    }
+                }
+            }
+            TypedStatementKind::SubDefinition { body, .. }
+            | TypedStatementKind::FunctionDefinition { body, .. } => {
+                for s in body {
+                    collect_shared_vars(s, declared_vars, globals);
+                }
+            }
+            TypedStatementKind::If {
+                then_branch,
+                elseif_branches,
+                else_branch,
+                ..
+            } => {
+                for s in then_branch {
+                    collect_shared_vars(s, declared_vars, globals);
+                }
+                for (_, branch) in elseif_branches {
+                    for s in branch {
+                        collect_shared_vars(s, declared_vars, globals);
+                    }
+                }
+                if let Some(branch) = else_branch {
+                    for s in branch {
+                        collect_shared_vars(s, declared_vars, globals);
+                    }
+                }
+            }
+            TypedStatementKind::For { body, .. }
+            | TypedStatementKind::While { body, .. }
+            | TypedStatementKind::DoLoop { body, .. } => {
+                for s in body {
+                    collect_shared_vars(s, declared_vars, globals);
+                }
+            }
+            TypedStatementKind::SelectCase { cases, .. } => {
+                for case in cases {
+                    for s in &case.body {
+                        collect_shared_vars(s, declared_vars, globals);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    for stmt in &program.statements {
+        collect_shared_vars(stmt, &mut declared_vars, &mut globals);
+    }
+
     // Second pass: collect implicit variables from assignments and FOR loops
     // (only at module level, not inside SUB/FUNCTION definitions)
     for stmt in &program.statements {
@@ -530,6 +626,75 @@ fn collect_implicit_vars_from_stmt(
             }
         }
 
+        // Print statement - scan for variables in expressions
+        TypedStatementKind::Print { items, .. } => {
+            if !inside_procedure {
+                for item in items {
+                    collect_vars_from_expr(&item.expr, declared_vars, globals);
+                }
+            }
+        }
+
+        // FilePrint statement - scan for variables in expressions
+        TypedStatementKind::FilePrint { items, .. } => {
+            if !inside_procedure {
+                for item in items {
+                    collect_vars_from_expr(&item.expr, declared_vars, globals);
+                }
+            }
+        }
+
+        _ => {}
+    }
+}
+
+/// Recursively collect variables from an expression and add as globals if not declared.
+fn collect_vars_from_expr(
+    expr: &crate::semantic::typed_ir::TypedExpr,
+    declared_vars: &mut std::collections::HashSet<String>,
+    globals: &mut Vec<String>,
+) {
+    use crate::semantic::typed_ir::TypedExprKind;
+    use crate::semantic::types::BasicType;
+
+    match &expr.kind {
+        TypedExprKind::Variable(name) => {
+            // Skip variables starting with _ (built-in constants)
+            if !name.starts_with('_') {
+                let c_name = c_identifier(name);
+                if !declared_vars.contains(&c_name) {
+                    let basic_type = &expr.basic_type;
+                    if matches!(basic_type, BasicType::String) {
+                        globals.push(format!("qb_string* {} = NULL;", c_name));
+                    } else {
+                        let c_ty = c_type(basic_type);
+                        let init = default_init(basic_type);
+                        globals.push(format!("{} {} = {};", c_ty, c_name, init));
+                    }
+                    declared_vars.insert(c_name);
+                }
+            }
+        }
+        TypedExprKind::Binary { left, right, .. } => {
+            collect_vars_from_expr(left, declared_vars, globals);
+            collect_vars_from_expr(right, declared_vars, globals);
+        }
+        TypedExprKind::Unary { operand, .. } => {
+            collect_vars_from_expr(operand, declared_vars, globals);
+        }
+        TypedExprKind::Grouped(inner) => {
+            collect_vars_from_expr(inner, declared_vars, globals);
+        }
+        TypedExprKind::FunctionCall { args, .. } => {
+            for arg in args {
+                collect_vars_from_expr(arg, declared_vars, globals);
+            }
+        }
+        TypedExprKind::ArrayAccess { indices, .. } => {
+            for idx in indices {
+                collect_vars_from_expr(idx, declared_vars, globals);
+            }
+        }
         _ => {}
     }
 }
