@@ -145,19 +145,24 @@ Generated C code calls functions like:
 |-----------|--------|
 | GraphicsBackend trait | Complete |
 | Mock backend | Complete |
-| SDL2 backend | Stubbed |
+| SDL2 backend | Complete |
 | C FFI layer | Complete |
 | Code generation | Complete |
 | Mouse input | Complete |
 | Clipboard | Complete |
-| Font rendering | Complete |
+| Font rendering (8x8 bitmap) | Complete |
+| TrueType font support (_LOADFONT) | Complete (optional feature) |
 | Text output (PRINT, LOCATE) | Complete |
+| Image buffers (_NEWIMAGE, _LOADIMAGE, _PUTIMAGE) | Complete |
+| VIEW/WINDOW coordinate systems | Complete |
+| DRAW turtle graphics | Complete |
+| Palette (PALETTE statement) | Complete |
 
 ### Files
 
 - `runtime/src/graphics/mod.rs` - Core trait, initialization
 - `runtime/src/graphics/error.rs` - Error types
 - `runtime/src/graphics/mock.rs` - Mock backend for testing
-- `runtime/src/graphics/sdl2.rs` - SDL2 backend (stub)
+- `runtime/src/graphics/sdl2.rs` - SDL2 backend (~2100 lines)
 - `runtime/src/graphics/font.rs` - Font rendering and text output
 - `runtime/src/graphics_ffi.rs` - C FFI functions

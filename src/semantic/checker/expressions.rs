@@ -185,7 +185,8 @@ impl<'a> TypeChecker<'a> {
         {
             return TypedExpr::new(
                 TypedExprKind::FunctionCall {
-                    name: name.to_string(),
+                    // Use canonical procedure name with type suffix
+                    name: proc.name.clone(),
                     args: vec![],
                     params: vec![],
                 },
@@ -622,7 +623,7 @@ impl<'a> TypeChecker<'a> {
             });
             return TypedExpr::new(
                 TypedExprKind::FunctionCall {
-                    name: name.to_string(),
+                    name: proc.name.clone(),
                     args: args.iter().map(|a| self.check_expr(a)).collect(),
                     params: vec![],
                 },
@@ -687,7 +688,9 @@ impl<'a> TypeChecker<'a> {
 
         TypedExpr::new(
             TypedExprKind::FunctionCall {
-                name: name.to_string(),
+                // Use proc.name (the canonical name with type suffix) instead of caller's name
+                // e.g., if caller uses "getelement" but function is "GETELEMENT$", use the latter
+                name: proc.name.clone(),
                 args: typed_args,
                 params: typed_params,
             },

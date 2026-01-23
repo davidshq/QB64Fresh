@@ -55,6 +55,7 @@ mod analysis;
 mod const_fold;
 mod expr;
 mod file_io;
+mod implicit_vars;
 mod runtime;
 mod stmt;
 mod types;
@@ -67,8 +68,9 @@ use crate::codegen::{CodeGenerator, GeneratedOutput};
 use crate::semantic::typed_ir::{TypedProgram, TypedStatement, TypedStatementKind};
 
 use self::analysis::{collect_callback_wrappers, collect_data_values, collect_type_definitions};
+use self::implicit_vars::collect_implicit_locals;
 use self::runtime::emit_header;
-use self::stmt::{StmtEmitter, collect_implicit_locals, emit_params};
+use self::stmt::{StmtEmitter, emit_params};
 
 /// Runtime mode for code generation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

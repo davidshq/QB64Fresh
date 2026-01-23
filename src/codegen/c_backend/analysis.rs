@@ -22,6 +22,7 @@ use crate::semantic::types::BasicType;
 use super::expr::{c_function_name, escape_string};
 use super::types::{
     add_reserved_identifiers, c_identifier, c_type, declare_array_var, declare_scalar_var,
+    infer_type_from_suffix,
 };
 
 /// Information collected from DATA statements for code generation.
@@ -346,26 +347,6 @@ pub(super) fn collect_globals(
     // In BASIC, SHARED inside a procedure declares access to a module-level variable.
     // If the variable doesn't exist at module level, it's implicitly created.
 
-    // Helper to infer type from variable name suffix
-    fn infer_type_from_name(name: &str) -> BasicType {
-        if name.ends_with('$') {
-            BasicType::String
-        } else if name.ends_with('%') {
-            BasicType::Integer
-        } else if name.ends_with('&') {
-            BasicType::Long
-        } else if name.ends_with('!') {
-            BasicType::Single
-        } else if name.ends_with('#') {
-            BasicType::Double
-        } else if name.ends_with('`') {
-            BasicType::Bit
-        } else {
-            // Default to Single (QB64's default without DEFINT/etc.)
-            BasicType::Single
-        }
-    }
-
     fn collect_shared_vars(
         stmt: &TypedStatement,
         declared_vars: &mut HashSet<String>,
@@ -376,7 +357,7 @@ pub(super) fn collect_globals(
                 for var_name in variables {
                     // Implicitly create module-level variable
                     // Infer type from the variable name suffix
-                    let basic_type = infer_type_from_name(var_name);
+                    let basic_type = infer_type_from_suffix(var_name);
                     declare_scalar_var(var_name, &basic_type, declared_vars, globals);
                 }
             }

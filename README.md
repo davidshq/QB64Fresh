@@ -87,7 +87,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed documentation.
 - [DEVELOPMENT.md](DEVELOPMENT.md) — Setup & contributing
 - [ARCHITECTURE.md](ARCHITECTURE.md) — Compiler pipeline design
 - [Migration Guide](docs/MIGRATION_GUIDE.md) — For QB64 users switching to QB64Fresh
-- [Language Spec](docs/QB64_LANGUAGE_SPECIFICATION.md) — Language reference
+- [Language Spec](docs/QB64PE_LANGUAGE_SPECIFICATION.md) — QB64PE language reference
 - [Examples](examples/) — Example programs
 - [AgenticLogs/](AgenticLogs/) — Development history
 

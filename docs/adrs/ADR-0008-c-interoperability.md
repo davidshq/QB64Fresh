@@ -50,6 +50,33 @@ DECLARE LIBRARY "math"
 END DECLARE
 ```
 
+### Automatic Header Parsing
+
+QB64Fresh includes a simple C header parser that can automatically extract function declarations when using `DECLARE LIBRARY "header.h"` syntax. This reduces boilerplate for common use cases.
+
+```basic
+' Automatically parse and import functions from a C header
+DECLARE LIBRARY "mylib.h"
+    ' Functions are auto-extracted from the header
+END DECLARE
+```
+
+**Supported constructs:**
+- Simple function declarations (no complex macros)
+- Basic C types (int, char, float, double, void, pointers)
+- Common stdint types (int32_t, uint8_t, etc.)
+
+**Limitations:**
+- Does not handle preprocessor macros or conditional compilation
+- Complex type definitions (structs, unions) require manual declaration
+- Function-like macros are ignored
+
+The header parser is implemented in `src/header_parser/` and maps C types to BASIC types using these rules:
+- `char*` / `const char*` → `STRING`
+- `int` / `int32_t` / `long` → `LONG`
+- `double` → `DOUBLE`
+- `void*` and other pointers → `_OFFSET`
+
 ### AST Representation
 
 ```rust
@@ -187,6 +214,7 @@ BASIC strings are converted to C strings for external calls:
 | ALIAS support | Complete |
 | BYVAL/BYREF | Complete |
 | _OFFSET type | Partial |
+| Automatic header parsing | Complete |
 
 ### Example Usage
 
@@ -213,3 +241,6 @@ PRINT "Number:"; atoi(num)
 - `src/parser/statements.rs` - DECLARE LIBRARY parsing
 - `src/semantic/symbols.rs` - External function symbol handling
 - `src/codegen/c_backend/stmt.rs` - C prototype/directive generation
+- `src/header_parser/mod.rs` - C header parser entry point
+- `src/header_parser/lexer.rs` - C header tokenizer
+- `src/header_parser/parser.rs` - C function declaration parser
