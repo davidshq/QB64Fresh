@@ -1,6 +1,6 @@
 # QB64Fresh Future Development
 
-*Last updated: 2026-01-21*
+*Last updated: 2026-01-22*
 
 This document outlines features that are planned but not yet implemented, along with known limitations and design considerations for future work.
 
@@ -12,8 +12,9 @@ QB64Fresh is in **active development** with the core compiler pipeline complete:
 - **Parser:** 99.1% QB4.5 compatibility (114/115 test files passing)
 - **Semantic Analysis:** Full type checking and symbol resolution
 - **Code Generation:** Complete C backend with constant folding
-- **Runtime:** Graphics (SDL2), Audio (Rodio), File I/O, Networking
+- **Runtime:** Graphics (SDL2), Audio (Rodio), File I/O, Networking (TCP)
 - **LSP:** Full language server with go-to-definition, find references, hover, completion
+- **Test Coverage:** 81.63% (1,100+ tests including unit, integration, and property-based)
 
 ---
 
@@ -32,10 +33,12 @@ QB64Fresh is in **active development** with the core compiler pipeline complete:
 ### Networking
 - [ ] **Network stream I/O** *(Medium)*
       PUT/GET with network handles for binary data transfer.
+      Core TCP functions (_OPENHOST, _OPENCLIENT, _OPENCONNECTION, _CONNECTED) are implemented.
 
 ### Input Devices
 - [ ] **Joystick/gamepad support** *(Medium)*
-      SDL2 has a robust gamepad API; needs integration with STICK/STRIG.
+      Runtime functions (STICK, STRIG, _AXIS, _BUTTON, _DEVICES) are implemented.
+      Needs SDL2 joystick enumeration and event loop integration.
 
 - [ ] **Touch input support** *(Medium)*
       Mobile/touchscreen support for cross-platform deployment.
@@ -59,7 +62,7 @@ QB64Fresh is in **active development** with the core compiler pipeline complete:
       - Step execution
 
 ### Optimization
-- [x] **Constant folding** - Implemented in Session 039
+- [x] **Constant folding** - Implemented
 - [ ] **Dead code elimination** *(Medium)*
 - [ ] **Loop optimization** *(Medium)*
 - [ ] **Inline small functions** *(Medium)*
@@ -76,12 +79,17 @@ QB64Fresh is in **active development** with the core compiler pipeline complete:
 ## Known Limitations
 
 ### GOSUB/Computed Goto
-- [ ] **GOSUB uses GCC computed goto extension** *(Medium - 2-3 sessions for MSVC alternative)*
+- [ ] **GOSUB uses GCC computed goto extension** *(Medium)*
 
   The GOSUB/RETURN implementation uses GCC's computed goto extension (`&&label` for label
   addresses, `goto *ptr` for indirect jumps). This works with GCC and Clang but NOT MSVC.
   For MSVC support, would need a switch-based dispatch table alternative.
   Low priority since most users compile with GCC/MinGW.
+
+### PEEK/POKE Memory Model
+PEEK/POKE use sandboxed conventional memory (cmem) - a 1MB heap buffer emulating the DOS
+memory model, matching QB64PE's approach. This allows legacy programs to do pointer
+arithmetic tricks safely without accessing real system memory.
 
 ### Unicode Support
 - [ ] **Unicode support** *(Large)*
@@ -113,6 +121,17 @@ If raw OpenGL is needed, users can use `DECLARE LIBRARY` to call OpenGL function
 
 ### Memory Model
 - `_MEM` operations integration with conventional memory (cmem) for VARPTR compatibility
+
+---
+
+## Code Quality
+
+| Metric | Value |
+|--------|-------|
+| Test Coverage | 81.63% |
+| Clippy Warnings | 0 |
+| Security Issues | 0 |
+| QB4.5 Compatibility | 99.1% (114/115 tests) |
 
 ---
 

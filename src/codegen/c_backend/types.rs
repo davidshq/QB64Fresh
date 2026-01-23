@@ -284,6 +284,47 @@ pub(super) fn c_identifier(name: &str) -> String {
     }
 }
 
+/// Infers BASIC type from variable name suffix.
+///
+/// In BASIC, variable names can end with a type suffix character that
+/// determines the variable's type. This function extracts that information.
+///
+/// | Suffix | Type     |
+/// |--------|----------|
+/// | `$`    | String   |
+/// | `%`    | Integer  |
+/// | `&`    | Long     |
+/// | `!`    | Single   |
+/// | `#`    | Double   |
+/// | `` ` `` | Bit     |
+/// | (none) | Single   |
+///
+/// # Examples
+///
+/// ```ignore
+/// assert_eq!(infer_type_from_suffix("name$"), BasicType::String);
+/// assert_eq!(infer_type_from_suffix("count%"), BasicType::Integer);
+/// assert_eq!(infer_type_from_suffix("myVar"), BasicType::Single); // default
+/// ```
+pub(super) fn infer_type_from_suffix(name: &str) -> BasicType {
+    if name.ends_with('$') {
+        BasicType::String
+    } else if name.ends_with('%') {
+        BasicType::Integer
+    } else if name.ends_with('&') {
+        BasicType::Long
+    } else if name.ends_with('!') {
+        BasicType::Single
+    } else if name.ends_with('#') {
+        BasicType::Double
+    } else if name.ends_with('`') {
+        BasicType::Bit
+    } else {
+        // Default to Single (QB64's default without DEFINT/etc.)
+        BasicType::Single
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -321,5 +362,16 @@ mod tests {
         assert_eq!(c_identifier("amount#"), "amount_dbl");
         assert_eq!(c_identifier("flag`"), "flag_bit");
         assert_eq!(c_identifier("myVar"), "myVar");
+    }
+
+    #[test]
+    fn test_infer_type_from_suffix() {
+        assert_eq!(infer_type_from_suffix("name$"), BasicType::String);
+        assert_eq!(infer_type_from_suffix("count%"), BasicType::Integer);
+        assert_eq!(infer_type_from_suffix("total&"), BasicType::Long);
+        assert_eq!(infer_type_from_suffix("value!"), BasicType::Single);
+        assert_eq!(infer_type_from_suffix("amount#"), BasicType::Double);
+        assert_eq!(infer_type_from_suffix("flag`"), BasicType::Bit);
+        assert_eq!(infer_type_from_suffix("myVar"), BasicType::Single); // default
     }
 }

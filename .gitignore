@@ -43,3 +43,6 @@ examples/*.c
 # Added by cargo
 
 /target
+
+# Temporary files
+/temp

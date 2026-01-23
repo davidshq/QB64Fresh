@@ -24,7 +24,7 @@ This document outlines the strategy for compiling the QB64pe compiler using QB64
 - Built-in constant scope visibility from functions
 - Function return base name aliasing (`FUNCTION foo$` allows `foo = value`)
 - Array re-DIM in same scope (valid QB64 pattern)
-- **Dual namespace model** - Separate storage for scalars and arrays (see QB64_LANGUAGE_SPECIFICATION.md §9.5)
+- **Dual namespace model** - Separate storage for scalars and arrays (see QB64PE_LANGUAGE_SPECIFICATION.md §9.5)
 - **REDIM _PRESERVE on SHARED arrays** - Properly updates global scope instead of creating local copies
 - **_OPENHOST signature fix** - Takes STRING connection string, not LONG port
 
@@ -157,7 +157,7 @@ Parse errors: 0 - Parsing is complete!
   - Updated `check_array_assignment` to use `lookup_array`
   - Updated `check_array_field_assignment` to use `lookup_array`
 - `_MESSAGEBOX` signature corrected to 5 parameters (all STRING except last LONG)
-- See QB64_LANGUAGE_SPECIFICATION.md section 9.5 for dual namespace documentation
+- See QB64PE_LANGUAGE_SPECIFICATION.md section 9.5 for dual namespace documentation
 - **REDIM _PRESERVE on SHARED arrays** - Fixed to update global scope instead of creating local copies
   - `REDIM _PRESERVE UserDefine(...)` inside a SUB now correctly uses the SHARED array type
   - Added `is_module_shared()` and `update_shared_symbol()` to SymbolTable

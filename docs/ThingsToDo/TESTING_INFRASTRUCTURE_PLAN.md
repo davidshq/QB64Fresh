@@ -1,36 +1,47 @@
 # Testing Infrastructure Plan - Remaining Work
 
 **Created:** 2026-01-18
-**Updated:** 2026-01-21
+**Updated:** 2026-01-22
 **Purpose:** Track remaining testing infrastructure work for QB64Fresh
 
-> **Note:** Completed items have been moved to [TESTING-COMPLETED.md](TESTING-COMPLETED.md)
+> **Note:** 
+> - Completed items have been moved to [archive/TESTING-COMPLETED.md](../archive/TESTING-COMPLETED.md)
+> - For comprehensive testing documentation, see [TESTING.md](../../TESTING.md)
 
 ---
 
 ## Current State Summary
 
 The **compiler** testing infrastructure is substantially complete:
-- **1,111+ compiler tests** (359 unit, 720 integration, 10 golden, 19 property-based, 3 compatibility)
-- **99.1%** QB64PE compatibility (114/115 files, excluding open_gl)
+- **1,146+ compiler tests** (384 unit, 720 integration, 10 golden, 19 property-based, 3 compatibility)
+- **97.9%** QB64PE compatibility (138/141 files)
 - **3 fuzz targets** verified (~4.6M inputs, 0 crashes)
 
 The **runtime library** now has comprehensive test coverage:
-- **163 runtime tests** total (up from ~58)
-- Critical modules like `io.rs` and `string.rs` now have thorough testing
+- **194 runtime tests** total (with audio-rodio feature)
+- Critical modules like `io.rs` and `string.rs` have thorough testing
 
 ### Test Breakdown
-| Test Suite | Count | Command |
-|------------|-------|---------|
-| Compiler unit tests | 359 | `cargo test -p qb64fresh --lib` |
-| Integration tests | 720 | `cargo test --test integration_tests` |
-| Golden tests | 10 | `cargo test --test golden_tests` |
-| Property-based | 19 | `cargo test --test proptest_tests` |
-| Compatibility | 3 | `cargo test --test compatibility` |
-| **Runtime tests** | **188** | `cargo test -p qb64fresh-runtime --lib` |
-| **Execution tests** | **27** | `cargo test --test execution_tests` |
+| Test Suite | Count | Status | Command |
+|------------|-------|--------|---------|
+| Compiler unit tests | 384 | ⚠️ 1 failing | `cargo test -p qb64fresh --lib` |
+| Integration tests | 720 | ⚠️ 3 failing | `cargo test --test integration_tests` |
+| Golden tests | 10 | ❌ 8 failing | `cargo test --test golden_tests` |
+| Property-based | 19 | ✅ passing | `cargo test --test proptest_tests` |
+| Compatibility | 3 | ✅ passing | `cargo test --test compatibility` |
+| **Runtime tests** | **194** | ✅ passing | `cargo test -p qb64fresh-runtime --lib` |
+| **Execution tests** | **27** | ✅ passing | `cargo test --test execution_tests` |
 
-### Runtime Test Distribution (Updated 2026-01-21)
+### Current Test Failures (as of 2026-01-22)
+| Test | Location | Issue |
+|------|----------|-------|
+| `test_invalid_binary_op` | `semantic::checker::tests` | Assertion expecting errors fails |
+| `exit_statement` | integration_tests | EXIT codegen issue |
+| `statuscode_function` | integration_tests | _STATUSCODE function |
+| `mapunicode_statement` | integration_tests | _MAPUNICODE statement |
+| Golden tests (8) | golden_tests | Codegen output changed, need UPDATE_GOLDEN=1 |
+
+### Runtime Test Distribution (Updated 2026-01-22)
 | Module | Lines | Tests | Status |
 |--------|-------|-------|--------|
 | string.rs | 758 | **90+** | ✅ Comprehensive (null, refcount, edge cases) |
@@ -41,6 +52,7 @@ The **runtime library** now has comprehensive test coverage:
 | graphics/mock.rs | 466 | **10** | ✅ STEP operations, state management |
 | graphics/font.rs | 593 | 5 | Font loading tests |
 | audio/mock.rs | 428 | **8** | ✅ Lifecycle, playback, errors, multi-sound |
+| audio/rodio_backend.rs | 500+ | 6 | ✅ Real audio backend tested |
 | audio_ffi.rs | 460 | 1 | FFI wrapper minimal |
 | dialogs.rs | 350 | 1 | Dialog stubs minimal |
 | joystick.rs | 310 | 2 | Joystick stubs minimal |
@@ -50,14 +62,15 @@ The **runtime library** now has comprehensive test coverage:
 
 ## Remaining Gaps
 
-### High Priority (Blocking Compilation)
+### High Priority (Blocking Tests)
 
 | Area | File | Issue | Recommendation |
 |------|------|-------|----------------|
-| `_CONTROLCHR` incomplete | graphics.rs:639 | Calls `self.error()` but Parser lacks this method | Add error method or use existing error handling |
-| `ControlChr` semantic | statements.rs | TypedStatementKind::ControlChr not handled | Add match arm in check_stmt |
-| `ControlChr` codegen | stmt.rs:83 | TypedStatementKind::ControlChr not handled | Add match arm in emit_stmt |
-| rodio API mismatch | runtime/src/audio/*.rs | rodio crate API changed (try_new, try_default, etc.) | Update to new rodio API or pin version |
+| Golden test drift | tests/golden_tests.rs | 8/10 golden tests failing due to codegen changes | Review changes, run `UPDATE_GOLDEN=1 cargo test --test golden_tests` |
+| `test_invalid_binary_op` | semantic/checker/mod.rs:538 | Test expects errors but none generated | Update test or fix semantic checking |
+| EXIT statement | integration_tests | Codegen incomplete for EXIT | Implement EXIT statement codegen |
+| _STATUSCODE function | integration_tests | Function not fully implemented | Complete _STATUSCODE implementation |
+| _MAPUNICODE statement | integration_tests | Statement not fully implemented | Complete _MAPUNICODE implementation |
 
 ### Medium Priority
 
@@ -68,9 +81,21 @@ The **runtime library** now has comprehensive test coverage:
 | Graphics integration | Mock tests only | Medium | Test actual SDL2 backend where possible |
 | By-ref parameter codegen | Parameters as pointers not dereferenced | Medium | Add param context to emit_expr |
 
+### Resolved Issues (from previous versions)
+- ✅ **ControlChr** - Now fully implemented (parser, semantic, codegen)
+- ✅ **rodio API mismatch** - Updated to rodio 0.21, API compatible
+
 ---
 
 ## Remaining Work
+
+### Immediate (Fix Failing Tests)
+
+- [ ] Review golden test failures and update if intentional changes
+- [ ] Fix `test_invalid_binary_op` semantic checker test
+- [ ] Implement EXIT statement codegen
+- [ ] Implement _STATUSCODE function
+- [ ] Implement _MAPUNICODE statement
 
 ### Medium Term
 
@@ -83,72 +108,23 @@ The **runtime library** now has comprehensive test coverage:
 
 | Area | Priority | Rationale |
 |------|----------|-----------|
-| STRING * n conversion tests | Medium | Would fix 6+ QB64pe failures |
+| STRING * n conversion tests | Medium | Would fix remaining QB64pe failures |
 | @ and \| lexer tokens | Low | Would fix 1 QB64pe file |
 | Extended ASCII handling | Low | Would fix 1 QB64pe file |
 | `cargo-mutants` | Low | Mutation testing - not yet installed |
 | Automated comparison with QB64PE output | Low | compile_tests now supported |
 | Runtime fuzzing | Low | Fuzz runtime functions directly |
 
-### Remaining QB64pe Failure (1 file)
-- `frog.bas`: Bug in original code (`SCORE > HISCORE` where HISCORE is a UDT array)
-
----
-
-## Quick Reference: Running Tests
-
-```bash
-# Run all tests (compiler + runtime) - requires source bugs to be fixed first
-cargo test
-
-# Run runtime tests only (use mock features to avoid rodio API issues)
-cargo test -p qb64fresh-runtime --lib --no-default-features --features "graphics-mock audio-mock"
-
-# Run specific test suites
-cargo test -p qb64fresh --test integration_tests    # 720 integration tests
-cargo test -p qb64fresh --test golden_tests         # 10 golden tests
-cargo test -p qb64fresh --test compatibility        # 3 local fixture tests
-cargo test -p qb64fresh --test proptest_tests       # 19 property-based tests
-cargo test -p qb64fresh --test qb45_compat          # QB64pe compatibility (141 files)
-
-# Run unit tests only
-cargo test -p qb64fresh --lib                       # 359 compiler unit tests
-cargo test -p qb64fresh-runtime --lib --no-default-features --features "graphics-mock audio-mock"  # 163 runtime tests
-
-# Run parser tests specifically
-cargo test --lib parser::tests                      # All parser unit tests
-cargo test --lib parser::tests::graphics_tests     # Graphics parser tests
-cargo test --lib parser::tests::audio_tests        # Audio parser tests
-cargo test --lib parser::tests::system_tests       # System parser tests
-cargo test --lib parser::tests::file_io_tests      # File I/O parser tests
-cargo test --lib parser::tests::edge_case_tests    # Edge case tests
-
-# QB64pe compatibility tests (with output)
-cargo test --test qb45_compat -- --nocapture
-cargo test --test qb45_compat all_testcases_summary -- --nocapture  # Full summary
-cargo test --test qb45_compat diagnose_failures -- --nocapture      # Debug failures
-VERBOSE=1 cargo test --test qb45_compat -- --nocapture              # Show passing files
-
-# Run benchmarks
-cargo bench                            # Full benchmark suite
-cargo bench -- "lexer"                 # Specific benchmark group
-
-# Update golden files (after intentional changes)
-UPDATE_GOLDEN=1 cargo test --test golden_tests
-
-# Run with verbose output
-cargo test -- --nocapture
-
-# Coverage reporting
-cargo llvm-cov --workspace             # Console summary
-cargo llvm-cov --workspace --html      # HTML report in target/llvm-cov/html
-```
+### Remaining QB64pe Failures (3 files)
+- Parser failures: 2 files
+- Semantic failures: 1 file
 
 ---
 
 ## References
 
-- **Completed Items:** [TESTING-COMPLETED.md](TESTING-COMPLETED.md)
+- **Testing Guide:** [TESTING.md](../../TESTING.md) - Comprehensive testing documentation
+- **Completed Items:** [archive/TESTING-COMPLETED.md](../archive/TESTING-COMPLETED.md)
 - QB64PE Testing Framework: `QB64pe/docs/testing.md`
 - QB64PE Test Cases: `QB64pe/tests/compile_tests/`
 - QB45 Compatibility Report: `docs/QB45_COMPATIBILITY_REPORT.md`
@@ -159,4 +135,5 @@ cargo llvm-cov --workspace --html      # HTML report in target/llvm-cov/html
 
 *Document created as part of QB64Fresh codebase review - 2026-01-18*
 *Updated: 2026-01-20 - Moved completed items to TESTING-COMPLETED.md*
-*Updated: 2026-01-21 - Moved Session 041/042 completed items (resolved gaps, bug fixes, runtime test coverage) to TESTING-COMPLETED.md*
+*Updated: 2026-01-21 - Moved Session 041/042 completed items to TESTING-COMPLETED.md*
+*Updated: 2026-01-22 - Refreshed test counts, documented current failures, marked ControlChr and rodio as resolved*

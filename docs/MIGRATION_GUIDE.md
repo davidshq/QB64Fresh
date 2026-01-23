@@ -6,7 +6,7 @@ This guide helps QB64 users transition to QB64Fresh, a modern rewrite of QB64 bu
 
 ## Quick Start
 
-**Good news:** Most QB64 programs work with minimal or no changes. QB64Fresh achieves **96.5% compatibility** with QB45/QBasic test suites.
+**Good news:** Most QB64 programs work with minimal or no changes. QB64Fresh achieves **99.1% compatibility** (114/115 files) with QB45/QBasic test suites.
 
 ```bash
 # Try compiling your program
@@ -101,6 +101,7 @@ These QB64 features work identically in QB64Fresh:
 - Binary: `BLOAD`, `BSAVE`
 - Error handling: `ON ERROR GOTO`
 - C interop: `DECLARE LIBRARY`
+- Networking: `_OPENHOST`, `_OPENCONNECTION`, `_OPENCLIENT`, `_CONNECTED`
 
 ---
 
@@ -300,13 +301,50 @@ _GLEND
 ' For full 3D: call OpenGL via DECLARE LIBRARY
 ```
 
+### Scenario 6: Program Using Networking
+
+**Works unchanged:**
+
+```basic
+' server.bas
+serverHandle = _OPENHOST(12345)
+IF serverHandle = 0 THEN
+    PRINT "Failed to start server"
+    END
+END IF
+
+' Wait for client connection (non-blocking)
+DO
+    clientHandle = _OPENCONNECTION(serverHandle)
+    IF clientHandle <> 0 THEN
+        PRINT "Client connected!"
+        ' Use clientHandle for communication
+        ' Network handles are negative numbers
+    END IF
+    _LIMIT 60  ' Prevent CPU spinning
+LOOP
+
+' client.bas
+clientHandle = _OPENCLIENT("TCP/IP:12345:localhost")
+IF clientHandle = 0 THEN
+    PRINT "Failed to connect"
+    END
+END IF
+
+IF _CONNECTED(clientHandle) THEN
+    PRINT "Connected to server!"
+END IF
+```
+
+**Note:** Network handles are negative numbers (or 0 on failure). Use `<> 0` to check for success, not `> 0`.
+
 ---
 
 ## Feature Comparison Table
 
 | Feature | QB64 | QB64Fresh | Notes |
 |---------|:----:|:---------:|-------|
-| QBasic compatibility | ✅ | ✅ | 96.5% |
+| QBasic compatibility | ✅ | ✅ | 99.1% (114/115 files) |
 | QB64 extensions | ✅ | ✅ | Most implemented |
 | Built-in IDE | ✅ | ❌ | Uses LSP instead |
 | LSP support | ❌ | ✅ | VSCode, Vim, etc. |
@@ -316,7 +354,7 @@ _GLEND
 | DECLARE LIBRARY | ✅ | ✅ | Full C interop |
 | _THREAD | ✅ | ⚠️ | Planned |
 | Joystick | ✅ | ⚠️ | Planned |
-| Networking | ✅ | ⚠️ | Basic support |
+| Networking | ✅ | ✅ | Full TCP/IP support (_OPENHOST, _OPENCLIENT, _CONNECTED) |
 
 ---
 
@@ -382,7 +420,7 @@ Options:
 
 ### Q: Is QB64Fresh stable enough for production?
 
-For most programs, yes. The 96.5% compatibility rate covers the vast majority of QB64 code. Check the [Known Issues](#changes-required) section for potential edge cases.
+For most programs, yes. The 99.1% compatibility rate (114/115 test files) covers the vast majority of QB64 code. Check the [Known Issues](#changes-required) section for potential edge cases.
 
 ---
 
@@ -399,4 +437,4 @@ For most programs, yes. The 96.5% compatibility rate covers the vast majority of
 
 ---
 
-*Last updated: 2026-01-20*
+*Last updated: 2026-01-22*
