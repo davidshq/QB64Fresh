@@ -1184,7 +1184,11 @@ mod tests {
     #[test]
     fn test_qb_file_exists_nonexistent() {
         unsafe {
-            let result = qb_file_exists(b"/nonexistent/file/path.txt\0".as_ptr() as *const c_char);
+            let path = crate::string::qb_string_new(
+                b"/nonexistent/file/path.txt\0".as_ptr() as *const c_char
+            );
+            let result = qb_file_exists(path);
+            crate::string::qb_string_release(path);
             assert_eq!(result, 0);
         }
     }
@@ -1192,10 +1196,10 @@ mod tests {
     #[test]
     fn test_qb_file_exists_valid() {
         unsafe {
-            // This test file should exist
-            let path = std::ffi::CString::new(file!()).unwrap();
             // file!() returns relative path, use Cargo.toml which always exists
-            let result = qb_file_exists(b"Cargo.toml\0".as_ptr() as *const c_char);
+            let path = crate::string::qb_string_new(b"Cargo.toml\0".as_ptr() as *const c_char);
+            let result = qb_file_exists(path);
+            crate::string::qb_string_release(path);
             // May or may not exist depending on working directory
             // Just verify it doesn't panic
             let _ = result;
@@ -1206,7 +1210,9 @@ mod tests {
     fn test_qb_file_exists_is_directory() {
         unsafe {
             // A directory should return 0 (not a file)
-            let result = qb_file_exists(b"src\0".as_ptr() as *const c_char);
+            let path = crate::string::qb_string_new(b"src\0".as_ptr() as *const c_char);
+            let result = qb_file_exists(path);
+            crate::string::qb_string_release(path);
             // Should be 0 because it's a directory, not a file
             // (unless working directory doesn't have src)
             let _ = result;
@@ -1223,7 +1229,10 @@ mod tests {
     #[test]
     fn test_qb_dir_exists_nonexistent() {
         unsafe {
-            let result = qb_dir_exists(b"/nonexistent/directory\0".as_ptr() as *const c_char);
+            let path =
+                crate::string::qb_string_new(b"/nonexistent/directory\0".as_ptr() as *const c_char);
+            let result = qb_dir_exists(path);
+            crate::string::qb_string_release(path);
             assert_eq!(result, 0);
         }
     }
@@ -1233,7 +1242,9 @@ mod tests {
         unsafe {
             // A file should return 0 (not a directory)
             // Use a path that likely exists
-            let result = qb_dir_exists(b"Cargo.toml\0".as_ptr() as *const c_char);
+            let path = crate::string::qb_string_new(b"Cargo.toml\0".as_ptr() as *const c_char);
+            let result = qb_dir_exists(path);
+            crate::string::qb_string_release(path);
             // Should be 0 because it's a file, not a directory
             let _ = result;
         }
@@ -1251,7 +1262,9 @@ mod tests {
     #[test]
     fn test_qb_dir_empty_spec() {
         unsafe {
-            let result = qb_dir(b"\0".as_ptr() as *const c_char);
+            let spec = crate::string::qb_string_new(b"\0".as_ptr() as *const c_char);
+            let result = qb_dir(spec);
+            crate::string::qb_string_release(spec);
             // Empty spec should return empty or first match from current state
             crate::string::qb_string_release(result);
         }

@@ -214,6 +214,62 @@ typedef struct qb_string {
     int refcount;
 } qb_string;
 
+/* External stub function declarations */
+int32_t qb_file_exists(qb_string* path);
+int32_t qb_dir_exists(qb_string* path);
+qb_string* qb_fullpath(qb_string* path);
+qb_string* qb_dir(qb_string* spec);
+int32_t qb_chdir(const char* path);
+int32_t qb_mkdir(const char* path);
+int32_t qb_file_kill(const char* filename);
+int32_t qb_console_get(void);
+int32_t qb_console(int32_t mode);
+int32_t qb_shell(qb_string* cmd);
+int32_t qb_shell_hide(qb_string* cmd);
+int32_t qb_shellhide(qb_string* cmd);
+int32_t qb_echo(int32_t state);
+void qb_controlchr(int32_t state);
+void qb_asc_assign(qb_string** s, int32_t pos, int32_t ch);
+int32_t qb_instrrev3(qb_string* s, qb_string* sub, int32_t start);
+void qb_sub__font(int32_t handle);
+void qb_sub__freefont(int32_t handle);
+int32_t qb_loadfont3(qb_string* path, int32_t size, qb_string* req);
+void qb_mapunicode(int32_t code, int32_t chr);
+int32_t qb__mapunicode1(int32_t code);
+int32_t qb__mapunicode2(int32_t code, int32_t fontpage);
+int32_t qb__mapunicode(int32_t code, int32_t fontpage, int32_t chr);
+void qb_sub__title(qb_string* title);
+void qb_sub__screenmove(int32_t x, int32_t y);
+void qb_sub__screenshow(void);
+void qb_icon(void);
+void qb_icon1(int32_t handle);
+void qb_icon2(int32_t handle, qb_string* cmd);
+void qb_sub_environ(qb_string* env);
+int32_t qb_inclerrorline(void);
+qb_string* qb_inclerrorfile(void);
+int32_t qb_exit_state(void);
+int32_t qb_statuscode(int32_t handle);
+int32_t qb_net_openhost(qb_string* port);
+int32_t qb_net_openconnection(int32_t host);
+int32_t qb_net_openclient(qb_string* addr);
+int32_t qb_net_connected(int32_t handle);
+int32_t qb_totaldroppedfiles(void);
+qb_string* qb_droppedfile_str(int32_t index);
+void qb_finishdrop(void);
+void qb_acceptfiledrop(void);
+void qb_acceptfiledrop1(int32_t state);
+int32_t qb_messagebox4(qb_string* title, qb_string* msg, qb_string* btns, int32_t def);
+qb_string* qb_savefiledialog4(qb_string* title, qb_string* filter, qb_string* def, int32_t flags);
+qb_string* qb_openfiledialog5(qb_string* title, qb_string* filter, qb_string* def, qb_string* opts, int32_t flags);
+int64_t qb_val_int64(qb_string* s);
+uint64_t qb_val_uint64(qb_string* s);
+double qb_fix(double x);
+qb_string* qb_mkq(double val);
+double qb_cvq(qb_string* s);
+qb_string* qb_deflate(qb_string* data);
+qb_string* qb_md5(qb_string* data);
+int32_t logical_drives(void);
+
 /* Dummy variables for LEN() type sizing pattern */
 int32_t dummy = 0;
 int8_t dummy_int_int = 0;
@@ -453,10 +509,9 @@ void qb_input_float(const char* prompt, double* var) {
 }
 
 int qb_string_compare(qb_string* a, qb_string* b) {
-    if (!a && !b) return 0;
-    if (!a) return -1;
-    if (!b) return 1;
-    return strcmp(a->data, b->data);
+    const char* a_data = (a && a->data) ? a->data : "";
+    const char* b_data = (b && b->data) ? b->data : "";
+    return strcmp(a_data, b_data);
 }
 
 int32_t qb_len_str(qb_string* s) {
@@ -723,7 +778,15 @@ qb_string* qb_ucase(qb_string* s) {
     result->len = s->len;
     result->capacity = s->len + 1;
     result->data = malloc(result->capacity);
-    for (size_t i = 0; i < s->len; i++) result->data[i] = toupper(s->data[i]);
+    for (size_t i = 0; i < s->len; i++) {
+        unsigned char c = (unsigned char)s->data[i];
+        // Only convert ASCII lowercase (single-byte chars)
+        if (c >= 'a' && c <= 'z') {
+            result->data[i] = c - 32;
+        } else {
+            result->data[i] = s->data[i];
+        }
+    }
     result->data[s->len] = '\0';
     return result;
 }
@@ -734,7 +797,15 @@ qb_string* qb_lcase(qb_string* s) {
     result->len = s->len;
     result->capacity = s->len + 1;
     result->data = malloc(result->capacity);
-    for (size_t i = 0; i < s->len; i++) result->data[i] = tolower(s->data[i]);
+    for (size_t i = 0; i < s->len; i++) {
+        unsigned char c = (unsigned char)s->data[i];
+        // Only convert ASCII uppercase (single-byte chars)
+        if (c >= 'A' && c <= 'Z') {
+            result->data[i] = c + 32;
+        } else {
+            result->data[i] = s->data[i];
+        }
+    }
     result->data[s->len] = '\0';
     return result;
 }
@@ -773,6 +844,54 @@ qb_string* qb_string_fill(int32_t n, qb_string* c) {
     memset(result->data, c->data[0], result->len);
     result->data[result->len] = '\0';
     return result;
+}
+
+qb_string* qb_string_fill_code(int32_t n, int32_t code) {
+    if (n <= 0) return qb_string_new("");
+    qb_string* result = malloc(sizeof(qb_string));
+    result->len = (size_t)n;
+    result->capacity = result->len + 1;
+    result->data = malloc(result->capacity);
+    memset(result->data, (unsigned char)code, result->len);
+    result->data[result->len] = '\0';
+    result->refcount = 1;
+    return result;
+}
+
+// UTF-8 helper functions
+size_t qb_utf8_char_count(qb_string* s) {
+    if (!s) return 0;
+    size_t count = 0;
+    for (size_t i = 0; i < s->len; ) {
+        unsigned char c = (unsigned char)s->data[i];
+        if ((c & 0x80) == 0) i += 1;        // ASCII
+        else if ((c & 0xE0) == 0xC0) i += 2; // 2-byte
+        else if ((c & 0xF0) == 0xE0) i += 3; // 3-byte
+        else if ((c & 0xF8) == 0xF0) i += 4; // 4-byte
+        else i += 1; // Invalid UTF-8, skip byte
+        count++;
+    }
+    return count;
+}
+
+size_t qb_utf8_char_to_byte(qb_string* s, size_t char_pos) {
+    if (!s || char_pos < 1) return 0;
+    size_t byte_pos = 0;
+    size_t char_count = 0;
+    while (byte_pos < s->len && char_count < char_pos - 1) {
+        unsigned char c = (unsigned char)s->data[byte_pos];
+        if ((c & 0x80) == 0) byte_pos += 1;
+        else if ((c & 0xE0) == 0xC0) byte_pos += 2;
+        else if ((c & 0xF0) == 0xE0) byte_pos += 3;
+        else if ((c & 0xF8) == 0xF0) byte_pos += 4;
+        else byte_pos += 1;
+        char_count++;
+    }
+    return byte_pos;
+}
+
+int32_t qb_strlen_chars(qb_string* s) {
+    return (int32_t)qb_utf8_char_count(s);
 }
 
 qb_string* qb_str_from_c(const char* s) {
@@ -1622,32 +1741,124 @@ void qb_limit(int fps) {
     qb_last_frame_time = qb_get_time_seconds();
 }
 
+/* Array Bounds Registry */
+/* Tracks lower/upper bounds for each array dimension */
+
+#define QBA_MAX_DIMS 8
+#define QBA_REGISTRY_SIZE 1024
+
+typedef struct {
+    void* ptr;                           /* Array pointer (key) */
+    int32_t num_dims;                    /* Number of dimensions */
+    int32_t lower[QBA_MAX_DIMS];         /* Lower bounds per dimension */
+    int32_t upper[QBA_MAX_DIMS];         /* Upper bounds per dimension */
+} _qba_meta;
+
+static _qba_meta _qba_registry[QBA_REGISTRY_SIZE];
+static int _qba_count = 0;
+
+static int _qba_hash(void* ptr) {
+    return (int)(((uintptr_t)ptr >> 3) % QBA_REGISTRY_SIZE);
+}
+
+static _qba_meta* _qba_find(void* ptr) {
+    if (!ptr) return NULL;
+    int start = _qba_hash(ptr);
+    for (int i = 0; i < QBA_REGISTRY_SIZE; i++) {
+        int idx = (start + i) % QBA_REGISTRY_SIZE;
+        if (_qba_registry[idx].ptr == ptr) return &_qba_registry[idx];
+        if (_qba_registry[idx].ptr == NULL) return NULL;
+    }
+    return NULL;
+}
+
+void qb_array_register(void* ptr, int32_t lower, int32_t upper) {
+    if (!ptr) return;
+    _qba_meta* existing = _qba_find(ptr);
+    if (existing) {
+        existing->num_dims = 1;
+        existing->lower[0] = lower;
+        existing->upper[0] = upper;
+        return;
+    }
+    int start = _qba_hash(ptr);
+    for (int i = 0; i < QBA_REGISTRY_SIZE; i++) {
+        int idx = (start + i) % QBA_REGISTRY_SIZE;
+        if (_qba_registry[idx].ptr == NULL) {
+            _qba_registry[idx].ptr = ptr;
+            _qba_registry[idx].num_dims = 1;
+            _qba_registry[idx].lower[0] = lower;
+            _qba_registry[idx].upper[0] = upper;
+            _qba_count++;
+            return;
+        }
+    }
+}
+
+void qb_array_register_md(void* ptr, int32_t num_dims, int32_t* lowers, int32_t* uppers) {
+    if (!ptr || num_dims <= 0 || num_dims > QBA_MAX_DIMS) return;
+    _qba_meta* existing = _qba_find(ptr);
+    _qba_meta* meta = existing;
+    if (!meta) {
+        int start = _qba_hash(ptr);
+        for (int i = 0; i < QBA_REGISTRY_SIZE; i++) {
+            int idx = (start + i) % QBA_REGISTRY_SIZE;
+            if (_qba_registry[idx].ptr == NULL) {
+                meta = &_qba_registry[idx];
+                meta->ptr = ptr;
+                _qba_count++;
+                break;
+            }
+        }
+    }
+    if (meta) {
+        meta->num_dims = num_dims;
+        for (int d = 0; d < num_dims; d++) {
+            meta->lower[d] = lowers[d];
+            meta->upper[d] = uppers[d];
+        }
+    }
+}
+
+void qb_array_update(void* old_ptr, void* new_ptr, int32_t lower, int32_t upper) {
+    if (old_ptr == new_ptr) {
+        _qba_meta* meta = _qba_find(old_ptr);
+        if (meta) { meta->lower[0] = lower; meta->upper[0] = upper; }
+        else qb_array_register(new_ptr, lower, upper);
+    } else {
+        _qba_meta* meta = _qba_find(old_ptr);
+        if (meta) meta->ptr = NULL;
+        qb_array_register(new_ptr, lower, upper);
+    }
+}
+
 /* Array Functions */
 
 int32_t qb_lbound(void* arr) {
-    (void)arr;
-    return 0; /* Arrays are 0-based */
+    _qba_meta* meta = _qba_find(arr);
+    return meta ? meta->lower[0] : 0;
 }
 
 int32_t qb_lbound2(void* arr, int32_t dim) {
-    (void)arr; (void)dim;
-    return 0; /* Arrays are 0-based */
+    _qba_meta* meta = _qba_find(arr);
+    if (!meta || dim < 1 || dim > meta->num_dims) return 0;
+    return meta->lower[dim - 1];
 }
 
 int32_t qb_ubound(void* arr) {
-    (void)arr;
-    return 0; /* Stub - actual bounds need metadata */
+    _qba_meta* meta = _qba_find(arr);
+    return meta ? meta->upper[0] : 0;
 }
 
 int32_t qb_ubound2(void* arr, int32_t dim) {
-    (void)arr; (void)dim;
-    return 0; /* Stub - actual bounds need metadata */
+    _qba_meta* meta = _qba_find(arr);
+    if (!meta || dim < 1 || dim > meta->num_dims) return 0;
+    return meta->upper[dim - 1];
 }
 
 void qb_array_erase(void* arr) {
-    // Arrays are heap-allocated via malloc() in emit_dim()
-    // ERASE should free and reallocate to reset the array
-    // TODO: Implement proper free/realloc when array metadata is tracked
+    _qba_meta* meta = _qba_find(arr);
+    if (meta) meta->ptr = NULL;  /* Clear entry */
 }
 
 /* Audio Functions (Inline Runtime) */
@@ -2413,7 +2624,8 @@ static int _qb_data_ptr = 0;
 static const int _qb_data_count = 3;
 
 int main(int argc, char** argv) {
-    (void)argc; (void)argv;
+    qb_init_args(argc, argv);
+    qb_init_startdir();
 
     if (_qb_data_ptr < _qb_data_count && _qb_data[_qb_data_ptr].type == 'd') {
         a = (int32_t)_qb_data[_qb_data_ptr].v.n;
