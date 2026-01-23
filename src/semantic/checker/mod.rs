@@ -524,11 +524,12 @@ mod tests {
         let mut symbols = SymbolTable::new();
         let mut checker = TypeChecker::new(&mut symbols);
 
-        // String + Integer should error
+        // String - Integer should error (subtraction not allowed for strings)
+        // Note: String + Integer is valid (implicit STR$ conversion)
         let expr = Expr::new(
             ExprKind::Binary {
                 left: Box::new(make_str_expr("hello")),
-                op: BinaryOp::Add,
+                op: BinaryOp::Subtract,
                 right: Box::new(make_int_expr(42)),
             },
             Span::new(0, 10),

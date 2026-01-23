@@ -19,6 +19,192 @@
 #include <sys/time.h>
 #endif
 
+/* QB64 built-in constants */
+#define _TRUE (-1)
+#define _FALSE (0)
+#define _EQUAL (0)
+#define _GREATER (1)
+#define _LESS (-1)
+#define _STR_EMPTY qb_string_new("")
+#define _STR_CRLF qb_string_new("\r\n")
+#define _STR_LF qb_string_new("\n")
+#define _STR_CR qb_string_new("\r")
+#define _CHR_QUOTE qb_string_new("\"")
+#define _CHR_HT qb_string_new("\t")
+#define _CHR_LF qb_string_new("\n")
+
+/* Keyboard constants */
+#define _KEY_ESC (27)
+#define _KEY_BACKSPACE (8)
+#define _KEY_TAB (9)
+#define _KEY_ENTER (13)
+#define _KEY_UP (18432)
+#define _KEY_DOWN (20480)
+#define _KEY_LEFT (19200)
+#define _KEY_RIGHT (19712)
+#define _KEY_INSERT (20992)
+#define _KEY_DELETE (21248)
+#define _KEY_HOME (18176)
+#define _KEY_END (20224)
+#define _KEY_PAGEUP (18688)
+#define _KEY_PAGEDOWN (20736)
+#define _KEY_F1 (15104)
+#define _KEY_F2 (15360)
+#define _KEY_F3 (15616)
+#define _KEY_F4 (15872)
+#define _KEY_F5 (16128)
+#define _KEY_F6 (16384)
+#define _KEY_F7 (16640)
+#define _KEY_F8 (16896)
+#define _KEY_F9 (17152)
+#define _KEY_F10 (17408)
+#define _KEY_F11 (34048)
+#define _KEY_F12 (34304)
+#define _KEY_LSHIFT (100304)
+#define _KEY_RSHIFT (100303)
+#define _KEY_LCTRL (100306)
+#define _KEY_RCTRL (100305)
+#define _KEY_LALT (100308)
+#define _KEY_RALT (100307)
+#define _KEY_LAPPLE (100310)
+#define _KEY_RAPPLE (100309)
+
+/* ASCII constants */
+#define _ASC_NUL (0)
+#define _ASC_SOH (1)
+#define _ASC_STX (2)
+#define _ASC_ETX (3)
+#define _ASC_EOT (4)
+#define _ASC_ENQ (5)
+#define _ASC_ACK (6)
+#define _ASC_BEL (7)
+#define _ASC_BS (8)
+#define _ASC_HT (9)
+#define _ASC_LF (10)
+#define _ASC_VT (11)
+#define _ASC_FF (12)
+#define _ASC_CR (13)
+#define _ASC_SO (14)
+#define _ASC_SI (15)
+#define _ASC_DLE (16)
+#define _ASC_DC1 (17)
+#define _ASC_DC2 (18)
+#define _ASC_DC3 (19)
+#define _ASC_DC4 (20)
+#define _ASC_NAK (21)
+#define _ASC_SYN (22)
+#define _ASC_ETB (23)
+#define _ASC_CAN (24)
+#define _ASC_EM (25)
+#define _ASC_SUB (26)
+#define _ASC_ESC (27)
+#define _ASC_FS (28)
+#define _ASC_GS (29)
+#define _ASC_RS (30)
+#define _ASC_US (31)
+#define _ASC_SPACE (32)
+#define _ASC_EXCLAMATION (33)
+#define _ASC_QUOTE (34)
+#define _ASC_HASH (35)
+#define _ASC_DOLLAR (36)
+#define _ASC_PERCENT (37)
+#define _ASC_AMPERSAND (38)
+#define _ASC_APOSTROPHE (39)
+#define _ASC_LEFTBRACKET (40)
+#define _ASC_RIGHTBRACKET (41)
+#define _ASC_ASTERISK (42)
+#define _ASC_PLUS (43)
+#define _ASC_COMMA (44)
+#define _ASC_MINUS (45)
+#define _ASC_FULLSTOP (46)
+#define _ASC_FORWARDSLASH (47)
+#define _ASC_COLON (58)
+#define _ASC_SEMICOLON (59)
+#define _ASC_LESSTHAN (60)
+#define _ASC_EQUAL (61)
+#define _ASC_GREATERTHAN (62)
+#define _ASC_QUESTION (63)
+#define _ASC_ATSIGN (64)
+#define _ASC_LEFTSQUAREBRACKET (91)
+#define _ASC_BACKSLASH (92)
+#define _ASC_RIGHTSQUAREBRACKET (93)
+#define _ASC_CARET (94)
+#define _ASC_UNDERSCORE (95)
+#define _ASC_GRAVE (96)
+#define _ASC_LEFTCURLYBRACKET (123)
+#define _ASC_VERTICALBAR (124)
+#define _ASC_RIGHTCURLYBRACKET (125)
+#define _ASC_TILDE (126)
+#define _ASC_DEL (127)
+
+/* Character string constants */
+#define _CHR_NUL qb_string_new("\0")
+#define _CHR_SOH qb_string_new("\x01")
+#define _CHR_STX qb_string_new("\x02")
+#define _CHR_ETX qb_string_new("\x03")
+#define _CHR_EOT qb_string_new("\x04")
+#define _CHR_ENQ qb_string_new("\x05")
+#define _CHR_ACK qb_string_new("\x06")
+#define _CHR_BEL qb_string_new("\x07")
+#define _CHR_BS qb_string_new("\x08")
+#define _CHR_VT qb_string_new("\x0B")
+#define _CHR_FF qb_string_new("\x0C")
+#define _CHR_CR qb_string_new("\r")
+#define _CHR_SO qb_string_new("\x0E")
+#define _CHR_SI qb_string_new("\x0F")
+#define _CHR_DLE qb_string_new("\x10")
+#define _CHR_DC1 qb_string_new("\x11")
+#define _CHR_DC2 qb_string_new("\x12")
+#define _CHR_DC3 qb_string_new("\x13")
+#define _CHR_DC4 qb_string_new("\x14")
+#define _CHR_NAK qb_string_new("\x15")
+#define _CHR_SYN qb_string_new("\x16")
+#define _CHR_ETB qb_string_new("\x17")
+#define _CHR_CAN qb_string_new("\x18")
+#define _CHR_EM qb_string_new("\x19")
+#define _CHR_SUB qb_string_new("\x1A")
+#define _CHR_ESC qb_string_new("\x1B")
+#define _CHR_FS qb_string_new("\x1C")
+#define _CHR_GS qb_string_new("\x1D")
+#define _CHR_RS qb_string_new("\x1E")
+#define _CHR_US qb_string_new("\x1F")
+#define _CHR_SPACE qb_string_new(" ")
+#define _CHR_EXCLAMATION qb_string_new("!")
+#define _CHR_HASH qb_string_new("#")
+#define _CHR_DOLLAR qb_string_new("$")
+#define _CHR_PERCENT qb_string_new("%")
+#define _CHR_AMPERSAND qb_string_new("&")
+#define _CHR_APOSTROPHE qb_string_new("'")
+#define _CHR_LEFTBRACKET qb_string_new("(")
+#define _CHR_RIGHTBRACKET qb_string_new(")")
+#define _CHR_ASTERISK qb_string_new("*")
+#define _CHR_PLUS qb_string_new("+")
+#define _CHR_COMMA qb_string_new(",")
+#define _CHR_MINUS qb_string_new("-")
+#define _CHR_FULLSTOP qb_string_new(".")
+#define _CHR_FORWARDSLASH qb_string_new("/")
+#define _CHR_COLON qb_string_new(":")
+#define _CHR_SEMICOLON qb_string_new(";")
+#define _CHR_LESSTHAN qb_string_new("<")
+#define _CHR_EQUAL qb_string_new("=")
+#define _CHR_GREATERTHAN qb_string_new(">")
+#define _CHR_QUESTION qb_string_new("?")
+#define _CHR_ATSIGN qb_string_new("@")
+#define _CHR_LEFTSQUAREBRACKET qb_string_new("[")
+#define _CHR_BACKSLASH qb_string_new("\\")
+#define _CHR_RIGHTSQUAREBRACKET qb_string_new("]")
+#define _CHR_CARET qb_string_new("^")
+#define _CHR_UNDERSCORE qb_string_new("_")
+#define _CHR_GRAVE qb_string_new("`")
+#define _CHR_LEFTCURLYBRACKET qb_string_new("{")
+#define _CHR_VERTICALBAR qb_string_new("|")
+#define _CHR_RIGHTCURLYBRACKET qb_string_new("}")
+#define _CHR_TILDE qb_string_new("~")
+#define _CHR_DEL qb_string_new("\x7F")
+
+/* Graphics pseudo-variables (zero-arg functions) */
+#define _FONT qb_font_get()
+
 /* QB64Fresh Runtime Library */
 
 typedef struct qb_string {
@@ -27,6 +213,16 @@ typedef struct qb_string {
     size_t capacity;
     int refcount;
 } qb_string;
+
+/* Dummy variables for LEN() type sizing pattern */
+int32_t dummy = 0;
+int8_t dummy_int_int = 0;
+int16_t dummy_int = 0;
+int64_t dummy_lng_lng = 0;
+float dummy_sng = 0.0f;
+double dummy_dbl = 0.0;
+long double dummy_dbl_dbl = 0.0L;
+intptr_t dummy_int_lng = 0;
 
 qb_string* qb_string_new(const char* s) {
     qb_string* str = malloc(sizeof(qb_string));
@@ -69,8 +265,11 @@ void qb_string_release(qb_string* s) {
 }
 
 qb_string* qb_string_concat(qb_string* a, qb_string* b) {
-    if (!a) return b ? qb_string_new(b->data) : qb_string_new("");
-    if (!b) return qb_string_new(a->data);
+    int a_valid = a && a->data && a->len < 0x10000000;
+    int b_valid = b && b->data && b->len < 0x10000000;
+    if (!a_valid && !b_valid) return qb_string_new("");
+    if (!a_valid) return qb_string_new(b->data);
+    if (!b_valid) return qb_string_new(a->data);
     qb_string* result = malloc(sizeof(qb_string));
     result->len = a->len + b->len;
     result->capacity = result->len + 1;
@@ -260,7 +459,7 @@ int qb_string_compare(qb_string* a, qb_string* b) {
     return strcmp(a->data, b->data);
 }
 
-int32_t qb_len(qb_string* s) {
+int32_t qb_len_str(qb_string* s) {
     return s ? (int32_t)s->len : 0;
 }
 
@@ -271,6 +470,11 @@ qb_string* qb_chr(int32_t code) {
 
 int32_t qb_asc(qb_string* s) {
     return (s && s->len > 0) ? (unsigned char)s->data[0] : 0;
+}
+
+int32_t qb_asc2(qb_string* s, int32_t pos) {
+    if (!s || pos < 1 || pos > (int32_t)s->len) return 0;
+    return (unsigned char)s->data[pos - 1];
 }
 
 int32_t qb_sgn(double n) {
@@ -463,6 +667,20 @@ qb_string* qb_mid(qb_string* s, int32_t start, int32_t n) {
     return result;
 }
 
+qb_string* qb_mid2(qb_string* s, int32_t start) {
+    if (!s || start < 1 || (size_t)start > s->len) return qb_string_new("");
+    size_t idx = (size_t)(start - 1);
+    size_t len = s->len - idx;
+    qb_string* result = malloc(sizeof(qb_string));
+    result->len = len;
+    result->capacity = len + 1;
+    result->data = malloc(result->capacity);
+    memcpy(result->data, s->data + idx, len);
+    result->data[len] = '\0';
+    result->refcount = 1;
+    return result;
+}
+
 void qb_mid_assign(qb_string** target, int32_t start, int32_t length, qb_string* value) {
     if (!target || !*target || !value) return;
     qb_string* s = *target;
@@ -483,6 +701,10 @@ int32_t qb_instr(int32_t start, qb_string* s, qb_string* find) {
     if (!s || !find || start < 1 || (size_t)start > s->len || find->len == 0) return 0;
     char* pos = strstr(s->data + start - 1, find->data);
     return pos ? (int32_t)(pos - s->data + 1) : 0;
+}
+
+int32_t qb_instr2(qb_string* s, qb_string* find) {
+    return qb_instr(1, s, find);
 }
 
 qb_string* qb_str(double n) {
@@ -1029,6 +1251,12 @@ qb_string* qb_command(void) {
     return result;
 }
 
+qb_string* qb_command_n(int64_t n) {
+    if (n < 0 || n >= _qb_argc || !_qb_argv) return qb_string_new("");
+    if (n == 0) return qb_command(); // Return all args
+    return qb_string_new(_qb_argv[n]);
+}
+
 #ifdef _WIN32
 #include <direct.h>
 #define getcwd _getcwd
@@ -1071,8 +1299,10 @@ qb_string* qb_trim(qb_string* s) {
     while (end >= start && (s->data[end] == ' ' || s->data[end] == '\t')) end--;
     if (start > end) return qb_string_new("");
     int32_t newlen = end - start + 1;
-    qb_string* result = (qb_string*)malloc(sizeof(qb_string) + newlen + 1);
+    qb_string* result = (qb_string*)malloc(sizeof(qb_string));
+    result->data = (char*)malloc(newlen + 1);
     result->len = newlen;
+    result->capacity = newlen + 1;
     result->refcount = 1;
     memcpy(result->data, s->data + start, newlen);
     result->data[newlen] = '\0';
@@ -1080,8 +1310,10 @@ qb_string* qb_trim(qb_string* s) {
 }
 
 qb_string* qb_mki(int16_t n) {
-    qb_string* result = (qb_string*)malloc(sizeof(qb_string) + 3);
+    qb_string* result = (qb_string*)malloc(sizeof(qb_string));
+    result->data = (char*)malloc(3);
     result->len = 2;
+    result->capacity = 3;
     result->refcount = 1;
     memcpy(result->data, &n, 2);
     result->data[2] = '\0';
@@ -1089,8 +1321,10 @@ qb_string* qb_mki(int16_t n) {
 }
 
 qb_string* qb_mkl(int32_t n) {
-    qb_string* result = (qb_string*)malloc(sizeof(qb_string) + 5);
+    qb_string* result = (qb_string*)malloc(sizeof(qb_string));
+    result->data = (char*)malloc(5);
     result->len = 4;
+    result->capacity = 5;
     result->refcount = 1;
     memcpy(result->data, &n, 4);
     result->data[4] = '\0';
@@ -1098,8 +1332,10 @@ qb_string* qb_mkl(int32_t n) {
 }
 
 qb_string* qb_mks(float n) {
-    qb_string* result = (qb_string*)malloc(sizeof(qb_string) + 5);
+    qb_string* result = (qb_string*)malloc(sizeof(qb_string));
+    result->data = (char*)malloc(5);
     result->len = 4;
+    result->capacity = 5;
     result->refcount = 1;
     memcpy(result->data, &n, 4);
     result->data[4] = '\0';
@@ -1107,8 +1343,10 @@ qb_string* qb_mks(float n) {
 }
 
 qb_string* qb_mkd(double n) {
-    qb_string* result = (qb_string*)malloc(sizeof(qb_string) + 9);
+    qb_string* result = (qb_string*)malloc(sizeof(qb_string));
+    result->data = (char*)malloc(9);
     result->len = 8;
+    result->capacity = 9;
     result->refcount = 1;
     memcpy(result->data, &n, 8);
     result->data[8] = '\0';
@@ -1157,6 +1395,11 @@ float qb_timer(void) {
     return tm->tm_hour * 3600.0f + tm->tm_min * 60.0f + tm->tm_sec + tv.tv_usec / 1000000.0f;
 }
 #endif
+
+float qb_timer_n(double accuracy) {
+    (void)accuracy; /* Ignored - max precision always used */
+    return qb_timer();
+}
 
 qb_string* qb_date(void) {
     time_t t = time(NULL);
@@ -1380,6 +1623,26 @@ void qb_limit(int fps) {
 }
 
 /* Array Functions */
+
+int32_t qb_lbound(void* arr) {
+    (void)arr;
+    return 0; /* Arrays are 0-based */
+}
+
+int32_t qb_lbound2(void* arr, int32_t dim) {
+    (void)arr; (void)dim;
+    return 0; /* Arrays are 0-based */
+}
+
+int32_t qb_ubound(void* arr) {
+    (void)arr;
+    return 0; /* Stub - actual bounds need metadata */
+}
+
+int32_t qb_ubound2(void* arr, int32_t dim) {
+    (void)arr; (void)dim;
+    return 0; /* Stub - actual bounds need metadata */
+}
 
 void qb_array_erase(void* arr) {
     // Arrays are heap-allocated via malloc() in emit_dim()
@@ -1692,6 +1955,7 @@ int64_t qb_environcount(void) {
 
 /* Font Stubs */
 static int64_t _qb_current_font = 0;
+int64_t qb_font_get(void) { return _qb_current_font; }
 int64_t qb_loadfont(qb_string* file, int64_t size) { _qb_gfx_warn(); (void)file; (void)size; return 0; }
 int64_t qb_font(int64_t handle) {
     int64_t prev = _qb_current_font;
@@ -2151,9 +2415,6 @@ static const int _qb_data_count = 3;
 int main(int argc, char** argv) {
     (void)argc; (void)argv;
 
-    int32_t a = 0;
-    int32_t b = 0;
-    int32_t c = 0;
     if (_qb_data_ptr < _qb_data_count && _qb_data[_qb_data_ptr].type == 'd') {
         a = (int32_t)_qb_data[_qb_data_ptr].v.n;
     }

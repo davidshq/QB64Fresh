@@ -1790,16 +1790,19 @@ impl SemanticAnalyzer {
         // _SCREENEXISTS returns -1 if graphics window exists, 0 otherwise
         self.register_builtin_function("_SCREENEXISTS", &[], BasicType::Integer);
 
-        // _EXIT returns exit request state (non-zero if user requested exit)
-        self.register_builtin_function("_EXIT", &[], BasicType::Long);
+        // _EXIT - dual purpose:
+        // - As function with 0 args: returns exit request state (non-zero if user requested exit)
+        // - As statement with 1 arg: exits program with specific return code
+        self.register_builtin_function_with_optionals(
+            "_EXIT",
+            &[("code", BasicType::Long, true)], // optional code parameter
+            BasicType::Long,
+        );
 
         // _DEFAULTCOLOR returns the default foreground color for the current _DEST
         self.register_builtin_function("_DEFAULTCOLOR", &[], BasicType::Long);
         // _BACKGROUNDCOLOR returns the background color of the current _DEST
         self.register_builtin_function("_BACKGROUNDCOLOR", &[], BasicType::Long);
-
-        // _EXIT - exit program with specific return code
-        self.register_builtin_sub("_EXIT", &[("code", BasicType::Long)]);
 
         // _FULLPATH$ returns the full absolute path of a file/directory
         self.register_builtin_function(
