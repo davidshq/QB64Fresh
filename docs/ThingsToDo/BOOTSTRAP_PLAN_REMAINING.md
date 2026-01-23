@@ -17,7 +17,10 @@ This document tracks what remains to complete the QB64pe bootstrap project. For 
 **What Works:**
 - QB64pe executable builds without errors
 - Executable starts without crashing
-- Clean exit (waiting for graphical initialization)
+- Command-line argument parsing works (-c, -x flags recognized)
+- Version string printed correctly
+- Enters compiler mode (no-IDE) successfully
+- Attempts to compile BASIC source files
 
 ---
 
@@ -49,8 +52,10 @@ The current executable uses stub functions. For full functionality, these need r
 - ✅ `qb_dir_exists()` - Check if directory exists (implemented)
 - ✅ `qb_fullpath()` - Get full path of file (implemented)
 - ✅ **Array scoping bug** - FIXED! Arrays in main now use globals for cross-function sharing
-  - `menu$`, `menuDesc$`, etc. now allocate to global (not shadowing local)
-  - Executable runs past menu initialization without crashing
+- ✅ **Command-line initialization** - FIXED! Added `qb_init_args(argc, argv)` call
+- ✅ **Module-level variable scoping** - FIXED! DIM of existing globals in main uses global
+- ✅ **SELECT CASE string comparison** - FIXED! Uses `qb_string_compare()` not `==`
+- ✅ **NULL string semantics** - FIXED! NULL strings treated as "" in comparisons
 - Graphics initialization (QB64pe expects graphical mode)
 
 **Nice to have (warnings only):**
@@ -108,3 +113,27 @@ menu_str[...] = qb_string_new("File");
 - `stmt.rs`: `emit_dim` checks `current_proc.is_none()` for main context
 - Key insight: DIM in main uses globals (for cross-function sharing), DIM in SUB/FUNCTION
   creates locals (even if a global with the same name exists)
+
+### Command-Line & String Fixes - FIXED (2026-01-23)
+
+**Problem 1: Command-line arguments not working**
+- `_COMMANDCOUNT` returned 0, `COMMAND$(n)` returned empty strings
+- Cause: `qb_init_args(argc, argv)` was never called in main()
+- Fix: Added call in `mod.rs` main() generation
+
+**Problem 2: Module-level variables shadowed in main**
+- Variables like `NoIDEMode`, `ConsoleMode` declared as `DIM SHARED` at module level
+- Our code created local declarations that shadowed the globals
+- Result: Command-line parser set global `NoIDEMode=TRUE`, but main() read local `NoIDEMode=FALSE`
+- Fix: `implicit_vars.rs` - when `is_main_program` and global exists, don't create local
+
+**Problem 3: SELECT CASE string comparison used `==`**
+- Generated code: `if (_qb_select_3 == qb_string_new("-c"))` (pointer comparison!)
+- This always failed because `qb_string_new()` returns different pointer each time
+- Fix: `stmt.rs` - use `qb_string_compare(_qb_select_3, qb_string_new("-c")) == 0`
+
+**Problem 4: NULL strings not equal to empty strings**
+- BASIC: uninitialized string variable equals ""
+- Our C code: `qb_string* PassedFileName_str = NULL;`
+- `qb_string_compare(NULL, "")` returned -1 instead of 0
+- Fix: `runtime.rs` - treat NULL as "" in comparison: `const char* a_data = (a && a->data) ? a->data : "";`
