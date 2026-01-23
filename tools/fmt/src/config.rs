@@ -91,6 +91,10 @@ pub struct FormatterConfig {
 
     /// Capitalize identifiers in standard library functions.
     pub normalize_builtins: bool,
+
+    /// Number of blank lines to insert between SUB/FUNCTION definitions.
+    /// Set to 0 to preserve original spacing.
+    pub blank_lines_between_procedures: usize,
 }
 
 impl Default for FormatterConfig {
@@ -111,6 +115,7 @@ impl Default for FormatterConfig {
             indent_procedures: true,
             indent_blocks: true,
             normalize_builtins: false,
+            blank_lines_between_procedures: 1,
         }
     }
 }
@@ -134,6 +139,7 @@ impl FormatterConfig {
             indent_procedures: false,
             indent_blocks: false,
             normalize_builtins: false,
+            blank_lines_between_procedures: 0,
         }
     }
 
@@ -160,6 +166,7 @@ impl FormatterConfig {
             indent_procedures: true,
             indent_blocks: true,
             normalize_builtins: true,
+            blank_lines_between_procedures: 1,
         }
     }
 
