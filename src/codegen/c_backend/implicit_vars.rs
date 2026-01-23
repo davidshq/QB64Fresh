@@ -38,6 +38,7 @@ use super::types::{add_reserved_identifiers, c_identifier, declare_array_var, de
 ///
 /// Uses a two-pass approach:
 /// 1. First pass: collect all DIM declarations from the entire function body
+///    (these should shadow globals - BASIC allows local variables to shadow globals)
 /// 2. Second pass: collect implicit variables (assignments to non-DIM'd variables)
 ///
 /// This prevents duplicate declarations when a variable is assigned before its DIM.
@@ -47,19 +48,28 @@ pub(super) fn collect_implicit_locals(
     existing_vars: &HashSet<String>,
 ) -> Vec<String> {
     let mut locals = Vec::new();
-    let mut declared_vars: HashSet<String> = existing_vars.clone();
 
-    // Add built-in constants and runtime variables that should not be redeclared
-    add_reserved_identifiers(&mut declared_vars);
+    // Start with a clean set for DIM collection - DIMs should shadow globals
+    // We only include reserved identifiers and parameters here
+    let mut dim_declared: HashSet<String> = HashSet::new();
+    add_reserved_identifiers(&mut dim_declared);
 
     // Add parameter names to declared set
     for p in params {
-        declared_vars.insert(c_identifier(&p.name));
+        dim_declared.insert(c_identifier(&p.name));
     }
 
     // PASS 1: Collect all DIM/REDIM declarations first (they have function-wide scope in BASIC)
+    // Note: We do NOT include globals here - DIM should always create a local that shadows globals
     for stmt in body {
-        collect_dims(stmt, &mut declared_vars, &mut locals);
+        collect_dims(stmt, &mut dim_declared, &mut locals);
+    }
+
+    // Now combine with globals for implicit variable collection
+    // Implicit variables should NOT shadow globals (only explicit DIM does)
+    let mut declared_vars = dim_declared.clone();
+    for var in existing_vars {
+        declared_vars.insert(var.clone());
     }
 
     // PASS 2: Collect implicit variables (assignments to non-declared variables)
@@ -96,8 +106,14 @@ fn collect_dims(
         }
         TypedStatementKind::Redim { variables, .. } => {
             // REDIM creates dynamic arrays - emit declarations with NULL initialization
+            // If no dimensions, treat as scalar (REDIM can be used for scalars in QB64)
             for var in variables {
-                declare_array_var(&var.name, &var.element_type, declared_vars, locals);
+                if var.dimensions.is_empty() {
+                    // Scalar REDIM - just a type declaration, no array
+                    declare_scalar_var(&var.name, &var.element_type, declared_vars, locals);
+                } else {
+                    declare_array_var(&var.name, &var.element_type, declared_vars, locals);
+                }
             }
         }
         TypedStatementKind::StaticStmt { variables, .. } => {

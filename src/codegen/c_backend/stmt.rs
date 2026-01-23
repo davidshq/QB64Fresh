@@ -18,7 +18,7 @@ use crate::codegen::error::CodeGenError;
 use crate::semantic::typed_ir::{
     TypedArrayDimension, TypedCaseCompareOp, TypedCaseMatch, TypedDoCondition, TypedExpr,
     TypedExprKind, TypedInputTarget, TypedParameter, TypedPrintItem, TypedReadTarget,
-    TypedStatement, TypedStatementKind,
+    TypedRedimDimension, TypedStatement, TypedStatementKind,
 };
 use crate::semantic::types::BasicType;
 
@@ -3909,7 +3909,7 @@ impl StmtEmitter {
         preserve: bool,
         name: &str,
         element_type: &BasicType,
-        dimensions: &[TypedArrayDimension],
+        dimensions: &[TypedRedimDimension],
         output: &mut String,
     ) -> Result<(), CodeGenError> {
         let c_name = c_identifier(name);
@@ -3922,11 +3922,20 @@ impl StmtEmitter {
             return Ok(());
         }
 
-        // Calculate new size expression
+        // Calculate new size expression - emit actual expressions for runtime bounds
         let size_expr = dimensions
             .iter()
-            .map(|d| format!("({} - {} + 1)", d.upper, d.lower))
-            .collect::<Vec<_>>()
+            .map(|d| {
+                let upper_code = emit_expr(&d.upper)?;
+                let lower_code = d
+                    .lower
+                    .as_ref()
+                    .map(emit_expr)
+                    .transpose()?
+                    .unwrap_or_else(|| "0".to_string());
+                Ok(format!("({} - {} + 1)", upper_code, lower_code))
+            })
+            .collect::<Result<Vec<_>, CodeGenError>>()?
             .join(" * ");
 
         if preserve {
