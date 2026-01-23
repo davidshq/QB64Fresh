@@ -412,18 +412,30 @@ fn emit_string_functions(output: &mut String) {
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
-    // String concatenation
+    // String concatenation (with defensive checks for corrupted strings)
     writeln!(
         output,
         "qb_string* qb_string_concat(qb_string* a, qb_string* b) {{"
     )
     .unwrap();
+    // Check for NULL pointers or corrupted data
     writeln!(
         output,
-        "    if (!a) return b ? qb_string_new(b->data) : qb_string_new(\"\");"
+        "    int a_valid = a && a->data && a->len < 0x10000000;"
     )
     .unwrap();
-    writeln!(output, "    if (!b) return qb_string_new(a->data);").unwrap();
+    writeln!(
+        output,
+        "    int b_valid = b && b->data && b->len < 0x10000000;"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (!a_valid && !b_valid) return qb_string_new(\"\");"
+    )
+    .unwrap();
+    writeln!(output, "    if (!a_valid) return qb_string_new(b->data);").unwrap();
+    writeln!(output, "    if (!b_valid) return qb_string_new(a->data);").unwrap();
     writeln!(output, "    qb_string* result = malloc(sizeof(qb_string));").unwrap();
     writeln!(output, "    result->len = a->len + b->len;").unwrap();
     writeln!(output, "    result->capacity = result->len + 1;").unwrap();
@@ -2422,10 +2434,12 @@ fn emit_keyboard_functions(output: &mut String) {
     writeln!(output, "    int32_t newlen = end - start + 1;").unwrap();
     writeln!(
         output,
-        "    qb_string* result = (qb_string*)malloc(sizeof(qb_string) + newlen + 1);"
+        "    qb_string* result = (qb_string*)malloc(sizeof(qb_string));"
     )
     .unwrap();
+    writeln!(output, "    result->data = (char*)malloc(newlen + 1);").unwrap();
     writeln!(output, "    result->len = newlen;").unwrap();
+    writeln!(output, "    result->capacity = newlen + 1;").unwrap();
     writeln!(output, "    result->refcount = 1;").unwrap();
     writeln!(output, "    memcpy(result->data, s->data + start, newlen);").unwrap();
     writeln!(output, "    result->data[newlen] = '\\0';").unwrap();
@@ -2437,10 +2451,12 @@ fn emit_keyboard_functions(output: &mut String) {
     writeln!(output, "qb_string* qb_mki(int16_t n) {{").unwrap();
     writeln!(
         output,
-        "    qb_string* result = (qb_string*)malloc(sizeof(qb_string) + 3);"
+        "    qb_string* result = (qb_string*)malloc(sizeof(qb_string));"
     )
     .unwrap();
+    writeln!(output, "    result->data = (char*)malloc(3);").unwrap();
     writeln!(output, "    result->len = 2;").unwrap();
+    writeln!(output, "    result->capacity = 3;").unwrap();
     writeln!(output, "    result->refcount = 1;").unwrap();
     writeln!(output, "    memcpy(result->data, &n, 2);").unwrap();
     writeln!(output, "    result->data[2] = '\\0';").unwrap();
@@ -2452,10 +2468,12 @@ fn emit_keyboard_functions(output: &mut String) {
     writeln!(output, "qb_string* qb_mkl(int32_t n) {{").unwrap();
     writeln!(
         output,
-        "    qb_string* result = (qb_string*)malloc(sizeof(qb_string) + 5);"
+        "    qb_string* result = (qb_string*)malloc(sizeof(qb_string));"
     )
     .unwrap();
+    writeln!(output, "    result->data = (char*)malloc(5);").unwrap();
     writeln!(output, "    result->len = 4;").unwrap();
+    writeln!(output, "    result->capacity = 5;").unwrap();
     writeln!(output, "    result->refcount = 1;").unwrap();
     writeln!(output, "    memcpy(result->data, &n, 4);").unwrap();
     writeln!(output, "    result->data[4] = '\\0';").unwrap();
@@ -2467,10 +2485,12 @@ fn emit_keyboard_functions(output: &mut String) {
     writeln!(output, "qb_string* qb_mks(float n) {{").unwrap();
     writeln!(
         output,
-        "    qb_string* result = (qb_string*)malloc(sizeof(qb_string) + 5);"
+        "    qb_string* result = (qb_string*)malloc(sizeof(qb_string));"
     )
     .unwrap();
+    writeln!(output, "    result->data = (char*)malloc(5);").unwrap();
     writeln!(output, "    result->len = 4;").unwrap();
+    writeln!(output, "    result->capacity = 5;").unwrap();
     writeln!(output, "    result->refcount = 1;").unwrap();
     writeln!(output, "    memcpy(result->data, &n, 4);").unwrap();
     writeln!(output, "    result->data[4] = '\\0';").unwrap();
@@ -2482,10 +2502,12 @@ fn emit_keyboard_functions(output: &mut String) {
     writeln!(output, "qb_string* qb_mkd(double n) {{").unwrap();
     writeln!(
         output,
-        "    qb_string* result = (qb_string*)malloc(sizeof(qb_string) + 9);"
+        "    qb_string* result = (qb_string*)malloc(sizeof(qb_string));"
     )
     .unwrap();
+    writeln!(output, "    result->data = (char*)malloc(9);").unwrap();
     writeln!(output, "    result->len = 8;").unwrap();
+    writeln!(output, "    result->capacity = 9;").unwrap();
     writeln!(output, "    result->refcount = 1;").unwrap();
     writeln!(output, "    memcpy(result->data, &n, 8);").unwrap();
     writeln!(output, "    result->data[8] = '\\0';").unwrap();
