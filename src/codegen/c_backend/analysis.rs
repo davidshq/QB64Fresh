@@ -20,7 +20,7 @@ use crate::semantic::typed_ir::{
 use crate::semantic::types::BasicType;
 
 use super::expr::{c_function_name, escape_string};
-use super::types::{c_identifier, c_type, default_init};
+use super::types::{add_reserved_identifiers, c_identifier, c_type, default_init};
 
 /// Information collected from DATA statements for code generation.
 ///
@@ -200,25 +200,7 @@ pub(super) fn collect_globals(
     let mut declared_vars: HashSet<String> = HashSet::new();
 
     // Add built-in constants and runtime variables that should not be redeclared
-    declared_vars.insert("_TRUE".to_string());
-    declared_vars.insert("_FALSE".to_string());
-    // String constant macros
-    declared_vars.insert("_STR_EMPTY".to_string());
-    declared_vars.insert("_STR_CRLF".to_string());
-    declared_vars.insert("_STR_LF".to_string());
-    declared_vars.insert("_STR_CR".to_string());
-    declared_vars.insert("_CHR_QUOTE".to_string());
-    declared_vars.insert("_CHR_HT".to_string());
-    declared_vars.insert("_CHR_LF".to_string());
-    // Dummy variables for LEN() type sizing (defined in runtime)
-    declared_vars.insert("dummy".to_string());
-    declared_vars.insert("dummy_int_int".to_string());
-    declared_vars.insert("dummy_int".to_string());
-    declared_vars.insert("dummy_lng_lng".to_string());
-    declared_vars.insert("dummy_sng".to_string());
-    declared_vars.insert("dummy_dbl".to_string());
-    declared_vars.insert("dummy_dbl_dbl".to_string());
-    declared_vars.insert("dummy_int_lng".to_string());
+    add_reserved_identifiers(&mut declared_vars);
 
     // Helper to add a global variable if not already declared
     // Note: For strings, we initialize to NULL since qb_string_new() is not a constant
