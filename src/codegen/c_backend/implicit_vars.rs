@@ -108,19 +108,27 @@ fn collect_dims(
     declared_vars: &mut HashSet<String>,
     locals: &mut Vec<String>,
     existing_vars: &HashSet<String>,
-    _is_main_program: bool, // NOTE: No longer used for REDIM (always uses global if exists)
+    is_main_program: bool, // NOTE: No longer used for REDIM (always uses global if exists)
 ) {
     match &stmt.kind {
         TypedStatementKind::Dim { variables, .. } => {
             // Hoist DIM declarations to function scope (BASIC semantics)
             for var in variables {
+                let c_name = c_identifier(&var.name);
                 if var.dimensions.is_empty() {
-                    // Scalar variable
-                    declare_scalar_var(&var.name, &var.basic_type, declared_vars, locals);
+                    // Scalar variable - check if global exists AND we're in main
+                    // In main program: DIM of existing global = use global (for module-level sharing)
+                    // In SUB/FUNCTION: DIM always creates local (can shadow globals)
+                    if is_main_program && existing_vars.contains(&c_name) {
+                        // Global scalar exists in main: just mark as declared, don't create local.
+                        declared_vars.insert(c_name);
+                    } else {
+                        // Either in SUB/FUNCTION, or no global exists: create local declaration
+                        declare_scalar_var(&var.name, &var.basic_type, declared_vars, locals);
+                    }
                 } else {
                     // Array - mark as declared only, emit at statement location
                     // (arrays need runtime allocation)
-                    let c_name = c_identifier(&var.name);
                     declared_vars.insert(c_name);
                 }
             }
@@ -159,7 +167,7 @@ fn collect_dims(
         // Recurse into control flow structures
         TypedStatementKind::For { body, .. } => {
             for s in body {
-                collect_dims(s, declared_vars, locals, existing_vars, _is_main_program);
+                collect_dims(s, declared_vars, locals, existing_vars, is_main_program);
             }
         }
         TypedStatementKind::If {
@@ -169,28 +177,28 @@ fn collect_dims(
             ..
         } => {
             for s in then_branch {
-                collect_dims(s, declared_vars, locals, existing_vars, _is_main_program);
+                collect_dims(s, declared_vars, locals, existing_vars, is_main_program);
             }
             for (_, branch_body) in elseif_branches {
                 for s in branch_body {
-                    collect_dims(s, declared_vars, locals, existing_vars, _is_main_program);
+                    collect_dims(s, declared_vars, locals, existing_vars, is_main_program);
                 }
             }
             if let Some(else_stmts) = else_branch {
                 for s in else_stmts {
-                    collect_dims(s, declared_vars, locals, existing_vars, _is_main_program);
+                    collect_dims(s, declared_vars, locals, existing_vars, is_main_program);
                 }
             }
         }
         TypedStatementKind::While { body, .. } | TypedStatementKind::DoLoop { body, .. } => {
             for s in body {
-                collect_dims(s, declared_vars, locals, existing_vars, _is_main_program);
+                collect_dims(s, declared_vars, locals, existing_vars, is_main_program);
             }
         }
         TypedStatementKind::SelectCase { cases, .. } => {
             for case in cases {
                 for s in &case.body {
-                    collect_dims(s, declared_vars, locals, existing_vars, _is_main_program);
+                    collect_dims(s, declared_vars, locals, existing_vars, is_main_program);
                 }
             }
         }

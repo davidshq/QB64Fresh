@@ -3052,7 +3052,8 @@ impl StmtEmitter {
             writeln!(output, "{}int {} = 0;", indent, matched_var).unwrap();
 
             for case in cases {
-                let condition = self.emit_case_condition(&test_var, &case.matches)?;
+                let condition =
+                    self.emit_case_condition(&test_var, &case.matches, &test_expr.basic_type)?;
                 writeln!(output, "{}if ({}) {{", indent, condition).unwrap();
                 writeln!(output, "{}    {} = 1;", indent, matched_var).unwrap();
 
@@ -3079,7 +3080,8 @@ impl StmtEmitter {
             // Standard SELECT CASE: execute first matching case only
             let mut first = true;
             for case in cases {
-                let condition = self.emit_case_condition(&test_var, &case.matches)?;
+                let condition =
+                    self.emit_case_condition(&test_var, &case.matches, &test_expr.basic_type)?;
 
                 if first {
                     writeln!(output, "{}if ({}) {{", indent, condition).unwrap();
@@ -3649,10 +3651,11 @@ impl StmtEmitter {
         &self,
         test_var: &str,
         matches: &[TypedCaseMatch],
+        test_type: &BasicType,
     ) -> Result<String, CodeGenError> {
         let conditions: Result<Vec<_>, _> = matches
             .iter()
-            .map(|m| self.emit_single_case_match(test_var, m))
+            .map(|m| self.emit_single_case_match(test_var, m, test_type))
             .collect();
         Ok(conditions?.join(" || "))
     }
@@ -3662,31 +3665,61 @@ impl StmtEmitter {
         &self,
         test_var: &str,
         case_match: &TypedCaseMatch,
+        test_type: &BasicType,
     ) -> Result<String, CodeGenError> {
+        let is_string = test_type.is_string();
+
         match case_match {
             TypedCaseMatch::Single(expr) => {
                 let val = emit_expr(expr)?;
-                Ok(format!("({} == {})", test_var, val))
+                if is_string {
+                    // String comparison: use qb_string_compare
+                    Ok(format!("(qb_string_compare({}, {}) == 0)", test_var, val))
+                } else {
+                    Ok(format!("({} == {})", test_var, val))
+                }
             }
             TypedCaseMatch::Range { from, to } => {
                 let from_code = emit_expr(from)?;
                 let to_code = emit_expr(to)?;
-                Ok(format!(
-                    "({} >= {} && {} <= {})",
-                    test_var, from_code, test_var, to_code
-                ))
+                if is_string {
+                    // String range: lexicographic comparison
+                    Ok(format!(
+                        "(qb_string_compare({}, {}) >= 0 && qb_string_compare({}, {}) <= 0)",
+                        test_var, from_code, test_var, to_code
+                    ))
+                } else {
+                    Ok(format!(
+                        "({} >= {} && {} <= {})",
+                        test_var, from_code, test_var, to_code
+                    ))
+                }
             }
             TypedCaseMatch::Comparison { op, value } => {
                 let val = emit_expr(value)?;
-                let c_op = match op {
-                    TypedCaseCompareOp::Equal => "==",
-                    TypedCaseCompareOp::NotEqual => "!=",
-                    TypedCaseCompareOp::LessThan => "<",
-                    TypedCaseCompareOp::LessEqual => "<=",
-                    TypedCaseCompareOp::GreaterThan => ">",
-                    TypedCaseCompareOp::GreaterEqual => ">=",
-                };
-                Ok(format!("({} {} {})", test_var, c_op, val))
+                if is_string {
+                    // String comparison: use qb_string_compare result
+                    let cmp_expr = format!("qb_string_compare({}, {})", test_var, val);
+                    let c_op = match op {
+                        TypedCaseCompareOp::Equal => "== 0",
+                        TypedCaseCompareOp::NotEqual => "!= 0",
+                        TypedCaseCompareOp::LessThan => "< 0",
+                        TypedCaseCompareOp::LessEqual => "<= 0",
+                        TypedCaseCompareOp::GreaterThan => "> 0",
+                        TypedCaseCompareOp::GreaterEqual => ">= 0",
+                    };
+                    Ok(format!("({} {})", cmp_expr, c_op))
+                } else {
+                    let c_op = match op {
+                        TypedCaseCompareOp::Equal => "==",
+                        TypedCaseCompareOp::NotEqual => "!=",
+                        TypedCaseCompareOp::LessThan => "<",
+                        TypedCaseCompareOp::LessEqual => "<=",
+                        TypedCaseCompareOp::GreaterThan => ">",
+                        TypedCaseCompareOp::GreaterEqual => ">=",
+                    };
+                    Ok(format!("({} {} {})", test_var, c_op, val))
+                }
             }
         }
     }

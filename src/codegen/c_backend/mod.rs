@@ -262,7 +262,10 @@ impl CodeGenerator for CBackend {
 
         // Main function
         writeln!(output, "int main(int argc, char** argv) {{").unwrap();
-        writeln!(output, "    (void)argc; (void)argv;").unwrap();
+        // Initialize command-line argument access for COMMAND$ and _COMMANDCOUNT
+        writeln!(output, "    qb_init_args(argc, argv);").unwrap();
+        // Initialize start directory for _STARTDIR$
+        writeln!(output, "    qb_init_startdir();").unwrap();
         writeln!(output).unwrap();
 
         // Initialize string constants (can't be done at global scope in C)
