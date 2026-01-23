@@ -650,11 +650,19 @@ impl<'a> Parser<'a> {
     /// Parses _MAPUNICODE statement.
     ///
     /// Syntax: `_MAPUNICODE unicode_value TO char_position`
+    /// or:     `_MAPUNICODE unicode_value, char_position`
     pub(super) fn parse_mapunicode(&mut self) -> Result<Statement, ()> {
         let start = self.advance_start("_MAPUNICODE keyword")?;
 
         let unicode_value = self.parse_expression()?;
-        self.expect(&TokenKind::To, "TO")?;
+        // Accept either TO or comma as separator
+        if !self.match_token(&TokenKind::To) && !self.match_token(&TokenKind::Comma) {
+            self.errors.push(super::ParseError::syntax(
+                "expected TO or comma",
+                self.current_span(),
+            ));
+            return Err(());
+        }
         let char_position = self.parse_expression()?;
 
         let span = self.span_from(start);

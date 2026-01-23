@@ -178,9 +178,9 @@ impl<'a> TypeChecker<'a> {
             return result;
         }
 
-        // Check if it's a parameterless function call
+        // Check if it's a parameterless function call (or function with all optional params)
         if let Some(proc) = self.symbols.lookup_procedure(name)
-            && proc.params.is_empty()
+            && proc.required_param_count() == 0
             && proc.return_type.is_some()
         {
             return TypedExpr::new(
