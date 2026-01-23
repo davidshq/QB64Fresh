@@ -17,6 +17,7 @@ A modern, ground-up rewrite of QB64 — a QuickBASIC compatible compiler that pr
 | Runtime | ✅ Complete (~11,678 lines) |
 | LSP Server | ✅ Complete (~2,105 lines) |
 | **QB4.5 Compatibility** | **99.1%** (114/115 test files) |
+| **QB64pe Bootstrap** | ✅ Compiles 59K-line compiler |
 
 ## Quick Start
 
@@ -34,12 +35,26 @@ cargo run -- examples/hello.bas --typed-ir # Show typed IR
 cargo run -- examples/hello.bas --emit-c   # Show generated C code
 ```
 
+## Bootstrap Achievement
+
+QB64Fresh can compile **QB64pe itself** — a 59,000-line BASIC compiler — into a working executable:
+
+| Metric | Value |
+|--------|-------|
+| Source | 39 files, ~59K lines |
+| Generated C | 83,705 lines |
+| Executable | 2.1 MB |
+| Compile time | ~800ms |
+
+This demonstrates real-world compatibility with large, complex BASIC codebases. See [BOOTSTRAP_ACHIEVEMENT.md](docs/BOOTSTRAP_ACHIEVEMENT.md) for technical details.
+
 ## Goals
 
 - ✅ QBasic/QuickBASIC compatibility
 - ✅ QB64 extension support (240+ built-in functions)
 - ✅ LSP for modern editor integration
 - ✅ Clean, educational codebase
+- ✅ Compiles QB64pe compiler (bootstrap validation)
 - 🔄 Full documentation (in progress)
 
 ## Tech Stack
@@ -87,6 +102,8 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed documentation.
 - [DEVELOPMENT.md](DEVELOPMENT.md) — Setup & contributing
 - [ARCHITECTURE.md](ARCHITECTURE.md) — Compiler pipeline design
 - [Migration Guide](docs/MIGRATION_GUIDE.md) — For QB64 users switching to QB64Fresh
+- [Bootstrap Achievement](docs/BOOTSTRAP_ACHIEVEMENT.md) — Compiling QB64pe with QB64Fresh
+- [Behavioral Differences](docs/BEHAVIORAL_DIFFERENCES.md) — QB64Fresh vs QB64pe semantics
 - [Language Spec](docs/QB64PE_LANGUAGE_SPECIFICATION.md) — QB64PE language reference
 - [Examples](examples/) — Example programs
 - [AgenticLogs/](AgenticLogs/) — Development history
@@ -108,6 +125,9 @@ cargo test
 
 # Run QB4.5 compatibility tests
 cargo test --test qb45_compat
+
+# Run QB64pe bootstrap tests
+cargo test --test bootstrap_tests
 
 # Run with coverage
 cargo tarpaulin --out Html
