@@ -44,8 +44,11 @@ use super::types::{add_reserved_identifiers, c_identifier, declare_array_var, de
 /// This prevents duplicate declarations when a variable is assigned before its DIM.
 ///
 /// The `is_main_program` flag indicates if this is the main program (not a SUB/FUNCTION).
-/// In main, arrays with existing globals should use the global (for cross-function sharing).
-/// In SUB/FUNCTIONs, DIM always creates locals even if a global with the same name exists.
+/// This affects DIM handling: in main, DIM on an existing global allocates to the global
+/// (for cross-function sharing). In SUB/FUNCTIONs, DIM always creates locals.
+///
+/// REDIM always uses an existing global if one exists (in both main and SUB/FUNCTION)
+/// because BASIC's REDIM on a SHARED array operates on the global, not a new local.
 pub(super) fn collect_implicit_locals(
     body: &[TypedStatement],
     params: &[TypedParameter],
@@ -105,7 +108,7 @@ fn collect_dims(
     declared_vars: &mut HashSet<String>,
     locals: &mut Vec<String>,
     existing_vars: &HashSet<String>,
-    is_main_program: bool,
+    _is_main_program: bool, // NOTE: No longer used for REDIM (always uses global if exists)
 ) {
     match &stmt.kind {
         TypedStatementKind::Dim { variables, .. } => {
@@ -130,14 +133,14 @@ fn collect_dims(
                 if var.dimensions.is_empty() {
                     // Scalar REDIM - just a type declaration, no array
                     declare_scalar_var(&var.name, &var.element_type, declared_vars, locals);
-                } else if is_main_program && existing_vars.contains(&c_name) {
-                    // In main program with existing global: use global instead of creating
-                    // a local that would shadow it. This is critical for arrays used by
-                    // subroutines - they access the global, so main must allocate to the
-                    // global, not a shadowing local.
+                } else if existing_vars.contains(&c_name) {
+                    // Global array exists: use it instead of creating a local that would
+                    // shadow it. This applies to both main AND SUB/FUNCTION contexts.
+                    // In BASIC, REDIM on a SHARED array (even from within a SUB) operates
+                    // on the global array, not a new local.
                     declared_vars.insert(c_name);
                 } else {
-                    // In SUB/FUNCTION or no global: create local array declaration
+                    // No global exists: create local array declaration
                     declare_array_var(&var.name, &var.element_type, declared_vars, locals);
                 }
             }
@@ -156,7 +159,7 @@ fn collect_dims(
         // Recurse into control flow structures
         TypedStatementKind::For { body, .. } => {
             for s in body {
-                collect_dims(s, declared_vars, locals, existing_vars, is_main_program);
+                collect_dims(s, declared_vars, locals, existing_vars, _is_main_program);
             }
         }
         TypedStatementKind::If {
@@ -166,28 +169,28 @@ fn collect_dims(
             ..
         } => {
             for s in then_branch {
-                collect_dims(s, declared_vars, locals, existing_vars, is_main_program);
+                collect_dims(s, declared_vars, locals, existing_vars, _is_main_program);
             }
             for (_, branch_body) in elseif_branches {
                 for s in branch_body {
-                    collect_dims(s, declared_vars, locals, existing_vars, is_main_program);
+                    collect_dims(s, declared_vars, locals, existing_vars, _is_main_program);
                 }
             }
             if let Some(else_stmts) = else_branch {
                 for s in else_stmts {
-                    collect_dims(s, declared_vars, locals, existing_vars, is_main_program);
+                    collect_dims(s, declared_vars, locals, existing_vars, _is_main_program);
                 }
             }
         }
         TypedStatementKind::While { body, .. } | TypedStatementKind::DoLoop { body, .. } => {
             for s in body {
-                collect_dims(s, declared_vars, locals, existing_vars, is_main_program);
+                collect_dims(s, declared_vars, locals, existing_vars, _is_main_program);
             }
         }
         TypedStatementKind::SelectCase { cases, .. } => {
             for case in cases {
                 for s in &case.body {
-                    collect_dims(s, declared_vars, locals, existing_vars, is_main_program);
+                    collect_dims(s, declared_vars, locals, existing_vars, _is_main_program);
                 }
             }
         }
