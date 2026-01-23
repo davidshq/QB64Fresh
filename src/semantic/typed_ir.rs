@@ -1923,6 +1923,15 @@ pub struct TypedDimVariable {
     pub dimensions: Vec<TypedArrayDimension>,
 }
 
+/// A typed array dimension for REDIM (with runtime expressions).
+#[derive(Debug, Clone)]
+pub struct TypedRedimDimension {
+    /// Lower bound expression (None for default 0).
+    pub lower: Option<TypedExpr>,
+    /// Upper bound expression.
+    pub upper: TypedExpr,
+}
+
 /// A typed variable in a REDIM statement.
 #[derive(Debug, Clone)]
 pub struct TypedRedimVariable {
@@ -1930,8 +1939,8 @@ pub struct TypedRedimVariable {
     pub name: String,
     /// Element type.
     pub element_type: BasicType,
-    /// Dimensions.
-    pub dimensions: Vec<TypedArrayDimension>,
+    /// Dimensions (with runtime expressions).
+    pub dimensions: Vec<TypedRedimDimension>,
 }
 
 /// The complete typed program - output of semantic analysis.

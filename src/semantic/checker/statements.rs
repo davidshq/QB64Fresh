@@ -1603,7 +1603,7 @@ impl<'a> TypeChecker<'a> {
                         .unwrap_or_else(|| self.symbols.default_type_for(&var.name));
 
                     // Evaluate dimensions - REDIM allows runtime expressions
-                    let typed_dims: Vec<TypedArrayDimension> = var
+                    let typed_dims: Vec<crate::semantic::typed_ir::TypedRedimDimension> = var
                         .dimensions
                         .iter()
                         .map(|d| self.evaluate_array_dimension_runtime(d))
@@ -1617,14 +1617,18 @@ impl<'a> TypeChecker<'a> {
                     //
                     // IMPORTANT: If this is REDIM _PRESERVE on a module-level SHARED array,
                     // we should update the GLOBAL scope entry, not create a local copy.
+                    //
+                    // Note: For REDIM, bounds are runtime-determined, so we use placeholder
+                    // values (0, 0) for the symbol table. The actual bounds are in the
+                    // TypedRedimDimension expressions for codegen.
                     let symbol = Symbol {
                         name: var.name.clone(),
                         kind: SymbolKind::ArrayVariable {
                             dimensions: typed_dims
                                 .iter()
-                                .map(|d| crate::semantic::symbols::ArrayDimInfo {
-                                    lower_bound: d.lower,
-                                    upper_bound: d.upper,
+                                .map(|_d| crate::semantic::symbols::ArrayDimInfo {
+                                    lower_bound: 0, // Placeholder - bounds determined at runtime
+                                    upper_bound: 0, // Placeholder - bounds determined at runtime
                                 })
                                 .collect(),
                         },
@@ -3047,19 +3051,26 @@ impl<'a> TypeChecker<'a> {
 
     /// Evaluates array dimensions for REDIM where runtime expressions are allowed.
     /// Since we can't know the values at compile time, we use placeholder values.
-    fn evaluate_array_dimension_runtime(&mut self, dim: &ArrayDimension) -> TypedArrayDimension {
-        // For REDIM, we just need to type-check the expressions
-        // The actual values will be computed at runtime
-        if let Some(lower_expr) = &dim.lower {
-            let typed_lower = self.check_expr(lower_expr);
-            if !typed_lower.basic_type.is_numeric() {
+    fn evaluate_array_dimension_runtime(
+        &mut self,
+        dim: &ArrayDimension,
+    ) -> crate::semantic::typed_ir::TypedRedimDimension {
+        use crate::semantic::typed_ir::TypedRedimDimension;
+
+        // For REDIM, we type-check the expressions and store them for codegen
+        let typed_lower = if let Some(lower_expr) = &dim.lower {
+            let typed = self.check_expr(lower_expr);
+            if !typed.basic_type.is_numeric() {
                 self.errors.push(SemanticError::TypeMismatch {
                     expected: "numeric".to_string(),
-                    found: typed_lower.basic_type.to_string(),
-                    span: typed_lower.span,
+                    found: typed.basic_type.to_string(),
+                    span: typed.span,
                 });
             }
-        }
+            Some(typed)
+        } else {
+            None
+        };
 
         let typed_upper = self.check_expr(&dim.upper);
         if !typed_upper.basic_type.is_numeric() {
@@ -3070,7 +3081,9 @@ impl<'a> TypeChecker<'a> {
             });
         }
 
-        // Return placeholder values - actual bounds are runtime-computed
-        TypedArrayDimension { lower: 0, upper: 0 }
+        TypedRedimDimension {
+            lower: typed_lower,
+            upper: typed_upper,
+        }
     }
 }
