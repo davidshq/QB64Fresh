@@ -14,9 +14,10 @@ For implemented functions, see [STUB_FUNCTIONS_FULL.md](STUB_FUNCTIONS_FULL.md).
 |--------|-------|-------------|
 | ⚠️ Legacy stubs | ~4 | ERDEV, device error functions |
 | ⚠️ Event handler stubs | ~7 | ON COM, ON UEVENT, ON SIGNAL |
-| ❌ Compile errors | 4 | FRE, SETMEM, IOCTL$, FILEATTR (match QB64pe) |
 | ❌ Obsolete hardware | ~5 | Light pen, joystick events |
-| **Total Remaining** | **~13** | Out of 419 registered functions |
+| **Total Remaining** | **~9** | Out of 419 registered functions |
+
+**Note:** Functions that throw compile errors (FRE, SETMEM, IOCTL$, FILEATTR) are documented in [STUB_FUNCTIONS_FULL.md](STUB_FUNCTIONS_FULL.md) as they match QB64pe's intended behavior.
 
 ---
 
@@ -24,22 +25,13 @@ For implemented functions, see [STUB_FUNCTIONS_FULL.md](STUB_FUNCTIONS_FULL.md).
 
 These functions exist for QB4.5 compatibility but are stubs or have minimal implementation.
 
-### Legacy I/O & Memory (Compile Errors)
-
-| Function | Fresh Status | QB64pe Status | Notes |
-|----------|--------------|---------------|-------|
-| `FRE()` | ❌ Error | ⛔ Stub (error) | Throws compile error matching QB64pe |
-| `SETMEM` | ❌ Error | ⛔ Stub (error) | Throws compile error matching QB64pe |
-| `FILEATTR()` | ❌ Error | ⛔ Stub (error) | Throws compile error matching QB64pe |
-
 ### Device Functions
 
 | Function | Fresh Status | QB64pe Status | Notes |
 |----------|--------------|---------------|-------|
 | `ERDEV()` | ⚠️ Stub (0) | ❌ Not registered | Legacy DOS device error |
 | `ERDEV$()` | ⚠️ Stub ("") | ❌ Not registered | Legacy DOS device error |
-| `IOCTL$()` | ❌ Error | ⛔ Stub (error) | Throws compile error matching QB64pe |
-| `IOCTL` | ⚠️ Stub | ⛔ Stub (error) | Statement form compiles to no-op |
+| `IOCTL` | ⚠️ Stub | ⚠️ Stub | Statement form compiles to no-op |
 
 ### Event Handlers - Stub Only
 
@@ -96,7 +88,7 @@ These functions are stubs because the hardware no longer exists.
 ### Will Not Implement
 
 - **Light Pen (PEN)** - Hardware doesn't exist; QB64pe also doesn't implement
-- **DOS Device Functions (ERDEV, IOCTL)** - QB64pe stubs these too
+- **DOS Device Functions (ERDEV)** - Returns stub values; QB64pe doesn't register these
 - **Event Handlers (ON COM, ON UEVENT, ON SIGNAL)** - QB64pe doesn't implement these
 
 ---
@@ -107,9 +99,8 @@ These functions are stubs because the hardware no longer exists.
 
 | Category | Count | Percentage |
 |----------|-------|------------|
-| ✅ Fully Implemented | ~409 | 97.6% |
-| ⚠️ Legacy/Event Stubs | ~11 | 2.6% |
-| ❌ Compile Errors (match QB64pe) | 4 | 1% |
+| ✅ Fully Implemented | ~410 | 97.8% |
+| ⚠️ Legacy/Event Stubs | ~9 | 2.1% |
 | ❌ Obsolete Hardware | ~5 | 1.2% |
 
 The vast majority of QB64 programs will work without issues.

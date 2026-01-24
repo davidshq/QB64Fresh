@@ -171,6 +171,21 @@ All core BASIC language functions are fully implemented. This includes:
 
 ---
 
+## Intentionally Disabled Functions (Matches QB64pe)
+
+These functions throw compile errors **by design**, matching QB64pe's behavior. This is the correct implementation - these legacy DOS functions have no modern equivalent.
+
+| Function | Behavior | Notes |
+|----------|----------|-------|
+| `FRE()` | Compile error | Legacy DOS memory function - no modern equivalent |
+| `SETMEM` | Compile error | Legacy DOS memory management |
+| `FILEATTR()` | Compile error | Legacy DOS file attributes |
+| `IOCTL$()` | Compile error | Legacy DOS device I/O control |
+
+**Why these throw errors:** QB64pe intentionally throws compile errors for these functions rather than providing stub implementations. This prevents silent failures in programs that depend on these DOS-specific features. QB64Fresh matches this behavior exactly.
+
+---
+
 ## See Also
 
 - [STUB_FUNCTIONS_REMAINING.md](STUB_FUNCTIONS_REMAINING.md) - Functions still incomplete
