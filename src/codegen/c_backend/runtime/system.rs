@@ -673,7 +673,9 @@ pub(super) fn emit_stub_declarations(output: &mut String) {
     writeln!(output, "void qb_gfx_resize(int32_t flag) {{ (void)flag; }}").unwrap();
 
     // Palette and resize functions
-    writeln!(output, "void qb_palettecolor(int32_t attr, int32_t col, int32_t handle) {{ (void)attr; (void)col; (void)handle; }}").unwrap();
+    // _PALETTECOLOR can be both function (get) and statement (set)
+    writeln!(output, "int32_t qb_palettecolor(int32_t attr, int32_t col, int32_t handle) {{ (void)attr; (void)col; (void)handle; return _qb_palette[attr & 255]; }}").unwrap();
+    writeln!(output, "int32_t qb_palettecolor_get(int32_t attr, int32_t handle) {{ (void)handle; return _qb_palette[attr & 255]; }}").unwrap();
     writeln!(output, "int32_t qb_resize(void) {{ return 0; }}").unwrap();
     writeln!(output, "int32_t qb_resizewidth(void) {{ return 80; }}").unwrap();
     writeln!(output, "int32_t qb_resizeheight(void) {{ return 25; }}").unwrap();

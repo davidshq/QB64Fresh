@@ -305,6 +305,12 @@ int qb_gfx_palette(int32_t index, uint32_t color);
 int qb_gfx_palette_reset(void);
 uint32_t qb_gfx_palette_get(int32_t index);
 
+/* _PALETTECOLOR - get/set palette entry */
+/* Function form: _PALETTECOLOR(attribute%[, imgHandle&]) - returns color */
+/* Statement form: _PALETTECOLOR attribute%, color&[, imgHandle&] - sets color */
+int32_t qb_palettecolor(int32_t attribute, int32_t color_or_handle, int32_t handle);
+int32_t qb_palettecolor_get(int32_t attribute, int32_t handle);
+
 /* Color functions */
 uint32_t qb_rgb(uint32_t r, uint32_t g, uint32_t b);
 uint32_t qb_rgb32(uint32_t r, uint32_t g, uint32_t b);

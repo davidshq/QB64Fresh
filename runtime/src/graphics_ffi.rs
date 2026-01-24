@@ -1018,6 +1018,59 @@ pub extern "C" fn qb_gfx_palette_get(index: i32) -> u32 {
     }
 }
 
+/// _PALETTECOLOR - Get palette color from an image.
+///
+/// Function form: `_PALETTECOLOR(attribute%[, imgHandle&])`
+///
+/// Returns the 32-bit color value at the specified palette index.
+/// If imgHandle is 0 or omitted, uses the current _DEST image.
+#[no_mangle]
+pub extern "C" fn qb_palettecolor_get(attribute: i32, handle: i32) -> i32 {
+    unsafe {
+        if let Some(ref backend) = crate::graphics::GRAPHICS_BACKEND {
+            // For now, ignore handle and use current palette
+            // TODO: Support per-image palettes
+            let _ = handle;
+            backend.get_palette(attribute) as i32
+        } else {
+            0
+        }
+    }
+}
+
+/// _PALETTECOLOR - Set or get palette color.
+///
+/// This function handles both forms:
+/// - Get: `_PALETTECOLOR(attribute%, imgHandle&)` - 2 args, handle is image
+/// - Set: `_PALETTECOLOR attribute%, color&[, imgHandle&]` - 2-3 args
+///
+/// When called with all 3 args, it's a SET operation.
+/// When called with 2 args where second is an image handle, it's a GET operation.
+/// Distinguishing between these requires context from the codegen.
+#[no_mangle]
+pub extern "C" fn qb_palettecolor(attribute: i32, color_or_handle: i32, handle: i32) -> i32 {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            // If handle != 0, this is a SET with explicit handle
+            // If handle == 0, check if this is a GET (color_or_handle is actually handle)
+            // or a SET (color_or_handle is color, using current dest)
+            //
+            // Convention: when used as statement (SET), handle will be non-zero or we use current
+            // For simplicity, treat 3-arg call as SET
+            if handle != 0 || color_or_handle != 0 {
+                // SET operation: set palette[attribute] = color_or_handle
+                // TODO: Support per-image palettes with handle
+                let _ = handle;
+                let _ = backend.set_palette(attribute, color_or_handle as u32);
+            }
+            // Return the current palette value at this index
+            backend.get_palette(attribute) as i32
+        } else {
+            0
+        }
+    }
+}
+
 // ============================================================================
 // QB64 Image Buffer FFI
 // ============================================================================

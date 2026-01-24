@@ -690,7 +690,20 @@ impl StmtEmitter {
                     "_CONSOLEFONT" => "qb_consolefont".to_string(),
                     "_CONTROLCHR" => "qb_controlchr".to_string(),
                     "_SETALPHA" => "qb_setalpha".to_string(),
-                    "_PALETTECOLOR" => "qb_palettecolor".to_string(),
+                    // _PALETTECOLOR statement: attr, color[, handle]
+                    // 2 args = use current image (handle 0), 3 args = explicit handle
+                    "_PALETTECOLOR" => {
+                        match args.len() {
+                            2 => {
+                                // Add implicit 0 for handle
+                                let full_args = format!("{}, 0", args_str);
+                                writeln!(output, "{}qb_palettecolor({});", indent, full_args)
+                                    .unwrap();
+                                return Ok(());
+                            }
+                            _ => "qb_palettecolor".to_string(),
+                        }
+                    }
                     "_COPYPALETTE" => "qb_copypalette".to_string(),
                     "_BLEND" => "qb_blend".to_string(),
                     "_DONTBLEND" => "qb_dontblend".to_string(),

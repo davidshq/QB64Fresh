@@ -378,6 +378,28 @@ pub(super) fn emit_expr(expr: &TypedExpr) -> Result<String, CodeGenError> {
                 };
             }
 
+            // Special case: _PALETTECOLOR function form (GET)
+            // When used as function: _PALETTECOLOR(attr%) or _PALETTECOLOR(attr%, handle&)
+            // Always returns the palette color at the given index
+            if upper_name == "_PALETTECOLOR" {
+                let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
+                let args_vec = args_code?;
+                return match args.len() {
+                    1 => Ok(format!("qb_palettecolor_get({}, 0)", args_vec[0])),
+                    2 => Ok(format!(
+                        "qb_palettecolor_get({}, {})",
+                        args_vec[0], args_vec[1]
+                    )),
+                    // 3 args in function context shouldn't happen, but handle gracefully
+                    _ => Ok(format!(
+                        "qb_palettecolor({}, {}, {})",
+                        args_vec.first().map(String::as_str).unwrap_or("0"),
+                        args_vec.get(1).map(String::as_str).unwrap_or("0"),
+                        args_vec.get(2).map(String::as_str).unwrap_or("0")
+                    )),
+                };
+            }
+
             // Special case: _ICON - use different functions based on arg count
             if upper_name == "_ICON" {
                 let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
