@@ -655,6 +655,13 @@ pub(super) fn emit_legacy_functions(output: &mut String) {
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
+    // STRIG(n, controller) - QB64 extension with explicit controller (stub)
+    writeln!(output, "int qb_strig2(int64_t n, int64_t controller) {{").unwrap();
+    writeln!(output, "    (void)n; (void)controller;").unwrap();
+    writeln!(output, "    return 0; // Not pressed (stub)").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
     // ==================== QB4.5 Memory Functions ====================
     writeln!(output, "/* QB4.5 Memory Functions (stubs) */").unwrap();
     writeln!(output).unwrap();

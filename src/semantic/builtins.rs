@@ -869,7 +869,7 @@ impl SemanticAnalyzer {
         // n=2: returns X coordinate of joystick B (and latches Y)
         // n=3: returns Y coordinate of joystick B
         self.register_builtin_function("STICK", &[("n", BasicType::Long)], BasicType::Integer);
-        // STRIG(n) - returns joystick trigger state
+        // STRIG(n) or STRIG(n, controller) - returns joystick trigger state
         // n=0: lower trigger A pressed since last STRIG(0)
         // n=1: lower trigger A currently pressed
         // n=2: lower trigger B pressed since last STRIG(2)
@@ -878,7 +878,15 @@ impl SemanticAnalyzer {
         // n=5: upper trigger A currently pressed
         // n=6: upper trigger B pressed since last STRIG(6)
         // n=7: upper trigger B currently pressed
-        self.register_builtin_function("STRIG", &[("n", BasicType::Long)], BasicType::Integer);
+        // QB64 extension: optional controller parameter overrides the controller implied by n
+        self.register_builtin_function_with_optionals(
+            "STRIG",
+            &[
+                ("n", BasicType::Long, false),
+                ("controller", BasicType::Long, true), // QB64 extension
+            ],
+            BasicType::Integer,
+        );
 
         // Memory Functions (QB4.5)
         // FRE(n) - returns free memory

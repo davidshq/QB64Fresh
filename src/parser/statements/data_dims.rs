@@ -235,39 +235,72 @@ impl<'a> Parser<'a> {
     /// Parses a STATIC statement (inside SUB/FUNCTION for local statics).
     ///
     /// Syntax: `STATIC variable[(dims)] [AS type], ...`
+    /// Also supports QB64 alternate syntax: `STATIC AS type var1, var2, ...`
     pub(in crate::parser) fn parse_static_stmt(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("STATIC keyword").span.start;
 
         let mut variables = Vec::new();
 
-        loop {
-            let name_token = self.expect(&TokenKind::Identifier, "variable name")?;
-            let name = name_token.text.to_string();
+        // Check for QB64 alternate syntax: STATIC AS type var1, var2, ...
+        if self.check(&TokenKind::As) {
+            self.advance(); // consume AS
+            let common_type = self.parse_type_spec()?;
 
-            // Optional array dimensions
-            let dimensions = if self.match_token(&TokenKind::LeftParen) {
-                let dims = self.parse_array_dimensions()?;
-                self.expect(&TokenKind::RightParen, ")")?;
-                dims
-            } else {
-                Vec::new()
-            };
+            // Parse variable names (all share the same type)
+            loop {
+                let name_token = self.expect(&TokenKind::Identifier, "variable name")?;
+                let name = name_token.text.to_string();
 
-            // Optional type specification
-            let type_spec = if self.match_token(&TokenKind::As) {
-                Some(self.parse_type_spec()?)
-            } else {
-                None
-            };
+                // Optional array dimensions
+                let dimensions = if self.match_token(&TokenKind::LeftParen) {
+                    let dims = self.parse_array_dimensions()?;
+                    self.expect(&TokenKind::RightParen, ")")?;
+                    dims
+                } else {
+                    Vec::new()
+                };
 
-            variables.push(DimVariable {
-                name,
-                dimensions,
-                type_spec,
-            });
+                variables.push(DimVariable {
+                    name,
+                    dimensions,
+                    type_spec: Some(common_type.clone()),
+                });
 
-            if !self.match_token(&TokenKind::Comma) {
-                break;
+                if !self.match_token(&TokenKind::Comma) {
+                    break;
+                }
+            }
+        } else {
+            // Standard syntax: STATIC var(dims) AS type, ...
+            loop {
+                let name_token = self.expect(&TokenKind::Identifier, "variable name")?;
+                let name = name_token.text.to_string();
+
+                // Optional array dimensions
+                let dimensions = if self.match_token(&TokenKind::LeftParen) {
+                    let dims = self.parse_array_dimensions()?;
+                    self.expect(&TokenKind::RightParen, ")")?;
+                    dims
+                } else {
+                    Vec::new()
+                };
+
+                // Optional type specification
+                let type_spec = if self.match_token(&TokenKind::As) {
+                    Some(self.parse_type_spec()?)
+                } else {
+                    None
+                };
+
+                variables.push(DimVariable {
+                    name,
+                    dimensions,
+                    type_spec,
+                });
+
+                if !self.match_token(&TokenKind::Comma) {
+                    break;
+                }
             }
         }
 

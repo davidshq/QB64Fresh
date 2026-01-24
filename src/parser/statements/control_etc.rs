@@ -109,30 +109,21 @@ impl<'a> Parser<'a> {
         // Must be a procedure call
         self.advance(); // consume identifier
 
-        // Handle parenthesized arguments: CALL name(args) or name(args)
-        let args = if self.match_token(&TokenKind::LeftParen) {
-            let mut args = Vec::new();
-            if !self.check(&TokenKind::RightParen) {
-                loop {
-                    args.push(self.parse_expression()?);
-                    if !self.match_token(&TokenKind::Comma) {
-                        break;
-                    }
-                }
+        // Parse arguments in classic BASIC style: name arg1, arg2, ...
+        // This handles both:
+        //   SubName arg1, arg2         (unparenthesized args)
+        //   SubName (arg1), (arg2)     (parenthesized args for BYVAL passing)
+        //
+        // Note: We don't use special handling for name(args) function-call style
+        // because that conflicts with name (arg) where parens wrap the first arg.
+        // The CALL statement handles explicit CALL name(args) syntax separately.
+        let mut args = Vec::new();
+        while !self.is_at_statement_end() && !self.check(&TokenKind::Else) {
+            args.push(self.parse_expression()?);
+            if !self.match_token(&TokenKind::Comma) {
+                break;
             }
-            self.expect(&TokenKind::RightParen, ")")?;
-            args
-        } else {
-            // Arguments without parentheses (classic BASIC style)
-            let mut args = Vec::new();
-            while !self.is_at_statement_end() && !self.check(&TokenKind::Else) {
-                args.push(self.parse_expression()?);
-                if !self.match_token(&TokenKind::Comma) {
-                    break;
-                }
-            }
-            args
-        };
+        }
 
         let span = self.span_from(start);
         Ok(Statement::new(StatementKind::Call { name, args }, span))

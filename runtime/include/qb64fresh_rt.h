@@ -237,6 +237,7 @@ int32_t qb_messagebox_ex(const char* title, const char* message, int32_t buttons
 /* Classic BASIC joystick functions */
 int32_t qb_stick(int32_t axis);
 int32_t qb_strig(int32_t button);
+int32_t qb_strig2(int32_t button, int32_t controller);  /* QB64 extension */
 
 /* QB64 input device extensions */
 int32_t qb_devices(void);

@@ -229,6 +229,33 @@ fn qb64pe_parses_successfully() {
             );
         }
         Err(errors) => {
+            // Debug: show problematic lines
+            let lines: Vec<&str> = source.lines().collect();
+            println!("\n=== DEBUG: Source context around errors ===");
+            for err in errors.iter().take(5) {
+                // Extract line number from error span
+                let span_start = match err {
+                    qb64fresh::parser::ParseError::InvalidStatement { span, .. } => span.start,
+                    qb64fresh::parser::ParseError::InvalidExpression { span, .. } => span.start,
+                    qb64fresh::parser::ParseError::UnexpectedToken { span, .. } => span.start,
+                    _ => continue,
+                };
+                // Find line number from byte offset
+                let mut line_num = 0;
+                let mut byte_count = 0;
+                for (i, line) in lines.iter().enumerate() {
+                    if byte_count + line.len() + 1 > span_start {
+                        line_num = i;
+                        break;
+                    }
+                    byte_count += line.len() + 1; // +1 for newline
+                }
+                println!("\nError near line {} (byte {}):", line_num + 1, span_start);
+                for i in line_num.saturating_sub(3)..=(line_num + 3).min(lines.len() - 1) {
+                    let marker = if i == line_num { ">>>" } else { "   " };
+                    println!("{} {:5}: {}", marker, i + 1, lines[i]);
+                }
+            }
             panic!("Parse failed with {} errors:\n{:?}", errors.len(), errors);
         }
     }

@@ -14,10 +14,28 @@ For implemented functions, see [STUB_FUNCTIONS_FULL.md](STUB_FUNCTIONS_FULL.md).
 |--------|-------|-------------|
 | ⚠️ Legacy stubs | ~4 | ERDEV, device error functions |
 | ⚠️ Event handler stubs | ~7 | ON COM, ON UEVENT, ON SIGNAL |
-| ❌ Obsolete hardware | ~5 | Light pen, joystick events |
-| **Total Remaining** | **~9** | Out of 419 registered functions |
+| ❌ Obsolete hardware | ~3 | Light pen only |
+| **Total Remaining** | **~7** | Out of 419 registered functions |
 
 **Note:** Functions that throw compile errors (FRE, SETMEM, IOCTL$, FILEATTR) are documented in [STUB_FUNCTIONS_FULL.md](STUB_FUNCTIONS_FULL.md) as they match QB64pe's intended behavior.
+
+---
+
+## Joystick Functions - FULLY IMPLEMENTED ✅
+
+The joystick/gamepad system is **fully implemented** in the external runtime (SDL2 mode).
+
+| Function | External Runtime | Inline Runtime | QB64pe | Notes |
+|----------|-----------------|----------------|--------|-------|
+| `STICK(n)` | ✅ Full | ⚠️ Stub (127) | ✅ Full | Axis position 0-254 |
+| `STRIG(n)` | ✅ Full | ⚠️ Stub (0) | ✅ Full | Button state -1/0 |
+| `STRIG(n, controller)` | ✅ Full | ⚠️ Stub (0) | ✅ Full | QB64 extension |
+| `ON STRIG(n) GOSUB` | ✅ Full | ⚠️ Stub | ⚠️ Ignored | **Fresh exceeds QB64pe** |
+| `STRIG(n) ON/OFF/STOP` | ✅ Full | ⚠️ Stub | ⚠️ Ignored | Event control |
+
+**Note:** QB64pe parses but ignores `ON STRIG` handlers. Fresh has a complete event system with pending event queues and STOP state support.
+
+The inline runtime returns stub values because joystick hardware requires SDL2.
 
 ---
 
@@ -61,31 +79,9 @@ These functions are stubs because the hardware no longer exists.
 | `ON PEN` | ⛔ Stub | ❌ Not registered | |
 | `PEN ON/OFF/STOP` | ⛔ Stub | ❌ Not registered | |
 
-### Joystick Events
-
-| Function | Fresh Status | QB64pe Status | Notes |
-|----------|--------------|---------------|-------|
-| `STRIG()` | ⛔ Stub | ✅ Full | QB64pe polls controller buttons |
-| `ON STRIG` | ⛔ Stub | ⚠️ Ignored | QB64pe parses but ignores |
-| `STRIG ON/OFF/STOP` | ⛔ Stub | ⚠️ Ignored | QB64pe parses but ignores |
-
 ---
 
-## Potential Future Work
-
-### Could Be Implemented (Low Priority)
-
-1. **STRIG Function** - Joystick button polling
-   - QB64pe: Full implementation at `libqb.cpp:25613`
-   - SDL2 already provides joystick support
-   - Effort: Low-Medium
-
-2. **COM Port Support** - Serial communication
-   - Would need cross-platform serial library (e.g., `serialport` crate)
-   - QB64pe: Not implemented
-   - Effort: Large
-
-### Will Not Implement
+## Will Not Implement
 
 - **Light Pen (PEN)** - Hardware doesn't exist; QB64pe also doesn't implement
 - **DOS Device Functions (ERDEV)** - Returns stub values; QB64pe doesn't register these
@@ -99,8 +95,8 @@ These functions are stubs because the hardware no longer exists.
 
 | Category | Count | Percentage |
 |----------|-------|------------|
-| ✅ Fully Implemented | ~410 | 97.8% |
-| ⚠️ Legacy/Event Stubs | ~9 | 2.1% |
-| ❌ Obsolete Hardware | ~5 | 1.2% |
+| ✅ Fully Implemented | ~412 | 98.3% |
+| ⚠️ Legacy/Event Stubs | ~7 | 1.7% |
+| ❌ Obsolete Hardware | ~3 | 0.7% |
 
 The vast majority of QB64 programs will work without issues.

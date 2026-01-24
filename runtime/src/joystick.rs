@@ -151,6 +151,58 @@ pub extern "C" fn qb_strig(button: i32) -> i32 {
     }
 }
 
+/// QB64 extension: STRIG with explicit controller parameter.
+///
+/// Returns joystick button state for a specific controller.
+///
+/// This is a QB64 extension that allows directly specifying the controller
+/// instead of having it implied by the button number.
+///
+/// # Arguments
+/// * `button` - Button query index (0-7 for buttons 1-4 with state check type)
+///   - Pattern: `(button_number - 1) * 4 + (0 for "since last" or 1 for "currently")`
+///   - Example: button=0 = button 1, "pressed since last"; button=1 = button 1, "currently pressed"
+/// * `controller` - Controller number (1-based)
+///
+/// Returns -1 if pressed, 0 if not pressed.
+///
+/// # Safety
+/// Safe to call from C.
+#[no_mangle]
+pub extern "C" fn qb_strig2(button: i32, controller: i32) -> i32 {
+    #[cfg(feature = "graphics-sdl2")]
+    {
+        // Validate inputs
+        if button < 0 || controller < 1 {
+            return 0;
+        }
+
+        let state = get_joystick_state().lock().unwrap();
+
+        // QB64pe semantics: button = (i >> 2) + 1 gives 1-based button number
+        // i & 1 gives method: 0 = pressed since last, 1 = currently pressed
+        // For simplicity, we treat both methods the same (current state)
+        let btn_idx = (button >> 2) as usize; // 0-based button index
+        let joy_idx = (controller - 1) as usize; // 0-based controller index
+
+        if joy_idx < state.buttons.len() && btn_idx < state.buttons[joy_idx].len() {
+            if state.buttons[joy_idx][btn_idx] {
+                -1
+            } else {
+                0
+            }
+        } else {
+            0
+        }
+    }
+
+    #[cfg(not(feature = "graphics-sdl2"))]
+    {
+        let _ = (button, controller);
+        0 // Button not pressed
+    }
+}
+
 /// Get number of input devices (QB64 _DEVICES function).
 ///
 /// Returns the number of available input devices including keyboard and mouse.
