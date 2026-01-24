@@ -372,6 +372,20 @@ int64_t qb_fontheight(void);
 int64_t qb_fontwidth(void);
 int64_t qb_printwidth(const char* text);
 
+/* Window control functions */
+int32_t qb_fullscreen(int32_t mode);
+int32_t qb_fullscreen_get(void);
+void qb_screenmove(int32_t x, int32_t y);
+void qb_screenshow(void);
+void qb_screenhide(void);
+
+/* Alpha blending functions */
+void qb_blend(int32_t handle);
+void qb_dontblend(int32_t handle);
+void qb_clearcolor(uint32_t color, int32_t handle);
+void qb_clearcolor_none(int32_t handle);
+int64_t qb_clearcolor_get(int32_t handle);
+
 #ifdef __cplusplus
 }
 #endif

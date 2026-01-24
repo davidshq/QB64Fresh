@@ -302,6 +302,8 @@ The header declares all FFI functions available in the external runtime:
 - Mouse input: `qb_mouse_x`, `qb_mouse_y`, `qb_mouse_button`, etc.
 - Clipboard: `qb_clipboard_get`, `qb_clipboard_set`
 - Fonts: `qb_loadfont`, `qb_font`, `qb_freefont`
+- Window control: `qb_fullscreen`, `qb_screenmove`, `qb_screenshow`, `qb_screenhide`
+- Alpha blending: `qb_blend`, `qb_dontblend`, `qb_clearcolor`, `qb_clearcolor_none`
 - Initialization: `qb_init_args`, `qb_init_startdir`, `_qb_init_palette`
 
 **Compatibility macros** bridge inline/external naming conventions:
@@ -479,6 +481,8 @@ Based on ADR-0006, the following features are **complete**:
 | Palette (PALETTE statement) | ✅ Complete | 256-color palette support |
 | GET/PUT array operations | ✅ Complete | Pixel array read/write |
 | STEP mode for all primitives | ✅ Complete | Relative coordinate support |
+| Window control | ✅ Complete | `_FULLSCREEN`, `_SCREENMOVE`, `_SCREENSHOW`, `_SCREENHIDE` |
+| Alpha blending | ✅ Complete | `_BLEND`, `_DONTBLEND`, `_CLEARCOLOR` |
 
 ## Implementation Files
 
@@ -507,6 +511,12 @@ The following BASIC graphics statements are fully supported:
 - `WINDOW` - Set world coordinate system
 - `PALETTE` - Set palette entries
 
+### Window Control (QB64 Extensions)
+- `_FULLSCREEN` - Set/get fullscreen mode (0=windowed, 1=fullscreen, 2=desktop)
+- `_SCREENMOVE` - Move window to position
+- `_SCREENSHOW` - Show window
+- `_SCREENHIDE` - Hide window
+
 ### Drawing Primitives
 - `PSET` / `PSET STEP` - Plot pixel
 - `POINT` - Get pixel color
@@ -522,6 +532,11 @@ The following BASIC graphics statements are fully supported:
 - `_FREEIMAGE` - Release image buffer
 - `_SOURCE` / `_DEST` - Set source/destination buffer
 - `_AUTODISPLAY` - Enable/disable auto-display
+
+### Alpha Blending (QB64 Extensions)
+- `_BLEND` - Enable alpha blending for image (uses alpha channel during `_PUTIMAGE`)
+- `_DONTBLEND` - Disable alpha blending (direct pixel copy)
+- `_CLEARCOLOR` - Set transparency key (pixels matching color are skipped during copy)
 
 ### Pixel Arrays
 - `GET` - Read pixels to array
@@ -547,4 +562,4 @@ The following BASIC graphics statements are fully supported:
 
 ---
 
-*Last updated: 2026-01-23*
+*Last updated: 2026-01-24*

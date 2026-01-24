@@ -10,7 +10,7 @@ use sdl2::mouse::MouseButton;
 use sdl2::pixels::Color;
 use sdl2::rect::{Point, Rect};
 use sdl2::render::Canvas;
-use sdl2::video::Window;
+use sdl2::video::{FullscreenType, Window};
 use sdl2::EventPump;
 use sdl2::Sdl;
 use std::collections::HashMap;
@@ -26,7 +26,9 @@ struct ImageBuffer {
     width: u32,
     height: u32,
     pixels: Vec<u32>,
-    mode: i32, // 0 = text, 32 = 32-bit color, etc.
+    mode: i32,                // 0 = text, 32 = 32-bit color, etc.
+    blend_enabled: bool,      // _BLEND/_DONTBLEND state (true = alpha blending on)
+    clear_color: Option<u32>, // _CLEARCOLOR transparency key (None = disabled)
 }
 
 impl ImageBuffer {
@@ -37,6 +39,8 @@ impl ImageBuffer {
             height,
             pixels,
             mode,
+            blend_enabled: true, // Alpha blending enabled by default
+            clear_color: None,   // No transparency key by default
         }
     }
 
@@ -230,6 +234,16 @@ pub struct SDL2Backend {
     #[cfg(feature = "graphics-sdl2-ttf")]
     /// Current font handle (0 = built-in 8x8)
     current_font: i64,
+    // Window control state
+    /// Current fullscreen mode (0 = windowed, 1 = fullscreen, 2 = fullscreen desktop)
+    fullscreen_mode: i32,
+    /// Whether the window is visible
+    screen_visible: bool,
+    // Screen blending state (for screen buffer, handle 0)
+    /// Whether alpha blending is enabled for the screen
+    screen_blend_enabled: bool,
+    /// Transparency key for the screen (None = disabled)
+    screen_clear_color: Option<u32>,
 }
 
 impl std::fmt::Debug for SDL2Backend {
@@ -285,6 +299,12 @@ impl SDL2Backend {
             next_font_handle: 1, // 0 = built-in bitmap font
             #[cfg(feature = "graphics-sdl2-ttf")]
             current_font: 0,
+            // Window control
+            fullscreen_mode: 0,   // Start windowed
+            screen_visible: true, // Start visible
+            // Screen blending
+            screen_blend_enabled: true,
+            screen_clear_color: None,
         }
     }
 
@@ -860,11 +880,23 @@ impl SDL2Backend {
         dest_x2: i32,
         dest_y2: i32,
     ) -> Result<(), GraphicsError> {
-        // Get source dimensions and pixels
-        let (src_w, src_h, src_pixels) = if src_handle == 0 {
-            (self.width, self.height, self.pixel_buffer.clone())
+        // Get source dimensions, pixels, and blending settings
+        let (src_w, src_h, src_pixels, src_blend, src_clear_color) = if src_handle == 0 {
+            (
+                self.width,
+                self.height,
+                self.pixel_buffer.clone(),
+                self.screen_blend_enabled,
+                self.screen_clear_color,
+            )
         } else if let Some(img) = self.images.get(&src_handle) {
-            (img.width, img.height, img.pixels.clone())
+            (
+                img.width,
+                img.height,
+                img.pixels.clone(),
+                img.blend_enabled,
+                img.clear_color,
+            )
         } else {
             return Err(GraphicsError::new(
                 GraphicsErrorKind::InvalidArgument,
@@ -905,7 +937,7 @@ impl SDL2Backend {
         let dest_width = (dx2 - dx1 + 1) as f64;
         let dest_height = (dy2 - dy1 + 1) as f64;
 
-        // Copy pixels with optional scaling
+        // Copy pixels with optional scaling, blending, and transparency
         for dy in dy1..=dy2 {
             for dx in dx1..=dx2 {
                 // Map dest coord to source coord
@@ -918,17 +950,51 @@ impl SDL2Backend {
                 if sxi < src_w && syi < src_h {
                     let src_idx = (syi * src_w + sxi) as usize;
                     if src_idx < src_pixels.len() {
-                        let color = src_pixels[src_idx];
+                        let src_color = src_pixels[src_idx];
+
+                        // Check _CLEARCOLOR transparency
+                        if let Some(clear) = src_clear_color {
+                            // Compare RGB only (ignore alpha in comparison)
+                            if (src_color & 0x00FFFFFF) == (clear & 0x00FFFFFF) {
+                                continue; // Skip transparent pixels
+                            }
+                        }
+
+                        // Determine final color based on blend setting
+                        let final_color = if src_blend {
+                            // Alpha blending enabled
+                            let src_alpha = (src_color >> 24) & 0xFF;
+                            if src_alpha == 0 {
+                                continue; // Fully transparent, skip
+                            } else if src_alpha == 255 {
+                                src_color // Fully opaque, just copy
+                            } else {
+                                // Blend with destination
+                                let dest_color = if dest_handle == 0 {
+                                    self.get_pixel_buffer(dx, dy).unwrap_or(0)
+                                } else {
+                                    self.images
+                                        .get(&dest_handle)
+                                        .and_then(|img| img.get_pixel(dx, dy))
+                                        .unwrap_or(0)
+                                };
+
+                                Self::blend_colors(src_color, dest_color)
+                            }
+                        } else {
+                            // No blending - direct copy (but make fully opaque)
+                            src_color | 0xFF000000
+                        };
 
                         // Write to destination
                         if dest_handle == 0 {
-                            self.set_pixel_buffer(dx, dy, color);
+                            self.set_pixel_buffer(dx, dy, final_color);
                             if let Some(canvas) = self.canvas.as_mut() {
-                                canvas.set_draw_color(Self::argb_to_sdl_color(color));
+                                canvas.set_draw_color(Self::argb_to_sdl_color(final_color));
                                 let _ = canvas.draw_point(Point::new(dx, dy));
                             }
                         } else if let Some(img) = self.images.get_mut(&dest_handle) {
-                            img.set_pixel(dx, dy, color);
+                            img.set_pixel(dx, dy, final_color);
                         }
                     }
                 }
@@ -936,6 +1002,32 @@ impl SDL2Backend {
         }
 
         Ok(())
+    }
+
+    /// Blend two ARGB colors using source alpha.
+    fn blend_colors(src: u32, dst: u32) -> u32 {
+        let src_a = ((src >> 24) & 0xFF) as u32;
+        let src_r = ((src >> 16) & 0xFF) as u32;
+        let src_g = ((src >> 8) & 0xFF) as u32;
+        let src_b = (src & 0xFF) as u32;
+
+        let dst_a = ((dst >> 24) & 0xFF) as u32;
+        let dst_r = ((dst >> 16) & 0xFF) as u32;
+        let dst_g = ((dst >> 8) & 0xFF) as u32;
+        let dst_b = (dst & 0xFF) as u32;
+
+        // Standard alpha blending: out = src * alpha + dst * (1 - alpha)
+        let inv_alpha = 255 - src_a;
+        let out_r = (src_r * src_a + dst_r * inv_alpha) / 255;
+        let out_g = (src_g * src_a + dst_g * inv_alpha) / 255;
+        let out_b = (src_b * src_a + dst_b * inv_alpha) / 255;
+        // Output alpha: combine using standard formula
+        let out_a = src_a + (dst_a * inv_alpha) / 255;
+
+        ((out_a.min(255)) << 24)
+            | ((out_r.min(255)) << 16)
+            | ((out_g.min(255)) << 8)
+            | (out_b.min(255))
     }
 
     // ========== TrueType Font Support (requires graphics-sdl2-ttf feature) ==========
@@ -1823,6 +1915,8 @@ impl GraphicsBackend for SDL2Backend {
                 height,
                 pixels,
                 mode,
+                blend_enabled: true,
+                clear_color: None,
             };
             self.images.insert(handle, img_buf);
 
@@ -1929,10 +2023,22 @@ impl GraphicsBackend for SDL2Backend {
     }
 
     fn copy_image(&mut self, handle: i32, mode: i32) -> i32 {
-        let (width, height, pixels) = if handle == 0 {
-            (self.width, self.height, self.pixel_buffer.clone())
+        let (width, height, pixels, blend_enabled, clear_color) = if handle == 0 {
+            (
+                self.width,
+                self.height,
+                self.pixel_buffer.clone(),
+                self.screen_blend_enabled,
+                self.screen_clear_color,
+            )
         } else if let Some(img) = self.images.get(&handle) {
-            (img.width, img.height, img.pixels.clone())
+            (
+                img.width,
+                img.height,
+                img.pixels.clone(),
+                img.blend_enabled,
+                img.clear_color,
+            )
         } else {
             return -1;
         };
@@ -1945,6 +2051,8 @@ impl GraphicsBackend for SDL2Backend {
             height,
             pixels,
             mode,
+            blend_enabled,
+            clear_color,
         };
         self.images.insert(new_handle, img);
 
@@ -1971,6 +2079,8 @@ impl GraphicsBackend for SDL2Backend {
             height: h,
             pixels,
             mode: 32,
+            blend_enabled: true,
+            clear_color: None,
         };
         self.images.insert(handle, img);
 
@@ -2087,6 +2197,119 @@ impl GraphicsBackend for SDL2Backend {
             }
             self.mouse_x = x;
             self.mouse_y = y;
+        }
+    }
+
+    // ========================================================================
+    // Window Control Implementation
+    // ========================================================================
+
+    fn set_fullscreen(&mut self, mode: i32) -> i32 {
+        let previous = self.fullscreen_mode;
+
+        if let Some(canvas) = self.canvas.as_mut() {
+            let fullscreen_type = match mode {
+                0 => FullscreenType::Off,
+                1 => FullscreenType::True,
+                _ => FullscreenType::Desktop, // mode 2 or _SQUAREPIXELS
+            };
+
+            if canvas.window_mut().set_fullscreen(fullscreen_type).is_ok() {
+                self.fullscreen_mode = mode.clamp(0, 2);
+            }
+        }
+
+        previous
+    }
+
+    fn get_fullscreen(&self) -> i32 {
+        self.fullscreen_mode
+    }
+
+    fn screen_move(&mut self, x: i32, y: i32) {
+        if let Some(canvas) = self.canvas.as_mut() {
+            canvas.window_mut().set_position(
+                sdl2::video::WindowPos::Positioned(x),
+                sdl2::video::WindowPos::Positioned(y),
+            );
+        }
+    }
+
+    fn screen_show(&mut self) {
+        if let Some(canvas) = self.canvas.as_mut() {
+            canvas.window_mut().show();
+            self.screen_visible = true;
+        }
+    }
+
+    fn screen_hide(&mut self) {
+        if let Some(canvas) = self.canvas.as_mut() {
+            canvas.window_mut().hide();
+            self.screen_visible = false;
+        }
+    }
+
+    fn is_screen_visible(&self) -> bool {
+        self.screen_visible
+    }
+
+    // ========================================================================
+    // Alpha Blending Implementation
+    // ========================================================================
+
+    fn set_blend(&mut self, handle: i32) {
+        if handle == 0 {
+            self.screen_blend_enabled = true;
+        } else if let Some(img) = self.images.get_mut(&handle) {
+            img.blend_enabled = true;
+        }
+    }
+
+    fn set_dontblend(&mut self, handle: i32) {
+        if handle == 0 {
+            self.screen_blend_enabled = false;
+        } else if let Some(img) = self.images.get_mut(&handle) {
+            img.blend_enabled = false;
+        }
+    }
+
+    fn get_blend(&self, handle: i32) -> bool {
+        if handle == 0 {
+            self.screen_blend_enabled
+        } else {
+            self.images
+                .get(&handle)
+                .map(|img| img.blend_enabled)
+                .unwrap_or(true)
+        }
+    }
+
+    fn set_clearcolor(&mut self, color: u32, handle: i32) {
+        if handle == 0 {
+            self.screen_clear_color = Some(color);
+        } else if let Some(img) = self.images.get_mut(&handle) {
+            img.clear_color = Some(color);
+        }
+    }
+
+    fn clear_clearcolor(&mut self, handle: i32) {
+        if handle == 0 {
+            self.screen_clear_color = None;
+        } else if let Some(img) = self.images.get_mut(&handle) {
+            img.clear_color = None;
+        }
+    }
+
+    fn get_clearcolor(&self, handle: i32) -> i64 {
+        let color = if handle == 0 {
+            self.screen_clear_color
+        } else {
+            self.images.get(&handle).and_then(|img| img.clear_color)
+        };
+
+        match color {
+            Some(c) => c as i64,
+            None => -1, // No clear color set
         }
     }
 }
