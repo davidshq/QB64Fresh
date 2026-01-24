@@ -204,6 +204,18 @@ impl super::StmtEmitter {
 
         writeln!(output, "{}void {}({}) {{", indent, c_name, params_str).unwrap();
 
+        // Emit debug entry hook
+        if self.debug_enabled {
+            // Estimate line number from first statement's span if available
+            let entry_line = body.first().map(|s| s.span.start).unwrap_or(0);
+            writeln!(
+                output,
+                "    qb_dbg_enter_proc(\"{}\", {});",
+                name, entry_line
+            )
+            .unwrap();
+        }
+
         // Create local copies of byref parameters
         emit_byref_copies(params, output);
 
@@ -228,6 +240,11 @@ impl super::StmtEmitter {
         self.indent -= 1;
 
         self.current_proc = None;
+
+        // Emit debug exit hook
+        if self.debug_enabled {
+            writeln!(output, "    qb_dbg_exit_proc(\"{}\");", name).unwrap();
+        }
 
         writeln!(output, "{}}}", indent).unwrap();
         writeln!(output).unwrap();
@@ -273,6 +290,17 @@ impl super::StmtEmitter {
         )
         .unwrap();
 
+        // Emit debug entry hook
+        if self.debug_enabled {
+            let entry_line = body.first().map(|s| s.span.start).unwrap_or(0);
+            writeln!(
+                output,
+                "    qb_dbg_enter_proc(\"{}\", {});",
+                name, entry_line
+            )
+            .unwrap();
+        }
+
         let ret_var = c_identifier(name);
         writeln!(
             output,
@@ -312,6 +340,11 @@ impl super::StmtEmitter {
 
         self.current_proc = None;
         self.current_func_ret_var = None;
+
+        // Emit debug exit hook
+        if self.debug_enabled {
+            writeln!(output, "    qb_dbg_exit_proc(\"{}\");", name).unwrap();
+        }
 
         writeln!(output, "    return {};", ret_var).unwrap();
         writeln!(output, "{}}}", indent).unwrap();

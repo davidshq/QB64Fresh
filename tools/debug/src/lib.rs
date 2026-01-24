@@ -32,6 +32,8 @@ mod config;
 pub mod dap;
 mod error;
 pub mod frames;
+pub mod protocol;
+pub mod server;
 pub mod sources;
 pub mod symbols;
 pub mod values;
@@ -43,6 +45,8 @@ pub use frames::{
     AccessPathElement, CallStack, FrameId, ScopeInfo, StackFrame, VariableCategory, VariableGroup,
     VariableReference,
 };
+pub use protocol::{DebugCommand, DebugConnection, DebugEvent, ProtocolError, StopReason};
+pub use server::{DapServer, DapServerError};
 pub use sources::{IncludeInfo, SourceFileInfo, SourceManager, SourcePosition};
 pub use symbols::{
     DebugArrayDimension, DebugLabel, DebugParameter, DebugProcedure, DebugScope, DebugScopeId,

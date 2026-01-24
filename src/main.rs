@@ -45,6 +45,10 @@ struct Args {
     #[arg(long, default_value = "inline")]
     runtime: String,
 
+    /// Enable debug mode (include debug hooks for breakpoints/stepping)
+    #[arg(long)]
+    debug: bool,
+
     /// Skip $INCLUDE preprocessing
     #[arg(long)]
     no_preprocess: bool,
@@ -223,7 +227,11 @@ fn main() {
             }
         };
 
-        let backend = CBackend::with_runtime_mode(runtime_mode);
+        let mut backend = CBackend::with_runtime_mode(runtime_mode);
+        if args.debug {
+            let source_file = args.input.to_string_lossy().to_string();
+            backend = backend.with_debug(true).with_source_file(&source_file);
+        }
         let output = match backend.generate(&typed_program) {
             Ok(o) => o,
             Err(e) => {
