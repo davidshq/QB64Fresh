@@ -1742,7 +1742,13 @@ impl SemanticAnalyzer {
         define_error("_ERR_PATH_NOT_FOUND", 76);
     }
 
-    /// Registers platform detection constants (_OS_*).
+    /// Registers platform detection constants (_WINDOWS, _LINUX, _MACOSX, etc.).
+    ///
+    /// Also registers common aliases used in $IF conditions:
+    /// - `_WIN` - alias for `_WINDOWS`
+    /// - `_MAC` - alias for `_MACOSX`
+    /// - `_64BIT` - TRUE (-1) on 64-bit platforms
+    /// - `_32BIT` - TRUE (-1) on 32-bit platforms
     fn register_platform_constants(&mut self) {
         // Helper to register a platform constant
         let mut define_platform = |name: &str, value: i64| {
@@ -1762,29 +1768,57 @@ impl SemanticAnalyzer {
         #[cfg(target_os = "windows")]
         {
             define_platform("_WINDOWS", -1); // TRUE
+            define_platform("_WIN", -1); // Alias
             define_platform("_LINUX", 0);
             define_platform("_MACOSX", 0);
+            define_platform("_MAC", 0); // Alias
         }
 
         #[cfg(target_os = "linux")]
         {
             define_platform("_WINDOWS", 0);
+            define_platform("_WIN", 0); // Alias
             define_platform("_LINUX", -1); // TRUE
             define_platform("_MACOSX", 0);
+            define_platform("_MAC", 0); // Alias
         }
 
         #[cfg(target_os = "macos")]
         {
             define_platform("_WINDOWS", 0);
+            define_platform("_WIN", 0); // Alias
             define_platform("_LINUX", 0);
             define_platform("_MACOSX", -1); // TRUE
+            define_platform("_MAC", -1); // Alias
         }
 
         #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
         {
             define_platform("_WINDOWS", 0);
+            define_platform("_WIN", 0); // Alias
             define_platform("_LINUX", 0);
             define_platform("_MACOSX", 0);
+            define_platform("_MAC", 0); // Alias
+        }
+
+        // Architecture constants (based on pointer size)
+        #[cfg(target_pointer_width = "64")]
+        {
+            define_platform("_64BIT", -1); // TRUE
+            define_platform("_32BIT", 0);
+        }
+
+        #[cfg(target_pointer_width = "32")]
+        {
+            define_platform("_64BIT", 0);
+            define_platform("_32BIT", -1); // TRUE
+        }
+
+        #[cfg(not(any(target_pointer_width = "64", target_pointer_width = "32")))]
+        {
+            // Rare case: neither 32 nor 64 bit
+            define_platform("_64BIT", 0);
+            define_platform("_32BIT", 0);
         }
     }
 

@@ -160,6 +160,9 @@ impl<'a> Parser<'a> {
             TokenKind::MkDollarFunc => self.parse_mk_func(),
             TokenKind::CastFunc => self.parse_cast_func(),
 
+            // QB64 Memory functions (_MEM is both a type and a function)
+            TokenKind::MemType => self.parse_builtin_function("_MEM"),
+
             // Keywords that can be used as variable names in expression context
             // In BASIC, keywords like NAME, INPUT, OUTPUT can be used as variable names
             // when context makes it unambiguous that an identifier is expected.

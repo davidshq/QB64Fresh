@@ -24,6 +24,8 @@ mod io;
 use crate::ast::{
     ArrayDimension, ExternalDeclaration, PrintItem, Span, Statement, StatementKind, ViewCoords,
 };
+#[cfg(feature = "header-parsing")]
+use crate::ast::{ExternalParam, TypeSpec};
 use crate::semantic::{
     error::SemanticError,
     symbols::{ConstValue, Symbol, SymbolKind, UserTypeDefinition, UserTypeMember},
@@ -1345,17 +1347,39 @@ impl<'a> TypeChecker<'a> {
                 is_dynamic,
                 declarations,
             } => {
-                // Register external functions in the symbol table
-                let typed_declarations = declarations
+                // Check if library_name is a header file (.h extension)
+                // If so, parse the header to auto-generate function declarations
+                #[cfg(feature = "header-parsing")]
+                let header_declarations = if let Some(lib_name) = library_name.as_ref() {
+                    if lib_name.ends_with(".h") {
+                        self.parse_header_file(lib_name, stmt.span)
+                    } else {
+                        Vec::new()
+                    }
+                } else {
+                    Vec::new()
+                };
+
+                #[cfg(not(feature = "header-parsing"))]
+                let header_declarations: Vec<ExternalDeclaration> = Vec::new();
+
+                // Merge header declarations with manual declarations
+                // Manual declarations take precedence (appear later in the list)
+                let mut all_declarations: Vec<TypedExternalDeclaration> = header_declarations
                     .iter()
                     .map(|decl| self.register_external_function(decl))
                     .collect();
+
+                // Add manual declarations (these can override header-parsed ones)
+                for decl in declarations {
+                    all_declarations.push(self.register_external_function(decl));
+                }
 
                 TypedStatement::new(
                     TypedStatementKind::DeclareLibrary {
                         library_name: library_name.clone(),
                         is_dynamic: *is_dynamic,
-                        declarations: typed_declarations,
+                        declarations: all_declarations,
                     },
                     stmt.span,
                 )
@@ -2033,5 +2057,125 @@ impl<'a> TypeChecker<'a> {
             lower: typed_lower,
             upper: typed_upper,
         }
+    }
+
+    // ========================================================================
+    // Header File Parsing for DECLARE LIBRARY "file.h"
+    // ========================================================================
+
+    /// Parses a C header file and converts function declarations to ExternalDeclaration.
+    ///
+    /// This enables `DECLARE LIBRARY "header.h"` to automatically import function
+    /// signatures from the header, reducing the need for manual declarations.
+    ///
+    /// # Arguments
+    /// - `header_path`: Path to the header file (relative to CWD or absolute)
+    /// - `span`: Source span for error reporting
+    ///
+    /// # Returns
+    /// Vector of ExternalDeclaration parsed from the header file.
+    /// Returns empty vector if the file cannot be read or parsed.
+    #[cfg(feature = "header-parsing")]
+    fn parse_header_file(&mut self, header_path: &str, _span: Span) -> Vec<ExternalDeclaration> {
+        use crate::header_parser::{Platform, parse_header_full};
+        use std::fs;
+
+        // Try to read the header file
+        let header_content = match fs::read_to_string(header_path) {
+            Ok(content) => content,
+            Err(_) => {
+                // Header parsing is optional - silently return empty if file not found.
+                // User can still manually declare functions inside the DECLARE LIBRARY block.
+                return Vec::new();
+            }
+        };
+
+        // Parse the header file
+        let result = parse_header_full(&header_content, Some(Platform::current()));
+
+        // Convert CFunction entries to ExternalDeclaration
+        let mut declarations = Vec::with_capacity(result.functions.len());
+
+        for func in result.functions {
+            declarations.push(self.c_function_to_external_decl(&func));
+        }
+
+        // Note: result.constants and result.structs could also be processed here
+        // to define CONST values and TYPE structures, but that's a future enhancement.
+
+        declarations
+    }
+
+    /// Converts a CFunction from the header parser to an ExternalDeclaration.
+    #[cfg(feature = "header-parsing")]
+    fn c_function_to_external_decl(
+        &self,
+        func: &crate::header_parser::CFunction,
+    ) -> ExternalDeclaration {
+        // Convert parameters
+        let params: Vec<ExternalParam> = func
+            .params
+            .iter()
+            .enumerate()
+            .map(|(i, p)| {
+                let name = if p.name.is_empty() {
+                    format!("arg{}", i + 1)
+                } else {
+                    p.name.clone()
+                };
+                ExternalParam {
+                    name,
+                    type_spec: basic_type_to_type_spec(&p.typ),
+                    is_byval: true, // C passes by value by default
+                }
+            })
+            .collect();
+
+        // Determine if it's a function (has return value) or sub (void)
+        let is_function = func.return_type != BasicType::Void;
+        let return_type = if is_function {
+            Some(basic_type_to_type_spec(&func.return_type))
+        } else {
+            None
+        };
+
+        ExternalDeclaration {
+            name: func.name.clone(),
+            alias: None, // C name matches BASIC name
+            params,
+            return_type,
+            is_function,
+        }
+    }
+}
+
+/// Converts a BasicType back to a TypeSpec for AST construction.
+///
+/// This is the inverse of `from_type_spec` and is used when creating
+/// ExternalDeclaration nodes from parsed C headers.
+#[cfg(feature = "header-parsing")]
+fn basic_type_to_type_spec(typ: &BasicType) -> TypeSpec {
+    match typ {
+        BasicType::Integer => TypeSpec::Integer,
+        BasicType::Long => TypeSpec::Long,
+        BasicType::Integer64 => TypeSpec::Integer64,
+        BasicType::Single => TypeSpec::Single,
+        BasicType::Double => TypeSpec::Double,
+        BasicType::String => TypeSpec::String,
+        BasicType::FixedString(n) => TypeSpec::FixedString(*n),
+        BasicType::Byte => TypeSpec::Byte,
+        BasicType::Bit => TypeSpec::Bit,
+        BasicType::UnsignedByte => TypeSpec::Unsigned(Box::new(TypeSpec::Byte)),
+        BasicType::UnsignedBit => TypeSpec::Unsigned(Box::new(TypeSpec::Bit)),
+        BasicType::UnsignedInteger => TypeSpec::Unsigned(Box::new(TypeSpec::Integer)),
+        BasicType::UnsignedLong => TypeSpec::Unsigned(Box::new(TypeSpec::Long)),
+        BasicType::UnsignedInteger64 => TypeSpec::Unsigned(Box::new(TypeSpec::Integer64)),
+        BasicType::Offset => TypeSpec::Offset,
+        BasicType::Mem => TypeSpec::Mem,
+        BasicType::Float => TypeSpec::Float,
+        BasicType::Void => TypeSpec::Long, // Void shouldn't appear, default to Long
+        BasicType::UserDefined(name) => TypeSpec::UserDefined(name.clone()),
+        BasicType::Array { .. } => TypeSpec::Long, // Arrays not directly representable
+        BasicType::Unknown => TypeSpec::Long,      // Default fallback
     }
 }

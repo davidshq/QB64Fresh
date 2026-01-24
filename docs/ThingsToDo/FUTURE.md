@@ -24,24 +24,13 @@ This document outlines features that are planned but not yet implemented, along 
 
 *(Only unimplemented items are listed.)*
 
-2. **Header Parsing** – `DECLARE LIBRARY "file.h"` does not parse the header; the string is only a library identifier. Manually declare each `FUNCTION` and `SUB`. The `header-parsing` API (supports `#define`, `#ifdef`, structs; not function-like macros, unions, or C++) is not integrated into DECLARE LIBRARY.
+2. **Header Parsing** *(Implemented with `--features header-parsing`)* – `DECLARE LIBRARY "file.h"` can optionally parse the header to auto-generate function declarations. Build with `--features header-parsing` to enable. Supports `#define`, `#ifdef`, structs; not function-like macros, unions, or C++. Manual declarations still work and take precedence.
 
-3. **`_MEM`** – Not supported in DECLARE LIBRARY parameters. Also missing: `_MEM(variable)` (parser rejects: `_MEM` is lexed as type-only), optional `AS type` on `_MEMGET`/`_MEMPUT`, and VARPTR/cmem integration. Use `_OFFSET` with C helpers when you need `_MEM`-like behavior from C.
+3. **`_MEM` Advanced Features** – `_MEM` type works in DECLARE LIBRARY parameters and `_MEM(variable)` works as a function. **Remaining limitations:** optional `AS type` on `_MEMGET`/`_MEMPUT` is not supported; use typed helper functions instead. VARPTR/cmem integration is not implemented; use `_OFFSET` with C helpers for C interop.
 
 4. **Callback Functions** – Callback signatures other than qsort-style (`int (*)(const void*, const void*)` via `_PROCPTR`) are not supported; implement in C and link.
 
-5. **Platform-Specific** – `_64BIT`/`_32BIT` and `_WIN`/`_MAC` aliases are not in builtins for `$IF` conditions.
-
----
-
-## Known Limitations
-
-### Unicode Support
-- [x] **Unicode support** *(Stub-level parity achieved)*
-      Currently ASCII-focused. Full Unicode would require significant changes to string handling.
-      **Implemented:** UTF-8 in source and string literals; **`_MAPUNICODE`** (statement and function) is fully implemented with CP437 default table and customizable ASCII→Unicode mapping; inline C runtime has `qb_utf8_char_count`/`qb_utf8_char_to_byte`/`qb_strlen_chars` (unused by BASIC built-ins); UCASE$/LCASE$ preserve multi-byte UTF-8.
-      LEN, LEFT$, RIGHT$, MID$, INSTR, CHR$, ASC, and compares remain byte-based.
-      **QB64pe parity:** `_UPRINTSTRING`, `_UPRINTWIDTH`, `_UCHARPOS`, `_UFONTHEIGHT`, `_ULINESPACING` are implemented as stubs (no-op or safe defaults). Full Unicode rendering would require FreeType integration.
+5. **Platform-Specific** *(Implemented)* – `_64BIT`/`_32BIT`, `_WIN`/`_MAC`, `_WINDOWS`, `_LINUX`, `_MACOSX` are available as builtin constants for `$IF` conditions.
 
 ---
 
