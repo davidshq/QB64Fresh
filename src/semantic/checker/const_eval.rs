@@ -92,7 +92,8 @@ impl<'a> TypeChecker<'a> {
             | TypedExprKind::CvFunc { .. }
             | TypedExprKind::MkDollarFunc { .. }
             | TypedExprKind::CastFunc { .. }
-            | TypedExprKind::ValWithType { .. } => None,
+            | TypedExprKind::ValWithType { .. }
+            | TypedExprKind::MemGetTyped { .. } => None,
         }
     }
 

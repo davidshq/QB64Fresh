@@ -645,6 +645,27 @@ impl<'a> TypeChecker<'a> {
                 )
             }
 
+            StatementKind::MemPutTyped {
+                mem,
+                offset,
+                value,
+                value_type,
+            } => {
+                let typed_mem = self.check_expr(mem);
+                let typed_offset = self.check_expr(offset);
+                let typed_value = self.check_expr(value);
+                let basic_type = self.parse_type_name(value_type);
+                TypedStatement::new(
+                    TypedStatementKind::MemPutTyped {
+                        mem: typed_mem,
+                        offset: typed_offset,
+                        value: typed_value,
+                        value_type: basic_type,
+                    },
+                    stmt.span,
+                )
+            }
+
             // ==================== Variable/Scope Statements ====================
             StatementKind::CommonStmt { shared, variables } => {
                 let typed_vars: Vec<TypedCommonVariable> = variables

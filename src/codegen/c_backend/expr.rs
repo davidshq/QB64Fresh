@@ -534,6 +534,22 @@ pub(super) fn emit_expr(expr: &TypedExpr) -> Result<String, CodeGenError> {
             };
             Ok(format!("{}({})", func, value_code))
         }
+
+        TypedExprKind::MemGetTyped {
+            mem,
+            offset,
+            target_type,
+        } => {
+            let mem_code = emit_expr(mem)?;
+            let offset_code = emit_expr(offset)?;
+            // _MEMGET reads raw bytes from memory at the given offset
+            // and interprets them as the specified type.
+            // Generated code: *((type*)((char*)(mem).offset + (offset)))
+            let c_ty = c_type(target_type);
+            Ok(format!(
+                "(*(({c_ty}*)((char*)({mem_code}).offset + ({offset_code}))))"
+            ))
+        }
     }
 }
 

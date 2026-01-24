@@ -177,6 +177,18 @@ pub enum TypedExprKind {
         /// The target numeric type.
         target_type: BasicType,
     },
+
+    /// _MEMGET with type specifier: `_MEMGET(mem, offset, AS type)`.
+    ///
+    /// Reads a value of the specified type from a memory block.
+    MemGetTyped {
+        /// The memory block to read from.
+        mem: Box<TypedExpr>,
+        /// The byte offset within the memory block.
+        offset: Box<TypedExpr>,
+        /// The type of value to read.
+        target_type: BasicType,
+    },
 }
 
 /// Parameter information for external function calls.
@@ -526,6 +538,18 @@ pub enum TypedStatementKind {
         address: TypedExpr,
         /// Value to write (only low byte is used, 0-255).
         value: TypedExpr,
+    },
+
+    /// _MEMPUT with type specifier: `_MEMPUT mem, offset, value AS type`.
+    MemPutTyped {
+        /// The memory block to write to.
+        mem: TypedExpr,
+        /// The byte offset within the memory block.
+        offset: TypedExpr,
+        /// The value to write.
+        value: TypedExpr,
+        /// The type to interpret the value as.
+        value_type: BasicType,
     },
 
     /// Label definition.

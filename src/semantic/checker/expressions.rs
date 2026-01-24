@@ -146,6 +146,26 @@ impl<'a> TypeChecker<'a> {
                     expr.span,
                 )
             }
+
+            ExprKind::MemGetTyped {
+                mem,
+                offset,
+                target_type,
+            } => {
+                let typed_mem = self.check_expr(mem);
+                let typed_offset = self.check_expr(offset);
+                let basic_type = self.parse_type_name(target_type);
+                // _MEMGET with type spec returns the specified type
+                TypedExpr::new(
+                    TypedExprKind::MemGetTyped {
+                        mem: Box::new(typed_mem),
+                        offset: Box::new(typed_offset),
+                        target_type: basic_type.clone(),
+                    },
+                    basic_type,
+                    expr.span,
+                )
+            }
         }
     }
 
@@ -962,7 +982,7 @@ impl<'a> TypeChecker<'a> {
     /// Parses a type name string into a BasicType.
     ///
     /// Handles type names like "INTEGER", "_INTEGER64", "_UNSIGNED INTEGER", etc.
-    fn parse_type_name(&self, type_name: &str) -> BasicType {
+    pub(super) fn parse_type_name(&self, type_name: &str) -> BasicType {
         let upper = type_name.to_uppercase();
 
         // Check for _UNSIGNED prefix

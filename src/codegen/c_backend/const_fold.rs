@@ -76,7 +76,8 @@ pub fn try_fold(expr: &TypedExpr) -> Option<FoldedValue> {
         | TypedExprKind::CvFunc { .. }
         | TypedExprKind::MkDollarFunc { .. }
         | TypedExprKind::CastFunc { .. }
-        | TypedExprKind::ValWithType { .. } => None,
+        | TypedExprKind::ValWithType { .. }
+        | TypedExprKind::MemGetTyped { .. } => None,
     }
 }
 

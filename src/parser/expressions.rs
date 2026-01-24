@@ -409,6 +409,55 @@ impl<'a> Parser<'a> {
                         span,
                     )
                 }
+            // Special handling for _MEMGET with type specifier: _MEMGET(mem, offset, AS type)
+            } else if name.eq_ignore_ascii_case("_MEMGET") {
+                // Parse first argument (mem expression)
+                let mem = self.parse_expression()?;
+                self.expect(&TokenKind::Comma, ",")?;
+
+                // Parse second argument (offset expression)
+                let offset = self.parse_expression()?;
+
+                // Check for optional third argument: AS type
+                if self.match_token(&TokenKind::Comma) {
+                    // Expect AS keyword
+                    if self.match_token(&TokenKind::As) {
+                        let type_name = self.parse_type_name()?;
+                        self.expect(&TokenKind::RightParen, ")")?;
+                        let span = self.span_from(start_span.start);
+                        Expr::new(
+                            ExprKind::MemGetTyped {
+                                mem: Box::new(mem),
+                                offset: Box::new(offset),
+                                target_type: type_name,
+                            },
+                            span,
+                        )
+                    } else {
+                        // Third argument without AS - regular function call (error case)
+                        let third_arg = self.parse_expression()?;
+                        self.expect(&TokenKind::RightParen, ")")?;
+                        let span = self.span_from(start_span.start);
+                        Expr::new(
+                            ExprKind::FunctionCall {
+                                name,
+                                args: vec![mem, offset, third_arg],
+                            },
+                            span,
+                        )
+                    }
+                } else {
+                    // Two-argument _MEMGET - regular function call (returns Unknown type)
+                    self.expect(&TokenKind::RightParen, ")")?;
+                    let span = self.span_from(start_span.start);
+                    Expr::new(
+                        ExprKind::FunctionCall {
+                            name,
+                            args: vec![mem, offset],
+                        },
+                        span,
+                    )
+                }
             } else {
                 let args = self.parse_argument_list()?;
                 self.expect(&TokenKind::RightParen, ")")?;
@@ -614,10 +663,10 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Parses a type name for _CV, _MK$, _CAST, VAL functions.
+    /// Parses a type name for _CV, _MK$, _CAST, VAL, _MEMGET, _MEMPUT functions.
     ///
     /// Returns the type name as a string (e.g., "INTEGER", "SINGLE", "_INTEGER64").
-    fn parse_type_name(&mut self) -> Result<String, ()> {
+    pub(in crate::parser) fn parse_type_name(&mut self) -> Result<String, ()> {
         // Check for _UNSIGNED modifier
         let mut prefix = String::new();
         if self.match_token(&TokenKind::Unsigned) {
