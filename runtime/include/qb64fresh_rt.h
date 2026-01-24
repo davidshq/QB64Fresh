@@ -252,6 +252,126 @@ void qb_runtime_shutdown(void);
 void qb_end(int32_t exit_code);
 void qb_stop(void);
 
+/* Initialization functions called at program start */
+void qb_init_args(int argc, char** argv);
+void qb_init_startdir(void);
+void _qb_init_palette(void);
+
+/* Compatibility macros for inline runtime naming conventions */
+#define qb__rgb32(r, g, b) qb_rgb(r, g, b)
+#define qb__rgb32_4(r, g, b, a) qb_rgba(r, g, b, a)
+#define qb__rgba32(r, g, b, a) qb_rgba(r, g, b, a)
+
+/* ============================================================================
+ * Graphics Functions
+ * ============================================================================ */
+
+/* Initialization and shutdown */
+int qb_gfx_init(uint32_t width, uint32_t height);
+int qb_gfx_shutdown(void);
+int qb_gfx_screen(int32_t mode, int32_t color_switch, int32_t active_page, int32_t visual_page);
+
+/* Screen operations */
+int qb_gfx_cls(void);
+int qb_gfx_color(uint32_t foreground, uint32_t background);
+uint32_t qb_gfx_get_foreground(void);
+uint32_t qb_gfx_get_background(void);
+int qb_gfx_locate(uint32_t row, uint32_t col);
+uint32_t qb_gfx_csrlin(void);
+uint32_t qb_gfx_pos(void);
+int qb_gfx_print(const char* text);
+int qb_gfx_display(void);
+int qb_gfx_autodisplay(int enabled);
+uint32_t qb_gfx_width(void);
+uint32_t qb_gfx_height(void);
+
+/* Drawing primitives */
+int qb_gfx_pset(int32_t x, int32_t y, uint32_t color);
+int qb_gfx_pset_step(int32_t x, int32_t y, uint32_t color, int step);
+uint32_t qb_gfx_point(int32_t x, int32_t y);
+int qb_gfx_line(int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color);
+int qb_gfx_line_step(int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color, int step1, int step2);
+int qb_gfx_box(int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color, int filled);
+int qb_gfx_box_step(int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color, int filled, int step1, int step2);
+int qb_gfx_circle(int32_t x, int32_t y, int32_t radius, uint32_t color, int filled);
+int qb_gfx_circle_step(int32_t x, int32_t y, int32_t radius, uint32_t color, int filled, int step);
+int qb_gfx_paint(int32_t x, int32_t y, uint32_t color, int32_t boundary_color);
+int qb_gfx_paint_step(int32_t x, int32_t y, uint32_t color, int32_t boundary_color, int step);
+int qb_gfx_draw(const char* commands);
+
+/* Palette functions */
+int qb_gfx_palette(int32_t index, uint32_t color);
+int qb_gfx_palette_reset(void);
+uint32_t qb_gfx_palette_get(int32_t index);
+
+/* Color functions */
+uint32_t qb_rgb(uint32_t r, uint32_t g, uint32_t b);
+uint32_t qb_rgb32(uint32_t r, uint32_t g, uint32_t b);
+uint32_t qb_rgba(uint32_t r, uint32_t g, uint32_t b, uint32_t a);
+uint32_t qb_rgba32(uint32_t r, uint32_t g, uint32_t b, uint32_t a);
+
+/* Viewport and coordinate mapping */
+int qb_gfx_view(int screen, int32_t x1, int32_t y1, int32_t x2, int32_t y2, int32_t fill_color, int32_t border_color);
+int qb_gfx_view_reset(void);
+int qb_gfx_window(int screen, double x1, double y1, double x2, double y2);
+int qb_gfx_window_reset(void);
+double qb_gfx_pmap(double coord, int32_t func_code);
+int qb_gfx_set_width(uint32_t columns, uint32_t rows);
+int qb_gfx_pcopy(int32_t src, int32_t dst);
+
+/* Event handling */
+int qb_gfx_poll_events(void);
+
+/* Image functions */
+int32_t qb_gfx_newimage(int32_t width, int32_t height, int32_t mode);
+int32_t qb_gfx_loadimage(const char* filename, int32_t mode);
+int qb_gfx_freeimage(int32_t handle);
+int qb_gfx_putimage_simple(int32_t src_handle, int32_t dest_handle);
+int qb_gfx_putimage(int32_t dx1, int32_t dy1, int32_t dx2, int32_t dy2, int32_t src_handle, int32_t dest_handle);
+int qb_gfx_putimage_full(int32_t dx1, int32_t dy1, int32_t dx2, int32_t dy2, int32_t src_handle, int32_t dest_handle, int32_t sx1, int32_t sy1, int32_t sx2, int32_t sy2);
+int qb_gfx_source(int32_t handle);
+int qb_gfx_dest(int32_t handle);
+int qb_gfx_printstring(int32_t x, int32_t y, const char* text);
+int32_t qb_gfx_image_width(int32_t handle);
+int32_t qb_gfx_image_height(int32_t handle);
+
+/* GET/PUT graphics array operations */
+int qb_gfx_get(int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint8_t* arr);
+int qb_gfx_get_step(int32_t x1, int32_t y1, int32_t w, int32_t h, uint8_t* arr);
+int qb_gfx_put(int32_t x, int32_t y, const uint8_t* arr, int action, int clip, int32_t trans_color);
+int qb_gfx_put_step(int32_t x, int32_t y, const uint8_t* arr, int action, int clip, int32_t trans_color);
+
+/* PUT action constants */
+#define QB_PUT_XOR      0
+#define QB_PUT_PSET     1
+#define QB_PUT_PRESET   2
+#define QB_PUT_AND      3
+#define QB_PUT_OR       4
+
+/* Mouse input functions */
+int32_t qb_mouse_x(void);
+int32_t qb_mouse_y(void);
+int32_t qb_mouse_button(int32_t button);
+int32_t qb_mouse_input(void);
+int32_t qb_mouse_movement_x(void);
+int32_t qb_mouse_movement_y(void);
+int32_t qb_mouse_wheel(void);
+void qb_mouse_hide(void);
+void qb_mouse_show(void);
+void qb_mouse_move(int32_t x, int32_t y);
+
+/* Clipboard functions */
+QbString* qb_clipboard_get(void);
+void qb_clipboard_set(const char* text);
+
+/* Font functions */
+int64_t qb_loadfont(const char* path, int64_t size);
+int64_t qb_font(int64_t handle);
+int64_t qb_freefont(int64_t handle);
+int64_t qb_fontheight(void);
+int64_t qb_fontwidth(void);
+int64_t qb_printwidth(const char* text);
+
 #ifdef __cplusplus
 }
 #endif

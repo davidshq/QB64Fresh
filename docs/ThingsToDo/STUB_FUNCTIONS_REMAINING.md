@@ -13,7 +13,8 @@ For the complete function reference (including all implemented functions), see [
 | Status | Count | Description |
 |--------|-------|-------------|
 | ⚠️ Audio stubs (external) | 12 | Need rodio integration (vol, seek, raw) |
-| ⚠️ Legacy stubs | ~8 | FRE, device functions, event handlers |
+| ⚠️ Legacy stubs | ~4 | ERDEV, device error functions, event handlers |
+| ❌ Compile errors | 4 | FRE, SETMEM, IOCTL$, FILEATTR (match QB64pe) |
 | ❌ Intentionally disabled | ~7 | Interrupts, obsolete hardware |
 | **Total Remaining** | **~27** | Out of 419 registered functions |
 
@@ -53,7 +54,9 @@ These functions exist for QB4.5 compatibility but are stubs or have minimal impl
 
 | Function | Fresh Status | QB64pe Status | Notes |
 |----------|--------------|---------------|-------|
-| `FRE()` | ⚠️ Stub (64 MB) | ⛔ Stub (error) | QB64pe returns "Command not implemented" |
+| `FRE()` | ❌ Error | ⛔ Stub (error) | Throws compile error matching QB64pe |
+| `SETMEM` | ❌ Error | ⛔ Stub (error) | Throws compile error matching QB64pe |
+| `FILEATTR()` | ❌ Error | ⛔ Stub (error) | Throws compile error matching QB64pe |
 
 
 ### Device Functions
@@ -62,8 +65,8 @@ These functions exist for QB4.5 compatibility but are stubs or have minimal impl
 |----------|--------------|---------------|-------|
 | `ERDEV()` | ⚠️ Stub (0) | ❌ Not registered | Legacy DOS device error |
 | `ERDEV$()` | ⚠️ Stub ("") | ❌ Not registered | Legacy DOS device error |
-| `IOCTL$()` | ⚠️ Stub ("") | ⛔ Stub (error) | QB64pe returns error at runtime |
-| `IOCTL` | ⚠️ Stub | ⛔ Stub (error) | QB64pe returns error at runtime |
+| `IOCTL$()` | ❌ Error | ⛔ Stub (error) | Throws compile error matching QB64pe |
+| `IOCTL` | ⚠️ Stub | ⛔ Stub (error) | Statement form compiles to no-op |
 
 ### Event Handlers - Stub Only
 
@@ -176,11 +179,12 @@ Direct interrupt calls are not supported on modern systems.
 |----------|-------|------------|
 | ✅ Fully Implemented | ~392 | 94% |
 | ⚠️ Audio Stubs (need rodio work) | 12 | 3% |
-| ⚠️ Legacy Stubs | ~8 | 2% |
+| ⚠️ Legacy Stubs | ~4 | 1% |
+| ❌ Compile Errors (match QB64pe) | 4 | 1% |
 | ❌ Disabled/Obsolete | ~7 | 1% |
 
-The vast majority of QB64 programs will work without issues. The remaining stubs are for:
+The vast majority of QB64 programs will work without issues. The remaining issues are:
 - Audio features needing rodio integration (volume, seeking, raw synthesis)
-- Obscure legacy features (FRE, device control) - note: QB64pe also stubs these
+- Obsolete legacy functions throw compile errors (FRE, SETMEM, IOCTL$, FILEATTR) - matches QB64pe
 - System interrupts (INTERRUPT/INTERRUPTX) - QB64pe implements for mouse
 - Obsolete hardware (light pen) - QB64pe also doesn't implement

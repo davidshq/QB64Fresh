@@ -2347,6 +2347,11 @@ impl<'a> TypeChecker<'a> {
             }
 
             StatementKind::Setmem { bytes } => {
+                // SETMEM is obsolete - throw compile error matching QB64pe behavior
+                self.errors.push(SemanticError::CommandNotImplemented {
+                    name: "SETMEM".to_string(),
+                    span: stmt.span,
+                });
                 let typed_bytes = self.check_expr(bytes);
                 TypedStatement::new(TypedStatementKind::Setmem { bytes: typed_bytes }, stmt.span)
             }

@@ -1269,24 +1269,25 @@ impl StmtEmitter {
                     "0".to_string()
                 };
 
-                // step2 flag indicates x2/y2 are relative to x1/y1
-                let step_flag = if *step2 { "1" } else { "0" };
+                // In LINE statement, STEP only applies to the endpoint (step2)
+                // step1 = 0 (first point is absolute), step2 = whether endpoint is relative
+                let step2_flag = if *step2 { "1" } else { "0" };
 
                 match box_style {
                     None => {
-                        // Plain line
-                        writeln!(output, "{}qb_gfx_line_ex((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, {}, (uint32_t){});",
-                                 indent, x1_code, y1_code, x2_code, y2_code, step_flag, color_code).unwrap();
+                        // Plain line: qb_gfx_line_step(x1, y1, x2, y2, color, step1, step2)
+                        writeln!(output, "{}qb_gfx_line_step((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (uint32_t){}, 0, {});",
+                                 indent, x1_code, y1_code, x2_code, y2_code, color_code, step2_flag).unwrap();
                     }
                     Some(false) => {
-                        // Box (outline)
-                        writeln!(output, "{}qb_gfx_box_ex((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, {}, (uint32_t){}, 0);",
-                                 indent, x1_code, y1_code, x2_code, y2_code, step_flag, color_code).unwrap();
+                        // Box (outline): qb_gfx_box_step(x1, y1, x2, y2, color, filled, step1, step2)
+                        writeln!(output, "{}qb_gfx_box_step((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (uint32_t){}, 0, 0, {});",
+                                 indent, x1_code, y1_code, x2_code, y2_code, color_code, step2_flag).unwrap();
                     }
                     Some(true) => {
-                        // Filled box
-                        writeln!(output, "{}qb_gfx_box_ex((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, {}, (uint32_t){}, 1);",
-                                 indent, x1_code, y1_code, x2_code, y2_code, step_flag, color_code).unwrap();
+                        // Filled box: qb_gfx_box_step(x1, y1, x2, y2, color, filled, step1, step2)
+                        writeln!(output, "{}qb_gfx_box_step((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (uint32_t){}, 1, 0, {});",
+                                 indent, x1_code, y1_code, x2_code, y2_code, color_code, step2_flag).unwrap();
                     }
                 }
             }
