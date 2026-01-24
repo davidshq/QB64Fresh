@@ -1185,9 +1185,16 @@ impl SemanticAnalyzer {
         // Memory extended functions
         self.register_builtin_function(
             "_MEMEXISTS",
-            &[("mem", BasicType::Offset)],
+            &[("mem", BasicType::Mem)],
             BasicType::Integer,
         );
+        self.register_builtin_function(
+            "_MEMELEMENT",
+            &[("mem", BasicType::Mem), ("index", BasicType::Offset)],
+            BasicType::Mem,
+        );
+        self.register_builtin_function("_MEMIMAGE", &[("handle", BasicType::Long)], BasicType::Mem);
+        self.register_builtin_function("_MEMSOUND", &[("handle", BasicType::Long)], BasicType::Mem);
 
         // Default color functions
         self.register_builtin_function_with_optionals(

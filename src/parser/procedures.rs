@@ -371,6 +371,10 @@ impl<'a> Parser<'a> {
                 self.advance();
                 TypeSpec::Bit
             }
+            TokenKind::MemType => {
+                self.advance();
+                TypeSpec::Mem
+            }
             TokenKind::Identifier => {
                 let name = token.text.to_string();
                 self.advance();

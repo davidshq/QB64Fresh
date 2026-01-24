@@ -428,6 +428,7 @@ pub fn from_type_spec(spec: &TypeSpec) -> BasicType {
                 other => other,
             }
         }
+        TypeSpec::Mem => BasicType::Mem,
         TypeSpec::UserDefined(name) => BasicType::UserDefined(name.clone()),
     }
 }

@@ -266,4 +266,378 @@ pub(super) fn emit_memory_functions(output: &mut String) {
     writeln!(output, "    return m;").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
+
+    // _MEMEXISTS(memBlock) - Check if memory block is still valid
+    // Returns -1 (true) if valid, 0 (false) if freed/invalid
+    writeln!(output, "int32_t qb_memexists(qb_mem m) {{").unwrap();
+    writeln!(
+        output,
+        "    return (m.offset != NULL && m.size > 0) ? -1 : 0;"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _MEMELEMENT(memBlock, elementIndex) - Get memory reference to array element
+    // Returns _MEM block pointing to the specific element
+    writeln!(output, "qb_mem qb_memelement(qb_mem m, intptr_t index) {{").unwrap();
+    writeln!(output, "    qb_mem result;").unwrap();
+    writeln!(
+        output,
+        "    if (!m.offset || m.elementsize <= 0 || index < 0) {{"
+    )
+    .unwrap();
+    writeln!(output, "        result.offset = NULL;").unwrap();
+    writeln!(output, "        result.size = 0;").unwrap();
+    writeln!(output, "        result.type = 0;").unwrap();
+    writeln!(output, "        result.elementsize = 0;").unwrap();
+    writeln!(output, "        result.image = 0;").unwrap();
+    writeln!(output, "        result.sound = 0;").unwrap();
+    writeln!(output, "        return result;").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    intptr_t byte_offset = index * m.elementsize;").unwrap();
+    writeln!(output, "    if (byte_offset >= m.size) {{").unwrap();
+    writeln!(output, "        result.offset = NULL;").unwrap();
+    writeln!(output, "        result.size = 0;").unwrap();
+    writeln!(output, "    }} else {{").unwrap();
+    writeln!(
+        output,
+        "        result.offset = (char*)m.offset + byte_offset;"
+    )
+    .unwrap();
+    writeln!(output, "        result.size = m.elementsize;").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    result.type = m.type;").unwrap();
+    writeln!(output, "    result.elementsize = m.elementsize;").unwrap();
+    writeln!(output, "    result.image = m.image;").unwrap();
+    writeln!(output, "    result.sound = m.sound;").unwrap();
+    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _MEMIMAGE(imageHandle) - Get memory reference to image pixel data
+    // In inline runtime, images are not supported - return empty block
+    writeln!(output, "qb_mem qb_memimage(int32_t handle) {{").unwrap();
+    writeln!(output, "    (void)handle;").unwrap();
+    writeln!(output, "    _qb_gfx_warn();").unwrap();
+    writeln!(output, "    qb_mem m = {{NULL, 0, 0, 0, 0, 0}};").unwrap();
+    writeln!(output, "    return m;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _MEMSOUND(soundHandle) - Get memory reference to sound data
+    // In inline runtime, sounds are not supported - return empty block
+    writeln!(output, "qb_mem qb_memsound(int32_t handle) {{").unwrap();
+    writeln!(output, "    (void)handle;").unwrap();
+    writeln!(output, "    qb_mem m = {{NULL, 0, 0, 0, 0, 0}};").unwrap();
+    writeln!(output, "    return m;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // Type-specific _MEMGET variants for different data sizes
+    writeln!(
+        output,
+        "int8_t qb_memget_byte(qb_mem m, intptr_t offset) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (!m.offset || offset < 0 || offset >= m.size) return 0;"
+    )
+    .unwrap();
+    writeln!(output, "    return *((int8_t*)((char*)m.offset + offset));").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(
+        output,
+        "int16_t qb_memget_integer(qb_mem m, intptr_t offset) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (!m.offset || offset < 0 || offset + 2 > m.size) return 0;"
+    )
+    .unwrap();
+    writeln!(output, "    int16_t result;").unwrap();
+    writeln!(
+        output,
+        "    memcpy(&result, (char*)m.offset + offset, sizeof(int16_t));"
+    )
+    .unwrap();
+    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(
+        output,
+        "int32_t qb_memget_long(qb_mem m, intptr_t offset) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (!m.offset || offset < 0 || offset + 4 > m.size) return 0;"
+    )
+    .unwrap();
+    writeln!(output, "    int32_t result;").unwrap();
+    writeln!(
+        output,
+        "    memcpy(&result, (char*)m.offset + offset, sizeof(int32_t));"
+    )
+    .unwrap();
+    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(
+        output,
+        "float qb_memget_single(qb_mem m, intptr_t offset) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (!m.offset || offset < 0 || offset + 4 > m.size) return 0.0f;"
+    )
+    .unwrap();
+    writeln!(output, "    float result;").unwrap();
+    writeln!(
+        output,
+        "    memcpy(&result, (char*)m.offset + offset, sizeof(float));"
+    )
+    .unwrap();
+    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(
+        output,
+        "double qb_memget_double(qb_mem m, intptr_t offset) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (!m.offset || offset < 0 || offset + 8 > m.size) return 0.0;"
+    )
+    .unwrap();
+    writeln!(output, "    double result;").unwrap();
+    writeln!(
+        output,
+        "    memcpy(&result, (char*)m.offset + offset, sizeof(double));"
+    )
+    .unwrap();
+    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // Type-specific _MEMPUT variants for different data sizes
+    writeln!(
+        output,
+        "void qb_memput_byte(qb_mem m, intptr_t offset, int8_t value) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (!m.offset || offset < 0 || offset >= m.size) return;"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    *((int8_t*)((char*)m.offset + offset)) = value;"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(
+        output,
+        "void qb_memput_integer(qb_mem m, intptr_t offset, int16_t value) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (!m.offset || offset < 0 || offset + 2 > m.size) return;"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    memcpy((char*)m.offset + offset, &value, sizeof(int16_t));"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(
+        output,
+        "void qb_memput_long(qb_mem m, intptr_t offset, int32_t value) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (!m.offset || offset < 0 || offset + 4 > m.size) return;"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    memcpy((char*)m.offset + offset, &value, sizeof(int32_t));"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(
+        output,
+        "void qb_memput_single(qb_mem m, intptr_t offset, float value) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (!m.offset || offset < 0 || offset + 4 > m.size) return;"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    memcpy((char*)m.offset + offset, &value, sizeof(float));"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(
+        output,
+        "void qb_memput_double(qb_mem m, intptr_t offset, double value) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (!m.offset || offset < 0 || offset + 8 > m.size) return;"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    memcpy((char*)m.offset + offset, &value, sizeof(double));"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // Type-specific _MEMFILL variants for multi-byte patterns
+    writeln!(
+        output,
+        "void qb_memfill_integer(qb_mem m, intptr_t offset, intptr_t count, int16_t value) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (!m.offset || offset < 0 || count <= 0) return;"
+    )
+    .unwrap();
+    writeln!(output, "    intptr_t bytes = count * sizeof(int16_t);").unwrap();
+    writeln!(
+        output,
+        "    if (offset + bytes > m.size) bytes = m.size - offset;"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    int16_t* ptr = (int16_t*)((char*)m.offset + offset);"
+    )
+    .unwrap();
+    writeln!(output, "    intptr_t n = bytes / sizeof(int16_t);").unwrap();
+    writeln!(
+        output,
+        "    for (intptr_t i = 0; i < n; i++) ptr[i] = value;"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(
+        output,
+        "void qb_memfill_long(qb_mem m, intptr_t offset, intptr_t count, int32_t value) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (!m.offset || offset < 0 || count <= 0) return;"
+    )
+    .unwrap();
+    writeln!(output, "    intptr_t bytes = count * sizeof(int32_t);").unwrap();
+    writeln!(
+        output,
+        "    if (offset + bytes > m.size) bytes = m.size - offset;"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    int32_t* ptr = (int32_t*)((char*)m.offset + offset);"
+    )
+    .unwrap();
+    writeln!(output, "    intptr_t n = bytes / sizeof(int32_t);").unwrap();
+    writeln!(
+        output,
+        "    for (intptr_t i = 0; i < n; i++) ptr[i] = value;"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(
+        output,
+        "void qb_memfill_single(qb_mem m, intptr_t offset, intptr_t count, float value) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (!m.offset || offset < 0 || count <= 0) return;"
+    )
+    .unwrap();
+    writeln!(output, "    intptr_t bytes = count * sizeof(float);").unwrap();
+    writeln!(
+        output,
+        "    if (offset + bytes > m.size) bytes = m.size - offset;"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    float* ptr = (float*)((char*)m.offset + offset);"
+    )
+    .unwrap();
+    writeln!(output, "    intptr_t n = bytes / sizeof(float);").unwrap();
+    writeln!(
+        output,
+        "    for (intptr_t i = 0; i < n; i++) ptr[i] = value;"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(
+        output,
+        "void qb_memfill_double(qb_mem m, intptr_t offset, intptr_t count, double value) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (!m.offset || offset < 0 || count <= 0) return;"
+    )
+    .unwrap();
+    writeln!(output, "    intptr_t bytes = count * sizeof(double);").unwrap();
+    writeln!(
+        output,
+        "    if (offset + bytes > m.size) bytes = m.size - offset;"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    double* ptr = (double*)((char*)m.offset + offset);"
+    )
+    .unwrap();
+    writeln!(output, "    intptr_t n = bytes / sizeof(double);").unwrap();
+    writeln!(
+        output,
+        "    for (intptr_t i = 0; i < n; i++) ptr[i] = value;"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
 }
