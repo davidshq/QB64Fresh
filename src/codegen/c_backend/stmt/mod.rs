@@ -790,6 +790,26 @@ impl StmtEmitter {
                 .unwrap();
             }
 
+            TypedStatementKind::MemPutTyped {
+                mem,
+                offset,
+                value,
+                value_type,
+            } => {
+                // _MEMPUT writes a value to memory at the given offset,
+                // interpreting the value as the specified type.
+                // Generated code: *((type*)((char*)(mem).offset + (offset))) = (value);
+                let mem_code = emit_expr(mem)?;
+                let offset_code = emit_expr(offset)?;
+                let value_code = emit_expr(value)?;
+                let c_ty = c_type(value_type);
+                writeln!(
+                    output,
+                    "{indent}*(({c_ty}*)((char*)({mem_code}).offset + ({offset_code}))) = ({c_ty})({value_code});"
+                )
+                .unwrap();
+            }
+
             TypedStatementKind::Label { name } => {
                 let c_label = self.proc_label(name);
                 writeln!(output, "{}:", c_label).unwrap();

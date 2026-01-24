@@ -698,6 +698,21 @@ pub enum StatementKind {
         value: Expr,
     },
 
+    /// `_MEMPUT mem, offset, value AS type` - Write typed value to memory (QB64).
+    ///
+    /// Writes a value to a memory block at the given offset, interpreting
+    /// the value as the specified type.
+    MemPutTyped {
+        /// The memory block (_MEM) to write to.
+        mem: Expr,
+        /// The byte offset within the memory block.
+        offset: Expr,
+        /// The value to write.
+        value: Expr,
+        /// The type to interpret the value as (as a string like "INTEGER", "_INTEGER64").
+        value_type: String,
+    },
+
     // ==================== Variable/Scope Statements ====================
     /// `COMMON [SHARED] variable [, variable]...`
     ///

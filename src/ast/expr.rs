@@ -136,6 +136,19 @@ pub enum ExprKind {
         /// The target numeric type (as a string like "_INTEGER64", "_UNSIGNED _INTEGER64").
         target_type: String,
     },
+
+    /// _MEMGET with type specifier: `_MEMGET(mem, offset, AS type)` (QB64)
+    ///
+    /// Reads a value of the specified type from a memory block at the given offset.
+    /// The return type is determined by the AS clause.
+    MemGetTyped {
+        /// The memory block (_MEM) to read from.
+        mem: Box<Expr>,
+        /// The byte offset within the memory block.
+        offset: Box<Expr>,
+        /// The type of value to read (determines size and interpretation).
+        target_type: String,
+    },
 }
 
 /// Binary operators.

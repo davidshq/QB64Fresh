@@ -39,6 +39,42 @@ impl<'a> Parser<'a> {
         let start = token.span.start;
         let name = token.text.to_string();
 
+        // Special handling for _MEMPUT with AS type clause
+        // Syntax: _MEMPUT mem, offset, value AS type
+        if name.eq_ignore_ascii_case("_MEMPUT") {
+            self.advance(); // consume _MEMPUT
+            let mem = self.parse_expression()?;
+            self.expect(&TokenKind::Comma, ",")?;
+            let offset = self.parse_expression()?;
+            self.expect(&TokenKind::Comma, ",")?;
+            let value = self.parse_expression()?;
+
+            // Check for AS type clause
+            if self.match_token(&TokenKind::As) {
+                let type_name = self.parse_type_name()?;
+                let span = self.span_from(start);
+                return Ok(Statement::new(
+                    StatementKind::MemPutTyped {
+                        mem,
+                        offset,
+                        value,
+                        value_type: type_name,
+                    },
+                    span,
+                ));
+            } else {
+                // Regular _MEMPUT without AS type - treat as function call
+                let span = self.span_from(start);
+                return Ok(Statement::new(
+                    StatementKind::Call {
+                        name,
+                        args: vec![mem, offset, value],
+                    },
+                    span,
+                ));
+            }
+        }
+
         // Check for label definition: `labelName:` at the start of a line
         // Labels are only valid at the START of a logical line (after newline, not after colon)
         if self.at_line_start
