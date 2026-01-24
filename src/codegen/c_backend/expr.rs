@@ -192,6 +192,32 @@ pub(super) fn emit_expr(expr: &TypedExpr) -> Result<String, CodeGenError> {
                 return Ok("qb_gfx_image_height(0)".to_string());
             }
 
+            // Special case: _RGB32 with different argument counts
+            // 3 args: _RGB32(r, g, b) -> qb__rgb32
+            // 4 args: _RGB32(r, g, b, a) or _RGB32(gray, gray, gray, a) -> qb__rgb32_4
+            if upper_name == "_RGB32" {
+                let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
+                let args_str = args_code?.join(", ");
+                return match args.len() {
+                    3 => Ok(format!("qb__rgb32({})", args_str)),
+                    4 => Ok(format!("qb__rgb32_4({})", args_str)),
+                    _ => Ok(format!("qb__rgb32({})", args_str)),
+                };
+            }
+
+            // Special case: SCREEN function (reads screen char/attr)
+            // 2 args: SCREEN(row, col) -> qb_screen
+            // 3 args: SCREEN(row, col, attr_flag) -> qb_screen3
+            if upper_name == "SCREEN" {
+                let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
+                let args_str = args_code?.join(", ");
+                return match args.len() {
+                    2 => Ok(format!("qb_screen({})", args_str)),
+                    3 => Ok(format!("qb_screen3({})", args_str)),
+                    _ => Ok(format!("qb_screen({})", args_str)),
+                };
+            }
+
             // Special case: STRING$ with 2 args - use numeric variant if second arg is not a string
             // STRING$(n, code) fills with ASCII code, STRING$(n, c$) fills with first char of string
             if upper_name == "STRING$" && args.len() == 2 {
@@ -354,10 +380,22 @@ pub(super) fn emit_expr(expr: &TypedExpr) -> Result<String, CodeGenError> {
                             let c_ty = param_type
                                 .map(c_type)
                                 .unwrap_or_else(|| "int32_t".to_string());
-                            args_codes.push(format!("&({}){{{}}}", c_ty, arg_code));
+                            // For fixed-length strings, wrap with qb_str_from_c() first
+                            if needs_fixed_string_conversion(arg) {
+                                args_codes
+                                    .push(format!("&(qb_string*){{qb_str_from_c({})}}", arg_code));
+                            } else {
+                                args_codes.push(format!("&({}){{{}}}", c_ty, arg_code));
+                            }
                         }
                     } else {
-                        args_codes.push(arg_code);
+                        // BYVAL parameter
+                        // Fixed-length strings need conversion to qb_string*
+                        if needs_fixed_string_conversion(arg) {
+                            args_codes.push(format!("qb_str_from_c({})", arg_code));
+                        } else {
+                            args_codes.push(arg_code);
+                        }
                     }
                 }
                 let args_str = args_codes.join(", ");
@@ -365,7 +403,20 @@ pub(super) fn emit_expr(expr: &TypedExpr) -> Result<String, CodeGenError> {
             }
 
             // Built-in functions - all args are BYVAL
-            let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
+            // Fixed-length string arguments need conversion to qb_string*
+            let args_code: Result<Vec<_>, _> = args
+                .iter()
+                .map(|arg| {
+                    let code = emit_expr(arg)?;
+                    // Check if this is a fixed-length string that needs conversion
+                    // This includes FieldAccess of fixed-length string fields
+                    if needs_fixed_string_conversion(arg) {
+                        Ok(format!("qb_str_from_c({})", code))
+                    } else {
+                        Ok(code)
+                    }
+                })
+                .collect();
             let args_str = args_code?.join(", ");
 
             Ok(format!("{}({})", c_name, args_str))
@@ -1209,6 +1260,35 @@ pub(super) fn escape_string(s: &str) -> String {
         }
     }
     result
+}
+
+/// Checks if an expression represents a fixed-length string field that needs
+/// conversion to qb_string* for use with built-in string functions.
+///
+/// Returns true for:
+/// - FieldAccess with FixedString type
+/// - Convert from FixedString wrapping a FieldAccess
+/// - ArrayAccess of fixed-length string elements
+fn needs_fixed_string_conversion(expr: &TypedExpr) -> bool {
+    match &expr.kind {
+        // Direct field access of a fixed-length string
+        TypedExprKind::FieldAccess { .. } => {
+            matches!(expr.basic_type, BasicType::FixedString(_))
+        }
+        // Array access of fixed-length string elements
+        TypedExprKind::ArrayAccess { .. } => {
+            matches!(expr.basic_type, BasicType::FixedString(_))
+        }
+        // Convert from FixedString - check the inner expression
+        TypedExprKind::Convert { expr: inner, .. } => {
+            matches!(inner.basic_type, BasicType::FixedString(_))
+                && matches!(
+                    inner.kind,
+                    TypedExprKind::FieldAccess { .. } | TypedExprKind::ArrayAccess { .. }
+                )
+        }
+        _ => false,
+    }
 }
 
 #[cfg(test)]

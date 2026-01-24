@@ -20,26 +20,26 @@ This document describes the high-level architecture of QB64Fresh, a BASIC compil
         ▼
 ┌───────────────┐
 │    Lexer      │  Tokenizes source into a stream of tokens
-│  (src/lexer)  │  Uses `logos` crate for fast lexical analysis (~1,846 lines)
+│  (src/lexer)  │  Uses `logos` crate for fast lexical analysis (~1,850 lines)
 └───────┬───────┘
         │ Vec<Token>
         ▼
 ┌───────────────┐
 │    Parser     │  Builds Abstract Syntax Tree from tokens
 │ (src/parser)  │  Pratt parsing for expressions, recursive descent for statements
-│               │  12 specialized modules (~11,350 lines)
+│               │  12 specialized modules (~11,450 lines)
 └───────┬───────┘
         │ Program (AST)
         ▼
 ┌───────────────┐
 │   Semantic    │  Type checking, symbol resolution, validation
-│ (src/semantic)│  Two-pass analysis, constant evaluation (~14,440 lines)
+│ (src/semantic)│  Two-pass analysis, constant evaluation (~15,800 lines)
 └───────┬───────┘
         │ TypedProgram (IR)
         ▼
 ┌───────────────┐
 │   CodeGen     │  Generates target code via backend trait
-│ (src/codegen) │  C backend with inline runtime (~11,728 lines)
+│ (src/codegen) │  C backend with inline runtime (~14,750 lines)
 └───────┬───────┘
         │ Generated C code
         ▼
@@ -51,7 +51,7 @@ This document describes the high-level architecture of QB64Fresh, a BASIC compil
         ▼
 ┌───────────────┐
 │   Runtime     │  Graphics (SDL2), Audio (Rodio), I/O, Strings
-│   (runtime/)  │  Rust library with C FFI (~11,678 lines)
+│   (runtime/)  │  Rust library with C FFI (~11,700 lines)
 └───────┬───────┘
         │
         ▼
@@ -531,17 +531,17 @@ dialogs = ["rfd"]  # Native file dialogs
 
 | Component | Lines | Status |
 |-----------|-------|--------|
-| Lexer | ~1,847 | ✓ Complete |
+| Lexer | ~1,850 | ✓ Complete (logos-based) |
 | AST | ~2,651 | ✓ Complete |
-| Parser | ~11,861 | ✓ Complete |
-| Semantic Analysis | ~15,153 | ✓ Complete |
-| Code Generation | ~14,241 | ✓ Complete |
-| LSP | ~2,112 | ✓ Complete |
-| Runtime Library | ~11,166 | ✓ Complete |
-| **Compiler (src/)** | **~47,865** | |
-| **Runtime** | **~11,166** | |
-| **Total** | **~59,031** | |
+| Parser | ~11,450 | ✓ Complete |
+| Semantic Analysis | ~15,800 | ✓ Complete |
+| Code Generation | ~14,750 | ✓ Complete |
+| LSP | ~2,200 | ✓ Complete |
+| Runtime Library | ~11,700 | ✓ Complete (Rust + inline C) |
+| Formatter (fmt) | ~1,500 | ✓ Complete |
+| Linter (lint) | ~1,200 | ✓ Complete |
+| **Test Suite** | **1,500+** | Unit, integration, golden, fuzz |
 
 ---
 
-*Last updated: 2026-01-22*
+*Last updated: 2026-01-23*

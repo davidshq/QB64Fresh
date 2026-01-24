@@ -17,14 +17,14 @@ QB64Fresh supports two runtime modes:
 - Embeds minimal C code directly in the generated program
 - Functions return safe defaults (0, empty strings, -1 for invalid handles)
 - Logs warnings when graphics/audio functions are called
-- **Location:** `src/codegen/c_backend/runtime.rs` (~4,637 lines)
+- **Location:** `src/codegen/c_backend/runtime.rs` (~5,090 lines)
 - Core functions (string, math, I/O) are fully implemented inline
 
 ### External Runtime (Full Implementation)
 - Links against `libqb64fresh_rt.a` static library
 - Complete SDL2-based graphics with hardware acceleration
 - Full Rodio-based audio with MML parsing and file playback
-- **Location:** `runtime/src/` (~13,000 lines total)
+- **Location:** `runtime/src/` (~11,696 lines total)
 - **Header:** `runtime/include/qb64fresh_rt.h` (104 function declarations)
 
 ---
@@ -148,7 +148,7 @@ QB64Fresh supports two runtime modes:
 | `_KEYDOWN()` | Check if key is held |
 | `_CINP()` | Read character without echo |
 
-**External Runtime:** `runtime/src/io.rs` (1,378 lines)
+**External Runtime:** `runtime/src/io.rs` (1,406 lines)
 
 ---
 
@@ -405,14 +405,14 @@ Not supported on modern systems for security reasons.
 
 ### Implementation Statistics
 
-**Total Built-in Functions Registered:** ~420 (in semantic analyzer)
+**Total Built-in Functions Registered:** 373 (in semantic analyzer)
 
 | Status | Count | Percentage | Notes |
 |--------|-------|------------|-------|
-| ✅ Fully Implemented (Both Modes) | ~150 | 36% | String, math, file I/O, console |
-| ✅ Fully Implemented (External Only) | ~200 | 48% | Graphics, audio, dialogs, networking |
-| ⚠️ Partial/Stub only | ~50 | 12% | Some audio features, legacy functions |
-| ❌ Not implemented/Disabled | ~20 | 5% | Port I/O, interrupts, obsolete hardware |
+| ✅ Fully Implemented (Both Modes) | ~130 | 35% | String, math, file I/O, console |
+| ✅ Fully Implemented (External Only) | ~180 | 48% | Graphics, audio, dialogs, networking |
+| ⚠️ Partial/Stub only | ~45 | 12% | Some audio features, legacy functions |
+| ❌ Not implemented/Disabled | ~18 | 5% | Port I/O, interrupts, obsolete hardware |
 
 ### What's Still Missing
 
@@ -432,19 +432,20 @@ Not supported on modern systems for security reasons.
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `src/codegen/c_backend/runtime.rs` | 4,637 | Inline runtime (stubs & core functions) |
+| `src/codegen/c_backend/runtime.rs` | 5,090 | Inline runtime (stubs & core functions) |
 | `runtime/src/string.rs` | 1,572 | String operations |
 | `runtime/src/math.rs` | 641 | Math functions |
-| `runtime/src/io.rs` | 1,378 | Console I/O, file I/O, networking |
+| `runtime/src/io.rs` | 1,406 | Console I/O, file I/O, networking |
 | `runtime/src/graphics/sdl2.rs` | 2,144 | SDL2 graphics backend |
 | `runtime/src/graphics/font.rs` | 600 | Font rendering support |
+| `runtime/src/graphics/mod.rs` | 692 | Graphics module entry |
 | `runtime/src/graphics_ffi.rs` | 1,597 | Graphics C FFI layer |
 | `runtime/src/audio/rodio_backend.rs` | 543 | Rodio audio backend |
 | `runtime/src/audio_ffi.rs` | 439 | Audio C FFI layer |
 | `runtime/src/dialogs.rs` | 348 | Native file dialogs (rfd) |
 | `runtime/src/joystick.rs` | 306 | Gamepad/joystick support (SDL2) |
 | `runtime/include/qb64fresh_rt.h` | 259 | External runtime header (104 functions) |
-| **External runtime total** | **~13,000** | All runtime/src/ files |
+| **External runtime total** | **~11,696** | All runtime/src/ files |
 
 ---
 
