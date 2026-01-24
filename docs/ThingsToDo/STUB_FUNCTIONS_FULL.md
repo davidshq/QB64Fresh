@@ -1,6 +1,6 @@
 # QB64Fresh Runtime Functions Reference
 
-*Updated: 2026-01-23*
+*Updated: 2026-01-24*
 
 This document lists functions that have **stub implementations in the inline runtime** but are **fully implemented in the external runtime library**.
 
@@ -239,6 +239,35 @@ QB64Fresh supports two runtime modes:
 | `VIEW` | void | ✅ Full | Set viewport (statement) |
 | `WINDOW` | void | ✅ Full | Set coordinate system (statement) |
 | `VIEW PRINT` | void | ✅ Full | Set text viewport (statement) |
+
+#### Image Operations
+
+| Function | Inline Returns | External Status | Purpose |
+|----------|----------------|-----------------|---------|
+| `_PUTIMAGE` | void | ✅ Full | Copy image with scaling (statement) |
+| `_FREEIMAGE()` | void | ✅ Full | Free image handle |
+| `_SOURCE()` | void/handle | ✅ Full | Set/get source image |
+| `_DEST()` | void/handle | ✅ Full | Set/get destination image |
+| `_DISPLAY` | void | ✅ Full | Update screen (statement) |
+| `_AUTODISPLAY` | void | ✅ Full | Enable/disable auto-display (statement) |
+| `_PRINTSTRING` | void | ✅ Full | Print string at pixel position (statement) |
+| `DRAW` | void | ✅ Full | Turtle graphics (statement) |
+
+#### Alpha Blending (Added 2026-01-24)
+
+| Function | Inline Returns | External Status | Purpose |
+|----------|----------------|-----------------|---------|
+| `_BLEND` | void | ✅ Full | Enable alpha blending (statement) |
+| `_DONTBLEND` | void | ✅ Full | Disable alpha blending (statement) |
+| `_CLEARCOLOR` | void/-1 | ✅ Full | Set/get transparent color |
+
+#### Not Yet Implemented
+
+| Function | Inline Returns | External Status | Purpose |
+|----------|----------------|-----------------|---------|
+| `_MAPTRIANGLE` | void | ❌ Not yet | 3D textured triangle (needs SDL_RenderGeometry) |
+| `_COPYPALETTE` | void | ❌ Not yet | Copy palette between images |
+| `_DISPLAYORDER` | void | ❌ Not yet | Set layer rendering order |
 
 ---
 

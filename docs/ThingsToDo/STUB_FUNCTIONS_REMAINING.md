@@ -1,6 +1,6 @@
 # QB64Fresh - Remaining Stub/Incomplete Functions
 
-*Updated: 2026-01-23*
+*Updated: 2026-01-24*
 
 This document lists functions that are **not fully implemented** - either stub-only in inline mode with partial external support, or intentionally disabled.
 
@@ -13,11 +13,28 @@ For the complete function reference (including all implemented functions), see [
 | Status | Count | Description |
 |--------|-------|-------------|
 | ⚠️ Audio stubs (external) | 12 | Need rodio integration (vol, seek, raw) |
+| ⚠️ Graphics stubs | 3 | _MAPTRIANGLE, _COPYPALETTE, _DISPLAYORDER |
 | ⚠️ Legacy stubs | ~4 | ERDEV, device error functions, event handlers |
 | ❌ Compile errors | 4 | FRE, SETMEM, IOCTL$, FILEATTR (match QB64pe) |
 | ❌ Intentionally disabled | ~7 | Interrupts, obsolete hardware |
-| **Total Remaining** | **~27** | Out of 419 registered functions |
+| **Total Remaining** | **~30** | Out of 419 registered functions |
 
+
+---
+
+## Graphics Functions - Not Yet Implemented
+
+These graphics functions are parsed but not yet implemented in the SDL2 backend.
+
+| Function | Fresh Status | QB64pe Status | Notes |
+|----------|--------------|---------------|-------|
+| `_MAPTRIANGLE` | ❌ Stub | ✅ Full | 3D textured triangle; needs SDL_RenderGeometry or custom rasterizer |
+| `_COPYPALETTE` | ❌ Stub | ✅ Full | Copy palette between images |
+| `_DISPLAYORDER` | ❌ Stub | ✅ Full | Set hardware/software layer rendering order |
+
+**Priority:** Low - `_MAPTRIANGLE` is the most complex (requires triangle rasterization with texture mapping). `_COPYPALETTE` and `_DISPLAYORDER` are less commonly used.
+
+**Note:** Alpha blending (`_BLEND`, `_DONTBLEND`, `_CLEARCOLOR`) was implemented in session 040 (2026-01-24).
 
 ---
 
