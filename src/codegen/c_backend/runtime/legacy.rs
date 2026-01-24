@@ -8,14 +8,39 @@
 //! These functions provide compatibility with DOS-era BASIC programs:
 //!
 //! - **Memory functions**: DEF SEG, PEEK, POKE, VARPTR, VARSEG, SADD, FRE
-//! - **Port I/O**: INP, OUT, WAIT (with VGA palette emulation)
+//! - **Port I/O**: INP, OUT, WAIT (with VGA palette emulation for ports 0x3C7-0x3C9, 0x3DA)
 //! - **Binary file functions**: BLOAD, BSAVE
 //! - **Microsoft Binary Format**: CVSMBF, CVDMBF, MKSMBF$, MKDMBF$
-//! - **Joystick**: STICK, STRIG
-//! - **Light pen**: PEN
-//! - **Serial I/O**: ERDEV, ERDEV$, IOCTL, IOCTL$
-//! - **System interrupts**: INTERRUPT, INTERRUPTX (stubs - not available on modern systems)
+//! - **Joystick**: STICK, STRIG (stubs - return center position / not pressed)
+//! - **Light pen**: PEN (stub with runtime warning - obsolete hardware)
+//! - **Serial I/O**: ERDEV, ERDEV$, IOCTL, IOCTL$ (stubs with runtime warning)
+//! - **System interrupts**: INTERRUPT, INTERRUPTX (INT 0x33 mouse only; others warn)
 //! - **Event handling**: ON KEY, ON TIMER, ON STRIG, ON COM, ON PEN, ON UEVENT, ON SIGNAL
+//!
+//! ## Runtime Warnings
+//!
+//! Functions that are not supported on modern systems emit one-time warnings to stderr:
+//!
+//! - `PEN()` - Light pens are obsolete hardware
+//! - `ERDEV/ERDEV$` - DOS device error functions
+//! - `IOCTL/IOCTL$` - DOS device control functions
+//! - `ON COM` - Serial port event trapping
+//! - `ON PEN` - Light pen event trapping
+//! - `ON UEVENT` - User event trapping
+//! - `ON SIGNAL` - BASIC signal trapping
+//! - `INTERRUPT/INTERRUPTX` for any interrupt other than INT 0x33 (mouse)
+//!
+//! ## INT 0x33 Mouse Emulation
+//!
+//! For compatibility with legacy mouse code, INT 0x33 is emulated:
+//!
+//! - AX=0: Check mouse installed (returns 0xFFFF, 2 buttons)
+//! - AX=1: Show mouse cursor
+//! - AX=2: Hide mouse cursor
+//! - AX=3: Get position and button status
+//! - AX=4: Set position (no-op)
+//! - AX=5,6: Button press/release info (returns 0)
+//! - AX=7,8: Set min/max range (no-op)
 //!
 //! ## GOSUB Support
 //!
@@ -439,38 +464,72 @@ pub(super) fn emit_legacy_functions(output: &mut String) {
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
+    // Warning flags for event handlers
+    writeln!(output, "static int _qb_warned_on_com = 0;").unwrap();
+    writeln!(output, "static int _qb_warned_on_pen = 0;").unwrap();
+    writeln!(output, "static int _qb_warned_on_uevent = 0;").unwrap();
+    writeln!(output, "static int _qb_warned_on_signal = 0;").unwrap();
+    writeln!(output).unwrap();
+
     writeln!(output, "void qb_on_com(int32_t port_num, void* target) {{").unwrap();
     writeln!(output, "    (void)port_num; (void)target;").unwrap();
+    writeln!(output, "    if (!_qb_warned_on_com) {{").unwrap();
+    writeln!(output, "        _qb_warned_on_com = 1;").unwrap();
+    writeln!(output, "        fprintf(stderr, \"QB64Fresh: ON COM is not implemented (serial port event trapping)\\n\");").unwrap();
+    writeln!(output, "    }}").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
     writeln!(output, "void qb_com_control(int32_t port_num, int mode) {{").unwrap();
     writeln!(output, "    (void)port_num; (void)mode;").unwrap();
+    writeln!(output, "    if (!_qb_warned_on_com) {{").unwrap();
+    writeln!(output, "        _qb_warned_on_com = 1;").unwrap();
+    writeln!(output, "        fprintf(stderr, \"QB64Fresh: ON COM is not implemented (serial port event trapping)\\n\");").unwrap();
+    writeln!(output, "    }}").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
     writeln!(output, "void qb_on_pen(void* target) {{").unwrap();
     writeln!(output, "    (void)target;").unwrap();
+    writeln!(output, "    if (!_qb_warned_on_pen) {{").unwrap();
+    writeln!(output, "        _qb_warned_on_pen = 1;").unwrap();
+    writeln!(output, "        fprintf(stderr, \"QB64Fresh: ON PEN is not implemented (light pen event trapping)\\n\");").unwrap();
+    writeln!(output, "    }}").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
     writeln!(output, "void qb_pen_control(int mode) {{").unwrap();
     writeln!(output, "    (void)mode;").unwrap();
+    writeln!(output, "    if (!_qb_warned_on_pen) {{").unwrap();
+    writeln!(output, "        _qb_warned_on_pen = 1;").unwrap();
+    writeln!(output, "        fprintf(stderr, \"QB64Fresh: ON PEN is not implemented (light pen event trapping)\\n\");").unwrap();
+    writeln!(output, "    }}").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
     writeln!(output, "void qb_on_uevent(void* target) {{").unwrap();
     writeln!(output, "    (void)target;").unwrap();
+    writeln!(output, "    if (!_qb_warned_on_uevent) {{").unwrap();
+    writeln!(output, "        _qb_warned_on_uevent = 1;").unwrap();
+    writeln!(output, "        fprintf(stderr, \"QB64Fresh: ON UEVENT is not implemented (user event trapping)\\n\");").unwrap();
+    writeln!(output, "    }}").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
     writeln!(output, "void qb_uevent_control(int mode) {{").unwrap();
     writeln!(output, "    (void)mode;").unwrap();
+    writeln!(output, "    if (!_qb_warned_on_uevent) {{").unwrap();
+    writeln!(output, "        _qb_warned_on_uevent = 1;").unwrap();
+    writeln!(output, "        fprintf(stderr, \"QB64Fresh: ON UEVENT is not implemented (user event trapping)\\n\");").unwrap();
+    writeln!(output, "    }}").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
     writeln!(output, "void qb_uevent_trigger(void) {{").unwrap();
-    writeln!(output, "    // Trigger user-defined event stub").unwrap();
+    writeln!(output, "    if (!_qb_warned_on_uevent) {{").unwrap();
+    writeln!(output, "        _qb_warned_on_uevent = 1;").unwrap();
+    writeln!(output, "        fprintf(stderr, \"QB64Fresh: UEVENT is not implemented (user event trapping)\\n\");").unwrap();
+    writeln!(output, "    }}").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
@@ -480,6 +539,10 @@ pub(super) fn emit_legacy_functions(output: &mut String) {
     )
     .unwrap();
     writeln!(output, "    (void)signal_num; (void)target;").unwrap();
+    writeln!(output, "    if (!_qb_warned_on_signal) {{").unwrap();
+    writeln!(output, "        _qb_warned_on_signal = 1;").unwrap();
+    writeln!(output, "        fprintf(stderr, \"QB64Fresh: ON SIGNAL is not implemented (BASIC signal trapping)\\n\");").unwrap();
+    writeln!(output, "    }}").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
@@ -489,6 +552,10 @@ pub(super) fn emit_legacy_functions(output: &mut String) {
     )
     .unwrap();
     writeln!(output, "    (void)signal_num; (void)mode;").unwrap();
+    writeln!(output, "    if (!_qb_warned_on_signal) {{").unwrap();
+    writeln!(output, "        _qb_warned_on_signal = 1;").unwrap();
+    writeln!(output, "        fprintf(stderr, \"QB64Fresh: ON SIGNAL is not implemented (BASIC signal trapping)\\n\");").unwrap();
+    writeln!(output, "    }}").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
@@ -810,28 +877,47 @@ pub(super) fn emit_legacy_functions(output: &mut String) {
     writeln!(output).unwrap();
 
     // ==================== QB4.5 Light Pen Function ====================
-    writeln!(output, "/* QB4.5 Light Pen Function (stub) */").unwrap();
+    writeln!(output, "/* QB4.5 Light Pen Function (stub with warning) */").unwrap();
+    writeln!(output, "static int _qb_warned_pen = 0;").unwrap();
     writeln!(output).unwrap();
 
     // PEN(n) - returns light pen information (always 0 - no light pen)
     writeln!(output, "int qb_pen(int64_t n) {{").unwrap();
     writeln!(output, "    (void)n;").unwrap();
+    writeln!(output, "    if (!_qb_warned_pen) {{").unwrap();
+    writeln!(output, "        _qb_warned_pen = 1;").unwrap();
+    writeln!(output, "        fprintf(stderr, \"QB64Fresh: PEN() is not supported on modern systems (light pens are obsolete hardware)\\n\");").unwrap();
+    writeln!(output, "    }}").unwrap();
     writeln!(output, "    return 0; // Light pen not present").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
     // ==================== QB4.5 Serial I/O Functions ====================
-    writeln!(output, "/* QB4.5 Serial I/O Functions (stubs) */").unwrap();
+    writeln!(
+        output,
+        "/* QB4.5 Serial I/O Functions (stubs with warnings) */"
+    )
+    .unwrap();
+    writeln!(output, "static int _qb_warned_erdev = 0;").unwrap();
+    writeln!(output, "static int _qb_warned_ioctl = 0;").unwrap();
     writeln!(output).unwrap();
 
     // ERDEV - device error code
     writeln!(output, "int qb_erdev(void) {{").unwrap();
+    writeln!(output, "    if (!_qb_warned_erdev) {{").unwrap();
+    writeln!(output, "        _qb_warned_erdev = 1;").unwrap();
+    writeln!(output, "        fprintf(stderr, \"QB64Fresh: ERDEV/ERDEV$ are not supported (DOS device error functions)\\n\");").unwrap();
+    writeln!(output, "    }}").unwrap();
     writeln!(output, "    return 0; // No device error").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
     // ERDEV$ - device error name
     writeln!(output, "qb_string* qb_erdev_str(void) {{").unwrap();
+    writeln!(output, "    if (!_qb_warned_erdev) {{").unwrap();
+    writeln!(output, "        _qb_warned_erdev = 1;").unwrap();
+    writeln!(output, "        fprintf(stderr, \"QB64Fresh: ERDEV/ERDEV$ are not supported (DOS device error functions)\\n\");").unwrap();
+    writeln!(output, "    }}").unwrap();
     writeln!(output, "    return qb_string_new(\"\"); // No device error").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
@@ -843,13 +929,20 @@ pub(super) fn emit_legacy_functions(output: &mut String) {
     )
     .unwrap();
     writeln!(output, "    (void)file_num; (void)control_string;").unwrap();
-    writeln!(output, "    // Device control string stub").unwrap();
+    writeln!(output, "    if (!_qb_warned_ioctl) {{").unwrap();
+    writeln!(output, "        _qb_warned_ioctl = 1;").unwrap();
+    writeln!(output, "        fprintf(stderr, \"QB64Fresh: IOCTL/IOCTL$ are not supported (DOS device control functions)\\n\");").unwrap();
+    writeln!(output, "    }}").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
     // IOCTL$ function - returns device status
     writeln!(output, "qb_string* qb_ioctl_str(int64_t file_num) {{").unwrap();
     writeln!(output, "    (void)file_num;").unwrap();
+    writeln!(output, "    if (!_qb_warned_ioctl) {{").unwrap();
+    writeln!(output, "        _qb_warned_ioctl = 1;").unwrap();
+    writeln!(output, "        fprintf(stderr, \"QB64Fresh: IOCTL/IOCTL$ are not supported (DOS device control functions)\\n\");").unwrap();
+    writeln!(output, "    }}").unwrap();
     writeln!(
         output,
         "    return qb_string_new(\"\"); // Empty status string"
@@ -865,6 +958,7 @@ pub(super) fn emit_legacy_functions(output: &mut String) {
         "/* QB4.5 System Interrupt Functions (INT 0x33 mouse emulation) */"
     )
     .unwrap();
+    writeln!(output, "static int _qb_warned_interrupt = 0;").unwrap();
     writeln!(output).unwrap();
 
     // Internal function to emulate specific interrupts
@@ -924,11 +1018,46 @@ pub(super) fn emit_legacy_functions(output: &mut String) {
     .unwrap();
     writeln!(output, "            return;").unwrap();
     writeln!(output, "        }}").unwrap();
+    writeln!(output, "        if (ax == 4) {{").unwrap();
+    writeln!(output, "            /* Set mouse position - CX=X, DX=Y */").unwrap();
+    writeln!(
+        output,
+        "            /* Note: qb_mouse_move may not exist in all backends */"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "            /* For now, this is a no-op for compatibility */"
+    )
+    .unwrap();
+    writeln!(output, "            return;").unwrap();
+    writeln!(output, "        }}").unwrap();
+    writeln!(
+        output,
+        "        /* AX=5,6 (button press/release info) - no-op, returns 0 */"
+    )
+    .unwrap();
+    writeln!(output, "        if (ax == 5 || ax == 6) {{").unwrap();
+    writeln!(output, "            regs[0] = 0; /* No button info */").unwrap();
+    writeln!(output, "            regs[1] = 0; /* Press count = 0 */").unwrap();
+    writeln!(
+        output,
+        "            regs[2] = 0; regs[3] = 0; /* Position = 0,0 */"
+    )
+    .unwrap();
+    writeln!(output, "            return;").unwrap();
+    writeln!(output, "        }}").unwrap();
     writeln!(
         output,
         "        /* AX=7,8 (min/max range) - no-op for compatibility */"
     )
     .unwrap();
+    writeln!(output, "        return;").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    /* Unsupported interrupt - warn once */").unwrap();
+    writeln!(output, "    if (!_qb_warned_interrupt) {{").unwrap();
+    writeln!(output, "        _qb_warned_interrupt = 1;").unwrap();
+    writeln!(output, "        fprintf(stderr, \"QB64Fresh: INTERRUPT/INTERRUPTX only supports INT 0x33 (mouse). Other interrupts (0x%02X) are ignored.\\n\", int_num);").unwrap();
     writeln!(output, "    }}").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
