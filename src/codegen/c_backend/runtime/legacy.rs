@@ -325,6 +325,16 @@ pub(super) fn emit_legacy_functions(output: &mut String) {
     )
     .unwrap();
     writeln!(output, "    FILE* f = fopen(filename, \"rb\");").unwrap();
+    writeln!(output, "#ifndef _WIN32").unwrap();
+    writeln!(output, "    if (!f) {{").unwrap();
+    writeln!(output, "        char* n = _qb_normalize_path(filename);").unwrap();
+    writeln!(
+        output,
+        "        if (n) {{ f = fopen(n, \"rb\"); free(n); }}"
+    )
+    .unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "#endif").unwrap();
     writeln!(output, "    if (!f) return;").unwrap();
     writeln!(output, "    ").unwrap();
     writeln!(output, "    // Read BSAVE header (7 bytes)").unwrap();
@@ -382,6 +392,16 @@ pub(super) fn emit_legacy_functions(output: &mut String) {
     )
     .unwrap();
     writeln!(output, "    FILE* f = fopen(filename, \"wb\");").unwrap();
+    writeln!(output, "#ifndef _WIN32").unwrap();
+    writeln!(output, "    if (!f) {{").unwrap();
+    writeln!(output, "        char* n = _qb_normalize_path(filename);").unwrap();
+    writeln!(
+        output,
+        "        if (n) {{ f = fopen(n, \"wb\"); free(n); }}"
+    )
+    .unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "#endif").unwrap();
     writeln!(output, "    if (!f) return;").unwrap();
     writeln!(output, "    ").unwrap();
     writeln!(output, "    // Write BSAVE header (7 bytes)").unwrap();

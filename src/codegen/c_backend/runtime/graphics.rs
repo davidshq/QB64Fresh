@@ -271,13 +271,30 @@ pub(super) fn emit_graphics_stubs(output: &mut String) {
     writeln!(output, "        }}").unwrap();
     writeln!(output, "    }}").unwrap();
     writeln!(output, "    FILE* f = fopen(fname, fmode);").unwrap();
+    writeln!(output, "#ifndef _WIN32").unwrap();
+    writeln!(output, "    if (!f) {{").unwrap();
+    writeln!(output, "        char* n = _qb_normalize_path(fname);").unwrap();
+    writeln!(output, "        if (n) {{ f = fopen(n, fmode); free(n); }}").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "#endif").unwrap();
     writeln!(
         output,
         "    /* For binary/random mode, create file if it doesn't exist */"
     )
     .unwrap();
-    writeln!(output, "    if (!f && mode_char && (mode_char[0] == 'B' || mode_char[0] == 'b' || mode_char[0] == 'R' || mode_char[0] == 'r'))").unwrap();
+    writeln!(output, "    if (!f && mode_char && (mode_char[0] == 'B' || mode_char[0] == 'b' || mode_char[0] == 'R' || mode_char[0] == 'r')) {{").unwrap();
     writeln!(output, "        f = fopen(fname, \"w+b\");").unwrap();
+    writeln!(output, "#ifndef _WIN32").unwrap();
+    writeln!(output, "        if (!f) {{").unwrap();
+    writeln!(output, "            char* n = _qb_normalize_path(fname);").unwrap();
+    writeln!(
+        output,
+        "            if (n) {{ f = fopen(n, \"w+b\"); free(n); }}"
+    )
+    .unwrap();
+    writeln!(output, "        }}").unwrap();
+    writeln!(output, "#endif").unwrap();
+    writeln!(output, "    }}").unwrap();
     writeln!(output, "    _qb_file_set(fnum, f);").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
@@ -450,7 +467,22 @@ pub(super) fn emit_graphics_stubs(output: &mut String) {
 
     // _READFILE$ - read entire file into string
     writeln!(output, "qb_string* qb_readfile(qb_string* path) {{").unwrap();
+    writeln!(
+        output,
+        "    if (!path || !path->data) return qb_string_new(\"\");"
+    )
+    .unwrap();
     writeln!(output, "    FILE* f = fopen(path->data, \"rb\");").unwrap();
+    writeln!(output, "#ifndef _WIN32").unwrap();
+    writeln!(output, "    if (!f) {{").unwrap();
+    writeln!(output, "        char* n = _qb_normalize_path(path->data);").unwrap();
+    writeln!(
+        output,
+        "        if (n) {{ f = fopen(n, \"rb\"); free(n); }}"
+    )
+    .unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "#endif").unwrap();
     writeln!(output, "    if (!f) return qb_string_new(\"\");").unwrap();
     writeln!(output, "    fseek(f, 0, SEEK_END);").unwrap();
     writeln!(output, "    long size = ftell(f);").unwrap();
@@ -476,7 +508,22 @@ pub(super) fn emit_graphics_stubs(output: &mut String) {
         "void qb_writefile(qb_string* path, qb_string* content) {{"
     )
     .unwrap();
+    writeln!(
+        output,
+        "    if (!path || !path->data || !content || !content->data) return;"
+    )
+    .unwrap();
     writeln!(output, "    FILE* f = fopen(path->data, \"wb\");").unwrap();
+    writeln!(output, "#ifndef _WIN32").unwrap();
+    writeln!(output, "    if (!f) {{").unwrap();
+    writeln!(output, "        char* n = _qb_normalize_path(path->data);").unwrap();
+    writeln!(
+        output,
+        "        if (n) {{ f = fopen(n, \"wb\"); free(n); }}"
+    )
+    .unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "#endif").unwrap();
     writeln!(output, "    if (!f) return;").unwrap();
     writeln!(output, "    fwrite(content->data, 1, content->len, f);").unwrap();
     writeln!(output, "    fclose(f);").unwrap();
