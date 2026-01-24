@@ -317,9 +317,80 @@ On non-Windows platforms:
 
 ---
 
-## Remaining Graphics Stubs
+## Part 7: _MAPTRIANGLE Implementation
 
-From the original plan, only one command remains unimplemented:
-- `_MAPTRIANGLE` - 3D triangle with texture mapping (requires SDL_RenderGeometry or custom rasterizer)
+### Background
 
-This is significantly more complex than the others and may require SDL 2.0.18+ or a custom software rasterizer.
+`_MAPTRIANGLE` is QB64's texture mapping command that maps a triangular portion of a source image onto a destination triangle. This enables 2D/3D textured rendering, sprite rotation, perspective effects, and more.
+
+### Implementation Approach
+
+Rather than depending on SDL 2.0.18+ (for `SDL_RenderGeometry`), we implemented a **software rasterizer** using barycentric coordinate interpolation. This approach:
+- Works on any SDL2 version
+- Provides consistent cross-platform behavior
+- Allows future enhancements (custom filters, effects)
+
+### Algorithm
+
+The rasterizer uses classic barycentric texture mapping:
+
+1. **Bounding box calculation**: Find the rectangular region containing the destination triangle
+2. **Barycentric coordinates**: For each pixel in the bounding box, calculate barycentric coordinates (w1, w2, w3) using edge functions
+3. **Inside test**: If all three weights are non-negative, the pixel is inside the triangle
+4. **Texture interpolation**: Use the weights to interpolate source texture coordinates: `src = w1*p1 + w2*p2 + w3*p3`
+5. **Sampling**: Either nearest-neighbor (fast) or bilinear (smooth) texture sampling
+6. **Alpha blending**: Blend the sampled color with the destination using standard alpha compositing
+
+### Key Functions
+
+| Function | Description |
+|----------|-------------|
+| `map_triangle` | Main entry point - rasterizes triangle with texture mapping |
+| `sample_nearest` | Point sampling for fast rendering |
+| `sample_bilinear` | 4-tap bilinear filtering for smooth rendering |
+| `get_pixel_safe` | Bounds-checked pixel access returning transparent black for OOB |
+
+### Signature
+
+```rust
+fn map_triangle(
+    sx1, sy1, sx2, sy2, sx3, sy3,  // Source triangle (texture coords)
+    dx1, dy1, dx2, dy2, dx3, dy3,  // Destination triangle (screen coords)
+    src_handle,                     // Source image (0 = screen)
+    dest_handle,                    // Dest image (0 = screen)
+    smooth,                         // Enable bilinear filtering
+    seamless,                       // Skip edge pixels (for multi-triangle)
+)
+```
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `runtime/src/graphics/mod.rs` | +50 lines: `map_triangle` trait method with docs |
+| `runtime/src/graphics/sdl2.rs` | +150 lines: Full rasterizer implementation |
+| `runtime/src/graphics_ffi.rs` | +80 lines: `qb_maptriangle`, `qb_maptriangle_ex` FFI |
+| `runtime/include/qb64fresh_rt.h` | +6 lines: C declarations |
+| `src/codegen/c_backend/runtime/graphics.rs` | +20 lines: Inline stubs |
+| `src/semantic/builtins.rs` | +15 lines: Register _MAPTRIANGLE as built-in SUB |
+
+### Testing
+
+- All 388 library tests pass
+- All 194 runtime tests pass
+- Integration test `maptriangle_statement` passes
+- Generated C code verified: `qb_maptriangle(...)` call
+
+---
+
+## Summary: All Graphics Stubs Complete
+
+With the `_MAPTRIANGLE` implementation, **all graphics stubs are now fully implemented**:
+
+| Feature | Status | Implementation |
+|---------|--------|----------------|
+| `_COPYPALETTE` | ✅ | Per-image 256-entry palette arrays |
+| `_DISPLAYORDER` | ✅ | Layer ordering storage |
+| `_MAPTRIANGLE` | ✅ | Software rasterizer with barycentric texture mapping |
+
+Only legacy/obsolete stubs remain (ERDEV, PEN, etc.).

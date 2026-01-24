@@ -398,6 +398,13 @@ void qb_copypalette(int32_t src_handle, int32_t dest_handle);
 /* Display layer ordering */
 void qb_displayorder(int32_t layer1, int32_t layer2, int32_t layer3, int32_t layer4);
 
+/* Triangle mapping (_MAPTRIANGLE) */
+void qb_maptriangle(double sx1, double sy1, double sx2, double sy2, double sx3, double sy3,
+                    double dx1, double dy1, double dx2, double dy2, double dx3, double dy3);
+void qb_maptriangle_ex(double sx1, double sy1, double sx2, double sy2, double sx3, double sy3,
+                       double dx1, double dy1, double dx2, double dy2, double dx3, double dy3,
+                       int32_t src_handle, int32_t dest_handle, int32_t smooth, int32_t seamless);
+
 /* ============================================================================
  * Audio Functions
  * ============================================================================ */

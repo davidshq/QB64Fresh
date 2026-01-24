@@ -411,6 +411,74 @@ impl SDL2Backend {
         }
     }
 
+    /// Sample a pixel using nearest neighbor (point) sampling.
+    ///
+    /// Used by `_MAPTRIANGLE` for fast texture sampling without filtering.
+    fn sample_nearest(pixels: &[u32], width: i32, height: i32, x: f32, y: f32) -> u32 {
+        let ix = x.round() as i32;
+        let iy = y.round() as i32;
+
+        if ix >= 0 && iy >= 0 && ix < width && iy < height {
+            let idx = (iy * width + ix) as usize;
+            if idx < pixels.len() {
+                return pixels[idx];
+            }
+        }
+        0 // Transparent black for out-of-bounds
+    }
+
+    /// Sample a pixel using bilinear interpolation.
+    ///
+    /// Used by `_MAPTRIANGLE` with the `_SMOOTH` option for higher quality
+    /// texture mapping that reduces aliasing artifacts.
+    fn sample_bilinear(pixels: &[u32], width: i32, height: i32, x: f32, y: f32) -> u32 {
+        let x0 = x.floor() as i32;
+        let y0 = y.floor() as i32;
+        let x1 = x0 + 1;
+        let y1 = y0 + 1;
+
+        // Fractional parts for interpolation weights
+        let fx = x - x0 as f32;
+        let fy = y - y0 as f32;
+
+        // Sample 4 neighboring pixels
+        let c00 = Self::get_pixel_safe(pixels, width, height, x0, y0);
+        let c10 = Self::get_pixel_safe(pixels, width, height, x1, y0);
+        let c01 = Self::get_pixel_safe(pixels, width, height, x0, y1);
+        let c11 = Self::get_pixel_safe(pixels, width, height, x1, y1);
+
+        // Bilinear interpolation for each channel
+        let lerp_channel = |c00: u32, c10: u32, c01: u32, c11: u32, shift: u32| -> u8 {
+            let v00 = ((c00 >> shift) & 0xFF) as f32;
+            let v10 = ((c10 >> shift) & 0xFF) as f32;
+            let v01 = ((c01 >> shift) & 0xFF) as f32;
+            let v11 = ((c11 >> shift) & 0xFF) as f32;
+
+            let top = v00 * (1.0 - fx) + v10 * fx;
+            let bottom = v01 * (1.0 - fx) + v11 * fx;
+            let result = top * (1.0 - fy) + bottom * fy;
+            result.clamp(0.0, 255.0) as u8
+        };
+
+        let a = lerp_channel(c00, c10, c01, c11, 24);
+        let r = lerp_channel(c00, c10, c01, c11, 16);
+        let g = lerp_channel(c00, c10, c01, c11, 8);
+        let b = lerp_channel(c00, c10, c01, c11, 0);
+
+        ((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32)
+    }
+
+    /// Get a pixel safely, returning transparent black for out-of-bounds coordinates.
+    fn get_pixel_safe(pixels: &[u32], width: i32, height: i32, x: i32, y: i32) -> u32 {
+        if x >= 0 && y >= 0 && x < width && y < height {
+            let idx = (y * width + x) as usize;
+            if idx < pixels.len() {
+                return pixels[idx];
+            }
+        }
+        0 // Transparent black
+    }
+
     /// Draw a single character at pixel coordinates using the embedded font
     fn draw_char(&mut self, ch: u8, px: i32, py: i32, fg_color: u32, bg_color: u32) {
         let bitmap = get_char_bitmap(ch);
@@ -2358,6 +2426,101 @@ impl GraphicsBackend for SDL2Backend {
         self.display_order = [layer1, layer2, layer3, layer4];
         // Note: In a full implementation, this would affect compositing order
         // For now, we store the order but SDL2 rendering is immediate mode
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn map_triangle(
+        &mut self,
+        sx1: f32,
+        sy1: f32,
+        sx2: f32,
+        sy2: f32,
+        sx3: f32,
+        sy3: f32,
+        dx1: f32,
+        dy1: f32,
+        dx2: f32,
+        dy2: f32,
+        dx3: f32,
+        dy3: f32,
+        src_handle: i32,
+        dest_handle: i32,
+        smooth: bool,
+        _seamless: bool,
+    ) {
+        // Get source image dimensions and pixels
+        let (src_width, src_height, src_pixels) = if src_handle == 0 {
+            // Source is the screen
+            let (w, h) = self.get_screen_size();
+            let pixels = self.pixel_buffer.clone();
+            (w as i32, h as i32, pixels)
+        } else if let Some(img) = self.images.get(&src_handle) {
+            (img.width as i32, img.height as i32, img.pixels.clone())
+        } else {
+            return; // Invalid source handle
+        };
+
+        // Calculate bounding box of destination triangle
+        let min_x = dx1.min(dx2).min(dx3).floor() as i32;
+        let max_x = dx1.max(dx2).max(dx3).ceil() as i32;
+        let min_y = dy1.min(dy2).min(dy3).floor() as i32;
+        let max_y = dy1.max(dy2).max(dy3).ceil() as i32;
+
+        // Pre-calculate edge function denominators for barycentric coordinates
+        let denom = (dy2 - dy3) * (dx1 - dx3) + (dx3 - dx2) * (dy1 - dy3);
+        if denom.abs() < 0.0001 {
+            return; // Degenerate triangle (zero area)
+        }
+        let inv_denom = 1.0 / denom;
+
+        // Rasterize the triangle
+        for py in min_y..=max_y {
+            for px in min_x..=max_x {
+                let px_f = px as f32 + 0.5;
+                let py_f = py as f32 + 0.5;
+
+                // Calculate barycentric coordinates
+                let w1 = ((dy2 - dy3) * (px_f - dx3) + (dx3 - dx2) * (py_f - dy3)) * inv_denom;
+                let w2 = ((dy3 - dy1) * (px_f - dx3) + (dx1 - dx3) * (py_f - dy3)) * inv_denom;
+                let w3 = 1.0 - w1 - w2;
+
+                // Check if point is inside triangle
+                if w1 >= 0.0 && w2 >= 0.0 && w3 >= 0.0 {
+                    // Interpolate source coordinates
+                    let src_x = w1 * sx1 + w2 * sx2 + w3 * sx3;
+                    let src_y = w1 * sy1 + w2 * sy2 + w3 * sy3;
+
+                    // Sample source pixel
+                    let color = if smooth {
+                        // Bilinear filtering
+                        Self::sample_bilinear(&src_pixels, src_width, src_height, src_x, src_y)
+                    } else {
+                        // Nearest neighbor
+                        Self::sample_nearest(&src_pixels, src_width, src_height, src_x, src_y)
+                    };
+
+                    // Write to destination
+                    if dest_handle == 0 {
+                        // Write to screen buffer
+                        let (screen_w, screen_h) = self.get_screen_size();
+                        if px >= 0 && py >= 0 && px < screen_w as i32 && py < screen_h as i32 {
+                            let idx = (py as u32 * screen_w + px as u32) as usize;
+                            if idx < self.pixel_buffer.len() {
+                                self.pixel_buffer[idx] =
+                                    Self::blend_colors(color, self.pixel_buffer[idx]);
+                            }
+                        }
+                    } else if let Some(img) = self.images.get_mut(&dest_handle) {
+                        if px >= 0 && py >= 0 && px < img.width as i32 && py < img.height as i32 {
+                            let idx = (py as u32 * img.width + px as u32) as usize;
+                            if idx < img.pixels.len() {
+                                img.pixels[idx] = Self::blend_colors(color, img.pixels[idx]);
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

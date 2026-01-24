@@ -1347,6 +1347,25 @@ impl SemanticAnalyzer {
             ],
         );
 
+        // Triangle mapping for texture rendering
+        self.register_builtin_sub(
+            "_MAPTRIANGLE",
+            &[
+                ("sx1", BasicType::Single),
+                ("sy1", BasicType::Single),
+                ("sx2", BasicType::Single),
+                ("sy2", BasicType::Single),
+                ("sx3", BasicType::Single),
+                ("sy3", BasicType::Single),
+                ("dx1", BasicType::Single),
+                ("dy1", BasicType::Single),
+                ("dx2", BasicType::Single),
+                ("dy2", BasicType::Single),
+                ("dx3", BasicType::Single),
+                ("dy3", BasicType::Single),
+            ],
+        );
+
         // Sound extended statement
         self.register_builtin_sub(
             "_SNDLIMIT",

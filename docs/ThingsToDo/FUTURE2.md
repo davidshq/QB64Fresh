@@ -6,20 +6,6 @@ This document tracks features that are not yet implemented or cannot be supporte
 
 ---
 
-## Not Supported (Architectural Limitations)
-
-These features cannot be supported due to fundamental differences in how QB64Fresh works:
-
-### OpenGL Commands (`_GL`)
-The `SUB _GL` callback and all `_gl*` prefixed commands require a native OpenGL context. Since we use SDL2 for rendering, raw OpenGL calls cannot be passed through.
-
-**Affected commands include:**
-- `SUB _GL` - The OpenGL rendering callback
-- `_GLRENDER` - OpenGL render control
-- All `_gl*` functions (~100+ OpenGL functions)
-
-**Workaround:** Use `_MAPTRIANGLE` for 2D/3D textured rendering (planned via SDL_RenderGeometry).
-
 ### DECLARE LIBRARY Limitations
 `DECLARE LIBRARY`, `DECLARE DYNAMIC LIBRARY`, and `DECLARE STATIC LIBRARY` are partially supported for C interop since we generate C code. Native system libraries work, but some QB64-specific libraries may not.
 
@@ -27,25 +13,19 @@ The `SUB _GL` callback and all `_gl*` prefixed commands require a native OpenGL 
 
 ## Implementation Status
 
-### Graphics - Not Yet Implemented
+### Graphics - Fully Implemented
+
+All core graphics commands are now implemented, including:
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| `_MAPTRIANGLE` | ❌ | Needs SDL_RenderGeometry or custom rasterizer |
-
-### Graphics - Recently Implemented
-
-| Feature | Status | Notes |
-|---------|--------|-------|
+| `_MAPTRIANGLE` | ✅ | Software rasterizer with barycentric texture mapping |
 | `_COPYPALETTE` | ✅ | Copy palette between images (per-image palette support) |
 | `_DISPLAYORDER` | ✅ | Layer ordering (stores order, full compositing in SDL2 runtime) |
 
 ---
 
 ## Remaining Work
-
-### Graphics (Low Priority)
-- `_MAPTRIANGLE` - 3D textured triangle rendering (requires significant work)
 
 ### Legacy Stubs (Very Low Priority)
 - `ERDEV`/`ERDEV$` - DOS device errors (stub only)
@@ -56,19 +36,19 @@ The `SUB _GL` callback and all `_gl*` prefixed commands require a native OpenGL 
 
 ## Implementation Statistics
 
-**Total Built-in Functions/Subs:** 419
+**Total Built-in Functions/Subs:** 420+
 
 | Category | Count | Percentage |
 |----------|-------|------------|
-| ✅ Fully Implemented | ~412 | 98% |
-| 🔨 Graphics Stubs | 1 | <1% |
+| ✅ Fully Implemented | ~415 | 99% |
 | 🔨 Legacy Stubs | ~5 | 1% |
-| ❌ Obsolete/Disabled | ~1 | <1% |
 
 ---
 
 ## Version History
 
+- 2026-01-24: _MAPTRIANGLE implemented with software rasterizer (barycentric texture mapping)
+- 2026-01-24: _COPYPALETTE and _DISPLAYORDER implemented
 - 2026-01-24: Windows-only features implemented (_SCREENPRINT, _SCREENCLICK, _SCREENIMAGE, _WINDOWHANDLE)
 - 2026-01-24: Major update - audio complete, window control, alpha blending, INT 0x33 mouse emulation
 - 2026-01-23: Updated with implementation status (infrastructure vs runtime)

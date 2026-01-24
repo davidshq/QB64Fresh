@@ -2152,6 +2152,104 @@ pub unsafe extern "C" fn qb_interruptx(int_num: i32, in_regs: *const i16, out_re
     }
 }
 
+// ============================================================================
+// Triangle Mapping (_MAPTRIANGLE)
+// ============================================================================
+
+/// Map a triangular portion of a source image onto a destination triangle.
+///
+/// This implements QB64's `_MAPTRIANGLE` statement for 2D texture-mapped rendering.
+///
+/// # Arguments
+/// - `sx1, sy1, sx2, sy2, sx3, sy3`: Source triangle coordinates (texture space)
+/// - `dx1, dy1, dx2, dy2, dx3, dy3`: Destination triangle coordinates (screen space)
+/// - `src_handle`: Source image handle (0 = current source, -1 = screen)
+/// - `dest_handle`: Destination image handle (0 = current dest, -1 = screen)
+/// - `smooth`: Non-zero to enable bilinear filtering
+/// - `seamless`: Non-zero to skip edge pixels (prevents seams in multi-triangle renders)
+#[no_mangle]
+#[allow(clippy::too_many_arguments)]
+pub extern "C" fn qb_maptriangle(
+    sx1: f64,
+    sy1: f64,
+    sx2: f64,
+    sy2: f64,
+    sx3: f64,
+    sy3: f64,
+    dx1: f64,
+    dy1: f64,
+    dx2: f64,
+    dy2: f64,
+    dx3: f64,
+    dy3: f64,
+) {
+    // Simplified version: src=0, dest=0, smooth=false, seamless=false
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            backend.map_triangle(
+                sx1 as f32, sy1 as f32, sx2 as f32, sy2 as f32, sx3 as f32, sy3 as f32, dx1 as f32,
+                dy1 as f32, dx2 as f32, dy2 as f32, dx3 as f32, dy3 as f32,
+                0,     // src_handle (0 = screen)
+                0,     // dest_handle (0 = screen)
+                false, // smooth
+                false, // seamless
+            );
+        }
+    }
+}
+
+/// Extended version of _MAPTRIANGLE with full options.
+///
+/// # Arguments
+/// - Source/dest triangle coordinates (12 floats)
+/// - `src_handle`: Source image handle
+/// - `dest_handle`: Destination image handle
+/// - `smooth`: Enable bilinear filtering
+/// - `seamless`: Skip edge pixels
+#[no_mangle]
+#[allow(clippy::too_many_arguments)]
+pub extern "C" fn qb_maptriangle_ex(
+    sx1: f64,
+    sy1: f64,
+    sx2: f64,
+    sy2: f64,
+    sx3: f64,
+    sy3: f64,
+    dx1: f64,
+    dy1: f64,
+    dx2: f64,
+    dy2: f64,
+    dx3: f64,
+    dy3: f64,
+    src_handle: i32,
+    dest_handle: i32,
+    smooth: i32,
+    seamless: i32,
+) {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            backend.map_triangle(
+                sx1 as f32,
+                sy1 as f32,
+                sx2 as f32,
+                sy2 as f32,
+                sx3 as f32,
+                sy3 as f32,
+                dx1 as f32,
+                dy1 as f32,
+                dx2 as f32,
+                dy2 as f32,
+                dx3 as f32,
+                dy3 as f32,
+                src_handle,
+                dest_handle,
+                smooth != 0,
+                seamless != 0,
+            );
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
