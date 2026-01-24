@@ -624,8 +624,41 @@ impl SemanticAnalyzer {
         );
         self.register_builtin_function("_SCREENHIDE", &[], BasicType::Long);
         self.register_builtin_function("_SCREENSHOW", &[], BasicType::Long);
-        self.register_builtin_function("_FULLSCREEN", &[], BasicType::Long); // Returns/toggles fullscreen mode
+        // _FULLSCREEN can take 0-1 argument:
+        // _FULLSCREEN - returns current mode (0=windowed, 1=fullscreen, 2=desktop)
+        // _FULLSCREEN mode& - sets mode and returns previous mode
+        self.register_builtin_function_with_optionals(
+            "_FULLSCREEN",
+            &[("mode", BasicType::Long, true)],
+            BasicType::Long,
+        );
         self.register_builtin_function("_SCREENCLICK", &[], BasicType::Long);
+
+        // Alpha blending functions
+        // _BLEND [handle&] - enable alpha blending for image (default: current destination)
+        self.register_builtin_function_with_optionals(
+            "_BLEND",
+            &[("handle", BasicType::Long, true)],
+            BasicType::Long,
+        );
+        // _DONTBLEND [handle&] - disable alpha blending for image
+        self.register_builtin_function_with_optionals(
+            "_DONTBLEND",
+            &[("handle", BasicType::Long, true)],
+            BasicType::Long,
+        );
+        // _CLEARCOLOR takes 0-2 arguments:
+        // _CLEARCOLOR(handle&) - returns clear color for image (-1 if none)
+        // _CLEARCOLOR color&, handle& - sets clear color (transparency key)
+        // Note: QB64 syntax is: _CLEARCOLOR color&[, handle&] or _CLEARCOLOR [,handle&] to clear
+        self.register_builtin_function_with_optionals(
+            "_CLEARCOLOR",
+            &[
+                ("color", BasicType::Long, true),
+                ("handle", BasicType::Long, true),
+            ],
+            BasicType::Long,
+        );
 
         // Dialog boxes
         // _MESSAGEBOX can be called with 0-5 arguments (all optional):

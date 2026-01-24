@@ -636,6 +636,9 @@ impl StmtEmitter {
                     "_ANTIALIASING" => "qb_antialiasing".to_string(),
                     "_ALLOWFULLSCREEN" => "qb_allowfullscreen".to_string(),
                     "_FULLSCREEN" => "qb_fullscreen".to_string(),
+                    "_SCREENMOVE" => "qb_screenmove".to_string(),
+                    "_SCREENSHOW" => "qb_screenshow".to_string(),
+                    "_SCREENHIDE" => "qb_screenhide".to_string(),
                     "_DELAY" => "qb_delay".to_string(),
                     // Session 035+ SUBs (memory operations)
                     "_MEMPUT" => "qb_memput".to_string(),

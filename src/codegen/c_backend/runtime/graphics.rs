@@ -588,27 +588,33 @@ pub(super) fn emit_graphics_stubs(output: &mut String) {
     writeln!(output, "static int _qb_fullscreen_mode = 0;").unwrap();
     writeln!(output).unwrap();
 
-    writeln!(output, "int64_t qb_screenmove(int64_t x, int64_t y) {{").unwrap();
+    writeln!(output, "void qb_screenmove(int32_t x, int32_t y) {{").unwrap();
     writeln!(output, "    _qb_gfx_warn();").unwrap();
     writeln!(output, "    (void)x; (void)y;").unwrap();
-    writeln!(output, "    return 0;").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
-    writeln!(output, "int64_t qb_screenhide(void) {{").unwrap();
+    writeln!(output, "void qb_screenhide(void) {{").unwrap();
     writeln!(output, "    _qb_screen_visible = 0;").unwrap();
-    writeln!(output, "    return 0;").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
-    writeln!(output, "int64_t qb_screenshow(void) {{").unwrap();
+    writeln!(output, "void qb_screenshow(void) {{").unwrap();
     writeln!(output, "    _qb_screen_visible = 1;").unwrap();
-    writeln!(output, "    return 0;").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
-    writeln!(output, "int64_t qb_fullscreen(void) {{").unwrap();
+    // _FULLSCREEN statement - sets mode, returns previous mode
+    writeln!(output, "int32_t qb_fullscreen(int32_t mode) {{").unwrap();
     writeln!(output, "    _qb_gfx_warn();").unwrap();
+    writeln!(output, "    int32_t prev = _qb_fullscreen_mode;").unwrap();
+    writeln!(output, "    _qb_fullscreen_mode = mode;").unwrap();
+    writeln!(output, "    return prev;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _FULLSCREEN function - get current mode
+    writeln!(output, "int32_t qb_fullscreen_get(void) {{").unwrap();
     writeln!(output, "    return _qb_fullscreen_mode;").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
@@ -620,6 +626,95 @@ pub(super) fn emit_graphics_stubs(output: &mut String) {
     )
     .unwrap();
     writeln!(output, "    return 0;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // Alpha blending functions
+    writeln!(output, "/* Alpha Blending Functions */").unwrap();
+    writeln!(
+        output,
+        "static int _qb_blend_enabled[256] = {{0}};  /* Per-image blend state */"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "static int32_t _qb_clear_color[256] = {{0}};  /* Per-image clear color */"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "static int _qb_clear_color_set[256] = {{0}};  /* Whether clear color is set */"
+    )
+    .unwrap();
+    writeln!(output).unwrap();
+
+    // Initialize all images to blend enabled
+    writeln!(output, "static void _qb_init_blend(void) {{").unwrap();
+    writeln!(output, "    static int initialized = 0;").unwrap();
+    writeln!(output, "    if (!initialized) {{").unwrap();
+    writeln!(
+        output,
+        "        for (int i = 0; i < 256; i++) _qb_blend_enabled[i] = 1;"
+    )
+    .unwrap();
+    writeln!(output, "        initialized = 1;").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "void qb_blend(int32_t handle) {{").unwrap();
+    writeln!(output, "    _qb_init_blend();").unwrap();
+    writeln!(
+        output,
+        "    if (handle >= 0 && handle < 256) _qb_blend_enabled[handle] = 1;"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "void qb_dontblend(int32_t handle) {{").unwrap();
+    writeln!(output, "    _qb_init_blend();").unwrap();
+    writeln!(
+        output,
+        "    if (handle >= 0 && handle < 256) _qb_blend_enabled[handle] = 0;"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(
+        output,
+        "void qb_clearcolor(uint32_t color, int32_t handle) {{"
+    )
+    .unwrap();
+    writeln!(output, "    if (handle >= 0 && handle < 256) {{").unwrap();
+    writeln!(output, "        _qb_clear_color[handle] = (int32_t)color;").unwrap();
+    writeln!(output, "        _qb_clear_color_set[handle] = 1;").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "void qb_clearcolor_none(int32_t handle) {{").unwrap();
+    writeln!(
+        output,
+        "    if (handle >= 0 && handle < 256) _qb_clear_color_set[handle] = 0;"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "int64_t qb_clearcolor_get(int32_t handle) {{").unwrap();
+    writeln!(
+        output,
+        "    if (handle >= 0 && handle < 256 && _qb_clear_color_set[handle])"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "        return (int64_t)(uint32_t)_qb_clear_color[handle];"
+    )
+    .unwrap();
+    writeln!(output, "    return -1;  /* No clear color set */").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 

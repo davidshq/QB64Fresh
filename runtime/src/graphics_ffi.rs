@@ -1634,6 +1634,154 @@ pub extern "C" fn qb_gfx_put_step(
     qb_gfx_put(x, y, arr, action, clip, trans_color)
 }
 
+// ============================================================================
+// Window Control Functions
+// ============================================================================
+
+/// _FULLSCREEN - Set fullscreen mode.
+///
+/// # Arguments
+/// - `mode`: 0 = windowed, 1 = fullscreen, 2 = fullscreen desktop
+///
+/// # Returns
+/// Previous fullscreen mode
+#[no_mangle]
+pub extern "C" fn qb_fullscreen(mode: i32) -> i32 {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            backend.set_fullscreen(mode)
+        } else {
+            0
+        }
+    }
+}
+
+/// _FULLSCREEN (function) - Get current fullscreen mode.
+///
+/// # Returns
+/// - 0: Windowed
+/// - 1: Fullscreen
+/// - 2: Fullscreen desktop
+#[no_mangle]
+pub extern "C" fn qb_fullscreen_get() -> i32 {
+    unsafe {
+        if let Some(ref backend) = crate::graphics::GRAPHICS_BACKEND {
+            backend.get_fullscreen()
+        } else {
+            0
+        }
+    }
+}
+
+/// _SCREENMOVE - Move the window to the specified position.
+///
+/// # Arguments
+/// - `x`: X position in screen coordinates
+/// - `y`: Y position in screen coordinates
+#[no_mangle]
+pub extern "C" fn qb_screenmove(x: i32, y: i32) {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            backend.screen_move(x, y);
+        }
+    }
+}
+
+/// _SCREENSHOW - Show the window (make visible).
+#[no_mangle]
+pub extern "C" fn qb_screenshow() {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            backend.screen_show();
+        }
+    }
+}
+
+/// _SCREENHIDE - Hide the window (make invisible).
+#[no_mangle]
+pub extern "C" fn qb_screenhide() {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            backend.screen_hide();
+        }
+    }
+}
+
+// ============================================================================
+// Alpha Blending Functions
+// ============================================================================
+
+/// _BLEND - Enable alpha blending for an image.
+///
+/// # Arguments
+/// - `handle`: Image handle (0 = screen)
+#[no_mangle]
+pub extern "C" fn qb_blend(handle: i32) {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            backend.set_blend(handle);
+        }
+    }
+}
+
+/// _DONTBLEND - Disable alpha blending for an image.
+///
+/// # Arguments
+/// - `handle`: Image handle (0 = screen)
+#[no_mangle]
+pub extern "C" fn qb_dontblend(handle: i32) {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            backend.set_dontblend(handle);
+        }
+    }
+}
+
+/// _CLEARCOLOR - Set a transparent color for an image.
+///
+/// # Arguments
+/// - `color`: Color to make transparent (ARGB format)
+/// - `handle`: Image handle (0 = screen)
+#[no_mangle]
+pub extern "C" fn qb_clearcolor(color: u32, handle: i32) {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            backend.set_clearcolor(color, handle);
+        }
+    }
+}
+
+/// _CLEARCOLOR (no args) - Disable transparent color for an image.
+///
+/// # Arguments
+/// - `handle`: Image handle (0 = screen)
+#[no_mangle]
+pub extern "C" fn qb_clearcolor_none(handle: i32) {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            backend.clear_clearcolor(handle);
+        }
+    }
+}
+
+/// _CLEARCOLOR (function) - Get the current clear color for an image.
+///
+/// # Arguments
+/// - `handle`: Image handle (0 = screen)
+///
+/// # Returns
+/// The clear color, or -1 if no clear color is set
+#[no_mangle]
+pub extern "C" fn qb_clearcolor_get(handle: i32) -> i64 {
+    unsafe {
+        if let Some(ref backend) = crate::graphics::GRAPHICS_BACKEND {
+            backend.get_clearcolor(handle)
+        } else {
+            -1
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

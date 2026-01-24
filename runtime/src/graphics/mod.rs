@@ -619,6 +619,120 @@ pub trait GraphicsBackend {
     fn get_print_width(&self, text: &str) -> i64 {
         (text.len() as i64) * 8 // Default: 8 pixels per character
     }
+
+    // ============================================================================
+    // Window Control Functions
+    // ============================================================================
+
+    /// Set fullscreen mode.
+    ///
+    /// # Arguments
+    /// - `mode`: 0 = windowed, 1 = fullscreen, 2 = fullscreen desktop (stretched)
+    ///
+    /// # Returns
+    /// Previous fullscreen mode
+    fn set_fullscreen(&mut self, _mode: i32) -> i32 {
+        0 // Default: windowed mode, return 0
+    }
+
+    /// Get current fullscreen mode.
+    ///
+    /// # Returns
+    /// - 0: Windowed
+    /// - 1: Fullscreen
+    /// - 2: Fullscreen desktop (stretched)
+    fn get_fullscreen(&self) -> i32 {
+        0 // Default: windowed
+    }
+
+    /// Move the window to the specified position.
+    ///
+    /// # Arguments
+    /// - `x`: X position in screen coordinates
+    /// - `y`: Y position in screen coordinates
+    fn screen_move(&mut self, _x: i32, _y: i32) {
+        // Default: no-op
+    }
+
+    /// Show the window (make visible).
+    fn screen_show(&mut self) {
+        // Default: no-op
+    }
+
+    /// Hide the window (make invisible).
+    fn screen_hide(&mut self) {
+        // Default: no-op
+    }
+
+    /// Check if the window is visible.
+    fn is_screen_visible(&self) -> bool {
+        true // Default: visible
+    }
+
+    // ============================================================================
+    // Alpha Blending Functions
+    // ============================================================================
+
+    /// Enable alpha blending for an image.
+    ///
+    /// When enabled, pixels are blended using their alpha channel.
+    ///
+    /// # Arguments
+    /// - `handle`: Image handle (0 = screen)
+    fn set_blend(&mut self, _handle: i32) {
+        // Default: no-op
+    }
+
+    /// Disable alpha blending for an image.
+    ///
+    /// When disabled, pixels are copied directly without alpha blending.
+    ///
+    /// # Arguments
+    /// - `handle`: Image handle (0 = screen)
+    fn set_dontblend(&mut self, _handle: i32) {
+        // Default: no-op
+    }
+
+    /// Check if alpha blending is enabled for an image.
+    ///
+    /// # Arguments
+    /// - `handle`: Image handle (0 = screen)
+    ///
+    /// # Returns
+    /// true if blending is enabled
+    fn get_blend(&self, _handle: i32) -> bool {
+        true // Default: blending enabled
+    }
+
+    /// Set a transparent (clear) color for an image.
+    ///
+    /// Pixels matching this color will be treated as transparent during _PUTIMAGE.
+    ///
+    /// # Arguments
+    /// - `color`: Color to make transparent (ARGB format)
+    /// - `handle`: Image handle (0 = screen)
+    fn set_clearcolor(&mut self, _color: u32, _handle: i32) {
+        // Default: no-op
+    }
+
+    /// Disable the transparent color for an image.
+    ///
+    /// # Arguments
+    /// - `handle`: Image handle (0 = screen)
+    fn clear_clearcolor(&mut self, _handle: i32) {
+        // Default: no-op
+    }
+
+    /// Get the current clear color for an image.
+    ///
+    /// # Arguments
+    /// - `handle`: Image handle (0 = screen)
+    ///
+    /// # Returns
+    /// The clear color, or -1 if no clear color is set
+    fn get_clearcolor(&self, _handle: i32) -> i64 {
+        -1 // Default: no clear color
+    }
 }
 
 /// Global graphics backend instance.
