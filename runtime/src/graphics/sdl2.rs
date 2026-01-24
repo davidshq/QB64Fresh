@@ -194,8 +194,15 @@ pub struct SDL2Backend {
     bg_color: u32,
     cursor_row: u32,
     cursor_col: u32,
-    /// Main screen pixel buffer (handle 0)
-    pixel_buffer: Vec<u32>,
+    /// Screen page buffers (handle 0) - multiple pages for page flipping
+    /// Classic modes support 2-4 pages depending on resolution/memory
+    page_buffers: Vec<Vec<u32>>,
+    /// Active page - drawing operations target this page
+    active_page: usize,
+    /// Visual page - this page is displayed on screen
+    visual_page: usize,
+    /// Maximum number of pages for current mode
+    max_pages: usize,
     /// Image buffers (handle -> buffer)
     images: HashMap<i32, ImageBuffer>,
     /// Next available image handle
@@ -283,7 +290,10 @@ impl SDL2Backend {
             bg_color: 0xFF000000,
             cursor_row: 1,
             cursor_col: 1,
-            pixel_buffer: Vec::new(),
+            page_buffers: Vec::new(),
+            active_page: 0,
+            visual_page: 0,
+            max_pages: 4, // Default to 4 pages
             images: HashMap::new(),
             next_handle: 1, // 0 is reserved for screen
             source_handle: 0,
@@ -384,10 +394,12 @@ impl SDL2Backend {
 
     fn set_pixel_buffer(&mut self, x: i32, y: i32, color: u32) {
         if self.dest_handle == 0 {
-            // Drawing to screen
+            // Drawing to screen (active page)
             if let Some(idx) = self.pixel_index(x, y) {
-                if idx < self.pixel_buffer.len() {
-                    self.pixel_buffer[idx] = color;
+                if let Some(page) = self.page_buffers.get_mut(self.active_page) {
+                    if idx < page.len() {
+                        page[idx] = color;
+                    }
                 }
             }
         } else {
@@ -400,9 +412,12 @@ impl SDL2Backend {
 
     fn get_pixel_buffer(&self, x: i32, y: i32) -> Option<u32> {
         if self.source_handle == 0 {
-            // Reading from screen
-            self.pixel_index(x, y)
-                .and_then(|idx| self.pixel_buffer.get(idx).copied())
+            // Reading from screen (active page)
+            self.pixel_index(x, y).and_then(|idx| {
+                self.page_buffers
+                    .get(self.active_page)
+                    .and_then(|page| page.get(idx).copied())
+            })
         } else {
             // Reading from image buffer
             self.images
@@ -501,10 +516,12 @@ impl SDL2Backend {
                     bg_color
                 };
 
-                // Update pixel buffer
+                // Update pixel buffer (active page)
                 if let Some(idx) = self.pixel_index(x, y) {
-                    if idx < self.pixel_buffer.len() {
-                        self.pixel_buffer[idx] = color;
+                    if let Some(page) = self.page_buffers.get_mut(self.active_page) {
+                        if idx < page.len() {
+                            page[idx] = color;
+                        }
                     }
                 }
             }
@@ -964,11 +981,17 @@ impl SDL2Backend {
         dest_y2: i32,
     ) -> Result<(), GraphicsError> {
         // Get source dimensions, pixels, and blending settings
+        // When source is screen (handle 0), read from visual page
         let (src_w, src_h, src_pixels, src_blend, src_clear_color) = if src_handle == 0 {
+            let page_pixels = self
+                .page_buffers
+                .get(self.visual_page)
+                .cloned()
+                .unwrap_or_default();
             (
                 self.width,
                 self.height,
-                self.pixel_buffer.clone(),
+                page_pixels,
                 self.screen_blend_enabled,
                 self.screen_clear_color,
             )
@@ -1360,7 +1383,12 @@ impl GraphicsBackend for SDL2Backend {
             )
         })?;
 
-        let pixel_buffer = vec![self.bg_color; (width * height) as usize];
+        // Initialize page buffers (4 pages for classic modes)
+        // Each page is a full-screen pixel buffer
+        let page_size = (width * height) as usize;
+        let page_buffers: Vec<Vec<u32>> = (0..self.max_pages)
+            .map(|_| vec![self.bg_color; page_size])
+            .collect();
 
         // Initialize TTF subsystem for TrueType font support (if enabled)
         #[cfg(feature = "graphics-sdl2-ttf")]
@@ -1380,7 +1408,9 @@ impl GraphicsBackend for SDL2Backend {
         self.initialized = true;
         self.width = width;
         self.height = height;
-        self.pixel_buffer = pixel_buffer;
+        self.page_buffers = page_buffers;
+        self.active_page = 0;
+        self.visual_page = 0;
 
         // Initialize turtle to center of screen
         self.turtle.x = width as f64 / 2.0;
@@ -1408,7 +1438,9 @@ impl GraphicsBackend for SDL2Backend {
         self.event_pump = None;
         self.canvas = None;
         self.sdl_context = None;
-        self.pixel_buffer.clear();
+        self.page_buffers.clear();
+        self.active_page = 0;
+        self.visual_page = 0;
         self.images.clear();
         self.initialized = false;
 
@@ -1424,12 +1456,19 @@ impl GraphicsBackend for SDL2Backend {
             return Err(GraphicsError::not_initialized());
         }
 
-        if let Some(canvas) = self.canvas.as_mut() {
-            canvas.set_draw_color(Self::argb_to_sdl_color(self.bg_color));
-            canvas.clear();
+        // Clear the active page buffer
+        if let Some(page) = self.page_buffers.get_mut(self.active_page) {
+            page.fill(self.bg_color);
         }
 
-        self.pixel_buffer.fill(self.bg_color);
+        // If active page == visual page, also clear canvas
+        if self.active_page == self.visual_page {
+            if let Some(canvas) = self.canvas.as_mut() {
+                canvas.set_draw_color(Self::argb_to_sdl_color(self.bg_color));
+                canvas.clear();
+            }
+        }
+
         self.cursor_row = 1;
         self.cursor_col = 1;
 
@@ -1767,11 +1806,169 @@ impl GraphicsBackend for SDL2Backend {
             return Err(GraphicsError::not_initialized());
         }
 
+        // If active_page != visual_page, we need to render the visual page's buffer
+        // to the canvas before presenting. When they're the same, drawing operations
+        // already updated the canvas.
+        if self.active_page != self.visual_page {
+            // Render visual page buffer to canvas
+            if let (Some(canvas), Some(page)) = (
+                self.canvas.as_mut(),
+                self.page_buffers.get(self.visual_page),
+            ) {
+                // Create a texture and copy the visual page to it
+                let texture_creator = canvas.texture_creator();
+                let mut texture = texture_creator
+                    .create_texture_streaming(
+                        sdl2::pixels::PixelFormatEnum::ARGB8888,
+                        self.width,
+                        self.height,
+                    )
+                    .map_err(|e| {
+                        GraphicsError::new(
+                            GraphicsErrorKind::BackendError,
+                            format!("Failed to create texture: {}", e),
+                        )
+                    })?;
+
+                // Copy pixel data to texture
+                texture
+                    .with_lock(None, |buffer: &mut [u8], pitch: usize| {
+                        for y in 0..self.height as usize {
+                            for x in 0..self.width as usize {
+                                let pixel = page[y * self.width as usize + x];
+                                let offset = y * pitch + x * 4;
+                                // ARGB8888 format
+                                buffer[offset] = (pixel & 0xFF) as u8; // B
+                                buffer[offset + 1] = ((pixel >> 8) & 0xFF) as u8; // G
+                                buffer[offset + 2] = ((pixel >> 16) & 0xFF) as u8; // R
+                                buffer[offset + 3] = ((pixel >> 24) & 0xFF) as u8;
+                                // A
+                            }
+                        }
+                    })
+                    .map_err(|e| {
+                        GraphicsError::new(
+                            GraphicsErrorKind::BackendError,
+                            format!("Failed to update texture: {}", e),
+                        )
+                    })?;
+
+                // Copy texture to canvas
+                canvas.copy(&texture, None, None).map_err(|e| {
+                    GraphicsError::new(
+                        GraphicsErrorKind::BackendError,
+                        format!("Failed to copy texture: {}", e),
+                    )
+                })?;
+            }
+        }
+
         if let Some(canvas) = self.canvas.as_mut() {
             canvas.present();
         }
 
         Ok(())
+    }
+
+    fn pcopy(&mut self, src: i32, dst: i32) -> Result<(), GraphicsError> {
+        if !self.initialized {
+            return Err(GraphicsError::not_initialized());
+        }
+
+        let src_page = src as usize;
+        let dst_page = dst as usize;
+
+        if src_page >= self.max_pages || dst_page >= self.max_pages {
+            return Err(GraphicsError::new(
+                GraphicsErrorKind::InvalidArgument,
+                format!(
+                    "Invalid page number: src={}, dst={}, max={}",
+                    src, dst, self.max_pages
+                ),
+            ));
+        }
+
+        // Copy page buffer contents
+        if src_page != dst_page {
+            // Clone source page, then assign to destination
+            let src_data = self.page_buffers[src_page].clone();
+            self.page_buffers[dst_page] = src_data;
+        }
+
+        // If destination is the visual page, also update the canvas
+        if dst_page == self.visual_page {
+            if let Some(canvas) = self.canvas.as_mut() {
+                // Redraw canvas from visual page buffer
+                let page = &self.page_buffers[self.visual_page];
+                for y in 0..self.height as i32 {
+                    for x in 0..self.width as i32 {
+                        let idx = (y as u32 * self.width + x as u32) as usize;
+                        if idx < page.len() {
+                            canvas.set_draw_color(Self::argb_to_sdl_color(page[idx]));
+                            let _ = canvas.draw_point(Point::new(x, y));
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn set_active_page(&mut self, page: i32) -> Result<(), GraphicsError> {
+        if !self.initialized {
+            return Err(GraphicsError::not_initialized());
+        }
+
+        let page_num = page as usize;
+        if page_num >= self.max_pages {
+            return Err(GraphicsError::new(
+                GraphicsErrorKind::InvalidArgument,
+                format!("Invalid active page: {}, max={}", page, self.max_pages),
+            ));
+        }
+
+        self.active_page = page_num;
+        Ok(())
+    }
+
+    fn set_visual_page(&mut self, page: i32) -> Result<(), GraphicsError> {
+        if !self.initialized {
+            return Err(GraphicsError::not_initialized());
+        }
+
+        let page_num = page as usize;
+        if page_num >= self.max_pages {
+            return Err(GraphicsError::new(
+                GraphicsErrorKind::InvalidArgument,
+                format!("Invalid visual page: {}, max={}", page, self.max_pages),
+            ));
+        }
+
+        // If switching to a different visual page, we need to update the canvas
+        if page_num != self.visual_page {
+            self.visual_page = page_num;
+
+            // Redraw canvas from the new visual page buffer
+            if let Some(canvas) = self.canvas.as_mut() {
+                let page_data = &self.page_buffers[self.visual_page];
+                for y in 0..self.height as i32 {
+                    for x in 0..self.width as i32 {
+                        let idx = (y as u32 * self.width + x as u32) as usize;
+                        if idx < page_data.len() {
+                            canvas.set_draw_color(Self::argb_to_sdl_color(page_data[idx]));
+                            let _ = canvas.draw_point(Point::new(x, y));
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn get_pages(&self) -> (i32, i32) {
+        (self.active_page as i32, self.visual_page as i32)
     }
 
     fn poll_events(&mut self) -> Result<bool, GraphicsError> {
@@ -2107,11 +2304,17 @@ impl GraphicsBackend for SDL2Backend {
     }
 
     fn copy_image(&mut self, handle: i32, mode: i32) -> i32 {
+        // When copying from screen (handle 0), copy from visual page
         let (width, height, pixels, blend_enabled, clear_color, src_palette) = if handle == 0 {
+            let page_pixels = self
+                .page_buffers
+                .get(self.visual_page)
+                .cloned()
+                .unwrap_or_default();
             (
                 self.width,
                 self.height,
-                self.pixel_buffer.clone(),
+                page_pixels,
                 self.screen_blend_enabled,
                 self.screen_clear_color,
                 self.screen_palette,
@@ -2449,10 +2652,15 @@ impl GraphicsBackend for SDL2Backend {
         _seamless: bool,
     ) {
         // Get source image dimensions and pixels
+        // When source is screen (handle 0), read from visual page
         let (src_width, src_height, src_pixels) = if src_handle == 0 {
-            // Source is the screen
+            // Source is the screen (visual page)
             let (w, h) = self.get_screen_size();
-            let pixels = self.pixel_buffer.clone();
+            let pixels = self
+                .page_buffers
+                .get(self.visual_page)
+                .cloned()
+                .unwrap_or_default();
             (w as i32, h as i32, pixels)
         } else if let Some(img) = self.images.get(&src_handle) {
             (img.width as i32, img.height as i32, img.pixels.clone())
@@ -2501,13 +2709,14 @@ impl GraphicsBackend for SDL2Backend {
 
                     // Write to destination
                     if dest_handle == 0 {
-                        // Write to screen buffer
+                        // Write to screen buffer (active page)
                         let (screen_w, screen_h) = self.get_screen_size();
                         if px >= 0 && py >= 0 && px < screen_w as i32 && py < screen_h as i32 {
                             let idx = (py as u32 * screen_w + px as u32) as usize;
-                            if idx < self.pixel_buffer.len() {
-                                self.pixel_buffer[idx] =
-                                    Self::blend_colors(color, self.pixel_buffer[idx]);
+                            if let Some(page) = self.page_buffers.get_mut(self.active_page) {
+                                if idx < page.len() {
+                                    page[idx] = Self::blend_colors(color, page[idx]);
+                                }
                             }
                         }
                     } else if let Some(img) = self.images.get_mut(&dest_handle) {

@@ -307,6 +307,29 @@ pub trait GraphicsBackend {
         Ok(()) // Default: no-op (single page mode)
     }
 
+    /// Set the active page for drawing operations.
+    ///
+    /// All drawing commands will target this page.
+    /// Classic SCREEN syntax: SCREEN mode, , active_page, visual_page
+    fn set_active_page(&mut self, _page: i32) -> Result<(), GraphicsError> {
+        Ok(()) // Default: no-op (single page mode)
+    }
+
+    /// Set the visual page for display.
+    ///
+    /// This page is rendered to the screen on display() calls.
+    /// Classic SCREEN syntax: SCREEN mode, , active_page, visual_page
+    fn set_visual_page(&mut self, _page: i32) -> Result<(), GraphicsError> {
+        Ok(()) // Default: no-op (single page mode)
+    }
+
+    /// Get the current active and visual page numbers.
+    ///
+    /// Returns (active_page, visual_page).
+    fn get_pages(&self) -> (i32, i32) {
+        (0, 0) // Default: single page mode
+    }
+
     /// Map coordinates between world and screen coordinate systems.
     ///
     /// # Arguments
