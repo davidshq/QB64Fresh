@@ -340,6 +340,14 @@ pub(super) fn emit_expr(expr: &TypedExpr) -> Result<String, CodeGenError> {
                 return Ok(format!("qb_asc2({})", args_str));
             }
 
+            // Special case: STRIG with 2 arguments (controller) uses qb_strig2
+            // QB64 extension: STRIG(button, controller) overrides implicit controller
+            if upper_name == "STRIG" && args.len() == 2 {
+                let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
+                let args_str = args_code?.join(", ");
+                return Ok(format!("qb_strig2({})", args_str));
+            }
+
             // Special case: TIMER with argument (accuracy) uses qb_timer_n
             if upper_name == "TIMER" && !args.is_empty() {
                 let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();

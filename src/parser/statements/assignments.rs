@@ -284,7 +284,15 @@ impl<'a> Parser<'a> {
     /// - `id(...).field = value` (UDT array member assignment)
     /// - `id(...).field.subfield = value` (nested UDT member assignment)
     pub(in crate::parser) fn is_array_assignment(&self) -> bool {
-        // Start after the identifier (at position self.current + 1 should be LeftParen)
+        // The token immediately after the identifier MUST be LeftParen
+        // This prevents matching `x = arr(1) = 5` as an array assignment
+        // (where `arr(1) = 5` is actually a comparison expression)
+        let pos = self.current + 1;
+        if pos >= self.tokens.len() || self.tokens[pos].kind != TokenKind::LeftParen {
+            return false;
+        }
+
+        // Now scan to find the matching close paren and check for = after it
         let mut depth = 0;
         let mut pos = self.current + 1;
 
