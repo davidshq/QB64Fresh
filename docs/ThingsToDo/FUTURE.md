@@ -8,30 +8,6 @@ This document outlines features that are planned but not yet implemented, along 
 
 ---
 
-## Remaining Features
-
-### Graphics System Enhancements
-
-- [ ] **Multiple screen pages** *(Medium)*
-      SCREEN page parameter for page flipping and double buffering.
-      Syntax and `qb_gfx_screen(mode, color, active, visual)` exist; runtime does not implement page flipping (params ignored).
-      *(QB64 supports `SCREEN mode [, , active_page, visual_page]`—parity item.)*
-
-### Networking
-- [ ] **Network stream I/O** *(Medium)*
-      PUT/GET with network handles for binary data transfer.
-      Core TCP functions (_OPENHOST, _OPENCLIENT, _OPENCONNECTION, _CONNECTED) are implemented.
-      *(QB64 supports PUT/GET on TCP/Stream handles via `special_handle_type::Stream` in libqb—parity item.)*
-
-### Input Devices
-
-- [ ] **Joystick event handlers** *(Medium)*
-      ON STRIG / STRIG ON/OFF/STOP event handlers not yet implemented.
-      Parsed and emitted (`qb_on_strig`, `qb_strig_control`); runtime stubs do not invoke handlers.
-      *(QB64 supports ON STRIG and STRIG(button%) On/Off/Stop—parity item.)*
-
----
-
 ## Tooling & Ecosystem
 
 ### Debugger (`tools/debug/`) ⚠️ Infrastructure Complete
@@ -44,15 +20,9 @@ This document outlines features that are planned but not yet implemented, along 
 
 ---
 
-## DECLARE LIBRARY Support
-
-QB64Fresh supports `DECLARE LIBRARY`, `DECLARE DYNAMIC LIBRARY`, and `DECLARE STATIC LIBRARY` for C interop. Since we generate C code, this integration is natural and efficient.
-
-### DECLARE LIBRARY Limitations
+## DECLARE LIBRARY Limitations
 
 *(Only unimplemented items are listed.)*
-
-1. **QB64-Specific Bundled Libraries** – QB64pe bundles (InForm GUI, QB64 OpenGL bindings) rely on its internals; use native GUI or SDL2 via DECLARE LIBRARY instead.
 
 2. **Header Parsing** – `DECLARE LIBRARY "file.h"` does not parse the header; the string is only a library identifier. Manually declare each `FUNCTION` and `SUB`. The `header-parsing` API (supports `#define`, `#ifdef`, structs; not function-like macros, unions, or C++) is not integrated into DECLARE LIBRARY.
 
@@ -62,10 +32,6 @@ QB64Fresh supports `DECLARE LIBRARY`, `DECLARE DYNAMIC LIBRARY`, and `DECLARE ST
 
 5. **Platform-Specific** – `_64BIT`/`_32BIT` and `_WIN`/`_MAC` aliases are not in builtins for `$IF` conditions.
 
-### Safety Considerations
-
-DECLARE LIBRARY enables unsafe operations: no runtime type checking, manual C memory management, temporary string lifetime issues, and platform-specific behavior. See [ADR-0008](../adrs/ADR-0008-c-interoperability.md) for details.
-
 ---
 
 ## Known Limitations
@@ -73,14 +39,9 @@ DECLARE LIBRARY enables unsafe operations: no runtime type checking, manual C me
 ### Unicode Support
 - [ ] **Unicode support** *(Large)*
       Currently ASCII-focused. Full Unicode would require significant changes to string handling.
-      **Partial:** UTF-8 in source and string literals; inline C runtime has
-      `qb_utf8_char_count`/`qb_utf8_char_to_byte`/`qb_strlen_chars` (unused by BASIC built-ins);
-      UCASE$/LCASE$ preserve multi-byte UTF-8; `_MAPUNICODE` (stubs).
+      **Partial:** UTF-8 in source and string literals; **`_MAPUNICODE`** (statement and function) is fully implemented with CP437 default table and customizable ASCII→Unicode mapping; inline C runtime has `qb_utf8_char_count`/`qb_utf8_char_to_byte`/`qb_strlen_chars` (unused by BASIC built-ins); UCASE$/LCASE$ preserve multi-byte UTF-8.
       LEN, LEFT$, RIGHT$, MID$, INSTR, CHR$, ASC, and compares remain byte-based.
-
-### Platform-Specific
-- [x] **Windows-specific path handling** *(Small)* *(done 2026-01-24)*
-      All path-taking file I/O now normalizes `\`→`/` on non-Windows: OPEN, $INCLUDE, _FILEEXISTS, _DIREXISTS, KILL, NAME, MKDIR, RMDIR, CHDIR, legacy OPEN (qb_file_open_legacy), BLOAD, BSAVE, _READFILE$, _WRITEFILE.
+      **QB64pe parity gap:** QB64pe implements `_UPRINTSTRING`, `_UPRINTWIDTH`, `_UCHARPOS`, `_UFONTHEIGHT`, `_ULINESPACING` in its font layer (FreeType). QB64Fresh parses and emits `qb_*` calls for all five, but the inline runtime **does not define** those symbols—programs using them would fail at link. To achieve stub-level parity, add definitions for `qb_uprintstring`, `qb_uprintwidth`, `qb_ucharpos`, `qb_ufontheight`, `qb_ulinespacing` (e.g. no-op/safe defaults).
 
 ---
 
@@ -99,37 +60,3 @@ for raw OpenGL access. These are **intentionally excluded** from QB64Fresh becau
 4. Future WebGL/Vulkan backends would be incompatible with GL commands
 
 If raw OpenGL is needed, users can use `DECLARE LIBRARY` to call OpenGL functions directly.
-
----
-
-## Priority Summary
-
-### High Priority (Next Sessions)
-1. **Debugger runtime integration** - Infrastructure ready, needs C codegen hooks
-
-### Medium Priority (Next Month)
-2. Graphics enhancements (screen pages)
-3. Network stream I/O
-4. ON STRIG event handlers
-
-### Low Priority (Future)
-5. Unicode support
-
----
-
-## Version History
-
-- 2026-01-24: GOSUB/computed goto moved to ADR-0002 (Implementation notes); removed from Known Limitations.
-- 2026-01-24: Parity exclusions (hardware accel, touch, _THREAD, optimizations) moved to ADR-0014 §5 with “may revisit as modern functionality”; removed from FUTURE. Priority and parity note simplified.
-- 2026-01-24: QB64 parity notes: which remaining tasks QB64 also doesn't support (e.g. _THREAD, touch, hardware-accel toggle, optimizer, GOSUB extension); parity clarifications for screen pages, ON STRIG, network PUT/GET.
-- 2026-01-24: Condensed (DECLARE LIBRARY, callbacks, $IF, Priority Summary); [SECURITY_MODEL.md](../SECURITY_MODEL.md); merged FUTURE2, legacy stubs (ON COM/ON UEVENT/ON SIGNAL); _MAPTRIANGLE, _COPYPALETTE, _DISPLAYORDER, Windows screen; audio complete, window control, alpha blending, INT 0x33; Unicode partial note; deduped.
-- 2026-01-24: Status audit: tutorial [x] (Handbook); notes for screen pages (params exist, runtime stub), STRIG (parsed/emitted, stubs), language reference (substantial).
-- 2026-01-23: Debugger implementation status (infrastructure vs runtime)
-- 2026-01-20: Initial creation; OpenGL limitations and feature roadmap
-
----
-
-## Contributing
-
-See [DEVELOPMENT.md](../DEVELOPMENT.md) for contribution guidelines. Feature requests
-and bug reports welcome at the project repository.

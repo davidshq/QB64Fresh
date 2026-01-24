@@ -282,6 +282,8 @@ impl CodeGenerator for CBackend {
         writeln!(output, "    qb_init_startdir();").unwrap();
         // Initialize VGA palette for INP/OUT port emulation
         writeln!(output, "    _qb_init_palette();").unwrap();
+        // STRIG event dispatch global (stores event ID for dispatch switch)
+        writeln!(output, "    static uint32_t _qb_strig_event_id = 0;").unwrap();
         writeln!(output).unwrap();
 
         // Initialize string constants (can't be done at global scope in C)
@@ -338,6 +340,26 @@ impl CodeGenerator for CBackend {
                 }
             }
         }
+
+        // Generate STRIG event dispatch code
+        // This is always generated because loop code references _qb_strig_dispatch
+        // The dispatch uses _qb_strig_event_id which was set at the check point
+        writeln!(output).unwrap();
+        writeln!(output, "    /* STRIG Event Dispatch */").unwrap();
+        writeln!(output, "    goto _qb_strig_dispatch_end;").unwrap();
+        writeln!(output, "_qb_strig_dispatch:").unwrap();
+        if emitter.strig_handlers.is_empty() {
+            // No handlers registered - just return to caller
+            writeln!(output, "    goto *_gosub_stack[--_gosub_sp];").unwrap();
+        } else {
+            writeln!(output, "    switch (_qb_strig_event_id) {{").unwrap();
+            for (event_id, label) in &emitter.strig_handlers {
+                writeln!(output, "        case {}: goto {};", event_id, label).unwrap();
+            }
+            writeln!(output, "        default: goto *_gosub_stack[--_gosub_sp];").unwrap();
+            writeln!(output, "    }}").unwrap();
+        }
+        writeln!(output, "_qb_strig_dispatch_end:").unwrap();
 
         writeln!(output).unwrap();
         writeln!(output, "    return 0;").unwrap();

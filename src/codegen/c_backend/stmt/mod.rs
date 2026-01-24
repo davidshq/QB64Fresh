@@ -75,6 +75,10 @@ pub(super) struct StmtEmitter {
     pub current_func_ret_var: Option<String>,
     /// Global variable names (to avoid re-declaring as locals).
     pub global_var_names: std::collections::HashSet<String>,
+    /// Counter for generating unique STRIG event IDs.
+    pub strig_event_counter: u32,
+    /// Registered STRIG event handlers: (event_id, target_label).
+    pub strig_handlers: Vec<(u32, String)>,
 }
 
 impl StmtEmitter {
@@ -88,6 +92,8 @@ impl StmtEmitter {
             current_proc: None,
             current_func_ret_var: None,
             global_var_names: std::collections::HashSet::new(),
+            strig_event_counter: 0,
+            strig_handlers: Vec::new(),
         }
     }
 
@@ -515,6 +521,26 @@ impl StmtEmitter {
             TypedStatementKind::Limit { fps } => {
                 let fps_code = emit_expr(fps)?;
                 writeln!(output, "{}qb_limit((int){});", indent, fps_code).unwrap();
+                // STRIG event check after _LIMIT (common in game loops)
+                let return_label = self.next_label("strig_ret");
+                writeln!(output, "{}/* STRIG event check */", indent).unwrap();
+                writeln!(
+                    output,
+                    "{}_qb_strig_event_id = qb_strig_check_event();",
+                    indent
+                )
+                .unwrap();
+                writeln!(output, "{}if (_qb_strig_event_id) {{", indent).unwrap();
+                writeln!(
+                    output,
+                    "{}    _gosub_stack[_gosub_sp++] = &&{};",
+                    indent, return_label
+                )
+                .unwrap();
+                writeln!(output, "{}    goto _qb_strig_dispatch;", indent).unwrap();
+                writeln!(output, "{}}}", indent).unwrap();
+                writeln!(output, "{}{}:;", indent, return_label).unwrap();
+                writeln!(output, "{}qb_strig_event_done();", indent).unwrap();
             }
 
             TypedStatementKind::Erase { arrays } => {
@@ -2201,11 +2227,16 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::OnStrig { button_num, target } => {
+                // Generate a unique event ID for this handler
+                self.strig_event_counter += 1;
+                let event_id = self.strig_event_counter;
+                self.strig_handlers.push((event_id, target.clone()));
+
                 let btn_code = emit_expr(button_num)?;
                 writeln!(
                     output,
-                    "{}qb_on_strig((int32_t)({}), &&{});",
-                    indent, btn_code, target
+                    "{}qb_on_strig((int32_t)({}), {});",
+                    indent, btn_code, event_id
                 )
                 .unwrap();
             }
