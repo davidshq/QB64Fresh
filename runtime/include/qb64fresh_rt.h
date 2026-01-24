@@ -379,6 +379,12 @@ void qb_screenmove(int32_t x, int32_t y);
 void qb_screenshow(void);
 void qb_screenhide(void);
 
+/* Windows-only desktop functions */
+int64_t qb_windowhandle(void);       /* Returns HWND on Windows, 0 on other platforms */
+void qb_screenclick(int32_t x, int32_t y, int32_t button);  /* Simulate mouse click */
+void qb_screenprint(const char* text);  /* Simulate keyboard input */
+int32_t qb_screenimage(int32_t x1, int32_t y1, int32_t x2, int32_t y2);  /* Desktop screenshot */
+
 /* Alpha blending functions */
 void qb_blend(int32_t handle);
 void qb_dontblend(int32_t handle);

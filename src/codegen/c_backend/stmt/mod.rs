@@ -639,6 +639,8 @@ impl StmtEmitter {
                     "_SCREENMOVE" => "qb_screenmove".to_string(),
                     "_SCREENSHOW" => "qb_screenshow".to_string(),
                     "_SCREENHIDE" => "qb_screenhide".to_string(),
+                    "_SCREENCLICK" => "qb_screenclick".to_string(),
+                    "_SCREENIMAGE" => "qb_screenimage".to_string(),
                     "_DELAY" => "qb_delay".to_string(),
                     // Session 035+ SUBs (memory operations)
                     "_MEMPUT" => "qb_memput".to_string(),

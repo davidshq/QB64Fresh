@@ -632,7 +632,34 @@ impl SemanticAnalyzer {
             &[("mode", BasicType::Long, true)],
             BasicType::Long,
         );
-        self.register_builtin_function("_SCREENCLICK", &[], BasicType::Long);
+        // Windows-only desktop functions
+        // _SCREENCLICK x, y [, button] - simulate mouse click on desktop
+        self.register_builtin_function_with_optionals(
+            "_SCREENCLICK",
+            &[
+                ("x", BasicType::Long, false),
+                ("y", BasicType::Long, false),
+                ("button", BasicType::Long, true),
+            ],
+            BasicType::Long,
+        );
+        // _SCREENPRINT text$ - simulate keyboard input to focused window
+        self.register_builtin_function(
+            "_SCREENPRINT",
+            &[("text", BasicType::String)],
+            BasicType::Long,
+        );
+        // _SCREENIMAGE([x1, y1, x2, y2]) - capture desktop screenshot
+        self.register_builtin_function_with_optionals(
+            "_SCREENIMAGE",
+            &[
+                ("x1", BasicType::Long, true),
+                ("y1", BasicType::Long, true),
+                ("x2", BasicType::Long, true),
+                ("y2", BasicType::Long, true),
+            ],
+            BasicType::Long,
+        );
 
         // Alpha blending functions
         // _BLEND [handle&] - enable alpha blending for image (default: current destination)

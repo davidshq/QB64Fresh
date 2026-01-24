@@ -266,6 +266,17 @@ pub(super) fn emit_expr(expr: &TypedExpr) -> Result<String, CodeGenError> {
                 };
             }
 
+            // Special case: _SCREENIMAGE - provide default 0,0,0,0 for full screen capture
+            if upper_name == "_SCREENIMAGE" {
+                let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
+                let args_str = args_code?.join(", ");
+                return match args.len() {
+                    0 => Ok("qb_screenimage(0, 0, 0, 0)".to_string()),
+                    4 => Ok(format!("qb_screenimage({})", args_str)),
+                    _ => Ok(format!("qb_screenimage({})", args_str)),
+                };
+            }
+
             // Special case: COMMAND$ with argument uses qb_command_n
             if upper_name == "COMMAND$" && !args.is_empty() {
                 let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
@@ -939,6 +950,8 @@ pub(super) fn c_function_name(name: &str) -> String {
         "_SCREENSHOW" => "qb_screenshow".to_string(),
         "_FULLSCREEN" => "qb_fullscreen".to_string(),
         "_SCREENCLICK" => "qb_screenclick".to_string(),
+        "_SCREENPRINT" => "qb_screenprint".to_string(),
+        "_SCREENIMAGE" => "qb_screenimage".to_string(),
 
         // Dialog boxes
         "_MESSAGEBOX" => "qb_messagebox".to_string(),

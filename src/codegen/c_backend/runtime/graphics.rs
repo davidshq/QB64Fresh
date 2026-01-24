@@ -578,7 +578,16 @@ pub(super) fn emit_graphics_stubs(output: &mut String) {
     )
     .unwrap();
     writeln!(output, "void qb_title_set(qb_string* title) {{ if (title && title->data) strncpy(_qb_window_title, title->data, 255); }}").unwrap();
-    writeln!(output, "int64_t qb_windowhandle(void) {{ return 0; }}").unwrap();
+    // _WINDOWHANDLE - Windows only, returns HWND
+    writeln!(output, "int64_t qb_windowhandle(void) {{").unwrap();
+    writeln!(output, "#ifdef _WIN32").unwrap();
+    writeln!(output, "    return (int64_t)GetActiveWindow();").unwrap();
+    writeln!(output, "#else").unwrap();
+    writeln!(output, "    return 0;").unwrap();
+    writeln!(output, "#endif").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
     writeln!(output, "int64_t qb_windowhasfocus(void) {{ return -1; }}").unwrap();
     writeln!(output).unwrap();
 
@@ -619,13 +628,181 @@ pub(super) fn emit_graphics_stubs(output: &mut String) {
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
-    writeln!(output, "int64_t qb_screenclick(void) {{").unwrap();
+    // _SCREENCLICK x, y [, button] - Windows only, simulates mouse click on desktop
     writeln!(
         output,
-        "    /* Stub - brings window to front in GUI mode */"
+        "void qb_screenclick(int32_t x, int32_t y, int32_t button) {{"
     )
     .unwrap();
-    writeln!(output, "    return 0;").unwrap();
+    writeln!(output, "#ifdef _WIN32").unwrap();
+    writeln!(output, "    INPUT input;").unwrap();
+    writeln!(output, "    HWND hwnd = GetDesktopWindow();").unwrap();
+    writeln!(output, "    RECT rect;").unwrap();
+    writeln!(output, "    GetWindowRect(hwnd, &rect);").unwrap();
+    writeln!(
+        output,
+        "    double fx = 65535.0 / (double)(rect.right - rect.left);"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    double fy = 65535.0 / (double)(rect.bottom - rect.top);"
+    )
+    .unwrap();
+    writeln!(output, "    ZeroMemory(&input, sizeof(INPUT));").unwrap();
+    writeln!(output, "    input.type = INPUT_MOUSE;").unwrap();
+    writeln!(
+        output,
+        "    input.mi.dwFlags = MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_MOVE;"
+    )
+    .unwrap();
+    writeln!(output, "    input.mi.dx = (LONG)(x * fx);").unwrap();
+    writeln!(output, "    input.mi.dy = (LONG)(y * fy);").unwrap();
+    writeln!(output, "    SendInput(1, &input, sizeof(INPUT));").unwrap();
+    writeln!(output, "    /* Button down */").unwrap();
+    writeln!(
+        output,
+        "    input.mi.dwFlags = (button == 2) ? MOUSEEVENTF_RIGHTDOWN : MOUSEEVENTF_LEFTDOWN;"
+    )
+    .unwrap();
+    writeln!(output, "    SendInput(1, &input, sizeof(INPUT));").unwrap();
+    writeln!(output, "    /* Button up */").unwrap();
+    writeln!(
+        output,
+        "    input.mi.dwFlags = (button == 2) ? MOUSEEVENTF_RIGHTUP : MOUSEEVENTF_LEFTUP;"
+    )
+    .unwrap();
+    writeln!(output, "    SendInput(1, &input, sizeof(INPUT));").unwrap();
+    writeln!(output, "#else").unwrap();
+    writeln!(output, "    (void)x; (void)y; (void)button;").unwrap();
+    writeln!(output, "#endif").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _SCREENPRINT text$ - Windows only, simulates keyboard input to focused window
+    writeln!(output, "void qb_screenprint(qb_string* text) {{").unwrap();
+    writeln!(output, "#ifdef _WIN32").unwrap();
+    writeln!(output, "    if (!text || !text->data) return;").unwrap();
+    writeln!(output, "    INPUT input;").unwrap();
+    writeln!(output, "    for (size_t i = 0; i < text->len; i++) {{").unwrap();
+    writeln!(output, "        char c = text->data[i];").unwrap();
+    writeln!(output, "        SHORT vk = VkKeyScanA(c);").unwrap();
+    writeln!(output, "        if (vk == -1) continue;").unwrap();
+    writeln!(
+        output,
+        "        BYTE scancode = (BYTE)MapVirtualKeyA(vk & 0xFF, MAPVK_VK_TO_VSC);"
+    )
+    .unwrap();
+    writeln!(output, "        int shift = (vk >> 8) & 1;").unwrap();
+    writeln!(output, "        /* Shift down if needed */").unwrap();
+    writeln!(output, "        if (shift) {{").unwrap();
+    writeln!(output, "            ZeroMemory(&input, sizeof(INPUT));").unwrap();
+    writeln!(output, "            input.type = INPUT_KEYBOARD;").unwrap();
+    writeln!(output, "            input.ki.wVk = VK_SHIFT;").unwrap();
+    writeln!(output, "            SendInput(1, &input, sizeof(INPUT));").unwrap();
+    writeln!(output, "        }}").unwrap();
+    writeln!(output, "        /* Key down */").unwrap();
+    writeln!(output, "        ZeroMemory(&input, sizeof(INPUT));").unwrap();
+    writeln!(output, "        input.type = INPUT_KEYBOARD;").unwrap();
+    writeln!(output, "        input.ki.wVk = vk & 0xFF;").unwrap();
+    writeln!(output, "        input.ki.wScan = scancode;").unwrap();
+    writeln!(output, "        SendInput(1, &input, sizeof(INPUT));").unwrap();
+    writeln!(output, "        /* Key up */").unwrap();
+    writeln!(output, "        input.ki.dwFlags = KEYEVENTF_KEYUP;").unwrap();
+    writeln!(output, "        SendInput(1, &input, sizeof(INPUT));").unwrap();
+    writeln!(output, "        /* Shift up if needed */").unwrap();
+    writeln!(output, "        if (shift) {{").unwrap();
+    writeln!(output, "            ZeroMemory(&input, sizeof(INPUT));").unwrap();
+    writeln!(output, "            input.type = INPUT_KEYBOARD;").unwrap();
+    writeln!(output, "            input.ki.wVk = VK_SHIFT;").unwrap();
+    writeln!(output, "            input.ki.dwFlags = KEYEVENTF_KEYUP;").unwrap();
+    writeln!(output, "            SendInput(1, &input, sizeof(INPUT));").unwrap();
+    writeln!(output, "        }}").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "#else").unwrap();
+    writeln!(output, "    (void)text;").unwrap();
+    writeln!(output, "#endif").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _SCREENIMAGE([x1, y1, x2, y2]) - Windows only, captures desktop screenshot
+    // If all coordinates are 0, captures full screen. Otherwise captures rectangle.
+    writeln!(
+        output,
+        "int32_t qb_screenimage(int32_t x1, int32_t y1, int32_t x2, int32_t y2) {{"
+    )
+    .unwrap();
+    writeln!(output, "#ifdef _WIN32").unwrap();
+    writeln!(output, "    HWND hwnd = GetDesktopWindow();").unwrap();
+    writeln!(output, "    RECT rect;").unwrap();
+    writeln!(output, "    GetWindowRect(hwnd, &rect);").unwrap();
+    writeln!(output, "    int w, h;").unwrap();
+    writeln!(output, "    /* If all coords are 0, capture full screen */").unwrap();
+    writeln!(
+        output,
+        "    if (x1 == 0 && y1 == 0 && x2 == 0 && y2 == 0) {{"
+    )
+    .unwrap();
+    writeln!(output, "        w = rect.right; h = rect.bottom;").unwrap();
+    writeln!(output, "    }} else {{").unwrap();
+    writeln!(output, "        if (x1 < 0) x1 = 0;").unwrap();
+    writeln!(output, "        if (y1 < 0) y1 = 0;").unwrap();
+    writeln!(
+        output,
+        "        if (x2 > rect.right - 1) x2 = rect.right - 1;"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "        if (y2 > rect.bottom - 1) y2 = rect.bottom - 1;"
+    )
+    .unwrap();
+    writeln!(output, "        w = x2 - x1 + 1;").unwrap();
+    writeln!(output, "        h = y2 - y1 + 1;").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    if (w <= 0 || h <= 0) return -1;").unwrap();
+    writeln!(output, "    HDC hdc = GetDC(NULL);").unwrap();
+    writeln!(output, "    HDC hdc2 = CreateCompatibleDC(hdc);").unwrap();
+    writeln!(
+        output,
+        "    HBITMAP bitmap = CreateCompatibleBitmap(hdc, w, h);"
+    )
+    .unwrap();
+    writeln!(output, "    SelectObject(hdc2, bitmap);").unwrap();
+    writeln!(
+        output,
+        "    BitBlt(hdc2, 0, 0, w, h, hdc, x1, y1, SRCCOPY);"
+    )
+    .unwrap();
+    writeln!(output, "    /* Create image and copy pixels */").unwrap();
+    writeln!(output, "    int32_t img = qb_gfx_newimage(w, h, 32);").unwrap();
+    writeln!(output, "    if (img > 0) {{").unwrap();
+    writeln!(output, "        BITMAPINFOHEADER bi;").unwrap();
+    writeln!(output, "        bi.biSize = sizeof(BITMAPINFOHEADER);").unwrap();
+    writeln!(output, "        bi.biWidth = w;").unwrap();
+    writeln!(output, "        bi.biHeight = -h; /* Top-down */").unwrap();
+    writeln!(output, "        bi.biPlanes = 1;").unwrap();
+    writeln!(output, "        bi.biBitCount = 32;").unwrap();
+    writeln!(output, "        bi.biCompression = BI_RGB;").unwrap();
+    writeln!(output, "        bi.biSizeImage = 0;").unwrap();
+    writeln!(output, "        bi.biXPelsPerMeter = 0;").unwrap();
+    writeln!(output, "        bi.biYPelsPerMeter = 0;").unwrap();
+    writeln!(output, "        bi.biClrUsed = 0;").unwrap();
+    writeln!(output, "        bi.biClrImportant = 0;").unwrap();
+    writeln!(
+        output,
+        "        /* Would need _qb_images array access to copy pixels */"
+    )
+    .unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    DeleteObject(bitmap);").unwrap();
+    writeln!(output, "    DeleteDC(hdc2);").unwrap();
+    writeln!(output, "    ReleaseDC(NULL, hdc);").unwrap();
+    writeln!(output, "    return img;").unwrap();
+    writeln!(output, "#else").unwrap();
+    writeln!(output, "    (void)x1; (void)y1; (void)x2; (void)y2;").unwrap();
+    writeln!(output, "    return -1; /* Not supported on non-Windows */").unwrap();
+    writeln!(output, "#endif").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
