@@ -8,19 +8,29 @@ This document outlines features that are planned but not yet implemented, along 
 
 ---
 
-## Pending Work
-
-### Debugger (`tools/debug/`) ⚠️ Infrastructure Complete
-
-**Needs Runtime Integration:**
-- [ ] **Runtime state capture** - Requires debug info emission in generated C code
-- [ ] **Live breakpoint execution** - Requires runtime hooks to pause execution
-- [ ] **Variable value reading** - Requires memory access protocol between debugger and runtime
-- [ ] **Step execution** - Requires instruction-level control (step into/over/out)
-
----
-
 ## Recently Completed Features
+
+### Debugger Runtime Integration ✓
+
+Full source-level debugging support with IDE integration:
+
+**Runtime Debug Hooks:**
+- `--debug` compiler flag emits debug hooks in generated C code
+- `qb_dbg_line()` called before each executable statement
+- `qb_dbg_enter_proc()`/`qb_dbg_exit_proc()` for call tracking
+- Named pipe IPC for debugger↔debugee communication
+
+**Debug Protocol:**
+- `DebugCommand` enum for debugger commands (continue, step, breakpoints)
+- `DebugEvent` enum for debugee events (stopped, terminated)
+- Serialization for pipe-based communication
+
+**DAP Server (`tools/debug/`):**
+- Full Debug Adapter Protocol implementation for VS Code/Cursor
+- Breakpoint management (set, clear, enable, disable)
+- Step execution (into, over, out)
+- Stack trace and variable inspection
+- 50 tests passing
 
 ### Unicode Font Rendering ✓
 
