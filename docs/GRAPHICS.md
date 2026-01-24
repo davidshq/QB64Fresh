@@ -209,7 +209,7 @@ qb_gfx_pset_step((int32_t)100, (int32_t)100, (uint32_t)15, 0);
 qb_gfx_pset_step((int32_t)10, (int32_t)20, (uint32_t)15, 1);
 
 // Generated from: LINE (0,0) - (100,100), 15
-qb_gfx_line_ex((int32_t)0, (int32_t)0, (int32_t)100, (int32_t)100, 0, (uint32_t)15);
+qb_gfx_line_step((int32_t)0, (int32_t)0, (int32_t)100, (int32_t)100, (uint32_t)15, 0, 0);
 
 // Generated from: CIRCLE (160, 100), 50, 15
 qb_gfx_circle_step((int32_t)160, (int32_t)100, (int32_t)50, (uint32_t)15, 0, 0);
@@ -246,6 +246,68 @@ graphics-sdl2 = ["sdl2"]
 graphics-mock = []
 graphics-native = []      # Future
 graphics-wasm = ["web-sys", "wasm-bindgen"]  # Future
+```
+
+---
+
+## Runtime Modes
+
+The compiler supports two runtime modes for graphics:
+
+### Inline Runtime (Default)
+
+```bash
+cargo run --bin qb64fresh -- program.bas --emit-c
+# or explicitly:
+cargo run --bin qb64fresh -- program.bas --emit-c --runtime inline
+```
+
+The inline runtime embeds all graphics stub functions directly in the generated C code. Graphics calls become no-ops with warning messages. This is useful for:
+- Quick testing without graphics dependencies
+- Text-only programs
+- Systems without SDL2
+
+### External Runtime
+
+```bash
+cargo run --bin qb64fresh -- program.bas --emit-c --runtime external
+```
+
+The external runtime links against `libqb64fresh_rt.a`, providing full graphics support via the Rust runtime library. Generated code includes `#include "qb64fresh_rt.h"`.
+
+**Building with External Runtime:**
+
+```bash
+# 1. Build the runtime library
+cd runtime
+cargo build --release --features graphics-sdl2
+
+# 2. Compile BASIC program to C
+cd ..
+cargo run --bin qb64fresh -- program.bas --emit-c --runtime external
+
+# 3. Compile and link
+gcc -I runtime/include program.c \
+    -L target/release -lqb64fresh_rt \
+    $(pkg-config --libs sdl2) \
+    -lasound -lwayland-client -lm -lpthread -ldl \
+    -o program
+```
+
+**Header File:** `runtime/include/qb64fresh_rt.h`
+
+The header declares all FFI functions available in the external runtime:
+- Graphics functions: `qb_gfx_screen`, `qb_gfx_pset`, `qb_gfx_line_step`, etc.
+- Color utilities: `qb_rgb`, `qb_rgba`, `qb_rgb32`, `qb_rgba32`
+- Mouse input: `qb_mouse_x`, `qb_mouse_y`, `qb_mouse_button`, etc.
+- Clipboard: `qb_clipboard_get`, `qb_clipboard_set`
+- Fonts: `qb_loadfont`, `qb_font`, `qb_freefont`
+- Initialization: `qb_init_args`, `qb_init_startdir`, `_qb_init_palette`
+
+**Compatibility macros** bridge inline/external naming conventions:
+```c
+#define qb__rgb32(r, g, b) qb_rgb(r, g, b)
+#define qb__rgb32_4(r, g, b, a) qb_rgba(r, g, b, a)
 ```
 
 ---
@@ -485,4 +547,4 @@ The following BASIC graphics statements are fully supported:
 
 ---
 
-*Last updated: 2026-01-22*
+*Last updated: 2026-01-23*
