@@ -431,6 +431,24 @@ int qb_sndraw(double sample);
 int qb_sndraw_stereo(double left, double right);
 double qb_sndrawlen(void);
 
+/* ============================================================================
+ * System Interrupt Emulation
+ * ============================================================================ */
+
+/* INTERRUPT/INTERRUPTX - DOS interrupt emulation (INT 0x33 mouse supported)
+ *
+ * RegType structure (16 bytes): AX, BX, CX, DX, BP, SI, DI, FLAGS
+ * RegTypeX structure (20 bytes): AX, BX, CX, DX, BP, SI, DI, FLAGS, DS, ES
+ *
+ * Supported: INT 0x33 (mouse) with subfunctions:
+ *   AX=0: Check mouse installed -> AX=0xFFFF, BX=2
+ *   AX=1: Show cursor
+ *   AX=2: Hide cursor
+ *   AX=3: Get position -> BX=buttons, CX=X, DX=Y
+ */
+void qb_interrupt(int32_t int_num, const int16_t* in_regs, int16_t* out_regs);
+void qb_interruptx(int32_t int_num, const int16_t* in_regs, int16_t* out_regs);
+
 #ifdef __cplusplus
 }
 #endif
