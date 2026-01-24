@@ -11,10 +11,12 @@
 //! - _SNDOPEN/_SNDPLAY/etc: Loads and plays audio files
 
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::fs::File;
 use std::io::BufReader;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use rodio::{Decoder, OutputStream, OutputStreamBuilder, Sink, Source};
 
@@ -29,6 +31,14 @@ struct SoundHandle {
     balance: f32,
     length_secs: f64,
     is_looping: bool,
+    /// When playback started (for position tracking)
+    play_start_time: Option<Instant>,
+    /// Position offset when playback started (for seeking)
+    play_start_position: f64,
+    /// Sample rate of the audio
+    sample_rate: u32,
+    /// Number of channels
+    channels: u16,
 }
 
 /// Rodio-based audio backend.
@@ -41,6 +51,12 @@ pub struct RodioBackend {
     next_handle: AtomicI32,
     /// Active sound handles
     sounds: HashMap<i32, SoundHandle>,
+    /// Raw audio sample queue (shared with the source)
+    raw_samples: Arc<Mutex<VecDeque<f32>>>,
+    /// Raw audio sink (for playback)
+    raw_sink: Option<Sink>,
+    /// Whether raw audio is active
+    raw_active: bool,
 }
 
 impl RodioBackend {
@@ -51,6 +67,9 @@ impl RodioBackend {
             initialized: AtomicBool::new(false),
             next_handle: AtomicI32::new(1),
             sounds: HashMap::new(),
+            raw_samples: Arc::new(Mutex::new(VecDeque::new())),
+            raw_sink: None,
+            raw_active: false,
         }
     }
 
@@ -310,7 +329,9 @@ impl AudioBackend for RodioBackend {
             Err(_) => return -2,
         };
 
-        // Get duration if possible
+        // Get audio properties
+        let sample_rate = decoder.sample_rate();
+        let channels = decoder.channels();
         let length_secs = decoder
             .total_duration()
             .map(|d| d.as_secs_f64())
@@ -324,7 +345,7 @@ impl AudioBackend for RodioBackend {
 
         let sink = Sink::connect_new(stream.mixer());
 
-        // Read the entire file into memory for potential looping
+        // Read the entire file into memory for potential looping and seeking
         let file2 = match File::open(filename) {
             Ok(f) => f,
             Err(_) => return -5,
@@ -345,6 +366,10 @@ impl AudioBackend for RodioBackend {
                 balance: 0.0,
                 length_secs,
                 is_looping: false,
+                play_start_time: None,
+                play_start_position: 0.0,
+                sample_rate,
+                channels,
             },
         );
 
@@ -365,9 +390,19 @@ impl AudioBackend for RodioBackend {
                 let cursor = std::io::Cursor::new(data.clone());
                 if let Ok(decoder) = Decoder::new(cursor) {
                     sound.sink.clear();
-                    sound.sink.append(decoder);
+                    // Apply balance if not centered
+                    if sound.balance.abs() > 0.01 {
+                        let balanced = BalancedSource::new(decoder, sound.balance);
+                        sound.sink.append(balanced);
+                    } else {
+                        sound.sink.append(decoder);
+                    }
                     sound.sink.set_volume(sound.volume);
                     sound.sink.play();
+                    // Track when playback started
+                    sound.play_start_time = Some(Instant::now());
+                    sound.play_start_position = 0.0;
+                    sound.is_looping = false;
                 }
             }
             Ok(())
@@ -392,7 +427,13 @@ impl AudioBackend for RodioBackend {
     }
 
     fn snd_pause(&mut self, handle: i32) -> Result<(), AudioError> {
-        if let Some(sound) = self.sounds.get(&handle) {
+        if let Some(sound) = self.sounds.get_mut(&handle) {
+            // Calculate current position before pausing
+            if let Some(start_time) = sound.play_start_time {
+                let elapsed = start_time.elapsed().as_secs_f64();
+                sound.play_start_position += elapsed;
+            }
+            sound.play_start_time = None;
             sound.sink.pause();
             Ok(())
         } else {
@@ -404,8 +445,10 @@ impl AudioBackend for RodioBackend {
     }
 
     fn snd_resume(&mut self, handle: i32) -> Result<(), AudioError> {
-        if let Some(sound) = self.sounds.get(&handle) {
+        if let Some(sound) = self.sounds.get_mut(&handle) {
             sound.sink.play();
+            // Restart position tracking from where we paused
+            sound.play_start_time = Some(Instant::now());
             Ok(())
         } else {
             Err(AudioError::new(
@@ -418,15 +461,22 @@ impl AudioBackend for RodioBackend {
     fn snd_loop(&mut self, handle: i32) -> Result<(), AudioError> {
         if let Some(sound) = self.sounds.get_mut(&handle) {
             sound.is_looping = true;
-            // For proper looping, we'd need to append an infinite source
-            // This is a simplified implementation
             if let Some(ref data) = sound.source_data {
                 let cursor = std::io::Cursor::new(data.clone());
                 if let Ok(decoder) = Decoder::new(cursor) {
                     sound.sink.clear();
-                    sound.sink.append(decoder.repeat_infinite());
+                    // Apply balance if not centered
+                    if sound.balance.abs() > 0.01 {
+                        let balanced = BalancedSource::new(decoder, sound.balance);
+                        sound.sink.append(balanced.repeat_infinite());
+                    } else {
+                        sound.sink.append(decoder.repeat_infinite());
+                    }
                     sound.sink.set_volume(sound.volume);
                     sound.sink.play();
+                    // Track when playback started
+                    sound.play_start_time = Some(Instant::now());
+                    sound.play_start_position = 0.0;
                 }
             }
             Ok(())
@@ -451,10 +501,18 @@ impl AudioBackend for RodioBackend {
         }
     }
 
-    fn snd_bal(&mut self, _handle: i32, _balance: f64) -> Result<(), AudioError> {
-        // Balance control would require spatial audio support
-        // For now, we just accept the call without doing anything
-        Ok(())
+    fn snd_bal(&mut self, handle: i32, balance: f64) -> Result<(), AudioError> {
+        if let Some(sound) = self.sounds.get_mut(&handle) {
+            sound.balance = balance.clamp(-1.0, 1.0) as f32;
+            // Balance will be applied on next play/loop call
+            // We can't easily change balance of already-playing audio in rodio
+            Ok(())
+        } else {
+            Err(AudioError::new(
+                AudioErrorKind::InvalidHandle,
+                "Invalid sound handle",
+            ))
+        }
     }
 
     fn snd_len(&self, handle: i32) -> f64 {
@@ -464,16 +522,76 @@ impl AudioBackend for RodioBackend {
             .unwrap_or(0.0)
     }
 
-    fn snd_getpos(&self, _handle: i32) -> f64 {
-        // Getting the current position requires tracking playback
-        // This is a simplified implementation
-        0.0
+    fn snd_getpos(&self, handle: i32) -> f64 {
+        if let Some(sound) = self.sounds.get(&handle) {
+            let base_pos = sound.play_start_position;
+            if let Some(start_time) = sound.play_start_time {
+                if !sound.sink.is_paused() {
+                    let elapsed = start_time.elapsed().as_secs_f64();
+                    let pos = base_pos + elapsed;
+                    // Handle looping: wrap around
+                    if sound.is_looping && sound.length_secs > 0.0 {
+                        return pos % sound.length_secs;
+                    }
+                    return pos.min(sound.length_secs);
+                }
+            }
+            base_pos
+        } else {
+            0.0
+        }
     }
 
-    fn snd_setpos(&mut self, _handle: i32, _position: f64) -> Result<(), AudioError> {
-        // Seeking in the audio stream is complex with rodio
-        // This is a simplified implementation
-        Ok(())
+    fn snd_setpos(&mut self, handle: i32, position: f64) -> Result<(), AudioError> {
+        if let Some(sound) = self.sounds.get_mut(&handle) {
+            let position = position.clamp(0.0, sound.length_secs);
+
+            if let Some(ref data) = sound.source_data {
+                // Calculate how many samples to skip
+                let samples_to_skip =
+                    (position * sound.sample_rate as f64 * sound.channels as f64) as usize;
+
+                // Decode from memory
+                let cursor = std::io::Cursor::new(data.clone());
+                if let Ok(decoder) = Decoder::new(cursor) {
+                    sound.sink.clear();
+
+                    // Skip the appropriate number of samples
+                    let skipped = decoder.skip_duration(Duration::from_secs_f64(position));
+
+                    // Apply balance if needed
+                    if sound.balance.abs() > 0.01 {
+                        let balanced = BalancedSource::new(skipped, sound.balance);
+                        if sound.is_looping {
+                            sound.sink.append(balanced.repeat_infinite());
+                        } else {
+                            sound.sink.append(balanced);
+                        }
+                    } else if sound.is_looping {
+                        sound.sink.append(skipped.repeat_infinite());
+                    } else {
+                        sound.sink.append(skipped);
+                    }
+
+                    sound.sink.set_volume(sound.volume);
+
+                    // Update position tracking
+                    sound.play_start_position = position;
+                    sound.play_start_time = Some(Instant::now());
+
+                    // Resume if it was playing
+                    if !sound.sink.is_paused() {
+                        sound.sink.play();
+                    }
+                }
+            }
+            Ok(())
+        } else {
+            Err(AudioError::new(
+                AudioErrorKind::InvalidHandle,
+                "Invalid sound handle",
+            ))
+        }
     }
 
     fn snd_playing(&self, handle: i32) -> bool {
@@ -492,6 +610,168 @@ impl AudioBackend for RodioBackend {
 
     fn snd_rate(&self) -> i32 {
         48000 // Default sample rate
+    }
+
+    fn snd_copy(&mut self, handle: i32) -> i32 {
+        if let Some(sound) = self.sounds.get(&handle) {
+            if let Some(ref data) = sound.source_data {
+                let new_handle = self.next_handle.fetch_add(1, Ordering::SeqCst);
+
+                // Create a new sink
+                let stream = match self.get_stream() {
+                    Ok(s) => s,
+                    Err(_) => return -1,
+                };
+                let sink = Sink::connect_new(stream.mixer());
+                sink.pause();
+
+                self.sounds.insert(
+                    new_handle,
+                    SoundHandle {
+                        sink,
+                        source_data: Some(data.clone()),
+                        volume: sound.volume,
+                        balance: sound.balance,
+                        length_secs: sound.length_secs,
+                        is_looping: false,
+                        play_start_time: None,
+                        play_start_position: 0.0,
+                        sample_rate: sound.sample_rate,
+                        channels: sound.channels,
+                    },
+                );
+
+                new_handle
+            } else {
+                -1
+            }
+        } else {
+            -1
+        }
+    }
+
+    fn snd_playfile(&mut self, filename: &str, sync: bool) -> Result<(), AudioError> {
+        // Open, play, and optionally wait
+        let handle = self.snd_open(filename);
+        if handle < 0 {
+            return Err(AudioError::new(
+                AudioErrorKind::InvalidHandle,
+                "Failed to open file",
+            ));
+        }
+
+        self.snd_play(handle)?;
+
+        if sync {
+            // Wait for playback to complete
+            if let Some(sound) = self.sounds.get(&handle) {
+                sound.sink.sleep_until_end();
+            }
+            self.snd_close(handle)?;
+        }
+        // If not sync, the handle stays open and will play in background
+
+        Ok(())
+    }
+
+    fn snd_playcopy(&mut self, handle: i32) -> Result<(), AudioError> {
+        if let Some(sound) = self.sounds.get(&handle) {
+            if let Some(ref data) = sound.source_data {
+                // Create a temporary sink for the copy
+                let stream = self.get_stream()?;
+                let sink = Sink::connect_new(stream.mixer());
+
+                // Decode and play
+                let cursor = std::io::Cursor::new(data.clone());
+                if let Ok(decoder) = Decoder::new(cursor) {
+                    if sound.balance.abs() > 0.01 {
+                        let balanced = BalancedSource::new(decoder, sound.balance);
+                        sink.append(balanced);
+                    } else {
+                        sink.append(decoder);
+                    }
+                    sink.set_volume(sound.volume);
+                    sink.play();
+                    // Detach - will play until complete then clean up
+                    sink.detach();
+                }
+                Ok(())
+            } else {
+                Err(AudioError::new(
+                    AudioErrorKind::InvalidHandle,
+                    "No source data",
+                ))
+            }
+        } else {
+            Err(AudioError::new(
+                AudioErrorKind::InvalidHandle,
+                "Invalid sound handle",
+            ))
+        }
+    }
+
+    fn snd_openraw(&mut self) -> i32 {
+        if self.raw_active {
+            return 0; // Already open, return success handle
+        }
+
+        let stream = match self.get_stream() {
+            Ok(s) => s,
+            Err(_) => return -1,
+        };
+
+        // Create a sink for raw audio
+        let sink = Sink::connect_new(stream.mixer());
+
+        // Create the raw audio source with shared sample queue
+        let raw_source = RawAudioSource::new(Arc::clone(&self.raw_samples));
+        sink.append(raw_source);
+        sink.play();
+
+        self.raw_sink = Some(sink);
+        self.raw_active = true;
+
+        0 // Return handle 0 for raw audio
+    }
+
+    fn snd_raw(&mut self, sample: f64) -> Result<(), AudioError> {
+        if !self.raw_active {
+            return Ok(()); // Silently ignore if not active
+        }
+
+        if let Ok(mut queue) = self.raw_samples.lock() {
+            // Mono sample - duplicate for stereo output
+            let s = (sample.clamp(-1.0, 1.0)) as f32;
+            queue.push_back(s);
+            queue.push_back(s);
+        }
+        Ok(())
+    }
+
+    fn snd_raw_stereo(&mut self, left: f64, right: f64) -> Result<(), AudioError> {
+        if !self.raw_active {
+            return Ok(()); // Silently ignore if not active
+        }
+
+        if let Ok(mut queue) = self.raw_samples.lock() {
+            queue.push_back((left.clamp(-1.0, 1.0)) as f32);
+            queue.push_back((right.clamp(-1.0, 1.0)) as f32);
+        }
+        Ok(())
+    }
+
+    fn snd_rawlen(&self) -> f64 {
+        if !self.raw_active {
+            return 0.0;
+        }
+
+        if let Ok(queue) = self.raw_samples.lock() {
+            // Queue has stereo samples (2 per frame), at 48000 Hz
+            let frames = queue.len() / 2;
+            frames as f64 / 48000.0
+        } else {
+            0.0
+        }
     }
 }
 
@@ -531,6 +811,163 @@ impl Source for SineWave {
 
     fn channels(&self) -> u16 {
         1 // Mono
+    }
+
+    fn sample_rate(&self) -> u32 {
+        self.sample_rate
+    }
+
+    fn total_duration(&self) -> Option<Duration> {
+        None // Infinite
+    }
+}
+
+/// A source wrapper that applies stereo balance (panning).
+///
+/// Balance of -1.0 is full left, 0.0 is center, 1.0 is full right.
+struct BalancedSource<S: Source<Item = f32>> {
+    inner: S,
+    balance: f32,
+    /// Buffer for converting mono to stereo or processing stereo
+    sample_buffer: Vec<f32>,
+    buffer_pos: usize,
+}
+
+impl<S: Source<Item = f32>> BalancedSource<S> {
+    fn new(source: S, balance: f32) -> Self {
+        Self {
+            inner: source,
+            balance: balance.clamp(-1.0, 1.0),
+            sample_buffer: Vec::new(),
+            buffer_pos: 0,
+        }
+    }
+
+    fn fill_buffer(&mut self) {
+        self.sample_buffer.clear();
+        self.buffer_pos = 0;
+
+        let channels = self.inner.channels() as usize;
+
+        // Read enough samples for one frame
+        let mut frame = Vec::with_capacity(channels);
+        for _ in 0..channels {
+            if let Some(s) = self.inner.next() {
+                frame.push(s);
+            } else {
+                return; // End of source
+            }
+        }
+
+        // Calculate left/right gains from balance
+        // At balance=0: both channels = 1.0
+        // At balance=-1: left=1.0, right=0.0
+        // At balance=1: left=0.0, right=1.0
+        let left_gain = if self.balance <= 0.0 {
+            1.0
+        } else {
+            1.0 - self.balance
+        };
+        let right_gain = if self.balance >= 0.0 {
+            1.0
+        } else {
+            1.0 + self.balance
+        };
+
+        if channels == 1 {
+            // Mono source - output as stereo with balance
+            self.sample_buffer.push(frame[0] * left_gain);
+            self.sample_buffer.push(frame[0] * right_gain);
+        } else if channels >= 2 {
+            // Stereo or more - apply balance to L/R
+            self.sample_buffer.push(frame[0] * left_gain);
+            self.sample_buffer.push(frame[1] * right_gain);
+            // Pass through any additional channels unchanged
+            for s in frame.iter().skip(2) {
+                self.sample_buffer.push(*s);
+            }
+        }
+    }
+}
+
+impl<S: Source<Item = f32>> Iterator for BalancedSource<S> {
+    type Item = f32;
+
+    fn next(&mut self) -> Option<f32> {
+        if self.buffer_pos >= self.sample_buffer.len() {
+            self.fill_buffer();
+        }
+
+        if self.buffer_pos < self.sample_buffer.len() {
+            let sample = self.sample_buffer[self.buffer_pos];
+            self.buffer_pos += 1;
+            Some(sample)
+        } else {
+            None
+        }
+    }
+}
+
+impl<S: Source<Item = f32>> Source for BalancedSource<S> {
+    fn current_span_len(&self) -> Option<usize> {
+        self.inner.current_span_len()
+    }
+
+    fn channels(&self) -> u16 {
+        // Always output stereo if input is mono
+        if self.inner.channels() == 1 {
+            2
+        } else {
+            self.inner.channels()
+        }
+    }
+
+    fn sample_rate(&self) -> u32 {
+        self.inner.sample_rate()
+    }
+
+    fn total_duration(&self) -> Option<Duration> {
+        self.inner.total_duration()
+    }
+}
+
+/// A source for raw audio sample playback.
+///
+/// Reads samples from a shared queue and plays them.
+struct RawAudioSource {
+    samples: Arc<Mutex<VecDeque<f32>>>,
+    sample_rate: u32,
+}
+
+impl RawAudioSource {
+    fn new(samples: Arc<Mutex<VecDeque<f32>>>) -> Self {
+        Self {
+            samples,
+            sample_rate: 48000,
+        }
+    }
+}
+
+impl Iterator for RawAudioSource {
+    type Item = f32;
+
+    fn next(&mut self) -> Option<f32> {
+        if let Ok(mut queue) = self.samples.lock() {
+            queue.pop_front()
+        } else {
+            Some(0.0) // Return silence if lock fails
+        }
+        .or(Some(0.0)) // Return silence if queue is empty (keeps source alive)
+    }
+}
+
+impl Source for RawAudioSource {
+    fn current_span_len(&self) -> Option<usize> {
+        None // Infinite stream
+    }
+
+    fn channels(&self) -> u16 {
+        2 // Stereo
     }
 
     fn sample_rate(&self) -> u32 {
