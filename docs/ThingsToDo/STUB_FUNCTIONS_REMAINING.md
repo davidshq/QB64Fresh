@@ -12,12 +12,13 @@ For the complete function reference (including all implemented functions), see [
 
 | Status | Count | Description |
 |--------|-------|-------------|
-| ⚠️ Audio stubs (external) | 12 | Need rodio integration (vol, seek, raw) |
 | ⚠️ Graphics stubs | 3 | _MAPTRIANGLE, _COPYPALETTE, _DISPLAYORDER |
 | ⚠️ Legacy stubs | ~4 | ERDEV, device error functions, event handlers |
 | ❌ Compile errors | 4 | FRE, SETMEM, IOCTL$, FILEATTR (match QB64pe) |
 | ❌ Intentionally disabled | ~7 | Interrupts, obsolete hardware |
-| **Total Remaining** | **~30** | Out of 419 registered functions |
+| **Total Remaining** | **~18** | Out of 419 registered functions |
+
+**Note:** All audio functions were implemented in session 040 (2026-01-24).
 
 
 ---
@@ -38,28 +39,37 @@ These graphics functions are parsed but not yet implemented in the SDL2 backend.
 
 ---
 
-## Audio Functions - Needing External Runtime Work
+## Audio Functions - Fully Implemented ✅
 
-**Note:** Basic audio (`_SNDOPEN`, `_SNDPLAY`, `_SNDSTOP`, `_SNDPAUSE`, `_SNDCLOSE`) works in external runtime mode. The functions below need rodio integration work.
+All audio functions are now fully implemented in the external runtime mode using Rodio. This was completed in session 040 (2026-01-24).
 
-**QB64pe uses:** miniaudio library with full AudioEngine C++ class (`internal/c/parts/audio/audio.cpp`)
+| Function | Fresh Status | QB64pe Status | Notes |
+|----------|--------------|---------------|-------|
+| `_SNDOPEN()` | ✅ Full | ✅ Full | Open sound file |
+| `_SNDPLAY()` | ✅ Full | ✅ Full | Play sound |
+| `_SNDSTOP()` | ✅ Full | ✅ Full | Stop sound |
+| `_SNDPAUSE()` | ✅ Full | ✅ Full | Pause sound |
+| `_SNDCLOSE()` | ✅ Full | ✅ Full | Close sound |
+| `_SNDVOL()` | ✅ Full | ✅ Full | Volume control |
+| `_SNDBAL()` | ✅ Full | ✅ Full | Stereo balance (-1.0 to 1.0) |
+| `_SNDLEN()` | ✅ Full | ✅ Full | Duration query |
+| `_SNDGETPOS()` | ✅ Full | ✅ Full | Position query |
+| `_SNDSETPOS()` | ✅ Full | ✅ Full | Seeking |
+| `_SNDPLAYING()` | ✅ Full | ✅ Full | State check |
+| `_SNDPAUSED()` | ✅ Full | ✅ Full | State check |
+| `_SNDLOOP()` | ✅ Full | ✅ Full | Loop playback |
+| `_SNDOPENRAW()` | ✅ Full | ✅ Full | Raw audio stream |
+| `_SNDRAW()` | ✅ Full | ✅ Full | Write mono sample |
+| `_SNDRAWLEN()` | ✅ Full | ✅ Full | Buffer query |
+| `_SNDPLAYFILE()` | ✅ Full | ✅ Full | Direct file playback |
+| `_SNDPLAYCOPY()` | ✅ Full | ✅ Full | Overlapping playback |
+| `_SNDCOPY()` | ✅ Full | ✅ Full | Handle copying |
 
-| Function | External Status | QB64pe | QB64pe Method | Notes |
-|----------|-----------------|--------|---------------|-------|
-| `_SNDVOL()` | ⚠️ Stub | ✅ Full | `SetSoundVolume()` | Volume control |
-| `_SNDBAL()` | ⚠️ Stub | ✅ Full | `SetSoundBalance()` | 3D positioning |
-| `_SNDLEN()` | ⚠️ Stub | ✅ Full | `GetSoundDuration()` | Duration query |
-| `_SNDGETPOS()` | ⚠️ Stub | ✅ Full | `GetSoundPosition()` | Position query |
-| `_SNDSETPOS()` | ⚠️ Stub | ✅ Full | `SetSoundPosition()` | Seeking |
-| `_SNDPLAYING()` | ⚠️ Stub | ✅ Full | `IsSoundPlaying()` | State check |
-| `_SNDPAUSED()` | ⚠️ Stub | ✅ Full | `IsSoundPaused()` | State check |
-| `_SNDOPENRAW()` | ⚠️ Stub | ✅ Full | `OpenRawSound()` | Raw streaming |
-| `_SNDRAWLEN()` | ⚠️ Stub | ✅ Full | `GetRawSoundTimeRemaining()` | Buffer query |
-| `_SNDPLAYFILE()` | ⚠️ Stub | ✅ Full | `PlaySoundFile()` | Direct playback |
-| `_SNDPLAYCOPY()` | ⚠️ Stub | ✅ Full | `PlaySoundCopy()` | Copy playback |
-| `_SNDCOPY()` | ⚠️ Stub | ✅ Full | `CopySound()` | Handle copying |
-
-**Priority:** Medium - QB64pe has full audio support. We need to wire up rodio or consider switching to miniaudio for parity.
+**Implementation notes:**
+- Uses Rodio library for audio playback
+- Position tracking via timestamps for accurate `_SNDGETPOS`/`_SNDSETPOS`
+- `BalancedSource` wrapper for stereo panning
+- `RawAudioSource` for raw sample streaming
 
 ---
 
@@ -148,34 +158,19 @@ Direct interrupt calls are not supported on modern systems.
 
 ## Potential Future Work
 
-### Could Be Implemented (Medium Priority)
-
-1. **Audio Integration** - Wire up rodio backend for full parity with QB64pe:
-   - `_SNDVOL`, `_SNDBAL` - Volume and balance control
-   - `_SNDLEN`, `_SNDGETPOS`, `_SNDSETPOS` - Position tracking and seeking
-   - `_SNDPLAYING`, `_SNDPAUSED` - State tracking
-   - Effort: Medium (rodio already integrated, just needs wiring)
-   - **Alternative:** Consider switching to miniaudio (what QB64pe uses) for exact compatibility
-
-2. **Raw Audio Streaming** - `_SNDOPENRAW`, `_SNDRAW`, `_SNDRAWLEN`
-   - Would need custom audio buffer implementation
-   - Rodio supports this but needs integration
-   - QB64pe: Full implementation in AudioEngine class
-   - Effort: Medium-Large
-
 ### Could Be Implemented (Low Priority)
 
-3. **Mouse Interrupt Emulation** - `INTERRUPT`/`INTERRUPTX` for INT 0x33
+1. **Mouse Interrupt Emulation** - `INTERRUPT`/`INTERRUPTX` for INT 0x33
    - QB64pe fully emulates mouse interrupt
    - Would enable legacy mouse code
    - Effort: Medium
 
-4. **STRIG Function** - Joystick button polling
+2. **STRIG Function** - Joystick button polling
    - QB64pe: Full implementation at `libqb.cpp:25613`
    - SDL2 already provides joystick support
    - Effort: Low-Medium
 
-5. **COM Port Support** - Serial communication
+3. **COM Port Support** - Serial communication
    - Would need cross-platform serial library (e.g., `serialport` crate)
    - QB64pe: Not implemented
    - Effort: Large
@@ -194,14 +189,14 @@ Direct interrupt calls are not supported on modern systems.
 
 | Category | Count | Percentage |
 |----------|-------|------------|
-| ✅ Fully Implemented | ~392 | 94% |
-| ⚠️ Audio Stubs (need rodio work) | 12 | 3% |
+| ✅ Fully Implemented | ~404 | 96% |
+| ⚠️ Graphics Stubs | 3 | 1% |
 | ⚠️ Legacy Stubs | ~4 | 1% |
 | ❌ Compile Errors (match QB64pe) | 4 | 1% |
 | ❌ Disabled/Obsolete | ~7 | 1% |
 
 The vast majority of QB64 programs will work without issues. The remaining issues are:
-- Audio features needing rodio integration (volume, seeking, raw synthesis)
+- Graphics: `_MAPTRIANGLE`, `_COPYPALETTE`, `_DISPLAYORDER` (low priority)
 - Obsolete legacy functions throw compile errors (FRE, SETMEM, IOCTL$, FILEATTR) - matches QB64pe
 - System interrupts (INTERRUPT/INTERRUPTX) - QB64pe implements for mouse
 - Obsolete hardware (light pen) - QB64pe also doesn't implement

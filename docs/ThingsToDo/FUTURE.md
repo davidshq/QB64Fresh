@@ -142,14 +142,15 @@ arithmetic tricks safely without accessing real system memory.
 - [ ] **Windows-specific path handling** *(Small)*
       Some file I/O edge cases with Windows path separators.
 
-### Audio Limitations
-Some audio functions have partial implementations due to Rodio library limitations:
-- `_SNDOPENRAW()` - Raw audio stream support limited
-- `_SNDBAL()` - 3D balance not fully supported
-- `_SNDGETPOS()` / `_SNDSETPOS()` - Position tracking/seeking limited in some formats
-- `_SNDRAW()` / `_SNDRAWLEN()` - Raw sample writing limited
+### Audio System ✅ Complete
 
-See [STUB_FUNCTIONS_REMAINING.md](STUB_FUNCTIONS_REMAINING.md) for the complete list.
+All audio functions are now fully implemented using Rodio (session 040, 2026-01-24):
+- Volume control (`_SNDVOL`)
+- Stereo balance (`_SNDBAL`)
+- Position tracking/seeking (`_SNDGETPOS`, `_SNDSETPOS`)
+- State queries (`_SNDPLAYING`, `_SNDPAUSED`, `_SNDLEN`)
+- Raw audio streaming (`_SNDOPENRAW`, `_SNDRAW`, `_SNDRAWLEN`)
+- Sound copying (`_SNDCOPY`, `_SNDPLAYCOPY`, `_SNDPLAYFILE`)
 
 ---
 
