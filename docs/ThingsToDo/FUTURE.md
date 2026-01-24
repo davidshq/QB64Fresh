@@ -1,6 +1,6 @@
 # QB64Fresh Future Development
 
-*Last updated: 2026-01-23*
+*Last updated: 2026-01-24*
 
 This document outlines features that are planned but not yet implemented, along with known limitations and design considerations for future work.
 
@@ -25,19 +25,38 @@ QB64Fresh is in **active development** with the core compiler pipeline complete:
 
 | Metric | Value |
 |--------|-------|
-| Source Files | 85 (48 compiler + 17 runtime + 20 tools) |
-| Lines of Code | ~72,895 |
+| Source Files | 128 (85 compiler + 17 runtime + 26 tools) |
+| Lines of Code | ~74,900 |
 | Tests | 1,500+ (all passing) |
 | Test Coverage | 81.63% line coverage |
 | QB4.5 Compatibility | 99.1% (114/115) |
+
+### Recent Refactoring (2026-01-24)
+
+Large files have been split into focused submodules for better maintainability:
+
+| Module | Before | After | Reduction |
+|--------|--------|-------|-----------|
+| `codegen/c_backend/runtime.rs` | 5,660 | 367 | 94% |
+| `parser/statements.rs` | 3,945 | 307 | 92% |
+| `parser/mod.rs` | 2,451 | 163 | 93% |
+| `semantic/mod.rs` | 3,228 | 636 | 80% |
+| `lsp/mod.rs` | 2,206 | 967 | 56% |
+
+Files that stay large by design (single enum definitions): `ast/stmt.rs` (2,237), `semantic/typed_ir.rs` (2,033), `lexer/token.rs` (1,591).
+
+See [FILE_SIZE_AND_SPLIT_REVIEW.md](FILE_SIZE_AND_SPLIT_REVIEW.md) for details.
 
 ---
 
 ## Remaining Features
 
 ### Graphics System Enhancements
-- [ ] **Alpha blending support** *(Medium)*
-      Full alpha channel blending for transparent sprites and overlays.
+- [x] **Alpha blending support** *(Completed 2026-01-24)*
+      `_BLEND`, `_DONTBLEND`, `_CLEARCOLOR` - Full alpha channel blending for transparent sprites.
+
+- [x] **Window control** *(Completed 2026-01-24)*
+      `_FULLSCREEN`, `_SCREENMOVE`, `_SCREENSHOW`, `_SCREENHIDE` - Window management commands.
 
 - [ ] **Hardware acceleration option** *(Large)*
       GPU-accelerated rendering path for demanding applications.
@@ -184,7 +203,7 @@ These are stub-only for compatibility, not truly functional:
 2. **Document security model** - SHELL and file operation security
 
 ### Medium Priority (Next Month)
-3. Graphics enhancements (alpha blending, screen pages)
+3. Graphics enhancements (screen pages, hardware acceleration)
 4. Network stream I/O
 5. ON STRIG event handlers
 
