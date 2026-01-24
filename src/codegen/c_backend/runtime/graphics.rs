@@ -895,6 +895,64 @@ pub(super) fn emit_graphics_stubs(output: &mut String) {
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
+    // Palette operations
+    writeln!(output, "/* Palette Operations */").unwrap();
+    writeln!(
+        output,
+        "static uint32_t _qb_palettes[256][256];  /* Per-image palettes */"
+    )
+    .unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(
+        output,
+        "void qb_copypalette(int32_t src_handle, int32_t dest_handle) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (src_handle < 0 || src_handle >= 256) return;"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (dest_handle < 0 || dest_handle >= 256) return;"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    memcpy(_qb_palettes[dest_handle], _qb_palettes[src_handle], sizeof(_qb_palettes[0]));"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // Display layer ordering
+    writeln!(output, "/* Display Layer Ordering */").unwrap();
+    writeln!(
+        output,
+        "static int32_t _qb_display_order[4] = {{1, 2, 3, 4}};  /* Layer order */"
+    )
+    .unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(
+        output,
+        "void qb_displayorder(int32_t layer1, int32_t layer2, int32_t layer3, int32_t layer4) {{"
+    )
+    .unwrap();
+    writeln!(output, "    _qb_display_order[0] = layer1;").unwrap();
+    writeln!(output, "    _qb_display_order[1] = layer2;").unwrap();
+    writeln!(output, "    _qb_display_order[2] = layer3;").unwrap();
+    writeln!(output, "    _qb_display_order[3] = layer4;").unwrap();
+    writeln!(
+        output,
+        "    /* Note: Layer ordering affects compositing in full runtime */"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
     // Dialog boxes
     writeln!(output, "/* Dialog Box Stubs */").unwrap();
     writeln!(

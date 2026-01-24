@@ -25,21 +25,6 @@ The `SUB _GL` callback and all `_gl*` prefixed commands require a native OpenGL 
 
 ---
 
-## Platform-Specific Features
-
-### Windows-Only Features (Implemented)
-
-These features are implemented but only work on Windows. On other platforms they return safe defaults (0, -1, or no-op).
-
-| Command | Description | Windows Behavior | Other Platforms |
-|---------|-------------|------------------|-----------------|
-| `_SCREENPRINT` | Simulates typing into focused program | Uses `SendInput()` API | No-op |
-| `_SCREENCLICK` | Simulates mouse click on desktop | Uses `SendInput()` API | No-op |
-| `_SCREENIMAGE` | Captures screenshot of desktop | Uses GDI `BitBlt()` | Returns -1 |
-| `_WINDOWHANDLE` | Returns native window handle | Returns HWND | Returns 0 |
-
----
-
 ## Implementation Status
 
 ### Graphics - Not Yet Implemented
@@ -47,17 +32,20 @@ These features are implemented but only work on Windows. On other platforms they
 | Feature | Status | Notes |
 |---------|--------|-------|
 | `_MAPTRIANGLE` | ❌ | Needs SDL_RenderGeometry or custom rasterizer |
-| `_COPYPALETTE` | ❌ | Copy palette between images |
-| `_DISPLAYORDER` | ❌ | Layer ordering for hardware/software |
+
+### Graphics - Recently Implemented
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| `_COPYPALETTE` | ✅ | Copy palette between images (per-image palette support) |
+| `_DISPLAYORDER` | ✅ | Layer ordering (stores order, full compositing in SDL2 runtime) |
 
 ---
 
 ## Remaining Work
 
 ### Graphics (Low Priority)
-- `_MAPTRIANGLE` - 3D textured triangle rendering
-- `_COPYPALETTE` - Copy palette between images
-- `_DISPLAYORDER` - Layer ordering
+- `_MAPTRIANGLE` - 3D textured triangle rendering (requires significant work)
 
 ### Legacy Stubs (Very Low Priority)
 - `ERDEV`/`ERDEV$` - DOS device errors (stub only)
@@ -72,8 +60,8 @@ These features are implemented but only work on Windows. On other platforms they
 
 | Category | Count | Percentage |
 |----------|-------|------------|
-| ✅ Fully Implemented | ~410 | 98% |
-| 🔨 Graphics Stubs | 3 | <1% |
+| ✅ Fully Implemented | ~412 | 98% |
+| 🔨 Graphics Stubs | 1 | <1% |
 | 🔨 Legacy Stubs | ~5 | 1% |
 | ❌ Obsolete/Disabled | ~1 | <1% |
 
