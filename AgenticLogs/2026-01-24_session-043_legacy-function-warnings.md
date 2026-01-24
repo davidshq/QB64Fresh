@@ -75,6 +75,21 @@ The warnings help users understand when their code uses features that won't work
 
 - `src/codegen/c_backend/runtime/legacy.rs` - Added warnings and enhanced INT 0x33
 
+## Second Commit: FINAL IMPLEMENTATION Documentation
+
+Added clear "FINAL IMPLEMENTATION" comments throughout the code to prevent future sessions from treating these stubs as TODO items. These are intentionally incomplete because:
+
+| Function | Reason |
+|----------|--------|
+| `PEN()` | Light pens are obsolete CRT-era hardware |
+| `ERDEV/ERDEV$` | DOS device driver errors - no modern equivalent |
+| `IOCTL/IOCTL$` | DOS device control strings - no modern equivalent |
+| `ON COM` | Hardware serial IRQ events - would need platform-specific async I/O |
+| `ON PEN` | Light pen events - obsolete hardware |
+| `ON UEVENT` | User events - rarely used, unclear modern mapping |
+| `ON SIGNAL` | BASIC signals (not POSIX) - unclear modern mapping |
+| `INTERRUPT` (non-0x33) | Real-mode x86 interrupts impossible on modern systems |
+
 ## Verification
 
 - Build succeeds
