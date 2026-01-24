@@ -214,62 +214,6 @@ typedef struct qb_string {
     int refcount;
 } qb_string;
 
-/* External stub function declarations */
-int32_t qb_file_exists(qb_string* path);
-int32_t qb_dir_exists(qb_string* path);
-qb_string* qb_fullpath(qb_string* path);
-qb_string* qb_dir(qb_string* spec);
-int32_t qb_chdir(const char* path);
-int32_t qb_mkdir(const char* path);
-int32_t qb_file_kill(const char* filename);
-int32_t qb_console_get(void);
-int32_t qb_console(int32_t mode);
-int32_t qb_shell(qb_string* cmd);
-int32_t qb_shell_hide(qb_string* cmd);
-int32_t qb_shellhide(qb_string* cmd);
-int32_t qb_echo(int32_t state);
-void qb_controlchr(int32_t state);
-void qb_asc_assign(qb_string** s, int32_t pos, int32_t ch);
-int32_t qb_instrrev3(qb_string* s, qb_string* sub, int32_t start);
-void qb_sub__font(int32_t handle);
-void qb_sub__freefont(int32_t handle);
-int32_t qb_loadfont3(qb_string* path, int32_t size, qb_string* req);
-void qb_mapunicode(int32_t code, int32_t chr);
-int32_t qb__mapunicode1(int32_t code);
-int32_t qb__mapunicode2(int32_t code, int32_t fontpage);
-int32_t qb__mapunicode(int32_t code, int32_t fontpage, int32_t chr);
-void qb_sub__title(qb_string* title);
-void qb_sub__screenmove(int32_t x, int32_t y);
-void qb_sub__screenshow(void);
-void qb_icon(void);
-void qb_icon1(int32_t handle);
-void qb_icon2(int32_t handle, qb_string* cmd);
-void qb_sub_environ(qb_string* env);
-int32_t qb_inclerrorline(void);
-qb_string* qb_inclerrorfile(void);
-int32_t qb_exit_state(void);
-int32_t qb_statuscode(int32_t handle);
-int32_t qb_net_openhost(qb_string* port);
-int32_t qb_net_openconnection(int32_t host);
-int32_t qb_net_openclient(qb_string* addr);
-int32_t qb_net_connected(int32_t handle);
-int32_t qb_totaldroppedfiles(void);
-qb_string* qb_droppedfile_str(int32_t index);
-void qb_finishdrop(void);
-void qb_acceptfiledrop(void);
-void qb_acceptfiledrop1(int32_t state);
-int32_t qb_messagebox4(qb_string* title, qb_string* msg, qb_string* btns, int32_t def);
-qb_string* qb_savefiledialog4(qb_string* title, qb_string* filter, qb_string* def, int32_t flags);
-qb_string* qb_openfiledialog5(qb_string* title, qb_string* filter, qb_string* def, qb_string* opts, int32_t flags);
-int64_t qb_val_int64(qb_string* s);
-uint64_t qb_val_uint64(qb_string* s);
-double qb_fix(double x);
-qb_string* qb_mkq(double val);
-double qb_cvq(qb_string* s);
-qb_string* qb_deflate(qb_string* data);
-qb_string* qb_md5(qb_string* data);
-int32_t logical_drives(void);
-
 /* Dummy variables for LEN() type sizing pattern */
 int32_t dummy = 0;
 int8_t dummy_int_int = 0;
@@ -338,6 +282,178 @@ qb_string* qb_string_concat(qb_string* a, qb_string* b) {
 
 const char* qb_string_data(qb_string* s) {
     return s ? s->data : "";
+}
+
+/* Stub function implementations */
+
+#include <sys/stat.h>
+#ifdef _WIN32
+#include <direct.h>
+#define mkdir(path, mode) _mkdir(path)
+#else
+#include <unistd.h>
+#endif
+
+#ifndef _WIN32
+static void _qb_normalize_path_inplace(char* path) {
+    if (!path) return;
+    for (char* p = path; *p; p++) {
+        if (*p == '\\') *p = '/';
+    }
+}
+#else
+#define _qb_normalize_path_inplace(p) ((void)0)
+#endif
+
+int32_t qb_file_exists(qb_string* path) {
+    if (!path || !path->data) return 0;
+    struct stat st;
+    if (stat(path->data, &st) == 0 && S_ISREG(st.st_mode)) return -1;
+#ifndef _WIN32
+    /* Try with normalized path */
+    char* norm = strdup(path->data);
+    _qb_normalize_path_inplace(norm);
+    int result = stat(norm, &st) == 0 && S_ISREG(st.st_mode) ? -1 : 0;
+    free(norm);
+    return result;
+#else
+    return 0;
+#endif
+}
+int32_t qb_dir_exists(qb_string* path) {
+    if (!path || !path->data) return 0;
+    struct stat st;
+    if (stat(path->data, &st) == 0 && S_ISDIR(st.st_mode)) return -1;
+#ifndef _WIN32
+    /* Try with normalized path */
+    char* norm = strdup(path->data);
+    _qb_normalize_path_inplace(norm);
+    int result = stat(norm, &st) == 0 && S_ISDIR(st.st_mode) ? -1 : 0;
+    free(norm);
+    return result;
+#else
+    return 0;
+#endif
+}
+qb_string* qb_fullpath(qb_string* path) {
+    if (!path || !path->data) return qb_string_new("");
+    char resolved[4096];
+#ifdef _WIN32
+    if (_fullpath(resolved, path->data, sizeof(resolved)))
+        return qb_string_new(resolved);
+#else
+    if (realpath(path->data, resolved))
+        return qb_string_new(resolved);
+#endif
+    return qb_string_new(path->data ? path->data : "");
+}
+qb_string* qb_dir(qb_string* spec) { (void)spec; return qb_string_new(""); }
+int32_t qb_chdir(const char* path) {
+    if (!path) return -1;
+#ifdef _WIN32
+    return _chdir(path) == 0 ? 0 : -1;
+#else
+    return chdir(path) == 0 ? 0 : -1;
+#endif
+}
+int32_t qb_mkdir(const char* path) {
+    if (!path) return -1;
+    return mkdir(path, 0755) == 0 ? 0 : -1;
+}
+int32_t qb_file_kill(const char* filename) {
+    if (!filename) return -1;
+    return remove(filename) == 0 ? 0 : -1;
+}
+
+int32_t qb_console_get(void) { return 1; }
+int32_t qb_console(int32_t mode) { (void)mode; return 1; }
+int32_t qb_shell(qb_string* cmd) {
+    if (!cmd || !cmd->data) return -1;
+    return system(cmd->data);
+}
+int32_t qb_shell_hide(qb_string* cmd) { return qb_shell(cmd); }
+int32_t qb_shellhide(qb_string* cmd) { return qb_shell(cmd); }
+int32_t qb_echo(int32_t state) { (void)state; return 0; }
+void qb_controlchr(int32_t state) { (void)state; }
+
+void qb_asc_assign(qb_string** s, int32_t pos, int32_t ch) {
+    if (!s || !*s || pos < 1 || pos > (int32_t)(*s)->len) return;
+    (*s)->data[pos - 1] = (char)ch;
+}
+int32_t qb_instrrev3(qb_string* s, qb_string* sub, int32_t start) {
+    if (!s || !sub || !s->data || !sub->data) return 0;
+    if (sub->len == 0) return start;
+    if (s->len < sub->len) return 0;
+    int32_t search_start = (start < 1 || start > (int32_t)s->len) ? (int32_t)s->len : start;
+    for (int32_t i = search_start - sub->len; i >= 0; i--) {
+        if (memcmp(s->data + i, sub->data, sub->len) == 0) return i + 1;
+    }
+    return 0;
+}
+
+void qb_sub__font(int32_t handle) { (void)handle; }
+void qb_sub__freefont(int32_t handle) { (void)handle; }
+int32_t qb_loadfont3(qb_string* path, int32_t size, qb_string* req) { (void)path; (void)size; (void)req; return 0; }
+void qb_mapunicode(int32_t code, int32_t chr) { (void)code; (void)chr; }
+int32_t qb__mapunicode1(int32_t code) { (void)code; return 0; }
+int32_t qb__mapunicode2(int32_t code, int32_t fontpage) { (void)code; (void)fontpage; return 0; }
+int32_t qb__mapunicode(int32_t code, int32_t fontpage, int32_t chr) { (void)code; (void)fontpage; (void)chr; return 0; }
+
+void qb_sub__title(qb_string* title) { (void)title; }
+void qb_sub__screenmove(int32_t x, int32_t y) { (void)x; (void)y; }
+void qb_sub__screenshow(void) { }
+void qb_icon(void) { }
+void qb_icon1(int32_t handle) { (void)handle; }
+void qb_icon2(int32_t handle, qb_string* cmd) { (void)handle; (void)cmd; }
+
+void qb_sub_environ(qb_string* env) { (void)env; }
+
+int32_t qb_inclerrorline(void) { return 0; }
+qb_string* qb_inclerrorfile(void) { return qb_string_new(""); }
+int32_t qb_exit_state(void) { return 0; }
+int32_t qb_statuscode(int32_t handle) { (void)handle; return 0; }
+
+int32_t qb_net_openhost(qb_string* port) { (void)port; return 0; }
+int32_t qb_net_openconnection(int32_t host) { (void)host; return 0; }
+int32_t qb_net_openclient(qb_string* addr) { (void)addr; return 0; }
+int32_t qb_net_connected(int32_t handle) { (void)handle; return 0; }
+
+int32_t qb_totaldroppedfiles(void) { return 0; }
+qb_string* qb_droppedfile_str(int32_t index) { (void)index; return qb_string_new(""); }
+void qb_finishdrop(void) { }
+void qb_acceptfiledrop(void) { }
+void qb_acceptfiledrop1(int32_t state) { (void)state; }
+
+int32_t qb_messagebox4(qb_string* title, qb_string* msg, qb_string* btns, int32_t def) { (void)title; (void)msg; (void)btns; (void)def; return 1; }
+qb_string* qb_savefiledialog4(qb_string* title, qb_string* filter, qb_string* def, int32_t flags) { (void)title; (void)filter; (void)def; (void)flags; return qb_string_new(""); }
+qb_string* qb_openfiledialog5(qb_string* title, qb_string* filter, qb_string* def, qb_string* opts, int32_t flags) { (void)title; (void)filter; (void)def; (void)opts; (void)flags; return qb_string_new(""); }
+
+int64_t qb_val_int64(qb_string* s) { if (!s || !s->data) return 0; return strtoll(s->data, NULL, 10); }
+uint64_t qb_val_uint64(qb_string* s) { if (!s || !s->data) return 0; return strtoull(s->data, NULL, 10); }
+double qb_fix(double x) { return x >= 0 ? floor(x) : ceil(x); }
+qb_string* qb_mkq(double val) { char buf[64]; snprintf(buf, sizeof(buf), "%.17g", val); return qb_string_new(buf); }
+double qb_cvq(qb_string* s) { if (!s || !s->data || s->len < 8) return 0.0; double d; memcpy(&d, s->data, 8); return d; }
+
+qb_string* qb_deflate(qb_string* data) { (void)data; return qb_string_new(""); }
+qb_string* qb_md5(qb_string* data) { (void)data; return qb_string_new("00000000000000000000000000000000"); }
+
+int32_t logical_drives(void) { return 0; }
+int32_t qb_defaultcolor(void) { return 7; }
+int32_t qb_defaultcolor1(int32_t handle) { (void)handle; return 7; }
+int32_t qb_backgroundcolor(void) { return 0; }
+int32_t qb_backgroundcolor1(int32_t handle) { (void)handle; return 0; }
+int32_t qb_screen(int32_t row, int32_t col) { (void)row; (void)col; return 32; }
+int32_t qb_screen3(int32_t row, int32_t col, int32_t attr) { (void)row; (void)col; (void)attr; return attr ? 7 : 32; }
+void qb_gfx_screen(int32_t mode, int32_t colorSwitch, int32_t activePage, int32_t visiblePage) { (void)mode; (void)colorSwitch; (void)activePage; (void)visiblePage; }
+void qb_gfx_resize(int32_t flag) { (void)flag; }
+void qb_palettecolor(int32_t attr, int32_t col, int32_t handle) { (void)attr; (void)col; (void)handle; }
+int32_t qb_resize(void) { return 0; }
+int32_t qb_resizewidth(void) { return 80; }
+int32_t qb_resizeheight(void) { return 25; }
+void qb_sub_set_foreground_window(intptr_t hwnd) { (void)hwnd; }
+qb_string* qb_string_copy(qb_string* s) {
+    if (!s) return qb_string_new("");
+    return qb_string_new(s->data ? s->data : "");
 }
 
 void qb_print_int(int64_t n) {
@@ -950,10 +1066,38 @@ qb_string* qb_iif_str(int64_t cond, qb_string* true_val, qb_string* false_val) {
 static FILE* _qb_files[QB_MAX_FILES];
 static int32_t _qb_file_reclen[QB_MAX_FILES];
 
+static void _qb_file_set(int32_t fnum, FILE* f) {
+    if (fnum < 1 || fnum >= QB_MAX_FILES) return;
+    if (_qb_files[fnum]) fclose(_qb_files[fnum]);
+    _qb_files[fnum] = f;
+    _qb_file_reclen[fnum] = 128;
+}
+
+#ifndef _WIN32
+static char* _qb_normalize_path(const char* path) {
+    if (!path) return NULL;
+    size_t len = strlen(path);
+    char* normalized = malloc(len + 1);
+    for (size_t i = 0; i <= len; i++) {
+        normalized[i] = (path[i] == '\\') ? '/' : path[i];
+    }
+    return normalized;
+}
+#endif
+
 void qb_file_open(int32_t fnum, const char* filename, const char* mode) {
     if (fnum < 1 || fnum >= QB_MAX_FILES) return;
     if (_qb_files[fnum]) fclose(_qb_files[fnum]);
+#ifdef _WIN32
     _qb_files[fnum] = fopen(filename, mode);
+#else
+    _qb_files[fnum] = fopen(filename, mode);
+    if (!_qb_files[fnum]) {
+        char* normalized = _qb_normalize_path(filename);
+        _qb_files[fnum] = fopen(normalized, mode);
+        free(normalized);
+    }
+#endif
     _qb_file_reclen[fnum] = 128; /* default record length */
 }
 
@@ -1065,6 +1209,18 @@ void qb_file_seek_record(int32_t fnum, int64_t rec) {
 void qb_file_get(int32_t fnum, void* data, size_t size) {
     if (fnum >= 1 && fnum < QB_MAX_FILES && _qb_files[fnum])
         fread(data, 1, size, _qb_files[fnum]);
+}
+
+void qb_file_get_string(int32_t fnum, qb_string* s) {
+    if (fnum < 1 || fnum >= QB_MAX_FILES || !_qb_files[fnum]) return;
+    if (!s || !s->data || s->len == 0) return;
+    fread(s->data, 1, s->len, _qb_files[fnum]);
+}
+
+void qb_file_put_string(int32_t fnum, qb_string* s) {
+    if (fnum < 1 || fnum >= QB_MAX_FILES || !_qb_files[fnum]) return;
+    if (!s || !s->data || s->len == 0) return;
+    fwrite(s->data, 1, s->len, _qb_files[fnum]);
 }
 
 void qb_file_put(int32_t fnum, const void* data, size_t size) {
@@ -1353,7 +1509,7 @@ qb_string* qb_environ(qb_string* var) {
 
 static int _qb_argc = 0;
 static char** _qb_argv = NULL;
-void qb_init_args(int argc, char** argv) { _qb_argc = argc; _qb_argv = argv; }
+void qb_init_args(int argc, char** argv) { _qb_argc = argc; _qb_argv = argv; fprintf(stderr, "INIT: args\n"); }
 
 qb_string* qb_command(void) {
     if (_qb_argc <= 1 || !_qb_argv) return qb_string_new("");
@@ -1388,11 +1544,23 @@ qb_string* qb_cwd(void) {
 
 qb_string* qb_os(void) {
 #ifdef _WIN32
-    return qb_string_new("WINDOWS");
+  #if defined(_WIN64) || defined(__x86_64__)
+    return qb_string_new("[WINDOWS][64BIT]");
+  #else
+    return qb_string_new("[WINDOWS][32BIT]");
+  #endif
 #elif defined(__APPLE__)
-    return qb_string_new("MACOSX");
+  #if defined(__x86_64__) || defined(__aarch64__)
+    return qb_string_new("[MACOSX][64BIT]");
+  #else
+    return qb_string_new("[MACOSX][32BIT]");
+  #endif
 #else
-    return qb_string_new("LINUX");
+  #if defined(__x86_64__) || defined(__aarch64__)
+    return qb_string_new("[LINUX][64BIT]");
+  #else
+    return qb_string_new("[LINUX][32BIT]");
+  #endif
 #endif
 }
 
@@ -2040,6 +2208,39 @@ int qb_gfx_autodisplay(int enabled) { (void)enabled; return 0; }
 int32_t qb_gfx_image_width(int32_t h) { (void)h; return 0; }
 int32_t qb_gfx_image_height(int32_t h) { (void)h; return 0; }
 
+uint32_t qb__rgb32(int32_t r, int32_t g, int32_t b) { return 0xFF000000u | ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF); }
+uint32_t qb__rgb32_4(int32_t r, int32_t g, int32_t b, int32_t a) { return ((a & 0xFF) << 24) | ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF); }
+uint32_t qb__rgba32(int32_t r, int32_t g, int32_t b, int32_t a) { return ((a & 0xFF) << 24) | ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF); }
+uint32_t qb__rgb(int32_t r, int32_t g, int32_t b, int32_t mode) { (void)r; (void)g; (void)b; (void)mode; return 0; }
+uint32_t qb__rgba(int32_t r, int32_t g, int32_t b, int32_t a, int32_t mode) { (void)r; (void)g; (void)b; (void)a; (void)mode; return 0; }
+
+int32_t qb_red32(uint32_t c) { return (c >> 16) & 0xFF; }
+int32_t qb_green32(uint32_t c) { return (c >> 8) & 0xFF; }
+int32_t qb_blue32(uint32_t c) { return c & 0xFF; }
+int32_t qb_alpha32(uint32_t c) { return (c >> 24) & 0xFF; }
+int32_t qb_red(uint32_t c, int32_t mode) { (void)mode; return (c >> 16) & 0xFF; }
+int32_t qb_green(uint32_t c, int32_t mode) { (void)mode; return (c >> 8) & 0xFF; }
+int32_t qb_blue(uint32_t c, int32_t mode) { (void)mode; return c & 0xFF; }
+int32_t qb_alpha(uint32_t c, int32_t mode) { (void)mode; return (c >> 24) & 0xFF; }
+
+void qb_file_open_legacy(int32_t fnum, const char* mode_char, const char* fname) {
+    const char* fmode = "r";
+    if (mode_char && mode_char[0]) {
+        switch(mode_char[0]) {
+            case 'I': case 'i': fmode = "r"; break;
+            case 'O': case 'o': fmode = "w"; break;
+            case 'A': case 'a': fmode = "a"; break;
+            case 'B': case 'b': fmode = "r+b"; break;
+            case 'R': case 'r': fmode = "r+b"; break;
+        }
+    }
+    FILE* f = fopen(fname, fmode);
+    /* For binary/random mode, create file if it doesn't exist */
+    if (!f && mode_char && (mode_char[0] == 'B' || mode_char[0] == 'b' || mode_char[0] == 'R' || mode_char[0] == 'r'))
+        f = fopen(fname, "w+b");
+    _qb_file_set(fnum, f);
+}
+
 static int32_t _qb_view_print_top = 1;
 static int32_t _qb_view_print_bottom = 25;
 void qb_view_print(int32_t top, int32_t bottom) { _qb_view_print_top = top; _qb_view_print_bottom = bottom; }
@@ -2274,9 +2475,19 @@ qb_string* qb_selectfolderdialog(qb_string* title) {
 
 /* Legacy BASIC Functions */
 
+static int qb_lpos_value = 1;  // Printer column position
+
 int qb_lpos(int64_t n) {
-    (void)n;  // Printer number (ignored)
-    return 1; // Always return column 1 (stub)
+    if (n < 0 || n > 3) return 0;  // Invalid printer number
+    return qb_lpos_value;
+}
+
+void qb_lpos_update(int len, int has_newline) {
+    if (has_newline) {
+        qb_lpos_value = 1;
+    } else {
+        qb_lpos_value += len;
+    }
 }
 
 int32_t qb_varptr(void* ptr) {
@@ -2547,24 +2758,129 @@ void qb_free(void) {
     // String garbage collection is automatic
 }
 
-/* QB4.5 Port I/O Functions (stubs - sandboxed) */
+/* QB4.5 Port I/O Functions - VGA Palette Emulation */
+
+static uint32_t _qb_palette[256];  // 256-color palette (ARGB format)
+static int _qb_h3c7_read_index = 0;  // Palette read index (port 0x3C7)
+static int _qb_h3c8_write_index = 0; // Palette write index (port 0x3C8)
+static int _qb_h3c9_read_next = 0;   // Which RGB component to read next (0=R,1=G,2=B)
+static int _qb_h3c9_write_next = 0;  // Which RGB component to write next
+static int _qb_vertical_retrace = 0; // Simulated vertical retrace flag
+
+static void _qb_init_palette(void) {
+    // Initialize with standard VGA palette (simplified)
+    for (int i = 0; i < 256; i++) {
+        _qb_palette[i] = 0xFF000000 | (i << 16) | (i << 8) | i; // Grayscale default
+    }
+    // Standard 16-color VGA palette
+    _qb_palette[0] = 0xFF000000;  // Black
+    _qb_palette[1] = 0xFF0000AA;  // Blue
+    _qb_palette[2] = 0xFF00AA00;  // Green
+    _qb_palette[3] = 0xFF00AAAA;  // Cyan
+    _qb_palette[4] = 0xFFAA0000;  // Red
+    _qb_palette[5] = 0xFFAA00AA;  // Magenta
+    _qb_palette[6] = 0xFFAA5500;  // Brown
+    _qb_palette[7] = 0xFFAAAAAA;  // Light gray
+    _qb_palette[8] = 0xFF555555;  // Dark gray
+    _qb_palette[9] = 0xFF5555FF;  // Light blue
+    _qb_palette[10] = 0xFF55FF55; // Light green
+    _qb_palette[11] = 0xFF55FFFF; // Light cyan
+    _qb_palette[12] = 0xFFFF5555; // Light red
+    _qb_palette[13] = 0xFFFF55FF; // Light magenta
+    _qb_palette[14] = 0xFFFFFF55; // Yellow
+    _qb_palette[15] = 0xFFFFFFFF; // White
+}
 
 int qb_inp(int64_t port) {
-    (void)port;
-    // Port I/O is not available on protected-mode systems
-    // Return 0xFF (all bits set) as if port not present
-    return 0xFF;
+    int p = (int)(port & 0xFFFF);
+    int value;
+
+    // Port 0x3C9: Read palette RGB values
+    if (p == 0x3C9) {
+        uint32_t color = _qb_palette[_qb_h3c7_read_index];
+        if (_qb_h3c9_read_next == 0) { // Red
+            value = ((color >> 16) & 0xFF) >> 2; // Convert 0-255 to 0-63
+        } else if (_qb_h3c9_read_next == 1) { // Green
+            value = ((color >> 8) & 0xFF) >> 2;
+        } else { // Blue
+            value = (color & 0xFF) >> 2;
+        }
+        _qb_h3c9_read_next++;
+        if (_qb_h3c9_read_next >= 3) {
+            _qb_h3c9_read_next = 0;
+            _qb_h3c7_read_index = (_qb_h3c7_read_index + 1) & 0xFF;
+        }
+        return value;
+    }
+
+    // Port 0x3DA: Input Status Register #1 (vertical retrace)
+    if (p == 0x3DA) {
+        // Toggle vertical retrace bit to prevent infinite loops
+        _qb_vertical_retrace = !_qb_vertical_retrace;
+        return _qb_vertical_retrace ? 8 : 0; // Bit 3 = vertical retrace
+    }
+
+    // Unsupported port - return 0
+    return 0;
 }
 
 void qb_out(int32_t port, int32_t value) {
-    (void)port; (void)value;
-    // Port I/O is not available on protected-mode systems
+    int p = port & 0xFFFF;
+    int v = value & 0xFF;
+
+    // Port 0x3C7: Set palette read index
+    if (p == 0x3C7) {
+        _qb_h3c7_read_index = v;
+        _qb_h3c9_read_next = 0;
+        return;
+    }
+
+    // Port 0x3C8: Set palette write index
+    if (p == 0x3C8) {
+        _qb_h3c8_write_index = v;
+        _qb_h3c9_write_next = 0;
+        return;
+    }
+
+    // Port 0x3C9: Write palette RGB values
+    if (p == 0x3C9) {
+        int rgb = (v & 63) << 2; // Convert 0-63 to 0-252
+        if (_qb_h3c9_write_next == 0) { // Red
+            _qb_palette[_qb_h3c8_write_index] &= 0xFF00FFFF;
+            _qb_palette[_qb_h3c8_write_index] |= (rgb << 16);
+        } else if (_qb_h3c9_write_next == 1) { // Green
+            _qb_palette[_qb_h3c8_write_index] &= 0xFFFF00FF;
+            _qb_palette[_qb_h3c8_write_index] |= (rgb << 8);
+        } else { // Blue
+            _qb_palette[_qb_h3c8_write_index] &= 0xFFFFFF00;
+            _qb_palette[_qb_h3c8_write_index] |= rgb;
+        }
+        _qb_h3c9_write_next++;
+        if (_qb_h3c9_write_next >= 3) {
+            _qb_h3c9_write_next = 0;
+            _qb_h3c8_write_index = (_qb_h3c8_write_index + 1) & 0xFF;
+        }
+        return;
+    }
+
+    // Port 0x3C0: Attribute controller (blink enable, etc.) - no-op
+    // Other ports: silently ignored
 }
 
 void qb_wait(int32_t port, int32_t and_mask, int32_t xor_mask) {
-    (void)port; (void)and_mask; (void)xor_mask;
-    // WAIT is not available on protected-mode systems
-    // In original BASIC: loops until (INP(port) XOR xor_mask) AND and_mask <> 0
+    int p = port & 0xFFFF;
+    int value;
+
+    // Only emulate WAIT for vertical retrace (port 0x3DA)
+    if (p == 0x3DA) {
+        // Simulate waiting for vertical retrace
+        // Toggle the retrace flag to prevent infinite loops
+        _qb_vertical_retrace = 1;
+        return;
+    }
+
+    // For unsupported ports, return immediately (like QB64pe)
+    // This prevents infinite loops in legacy code
 }
 
 /* QB4.5 Light Pen Function (stub) */
@@ -2619,6 +2935,7 @@ int32_t b = 0;
 int main(int argc, char** argv) {
     qb_init_args(argc, argv);
     qb_init_startdir();
+    _qb_init_palette();
 
     a = 10LL;
     b = 3LL;

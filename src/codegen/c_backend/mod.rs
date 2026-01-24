@@ -280,6 +280,8 @@ impl CodeGenerator for CBackend {
         writeln!(output, "    qb_init_args(argc, argv);").unwrap();
         // Initialize start directory for _STARTDIR$
         writeln!(output, "    qb_init_startdir();").unwrap();
+        // Initialize VGA palette for INP/OUT port emulation
+        writeln!(output, "    _qb_init_palette();").unwrap();
         writeln!(output).unwrap();
 
         // Initialize string constants (can't be done at global scope in C)
