@@ -42,6 +42,23 @@
 //! - AX=5,6: Button press/release info (returns 0)
 //! - AX=7,8: Set min/max range (no-op)
 //!
+//! ## FINAL IMPLEMENTATIONS (Not TODO Items)
+//!
+//! The following are **intentionally stub implementations** with no further work planned:
+//!
+//! | Function | Reason |
+//! |----------|--------|
+//! | `PEN()` | Light pens are obsolete CRT-era hardware |
+//! | `ERDEV/ERDEV$` | DOS device driver errors - no modern equivalent |
+//! | `IOCTL/IOCTL$` | DOS device control strings - no modern equivalent |
+//! | `ON COM` | Hardware serial IRQ events - would need platform-specific async I/O |
+//! | `ON PEN` | Light pen events - obsolete hardware |
+//! | `ON UEVENT` | User events - rarely used, unclear modern mapping |
+//! | `ON SIGNAL` | BASIC signals (not POSIX) - unclear modern mapping |
+//! | `INTERRUPT` (non-0x33) | Real-mode x86 interrupts impossible on modern systems |
+//!
+//! These match QB64PE behavior where the functions exist but don't work on modern systems.
+//!
 //! ## GOSUB Support
 //!
 //! GOSUB is a legacy control flow statement that jumps to a label and RETURN
@@ -464,6 +481,14 @@ pub(super) fn emit_legacy_functions(output: &mut String) {
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
+    // FINAL IMPLEMENTATION: Legacy event trapping (ON COM/PEN/UEVENT/SIGNAL)
+    // These are DOS-era event mechanisms that don't map well to modern systems:
+    // - ON COM: Serial port interrupts (hardware IRQ-based)
+    // - ON PEN: Light pen events (obsolete hardware)
+    // - ON UEVENT: User-defined events (rarely used, no modern equivalent)
+    // - ON SIGNAL: BASIC-specific signals (not POSIX signals)
+    // These stubs with warnings are the complete implementation - no further work planned.
+    // QB64PE also has these as non-functional stubs.
     // Warning flags for event handlers
     writeln!(output, "static int _qb_warned_on_com = 0;").unwrap();
     writeln!(output, "static int _qb_warned_on_pen = 0;").unwrap();
@@ -877,6 +902,9 @@ pub(super) fn emit_legacy_functions(output: &mut String) {
     writeln!(output).unwrap();
 
     // ==================== QB4.5 Light Pen Function ====================
+    // FINAL IMPLEMENTATION: Light pens are obsolete hardware (CRT-era input devices).
+    // This stub with warning is the complete implementation - no further work planned.
+    // QB64PE also has this as a non-functional stub.
     writeln!(output, "/* QB4.5 Light Pen Function (stub with warning) */").unwrap();
     writeln!(output, "static int _qb_warned_pen = 0;").unwrap();
     writeln!(output).unwrap();
@@ -893,6 +921,10 @@ pub(super) fn emit_legacy_functions(output: &mut String) {
     writeln!(output).unwrap();
 
     // ==================== QB4.5 Serial I/O Functions ====================
+    // FINAL IMPLEMENTATION: ERDEV/IOCTL are DOS-specific device control functions.
+    // They relied on DOS device drivers which don't exist on modern systems.
+    // These stubs with warnings are the complete implementation - no further work planned.
+    // QB64PE also has these as non-functional stubs.
     writeln!(
         output,
         "/* QB4.5 Serial I/O Functions (stubs with warnings) */"
@@ -952,7 +984,12 @@ pub(super) fn emit_legacy_functions(output: &mut String) {
     writeln!(output).unwrap();
 
     // ==================== QB4.5 System Interrupt Functions ====================
-    // Emulates INT 0x33 (mouse) like QB64pe for legacy compatibility
+    // FINAL IMPLEMENTATION: INTERRUPT/INTERRUPTX with INT 0x33 mouse emulation.
+    // Only INT 0x33 (mouse) is emulated - this matches QB64PE behavior.
+    // Other interrupts (INT 0x10 video, INT 0x21 DOS, etc.) require real-mode x86
+    // which is impossible on modern protected-mode/64-bit systems.
+    // The INT 0x33 mouse emulation provides compatibility for legacy mouse code.
+    // This is the complete implementation - no further work planned.
     writeln!(
         output,
         "/* QB4.5 System Interrupt Functions (INT 0x33 mouse emulation) */"
