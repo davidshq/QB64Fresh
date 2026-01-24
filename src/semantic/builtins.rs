@@ -504,6 +504,14 @@ impl SemanticAnalyzer {
         // Returns the exit code of the command (0 = success)
         self.register_builtin_function("SHELL", &[("command", BasicType::String)], BasicType::Long);
 
+        // _SHELLHIDE function form: ret% = _SHELLHIDE(command$)
+        // Returns the exit code of the command (0 = success), runs without visible console
+        self.register_builtin_function(
+            "_SHELLHIDE",
+            &[("command", BasicType::String)],
+            BasicType::Long,
+        );
+
         // File content helpers
         self.register_builtin_function(
             "_READFILE$",
@@ -1628,6 +1636,7 @@ impl SemanticAnalyzer {
 
         // Register other constant categories
         self.register_character_constants();
+        self.register_string_character_constants();
         self.register_error_constants();
         self.register_platform_constants();
         self.register_keyboard_constants();
@@ -1684,6 +1693,104 @@ impl SemanticAnalyzer {
         define_char("_RS", 30); // Record Separator
         define_char("_US", 31); // Unit Separator
         define_char("_DEL", 127); // Delete
+    }
+
+    /// Registers _CHR_* string constants (actual character strings, not ASCII codes).
+    ///
+    /// These are QB64 extensions that provide string constants for common characters.
+    /// Unlike the _CR, _LF constants (which are ASCII codes), these are actual
+    /// single-character strings.
+    fn register_string_character_constants(&mut self) {
+        // Helper to register a string character constant
+        let mut define_str_char = |name: &str, value: &str| {
+            let symbol = Symbol {
+                name: name.to_string(),
+                kind: SymbolKind::Constant {
+                    value: ConstValue::String(value.to_string()),
+                },
+                basic_type: BasicType::String,
+                span: crate::ast::Span::new(0, 0),
+                is_mutable: false,
+            };
+            let _ = self.symbols.define_symbol(symbol);
+        };
+
+        // Control characters as strings
+        define_str_char("_CHR_NUL", "\0");
+        define_str_char("_CHR_SOH", "\x01");
+        define_str_char("_CHR_STX", "\x02");
+        define_str_char("_CHR_ETX", "\x03");
+        define_str_char("_CHR_EOT", "\x04");
+        define_str_char("_CHR_ENQ", "\x05");
+        define_str_char("_CHR_ACK", "\x06");
+        define_str_char("_CHR_BEL", "\x07");
+        define_str_char("_CHR_BS", "\x08");
+        define_str_char("_CHR_HT", "\t");
+        define_str_char("_CHR_TAB", "\t"); // Alias
+        define_str_char("_CHR_LF", "\n");
+        define_str_char("_CHR_VT", "\x0B");
+        define_str_char("_CHR_FF", "\x0C");
+        define_str_char("_CHR_CR", "\r");
+        define_str_char("_CHR_SO", "\x0E");
+        define_str_char("_CHR_SI", "\x0F");
+        define_str_char("_CHR_DLE", "\x10");
+        define_str_char("_CHR_DC1", "\x11");
+        define_str_char("_CHR_DC2", "\x12");
+        define_str_char("_CHR_DC3", "\x13");
+        define_str_char("_CHR_DC4", "\x14");
+        define_str_char("_CHR_NAK", "\x15");
+        define_str_char("_CHR_SYN", "\x16");
+        define_str_char("_CHR_ETB", "\x17");
+        define_str_char("_CHR_CAN", "\x18");
+        define_str_char("_CHR_EM", "\x19");
+        define_str_char("_CHR_SUB", "\x1A");
+        define_str_char("_CHR_ESC", "\x1B");
+        define_str_char("_CHR_FS", "\x1C");
+        define_str_char("_CHR_GS", "\x1D");
+        define_str_char("_CHR_RS", "\x1E");
+        define_str_char("_CHR_US", "\x1F");
+        define_str_char("_CHR_DEL", "\x7F");
+
+        // Common printable characters
+        define_str_char("_CHR_SPACE", " ");
+        define_str_char("_CHR_EXCLAMATION", "!");
+        define_str_char("_CHR_QUOTE", "\"");
+        define_str_char("_CHR_HASH", "#");
+        define_str_char("_CHR_DOLLAR", "$");
+        define_str_char("_CHR_PERCENT", "%");
+        define_str_char("_CHR_AMPERSAND", "&");
+        define_str_char("_CHR_APOSTROPHE", "'");
+        define_str_char("_CHR_LEFTBRACKET", "(");
+        define_str_char("_CHR_RIGHTBRACKET", ")");
+        define_str_char("_CHR_ASTERISK", "*");
+        define_str_char("_CHR_PLUS", "+");
+        define_str_char("_CHR_COMMA", ",");
+        define_str_char("_CHR_MINUS", "-");
+        define_str_char("_CHR_FULLSTOP", ".");
+        define_str_char("_CHR_FORWARDSLASH", "/");
+        define_str_char("_CHR_COLON", ":");
+        define_str_char("_CHR_SEMICOLON", ";");
+        define_str_char("_CHR_LESSTHAN", "<");
+        define_str_char("_CHR_EQUAL", "=");
+        define_str_char("_CHR_GREATERTHAN", ">");
+        define_str_char("_CHR_QUESTION", "?");
+        define_str_char("_CHR_ATSIGN", "@");
+        define_str_char("_CHR_LEFTSQUAREBRACKET", "[");
+        define_str_char("_CHR_BACKSLASH", "\\");
+        define_str_char("_CHR_RIGHTSQUAREBRACKET", "]");
+        define_str_char("_CHR_CARET", "^");
+        define_str_char("_CHR_UNDERSCORE", "_");
+        define_str_char("_CHR_GRAVE", "`");
+        define_str_char("_CHR_LEFTCURLYBRACKET", "{");
+        define_str_char("_CHR_VERTICALBAR", "|");
+        define_str_char("_CHR_RIGHTCURLYBRACKET", "}");
+        define_str_char("_CHR_TILDE", "~");
+
+        // Common string constants
+        define_str_char("_STR_EMPTY", "");
+        define_str_char("_STR_CRLF", "\r\n");
+        define_str_char("_STR_LF", "\n");
+        define_str_char("_STR_CR", "\r");
     }
 
     /// Registers error code constants (ERR_* values).
