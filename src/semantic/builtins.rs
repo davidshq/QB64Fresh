@@ -1088,6 +1088,20 @@ impl SemanticAnalyzer {
             BasicType::Long,
         );
 
+        // _PALETTECOLOR - dual purpose:
+        // - As function: _PALETTECOLOR(attribute%[, imgHandle&]) returns palette color (LONG)
+        // - As statement: _PALETTECOLOR attribute%, color&[, imgHandle&] sets palette color
+        // Both forms are handled through function registration with optional parameters
+        self.register_builtin_function_with_optionals(
+            "_PALETTECOLOR",
+            &[
+                ("attribute", BasicType::Long, false),
+                ("color_or_handle", BasicType::Long, true), // color (set) or handle (get)
+                ("handle", BasicType::Long, true),          // handle when setting
+            ],
+            BasicType::Long,
+        );
+
         // _SCREENEXISTS returns -1 if graphics window exists, 0 otherwise
         self.register_builtin_function("_SCREENEXISTS", &[], BasicType::Integer);
 
@@ -1354,8 +1368,6 @@ impl SemanticAnalyzer {
                 ("color2", BasicType::Long),
             ],
         );
-        // _PALETTECOLOR SUB form is handled by the FUNCTION registration with optionals
-        // (registered in the function section with 1-3 optional args)
         self.register_builtin_sub(
             "_COPYPALETTE",
             &[

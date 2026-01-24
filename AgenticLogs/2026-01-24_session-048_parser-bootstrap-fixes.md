@@ -51,10 +51,31 @@ The third bug demonstrates an important parser design principle: lookahead funct
 
 ## Remaining Work
 
-The bootstrap test now has 90 semantic errors (not parser errors):
-- `_PALETTECOLOR` function not implemented
-- `qberror_test` procedure undefined
-- Type mismatches in `_IIF` expressions
-- String used as array index
+The bootstrap test now has 24 semantic errors (not parser errors):
+- ~~`_PALETTECOLOR` function not implemented~~ **FIXED**
+- `qberror_test` procedure undefined (3 errors)
+- Type mismatches - STRING vs SINGLE/DOUBLE (16 errors)
+- `_IIF` type mismatch (1 error)
+- String used as array index (3 errors)
 
-These are semantic analyzer issues to address in future sessions.
+## _PALETTECOLOR Implementation
+
+Added full support for `_PALETTECOLOR` function/statement:
+
+**Function form (GET):**
+- `_PALETTECOLOR(attribute%)` - get from current image
+- `_PALETTECOLOR(attribute%, handle&)` - get from specific image
+
+**Statement form (SET):**
+- `_PALETTECOLOR attribute%, color&` - set on current image
+- `_PALETTECOLOR attribute%, color&, handle&` - set on specific image
+
+**Files modified:**
+- `src/semantic/builtins.rs` - Register function with optional parameters
+- `src/codegen/c_backend/expr.rs` - Special handling for function form
+- `src/codegen/c_backend/stmt/mod.rs` - Handle 2-arg statement form
+- `src/codegen/c_backend/runtime/system.rs` - Inline runtime stubs
+- `runtime/src/graphics_ffi.rs` - External runtime implementation
+- `runtime/include/qb64fresh_rt.h` - C header declarations
+
+This reduced bootstrap errors from 90 to 24 (66 errors fixed).
