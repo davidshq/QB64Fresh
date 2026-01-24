@@ -446,6 +446,10 @@ pub enum TokenKind {
     #[token("_OFFSET", ignore(ascii_case))]
     Offset,
 
+    /// _MEM type (QB64 - memory block descriptor)
+    #[token("_MEM", ignore(ascii_case))]
+    MemType,
+
     /// _UNSIGNED modifier (QB64)
     #[token("_UNSIGNED", ignore(ascii_case))]
     Unsigned,

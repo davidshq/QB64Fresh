@@ -5720,22 +5720,23 @@ mod qb64_extension_functions_session032 {
         assert!(code.contains("qb_brightness32("));
     }
 
-    // Memory extended (using LONG for pointer types in tests)
+    // Memory extended
     #[test]
     fn memelement_function() {
-        let code = compile_to_c("DIM m AS LONG, o AS LONG: o = _MEMELEMENT(m, 5)").unwrap();
+        let code =
+            compile_to_c("DIM m AS _MEM, result AS _MEM: result = _MEMELEMENT(m, 5)").unwrap();
         assert!(code.contains("qb_memelement("));
     }
 
     #[test]
     fn memimage_function() {
-        let code = compile_to_c("DIM m AS LONG: m = _MEMIMAGE(0)").unwrap();
+        let code = compile_to_c("DIM m AS _MEM: m = _MEMIMAGE(0)").unwrap();
         assert!(code.contains("qb_memimage("));
     }
 
     #[test]
     fn memsound_function() {
-        let code = compile_to_c("DIM m AS LONG: m = _MEMSOUND(1)").unwrap();
+        let code = compile_to_c("DIM m AS _MEM: m = _MEMSOUND(1)").unwrap();
         assert!(code.contains("qb_memsound("));
     }
 
@@ -6169,7 +6170,7 @@ mod qb64_extension_functions_session035 {
     // Memory functions (new in Session 035)
     #[test]
     fn memexists_function() {
-        let code = compile_to_c("DIM n AS LONG: DIM m AS LONG: n = _MEMEXISTS(m)").unwrap();
+        let code = compile_to_c("DIM n AS INTEGER: DIM m AS _MEM: n = _MEMEXISTS(m)").unwrap();
         assert!(code.contains("qb_memexists("));
     }
 

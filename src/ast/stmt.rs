@@ -1982,6 +1982,8 @@ pub enum TypeSpec {
     Float,
     Offset,
     Unsigned(Box<TypeSpec>),
+    /// _MEM - Memory block descriptor
+    Mem,
 
     /// User-defined type reference
     UserDefined(String),
