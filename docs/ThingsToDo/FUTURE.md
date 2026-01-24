@@ -79,9 +79,8 @@ DECLARE LIBRARY enables unsafe operations: no runtime type checking, manual C me
       LEN, LEFT$, RIGHT$, MID$, INSTR, CHR$, ASC, and compares remain byte-based.
 
 ### Platform-Specific
-- [ ] **Windows-specific path handling** *(Small)*
-      Some file I/O edge cases with Windows path separators.
-      OPEN, $INCLUDE, _FILEEXISTS/_DIREXISTS normalize `\`→`/` on non-Windows; KILL, NAME, MKDIR, CHDIR, legacy OPEN, _READFILE/_WRITEFILE still do not.
+- [x] **Windows-specific path handling** *(Small)* *(done 2026-01-24)*
+      All path-taking file I/O now normalizes `\`→`/` on non-Windows: OPEN, $INCLUDE, _FILEEXISTS, _DIREXISTS, KILL, NAME, MKDIR, RMDIR, CHDIR, legacy OPEN (qb_file_open_legacy), BLOAD, BSAVE, _READFILE$, _WRITEFILE.
 
 ---
 

@@ -296,7 +296,26 @@ pub extern "C" fn qb_inkey() -> *mut QbString {
 // System Integration Functions (Phase 5)
 // ============================================================================
 
+/// Normalize Windows path separators on non-Windows: `\` → `/`.
+/// On Windows, returns the path unchanged.
+#[cfg(not(target_os = "windows"))]
+fn normalize_path_for_fs(s: &str) -> std::borrow::Cow<'_, str> {
+    if s.contains('\\') {
+        std::borrow::Cow::Owned(s.replace('\\', "/"))
+    } else {
+        std::borrow::Cow::Borrowed(s)
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn normalize_path_for_fs(s: &str) -> std::borrow::Cow<'_, str> {
+    std::borrow::Cow::Borrowed(s)
+}
+
 /// KILL - Delete a file.
+///
+/// On non-Windows, normalizes `\` to `/` in the path so Windows-style paths in
+/// BASIC source work when the program runs on Unix-like systems.
 ///
 /// # Safety
 /// - `filename` must be a valid null-terminated C string
@@ -310,14 +329,19 @@ pub unsafe extern "C" fn qb_file_kill(filename: *const c_char) -> i32 {
         Ok(s) => s,
         Err(_) => return 1,
     };
+    let normalized = normalize_path_for_fs(path_str);
+    let path = std::path::Path::new(normalized.as_ref());
 
-    match std::fs::remove_file(path_str) {
+    match std::fs::remove_file(path) {
         Ok(()) => 0, // Success
         Err(_) => 1, // Error
     }
 }
 
 /// NAME AS - Rename a file.
+///
+/// On non-Windows, normalizes `\` to `/` in both paths so Windows-style paths
+/// in BASIC source work when the program runs on Unix-like systems.
 ///
 /// # Safety
 /// - Both `old_name` and `new_name` must be valid null-terminated C strings
@@ -337,13 +361,21 @@ pub unsafe extern "C" fn qb_file_rename(old_name: *const c_char, new_name: *cons
         Err(_) => return 1,
     };
 
-    match std::fs::rename(old_str, new_str) {
+    let old_n = normalize_path_for_fs(old_str);
+    let new_n = normalize_path_for_fs(new_str);
+    let old_p = std::path::Path::new(old_n.as_ref());
+    let new_p = std::path::Path::new(new_n.as_ref());
+
+    match std::fs::rename(old_p, new_p) {
         Ok(()) => 0,
         Err(_) => 1,
     }
 }
 
 /// MKDIR - Create a directory.
+///
+/// On non-Windows, normalizes `\` to `/` in the path so Windows-style paths in
+/// BASIC source work when the program runs on Unix-like systems.
 ///
 /// # Safety
 /// - `path` must be a valid null-terminated C string
@@ -357,14 +389,19 @@ pub unsafe extern "C" fn qb_mkdir(path: *const c_char) -> i32 {
         Ok(s) => s,
         Err(_) => return 1,
     };
+    let normalized = normalize_path_for_fs(path_str);
+    let p = std::path::Path::new(normalized.as_ref());
 
-    match std::fs::create_dir(path_str) {
+    match std::fs::create_dir(p) {
         Ok(()) => 0,
         Err(_) => 1,
     }
 }
 
 /// RMDIR - Remove a directory.
+///
+/// On non-Windows, normalizes `\` to `/` in the path so Windows-style paths in
+/// BASIC source work when the program runs on Unix-like systems.
 ///
 /// # Safety
 /// - `path` must be a valid null-terminated C string
@@ -378,14 +415,19 @@ pub unsafe extern "C" fn qb_rmdir(path: *const c_char) -> i32 {
         Ok(s) => s,
         Err(_) => return 1,
     };
+    let normalized = normalize_path_for_fs(path_str);
+    let p = std::path::Path::new(normalized.as_ref());
 
-    match std::fs::remove_dir(path_str) {
+    match std::fs::remove_dir(p) {
         Ok(()) => 0,
         Err(_) => 1,
     }
 }
 
 /// CHDIR - Change current directory.
+///
+/// On non-Windows, normalizes `\` to `/` in the path so Windows-style paths in
+/// BASIC source work when the program runs on Unix-like systems.
 ///
 /// # Safety
 /// - `path` must be a valid null-terminated C string
@@ -399,8 +441,10 @@ pub unsafe extern "C" fn qb_chdir(path: *const c_char) -> i32 {
         Ok(s) => s,
         Err(_) => return 1,
     };
+    let normalized = normalize_path_for_fs(path_str);
+    let p = std::path::Path::new(normalized.as_ref());
 
-    match std::env::set_current_dir(path_str) {
+    match std::env::set_current_dir(p) {
         Ok(()) => 0,
         Err(_) => 1,
     }
@@ -508,6 +552,9 @@ pub unsafe extern "C" fn qb_shell_hide(command: *const c_char) -> i32 {
 ///
 /// Returns -1 (true) if file exists, 0 (false) otherwise.
 ///
+/// On non-Windows, normalizes `\` to `/` in the path so Windows-style paths in
+/// BASIC source work when the program runs on Unix-like systems.
+///
 /// # Safety
 /// - `path` must be a valid QbString pointer or null
 #[no_mangle]
@@ -525,8 +572,9 @@ pub unsafe extern "C" fn qb_file_exists(path: *const QbString) -> i32 {
         Ok(s) => s,
         Err(_) => return 0,
     };
+    let normalized = normalize_path_for_fs(path_str);
+    let p = std::path::Path::new(normalized.as_ref());
 
-    let p = std::path::Path::new(path_str);
     if p.exists() && p.is_file() {
         -1 // True in BASIC
     } else {
@@ -537,6 +585,9 @@ pub unsafe extern "C" fn qb_file_exists(path: *const QbString) -> i32 {
 /// _DIREXISTS - Check if a directory exists.
 ///
 /// Returns -1 (true) if directory exists, 0 (false) otherwise.
+///
+/// On non-Windows, normalizes `\` to `/` in the path so Windows-style paths in
+/// BASIC source work when the program runs on Unix-like systems.
 ///
 /// # Safety
 /// - `path` must be a valid QbString pointer or null
@@ -555,8 +606,9 @@ pub unsafe extern "C" fn qb_dir_exists(path: *const QbString) -> i32 {
         Ok(s) => s,
         Err(_) => return 0,
     };
+    let normalized = normalize_path_for_fs(path_str);
+    let p = std::path::Path::new(normalized.as_ref());
 
-    let p = std::path::Path::new(path_str);
     if p.exists() && p.is_dir() {
         -1 // True in BASIC
     } else {

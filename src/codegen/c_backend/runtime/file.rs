@@ -87,7 +87,11 @@ pub(super) fn emit_file_io_functions(output: &mut String) {
         "        char* normalized = _qb_normalize_path(filename);"
     )
     .unwrap();
-    writeln!(output, "        _qb_files[fnum] = fopen(normalized, mode);").unwrap();
+    writeln!(
+        output,
+        "        if (normalized) {{ _qb_files[fnum] = fopen(normalized, mode); }}"
+    )
+    .unwrap();
     writeln!(output, "        free(normalized);").unwrap();
     writeln!(output, "    }}").unwrap();
     writeln!(output, "#endif").unwrap();
