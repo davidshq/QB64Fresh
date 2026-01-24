@@ -32,14 +32,6 @@ This document tracks what remains to complete the QB64pe bootstrap project. For 
 
 **For QB64pe to actually compile programs:**
 
-1. ✅ **Fixed-length string field conversion** (COMPLETE)
-   - UDT fields like `id.n` (char[257]) need conversion to `qb_string*`
-   - **Solution implemented:** Context-aware conversion at function call sites
-   - Added `needs_fixed_string_conversion()` helper in `expr.rs`
-   - BYVAL args: wrapped with `qb_str_from_c(field)`
-   - BYREF args: use C compound literal `&(qb_string*){qb_str_from_c(field)}`
-   - All built-in and user function calls now handle fixed-length string fields
-
 2. ⬜ **Graphics initialization** (BLOCKING)
    - QB64pe hangs on startup because graphics stubs return 0/null
    - IDE subsystem initializes even in compiler-only mode (-c)
