@@ -17,6 +17,15 @@ use crate::ast::{
 };
 use crate::semantic::types::BasicType;
 
+/// Parameter information for callback functions (used with _PROCPTR).
+#[derive(Debug, Clone)]
+pub struct CallbackParam {
+    /// The parameter's type.
+    pub basic_type: BasicType,
+    /// Whether the parameter is passed by value (BYVAL).
+    pub by_val: bool,
+}
+
 /// A type-annotated expression.
 ///
 /// Every expression in the typed IR carries its inferred type and source location.
@@ -142,6 +151,10 @@ pub enum TypedExprKind {
         name: String,
         /// The C wrapper function name that will be generated.
         wrapper_name: String,
+        /// Parameter types for the callback signature.
+        params: Vec<CallbackParam>,
+        /// Return type (None for SUB, Some for FUNCTION).
+        return_type: Option<BasicType>,
     },
 
     /// _CV function: converts string bytes to a typed value.

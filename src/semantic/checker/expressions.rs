@@ -71,10 +71,22 @@ impl<'a> TypeChecker<'a> {
                             .to_lowercase()
                             .replace(['&', '%', '$', '!', '#'], "")
                     );
+                    // Extract parameter info for callback signature
+                    let params: Vec<CallbackParam> = proc
+                        .params
+                        .iter()
+                        .map(|p| CallbackParam {
+                            basic_type: p.basic_type.clone(),
+                            by_val: p.by_val,
+                        })
+                        .collect();
+                    let return_type = proc.return_type.clone();
                     TypedExpr::new(
                         TypedExprKind::ProcPtr {
                             name: actual_name,
                             wrapper_name,
+                            params,
+                            return_type,
                         },
                         BasicType::Offset, // Function pointers are pointer-sized
                         expr.span,

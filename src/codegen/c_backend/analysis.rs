@@ -719,6 +719,10 @@ pub(super) struct CallbackWrapperInfo {
     pub wrapper_name: String,
     /// The C function name of the BASIC procedure (e.g., "qb_mycompare_lng").
     pub c_func_name: String,
+    /// Parameter types for the callback signature.
+    pub params: Vec<crate::semantic::typed_ir::CallbackParam>,
+    /// Return type (None for SUB, Some for FUNCTION).
+    pub return_type: Option<crate::semantic::types::BasicType>,
 }
 
 /// Collects all procedures that need callback wrappers (used with _PROCPTR).
@@ -739,7 +743,12 @@ pub(super) fn collect_callback_wrappers(program: &TypedProgram) -> Vec<CallbackW
         seen: &mut HashSet<String>,
     ) {
         match &expr.kind {
-            TypedExprKind::ProcPtr { name, wrapper_name } => {
+            TypedExprKind::ProcPtr {
+                name,
+                wrapper_name,
+                params,
+                return_type,
+            } => {
                 if !seen.contains(name) {
                     seen.insert(name.clone());
                     // Generate the C function name for the BASIC procedure
@@ -747,6 +756,8 @@ pub(super) fn collect_callback_wrappers(program: &TypedProgram) -> Vec<CallbackW
                     wrappers.push(CallbackWrapperInfo {
                         wrapper_name: wrapper_name.clone(),
                         c_func_name,
+                        params: params.clone(),
+                        return_type: return_type.clone(),
                     });
                 }
             }
