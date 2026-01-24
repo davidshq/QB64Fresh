@@ -12,148 +12,175 @@ For the complete function reference (including all implemented functions), see [
 
 | Status | Count | Description |
 |--------|-------|-------------|
-| ⚠️ Partial (External) | ~6 | Audio functions with rodio limitations |
-| ⚠️ Stub only | ~12 | Legacy functions (no external implementation) |
-| ❌ Not implemented | ~10 | Intentionally disabled (security/obsolete) |
-| **Total Remaining** | **~28** | Out of 373 registered functions |
+| ⚠️ Audio stubs (external) | 12 | Need rodio integration (vol, seek, raw) |
+| ⚠️ Legacy stubs | ~8 | FRE, device functions, event handlers |
+| ❌ Intentionally disabled | ~7 | Interrupts, obsolete hardware |
+| **Total Remaining** | **~27** | Out of 419 registered functions |
+
 
 ---
 
-## Audio Functions - Partial Implementation
+## Audio Functions - Needing External Runtime Work
 
-**Issue:** Rodio audio library has some limitations compared to QB64pe's OpenAL backend.
+**Note:** Basic audio (`_SNDOPEN`, `_SNDPLAY`, `_SNDSTOP`, `_SNDPAUSE`, `_SNDCLOSE`) works in external runtime mode. The functions below need rodio integration work.
 
-| Function | Inline Returns | External Status | Issue |
-|----------|----------------|-----------------|-------|
-| `_SNDOPENRAW()` | -1 | ⚠️ Partial | Raw audio stream support limited |
-| `_SNDBAL()` | void | ⚠️ Partial | 3D balance not fully supported by rodio |
-| `_SNDGETPOS()` | 0.0 | ⚠️ Partial | Position tracking limited |
-| `_SNDSETPOS()` | void | ⚠️ Partial | Seeking limited in some formats |
-| `_SNDRAW()` | void | ⚠️ Partial | Raw sample writing limited |
-| `_SNDRAWLEN()` | 0.0 | ⚠️ Partial | Raw queue length tracking |
+**QB64pe uses:** miniaudio library with full AudioEngine C++ class (`internal/c/parts/audio/audio.cpp`)
 
-**Priority:** Low - Most audio programs work fine with the implemented features.
+| Function | External Status | QB64pe | QB64pe Method | Notes |
+|----------|-----------------|--------|---------------|-------|
+| `_SNDVOL()` | ⚠️ Stub | ✅ Full | `SetSoundVolume()` | Volume control |
+| `_SNDBAL()` | ⚠️ Stub | ✅ Full | `SetSoundBalance()` | 3D positioning |
+| `_SNDLEN()` | ⚠️ Stub | ✅ Full | `GetSoundDuration()` | Duration query |
+| `_SNDGETPOS()` | ⚠️ Stub | ✅ Full | `GetSoundPosition()` | Position query |
+| `_SNDSETPOS()` | ⚠️ Stub | ✅ Full | `SetSoundPosition()` | Seeking |
+| `_SNDPLAYING()` | ⚠️ Stub | ✅ Full | `IsSoundPlaying()` | State check |
+| `_SNDPAUSED()` | ⚠️ Stub | ✅ Full | `IsSoundPaused()` | State check |
+| `_SNDOPENRAW()` | ⚠️ Stub | ✅ Full | `OpenRawSound()` | Raw streaming |
+| `_SNDRAWLEN()` | ⚠️ Stub | ✅ Full | `GetRawSoundTimeRemaining()` | Buffer query |
+| `_SNDPLAYFILE()` | ⚠️ Stub | ✅ Full | `PlaySoundFile()` | Direct playback |
+| `_SNDPLAYCOPY()` | ⚠️ Stub | ✅ Full | `PlaySoundCopy()` | Copy playback |
+| `_SNDCOPY()` | ⚠️ Stub | ✅ Full | `CopySound()` | Handle copying |
+
+**Priority:** Medium - QB64pe has full audio support. We need to wire up rodio or consider switching to miniaudio for parity.
 
 ---
 
-## Legacy Functions - Stub Only
+## Legacy Functions - Stubs
 
-These functions exist for QB4.5 compatibility but have no meaningful implementation on modern systems.
+These functions exist for QB4.5 compatibility but are stubs or have minimal implementation.
 
 ### Legacy I/O & Memory
 
-| Function | Inline Returns | Purpose | Notes |
-|----------|----------------|---------|-------|
-| `LPOS()` | 1 | Printer carriage position | Printers don't work this way anymore |
-| `FRE()` | Large number | Free memory | Returns fake value; use system APIs instead |
-| `PEEK()` | 0 | Read memory byte | No direct memory access in protected mode |
-| `POKE` | void | Write memory byte | No direct memory access in protected mode |
+| Function | Fresh Status | QB64pe Status | Notes |
+|----------|--------------|---------------|-------|
+| `FRE()` | ⚠️ Stub (64 MB) | ⛔ Stub (error) | QB64pe returns "Command not implemented" |
+
 
 ### Device Functions
 
-| Function | Inline Returns | Purpose | Notes |
-|----------|----------------|---------|-------|
-| `ERDEV()` | 0 | Device error code | DOS device error codes obsolete |
-| `ERDEV$()` | "" | Device error name | DOS device names obsolete |
-| `IOCTL$()` | "" | Device status string | DOS IOCTL obsolete |
-| `IOCTL` | void | Send device control | DOS IOCTL obsolete |
+| Function | Fresh Status | QB64pe Status | Notes |
+|----------|--------------|---------------|-------|
+| `ERDEV()` | ⚠️ Stub (0) | ❌ Not registered | Legacy DOS device error |
+| `ERDEV$()` | ⚠️ Stub ("") | ❌ Not registered | Legacy DOS device error |
+| `IOCTL$()` | ⚠️ Stub ("") | ⛔ Stub (error) | QB64pe returns error at runtime |
+| `IOCTL` | ⚠️ Stub | ⛔ Stub (error) | QB64pe returns error at runtime |
 
 ### Event Handlers - Stub Only
 
-| Function | Inline Returns | Purpose | Notes |
-|----------|----------------|---------|-------|
-| `ON COM` | void | Serial port handler | COM port support not implemented |
-| `COM ON/OFF/STOP` | void | Serial control | COM port support not implemented |
-| `ON UEVENT` | void | User event handler | Minimal stub |
-| `UEVENT ON/OFF/STOP` | void | User event control | Minimal stub |
-| `_UEVENTTRIGGER` | void | Trigger user event | Minimal stub |
-| `ON SIGNAL` | void | Signal handler | Minimal stub |
-| `SIGNAL ON/OFF/STOP` | void | Signal control | Minimal stub |
+| Function | Fresh Status | QB64pe Status | Notes |
+|----------|--------------|---------------|-------|
+| `ON COM` | ⚠️ Stub | ❌ Not registered | Serial port events |
+| `COM ON/OFF/STOP` | ⚠️ Stub | ❌ Not registered | Serial port control |
+| `ON UEVENT` | ⚠️ Stub | ❌ Not registered | User-defined events |
+| `UEVENT ON/OFF/STOP` | ⚠️ Stub | ❌ Not registered | User event control |
+| `_UEVENTTRIGGER` | ⚠️ Stub | ❌ Not registered | Trigger user event |
+| `ON SIGNAL` | ⚠️ Stub | ❌ Not registered | Signal handler |
+| `SIGNAL ON/OFF/STOP` | ⚠️ Stub | ❌ Not registered | Signal control |
 
-**Priority:** Very Low - These are rarely used in modern programs.
+**Priority:** Very Low - QB64pe doesn't implement these either. They're rarely used in modern programs.
 
 ---
 
 ## Intentionally Disabled Functions
 
-These functions are **not implemented for security or obsolescence reasons**.
+These functions are **not implemented for security or obsolescence reasons** in QB64Fresh, though QB64pe implements some of them.
 
-### Port I/O (Security)
+### Port I/O - VGA Palette Emulation (COMPLETED)
 
-Direct port I/O is not available on protected-mode operating systems and would be a security risk.
+| Function | Fresh Status | QB64pe Status | Notes |
+|----------|--------------|---------------|-------|
+| `INP()` | ✅ Full | ✅ Full | VGA palette (0x3C9) and retrace (0x3DA) |
+| `OUT` | ✅ Full | ✅ Full | Palette registers (0x3C7, 0x3C8, 0x3C9) |
+| `WAIT` | ✅ Full | ✅ Full | Returns immediately for unsupported ports |
 
-| Function | Inline Returns | Purpose |
-|----------|----------------|---------|
-| `INP()` | 0xFF | Read from I/O port |
-| `OUT` | void | Write to I/O port |
-| `WAIT` | void | Wait for port condition |
+**Supported ports:** 0x3C7 (palette read index), 0x3C8 (palette write index), 0x3C9 (palette RGB), 0x3DA (vertical retrace). Other ports return 0 or no-op (safe defaults).
 
 ### System Interrupts (Security)
 
 Direct interrupt calls are not supported on modern systems.
 
-| Function | Inline Returns | Purpose |
-|----------|----------------|---------|
-| `INTERRUPT` | void (warns) | Call system interrupt |
-| `INTERRUPTX` | void (warns) | Extended interrupt |
+| Function | Fresh Status | QB64pe Status | Notes |
+|----------|--------------|---------------|-------|
+| `INTERRUPT` | ⛔ Stub (warns) | ✅ Full (`libqb.cpp:15713`) | QB64pe emulates DOS interrupts |
+| `INTERRUPTX` | ⛔ Stub (warns) | ✅ Full (`libqb.cpp:15774`) | Extended version |
+
+**QB64pe note:** `call_int()` at `libqb.cpp:18610` emulates mouse interrupt (INT 0x33) with full support for show/hide cursor, get position, etc.
 
 ### Obsolete Hardware
 
-| Function | Inline Returns | Purpose |
-|----------|----------------|---------|
-| `PEN()` | 0 | Light pen state |
-| `ON PEN` | void | Light pen handler |
-| `PEN ON/OFF/STOP` | void | Light pen control |
+| Function | Fresh Status | QB64pe Status | Notes |
+|----------|--------------|---------------|-------|
+| `PEN()` | ⛔ Stub (0) | ❌ Not registered | Light pen hardware obsolete |
+| `ON PEN` | ⛔ Stub | ❌ Not registered | |
+| `PEN ON/OFF/STOP` | ⛔ Stub | ❌ Not registered | |
 
-### Joystick Events (Not Yet)
+### Joystick Events
 
-| Function | Inline Returns | Purpose | Notes |
-|----------|----------------|---------|-------|
-| `ON STRIG` | void | Joystick trigger handler | Could be implemented |
-| `STRIG ON/OFF/STOP` | void | Trigger control | Could be implemented |
+| Function | Fresh Status | QB64pe Status | Notes |
+|----------|--------------|---------------|-------|
+| `STRIG()` | ⛔ Stub | ✅ Full (`libqb.cpp:25613`) | QB64pe polls controller buttons |
+| `ON STRIG` | ⛔ Stub | ⚠️ Ignored | QB64pe parses but ignores for compatibility |
+| `STRIG ON/OFF/STOP` | ⛔ Stub | ⚠️ Ignored | QB64pe parses but ignores |
 
-**Priority:** Not planned - Security restrictions or obsolete hardware.
+**Priority:** Low - Consider implementing INP/OUT for VGA palette compatibility if needed.
 
 ---
 
 ## Potential Future Work
 
+### Could Be Implemented (Medium Priority)
+
+1. **Audio Integration** - Wire up rodio backend for full parity with QB64pe:
+   - `_SNDVOL`, `_SNDBAL` - Volume and balance control
+   - `_SNDLEN`, `_SNDGETPOS`, `_SNDSETPOS` - Position tracking and seeking
+   - `_SNDPLAYING`, `_SNDPAUSED` - State tracking
+   - Effort: Medium (rodio already integrated, just needs wiring)
+   - **Alternative:** Consider switching to miniaudio (what QB64pe uses) for exact compatibility
+
+2. **Raw Audio Streaming** - `_SNDOPENRAW`, `_SNDRAW`, `_SNDRAWLEN`
+   - Would need custom audio buffer implementation
+   - Rodio supports this but needs integration
+   - QB64pe: Full implementation in AudioEngine class
+   - Effort: Medium-Large
+
 ### Could Be Implemented (Low Priority)
 
-1. **ON STRIG / STRIG ON/OFF/STOP** - Joystick event handlers
-   - SDL2 already provides joystick support
-   - Would need event loop integration
+3. **Mouse Interrupt Emulation** - `INTERRUPT`/`INTERRUPTX` for INT 0x33
+   - QB64pe fully emulates mouse interrupt
+   - Would enable legacy mouse code
    - Effort: Medium
 
-2. **COM Port Support** - Serial communication
-   - Would need cross-platform serial library
-   - Effort: Large
+4. **STRIG Function** - Joystick button polling
+   - QB64pe: Full implementation at `libqb.cpp:25613`
+   - SDL2 already provides joystick support
+   - Effort: Low-Medium
 
-3. **Raw Audio Streaming** - _SNDRAW improvements
-   - Rodio limitation; may need different backend
-   - Effort: Medium-Large
+5. **COM Port Support** - Serial communication
+   - Would need cross-platform serial library (e.g., `serialport` crate)
+   - QB64pe: Not implemented
+   - Effort: Large
 
 ### Will Not Implement
 
-- **Port I/O (INP, OUT, WAIT)** - Security risk, OS doesn't allow
-- **System Interrupts** - Security risk, OS doesn't allow
-- **Light Pen** - Hardware doesn't exist
-- **DOS Device Functions** - DOS doesn't exist
+- **Light Pen (PEN)** - Hardware doesn't exist; QB64pe also doesn't implement
+- **DOS Device Functions (ERDEV, IOCTL)** - QB64pe stubs these too
+- **Event Handlers (ON COM, ON UEVENT, ON SIGNAL)** - QB64pe doesn't implement these
 
 ---
 
 ## Implementation Statistics
 
-**Total Built-in Functions:** 373
+**Total Built-in Functions/Subs:** 419
 
 | Category | Count | Percentage |
 |----------|-------|------------|
-| ✅ Fully Implemented | ~345 | 92% |
-| ⚠️ Partial/Stub | ~18 | 5% |
-| ❌ Disabled/Obsolete | ~10 | 3% |
+| ✅ Fully Implemented | ~392 | 94% |
+| ⚠️ Audio Stubs (need rodio work) | 12 | 3% |
+| ⚠️ Legacy Stubs | ~8 | 2% |
+| ❌ Disabled/Obsolete | ~7 | 1% |
 
 The vast majority of QB64 programs will work without issues. The remaining stubs are for:
-- Obscure legacy features (PEEK/POKE, LPOS, device control)
-- Security-restricted operations (port I/O, interrupts)
-- Obsolete hardware (light pen)
-- Partial audio features (raw streaming, seeking)
+- Audio features needing rodio integration (volume, seeking, raw synthesis)
+- Obscure legacy features (FRE, device control) - note: QB64pe also stubs these
+- System interrupts (INTERRUPT/INTERRUPTX) - QB64pe implements for mouse
+- Obsolete hardware (light pen) - QB64pe also doesn't implement

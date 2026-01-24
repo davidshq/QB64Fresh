@@ -2713,6 +2713,8 @@ impl<'a> TypeChecker<'a> {
                 file_num,
                 control_string,
             } => {
+                // IOCTL is a stub (legacy DOS device control)
+                // QB64pe also stubs this, so we just compile it to a no-op
                 let typed_file_num = self.check_expr(file_num);
                 let typed_control_string = self.check_expr(control_string);
                 TypedStatement::new(

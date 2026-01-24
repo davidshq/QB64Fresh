@@ -4796,11 +4796,31 @@ fn emit_legacy_functions(output: &mut String) {
     writeln!(output).unwrap();
 
     // LPOS(n) - printer position
-    // Returns the current column position of the printer
-    // In modern systems this is mostly a stub since line printers are rare
+    // Returns the current column position of the line printer
+    // Tracks position for LPT output (matching QB64pe behavior)
+    // lpos values: 0 = LPT1, 1 = LPT1, 2 = LPT2, 3 = LPT3
+    writeln!(
+        output,
+        "static int qb_lpos_value = 1;  // Printer column position"
+    )
+    .unwrap();
+    writeln!(output).unwrap();
     writeln!(output, "int qb_lpos(int64_t n) {{").unwrap();
-    writeln!(output, "    (void)n;  // Printer number (ignored)").unwrap();
-    writeln!(output, "    return 1; // Always return column 1 (stub)").unwrap();
+    writeln!(
+        output,
+        "    if (n < 0 || n > 3) return 0;  // Invalid printer number"
+    )
+    .unwrap();
+    writeln!(output, "    return qb_lpos_value;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+    // Helper to update lpos when printing to LPT
+    writeln!(output, "void qb_lpos_update(int len, int has_newline) {{").unwrap();
+    writeln!(output, "    if (has_newline) {{").unwrap();
+    writeln!(output, "        qb_lpos_value = 1;").unwrap();
+    writeln!(output, "    }} else {{").unwrap();
+    writeln!(output, "        qb_lpos_value += len;").unwrap();
+    writeln!(output, "    }}").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
@@ -5280,57 +5300,267 @@ fn emit_legacy_functions(output: &mut String) {
     writeln!(output).unwrap();
 
     // ==================== QB4.5 Port I/O Functions ====================
-    writeln!(output, "/* QB4.5 Port I/O Functions (stubs - sandboxed) */").unwrap();
+    // VGA palette port emulation matching QB64pe for legacy compatibility
+    writeln!(
+        output,
+        "/* QB4.5 Port I/O Functions - VGA Palette Emulation */"
+    )
+    .unwrap();
+    writeln!(output).unwrap();
+
+    // VGA palette state variables (matching QB64pe)
+    writeln!(
+        output,
+        "static uint32_t _qb_palette[256];  // 256-color palette (ARGB format)"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "static int _qb_h3c7_read_index = 0;  // Palette read index (port 0x3C7)"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "static int _qb_h3c8_write_index = 0; // Palette write index (port 0x3C8)"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "static int _qb_h3c9_read_next = 0;   // Which RGB component to read next (0=R,1=G,2=B)"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "static int _qb_h3c9_write_next = 0;  // Which RGB component to write next"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "static int _qb_vertical_retrace = 0; // Simulated vertical retrace flag"
+    )
+    .unwrap();
+    writeln!(output).unwrap();
+
+    // Initialize default VGA palette (called at program start)
+    writeln!(output, "static void _qb_init_palette(void) {{").unwrap();
+    writeln!(
+        output,
+        "    // Initialize with standard VGA palette (simplified)"
+    )
+    .unwrap();
+    writeln!(output, "    for (int i = 0; i < 256; i++) {{").unwrap();
+    writeln!(
+        output,
+        "        _qb_palette[i] = 0xFF000000 | (i << 16) | (i << 8) | i; // Grayscale default"
+    )
+    .unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    // Standard 16-color VGA palette").unwrap();
+    writeln!(output, "    _qb_palette[0] = 0xFF000000;  // Black").unwrap();
+    writeln!(output, "    _qb_palette[1] = 0xFF0000AA;  // Blue").unwrap();
+    writeln!(output, "    _qb_palette[2] = 0xFF00AA00;  // Green").unwrap();
+    writeln!(output, "    _qb_palette[3] = 0xFF00AAAA;  // Cyan").unwrap();
+    writeln!(output, "    _qb_palette[4] = 0xFFAA0000;  // Red").unwrap();
+    writeln!(output, "    _qb_palette[5] = 0xFFAA00AA;  // Magenta").unwrap();
+    writeln!(output, "    _qb_palette[6] = 0xFFAA5500;  // Brown").unwrap();
+    writeln!(output, "    _qb_palette[7] = 0xFFAAAAAA;  // Light gray").unwrap();
+    writeln!(output, "    _qb_palette[8] = 0xFF555555;  // Dark gray").unwrap();
+    writeln!(output, "    _qb_palette[9] = 0xFF5555FF;  // Light blue").unwrap();
+    writeln!(output, "    _qb_palette[10] = 0xFF55FF55; // Light green").unwrap();
+    writeln!(output, "    _qb_palette[11] = 0xFF55FFFF; // Light cyan").unwrap();
+    writeln!(output, "    _qb_palette[12] = 0xFFFF5555; // Light red").unwrap();
+    writeln!(output, "    _qb_palette[13] = 0xFFFF55FF; // Light magenta").unwrap();
+    writeln!(output, "    _qb_palette[14] = 0xFFFFFF55; // Yellow").unwrap();
+    writeln!(output, "    _qb_palette[15] = 0xFFFFFFFF; // White").unwrap();
+    writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
     // INP(port) - read byte from I/O port
-    // This is potentially dangerous and not available on modern protected-mode systems
+    // Emulates VGA palette and status registers like QB64pe
     writeln!(output, "int qb_inp(int64_t port) {{").unwrap();
-    writeln!(output, "    (void)port;").unwrap();
+    writeln!(output, "    int p = (int)(port & 0xFFFF);").unwrap();
+    writeln!(output, "    int value;").unwrap();
+    writeln!(output).unwrap();
+    writeln!(output, "    // Port 0x3C9: Read palette RGB values").unwrap();
+    writeln!(output, "    if (p == 0x3C9) {{").unwrap();
     writeln!(
         output,
-        "    // Port I/O is not available on protected-mode systems"
+        "        uint32_t color = _qb_palette[_qb_h3c7_read_index];"
+    )
+    .unwrap();
+    writeln!(output, "        if (_qb_h3c9_read_next == 0) {{ // Red").unwrap();
+    writeln!(
+        output,
+        "            value = ((color >> 16) & 0xFF) >> 2; // Convert 0-255 to 0-63"
     )
     .unwrap();
     writeln!(
         output,
-        "    // Return 0xFF (all bits set) as if port not present"
+        "        }} else if (_qb_h3c9_read_next == 1) {{ // Green"
     )
     .unwrap();
-    writeln!(output, "    return 0xFF;").unwrap();
+    writeln!(output, "            value = ((color >> 8) & 0xFF) >> 2;").unwrap();
+    writeln!(output, "        }} else {{ // Blue").unwrap();
+    writeln!(output, "            value = (color & 0xFF) >> 2;").unwrap();
+    writeln!(output, "        }}").unwrap();
+    writeln!(output, "        _qb_h3c9_read_next++;").unwrap();
+    writeln!(output, "        if (_qb_h3c9_read_next >= 3) {{").unwrap();
+    writeln!(output, "            _qb_h3c9_read_next = 0;").unwrap();
+    writeln!(
+        output,
+        "            _qb_h3c7_read_index = (_qb_h3c7_read_index + 1) & 0xFF;"
+    )
+    .unwrap();
+    writeln!(output, "        }}").unwrap();
+    writeln!(output, "        return value;").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output).unwrap();
+    writeln!(
+        output,
+        "    // Port 0x3DA: Input Status Register #1 (vertical retrace)"
+    )
+    .unwrap();
+    writeln!(output, "    if (p == 0x3DA) {{").unwrap();
+    writeln!(
+        output,
+        "        // Toggle vertical retrace bit to prevent infinite loops"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "        _qb_vertical_retrace = !_qb_vertical_retrace;"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "        return _qb_vertical_retrace ? 8 : 0; // Bit 3 = vertical retrace"
+    )
+    .unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output).unwrap();
+    writeln!(output, "    // Unsupported port - return 0").unwrap();
+    writeln!(output, "    return 0;").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
     // OUT port, value - write byte to I/O port
+    // Emulates VGA palette registers like QB64pe
     writeln!(output, "void qb_out(int32_t port, int32_t value) {{").unwrap();
-    writeln!(output, "    (void)port; (void)value;").unwrap();
+    writeln!(output, "    int p = port & 0xFFFF;").unwrap();
+    writeln!(output, "    int v = value & 0xFF;").unwrap();
+    writeln!(output).unwrap();
+    writeln!(output, "    // Port 0x3C7: Set palette read index").unwrap();
+    writeln!(output, "    if (p == 0x3C7) {{").unwrap();
+    writeln!(output, "        _qb_h3c7_read_index = v;").unwrap();
+    writeln!(output, "        _qb_h3c9_read_next = 0;").unwrap();
+    writeln!(output, "        return;").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output).unwrap();
+    writeln!(output, "    // Port 0x3C8: Set palette write index").unwrap();
+    writeln!(output, "    if (p == 0x3C8) {{").unwrap();
+    writeln!(output, "        _qb_h3c8_write_index = v;").unwrap();
+    writeln!(output, "        _qb_h3c9_write_next = 0;").unwrap();
+    writeln!(output, "        return;").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output).unwrap();
+    writeln!(output, "    // Port 0x3C9: Write palette RGB values").unwrap();
+    writeln!(output, "    if (p == 0x3C9) {{").unwrap();
     writeln!(
         output,
-        "    // Port I/O is not available on protected-mode systems"
+        "        int rgb = (v & 63) << 2; // Convert 0-63 to 0-252"
     )
     .unwrap();
+    writeln!(output, "        if (_qb_h3c9_write_next == 0) {{ // Red").unwrap();
+    writeln!(
+        output,
+        "            _qb_palette[_qb_h3c8_write_index] &= 0xFF00FFFF;"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "            _qb_palette[_qb_h3c8_write_index] |= (rgb << 16);"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "        }} else if (_qb_h3c9_write_next == 1) {{ // Green"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "            _qb_palette[_qb_h3c8_write_index] &= 0xFFFF00FF;"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "            _qb_palette[_qb_h3c8_write_index] |= (rgb << 8);"
+    )
+    .unwrap();
+    writeln!(output, "        }} else {{ // Blue").unwrap();
+    writeln!(
+        output,
+        "            _qb_palette[_qb_h3c8_write_index] &= 0xFFFFFF00;"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "            _qb_palette[_qb_h3c8_write_index] |= rgb;"
+    )
+    .unwrap();
+    writeln!(output, "        }}").unwrap();
+    writeln!(output, "        _qb_h3c9_write_next++;").unwrap();
+    writeln!(output, "        if (_qb_h3c9_write_next >= 3) {{").unwrap();
+    writeln!(output, "            _qb_h3c9_write_next = 0;").unwrap();
+    writeln!(
+        output,
+        "            _qb_h3c8_write_index = (_qb_h3c8_write_index + 1) & 0xFF;"
+    )
+    .unwrap();
+    writeln!(output, "        }}").unwrap();
+    writeln!(output, "        return;").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output).unwrap();
+    writeln!(
+        output,
+        "    // Port 0x3C0: Attribute controller (blink enable, etc.) - no-op"
+    )
+    .unwrap();
+    writeln!(output, "    // Other ports: silently ignored").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
     // WAIT port, and_mask [, xor_mask] - wait for hardware port condition
-    // In original QB4.5, this would busy-wait until (INP(port) XOR xor_mask) AND and_mask <> 0
-    // On modern protected-mode systems, this is a no-op stub
+    // Like QB64pe, returns immediately for unsupported ports so program can continue
     writeln!(
         output,
         "void qb_wait(int32_t port, int32_t and_mask, int32_t xor_mask) {{"
     )
     .unwrap();
-    writeln!(output, "    (void)port; (void)and_mask; (void)xor_mask;").unwrap();
+    writeln!(output, "    int p = port & 0xFFFF;").unwrap();
+    writeln!(output, "    int value;").unwrap();
+    writeln!(output).unwrap();
     writeln!(
         output,
-        "    // WAIT is not available on protected-mode systems"
+        "    // Only emulate WAIT for vertical retrace (port 0x3DA)"
     )
     .unwrap();
+    writeln!(output, "    if (p == 0x3DA) {{").unwrap();
+    writeln!(output, "        // Simulate waiting for vertical retrace").unwrap();
     writeln!(
         output,
-        "    // In original BASIC: loops until (INP(port) XOR xor_mask) AND and_mask <> 0"
+        "        // Toggle the retrace flag to prevent infinite loops"
     )
     .unwrap();
+    writeln!(output, "        _qb_vertical_retrace = 1;").unwrap();
+    writeln!(output, "        return;").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output).unwrap();
+    writeln!(
+        output,
+        "    // For unsupported ports, return immediately (like QB64pe)"
+    )
+    .unwrap();
+    writeln!(output, "    // This prevents infinite loops in legacy code").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 

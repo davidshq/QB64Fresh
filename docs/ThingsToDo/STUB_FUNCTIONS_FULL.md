@@ -156,30 +156,33 @@ QB64Fresh supports two runtime modes:
 
 **External Runtime:** `runtime/src/audio/rodio_backend.rs` (543 lines)
 **External Runtime FFI:** `runtime/src/audio_ffi.rs` (439 lines)
+**QB64pe uses:** miniaudio library with full AudioEngine C++ class
 
-| Function | Inline Returns | External Status | Purpose |
-|----------|----------------|-----------------|---------|
-| `BEEP` | void (no-op) | ✅ Full | Play system beep (statement) |
-| `SOUND` | void (no-op) | ✅ Full | Play tone (statement) |
-| `PLAY` | void (no-op) | ✅ Full | Play MML music (statement) |
-| `_SNDOPEN()` | -1 | ✅ Full | Open audio file |
-| `_SNDOPENRAW()` | -1 | ⚠️ Partial | Open raw audio stream |
-| `_SNDCLOSE()` | void | ✅ Full | Close audio handle |
-| `_SNDPLAY()` | void | ✅ Full | Start playback (statement) |
-| `_SNDSTOP()` | void | ✅ Full | Stop playback (statement) |
-| `_SNDPAUSE()` | void | ✅ Full | Pause playback (statement) |
-| `_SNDRESUME()` | void | ✅ Full | Resume playback (statement) |
-| `_SNDLOOP()` | void | ✅ Full | Set loop mode (statement) |
-| `_SNDVOL()` | void | ✅ Full | Set volume (statement) |
-| `_SNDBAL()` | void | ⚠️ Partial | Set 3D balance (rodio limitation) |
-| `_SNDLEN()` | 0.0 | ✅ Full | Get audio length |
-| `_SNDGETPOS()` | 0.0 | ⚠️ Partial | Get playback position |
-| `_SNDSETPOS()` | void | ⚠️ Partial | Set playback position |
-| `_SNDPLAYING()` | 0 | ✅ Full | Check if playing |
-| `_SNDPAUSED()` | 0 | ✅ Full | Check if paused |
-| `_SNDCOPY()` | -1 | ✅ Full | Copy audio handle |
-| `_SNDRAW()` | void | ⚠️ Partial | Write raw audio sample |
-| `_SNDRAWLEN()` | 0.0 | ⚠️ Partial | Get raw audio queue length |
+| Function | Inline | External | QB64pe | Purpose |
+|----------|--------|----------|--------|---------|
+| `BEEP` | no-op | ✅ Full | ✅ Full | Play system beep (statement) |
+| `SOUND` | no-op | ✅ Full | ✅ Full | Play tone (statement) |
+| `PLAY` | no-op | ✅ Full | ✅ Full | Play MML music (statement) |
+| `_SNDOPEN()` | -1 | ✅ Full | ✅ Full | Open audio file |
+| `_SNDCLOSE()` | void | ✅ Full | ✅ Full | Close audio handle |
+| `_SNDPLAY()` | void | ✅ Full | ✅ Full | Start playback (statement) |
+| `_SNDSTOP()` | void | ✅ Full | ✅ Full | Stop playback (statement) |
+| `_SNDPAUSE()` | void | ✅ Full | ✅ Full | Pause playback (statement) |
+| `_SNDRESUME()` | void | ✅ Full | ✅ Full | Resume playback (statement) |
+| `_SNDLOOP()` | void | ✅ Full | ✅ Full | Set loop mode (statement) |
+| `_SNDVOL()` | void | ⚠️ Stub | ✅ Full | Set volume (statement) |
+| `_SNDBAL()` | void | ⚠️ Stub | ✅ Full | Set 3D balance |
+| `_SNDLEN()` | 0.0 | ⚠️ Stub | ✅ Full | Get audio length |
+| `_SNDGETPOS()` | 0.0 | ⚠️ Stub | ✅ Full | Get playback position |
+| `_SNDSETPOS()` | void | ⚠️ Stub | ✅ Full | Set playback position |
+| `_SNDPLAYING()` | 0 | ⚠️ Stub | ✅ Full | Check if playing |
+| `_SNDPAUSED()` | 0 | ⚠️ Stub | ✅ Full | Check if paused |
+| `_SNDCOPY()` | -1 | ⚠️ Stub | ✅ Full | Copy audio handle |
+| `_SNDOPENRAW()` | -1 | ⚠️ Stub | ✅ Full | Open raw audio stream |
+| `_SNDRAW()` | void | ⚠️ Stub | ✅ Full | Write raw audio sample |
+| `_SNDRAWLEN()` | 0.0 | ⚠️ Stub | ✅ Full | Get raw audio queue length |
+| `_SNDPLAYFILE()` | void | ⚠️ Stub | ✅ Full | Play file directly |
+| `_SNDPLAYCOPY()` | void | ⚠️ Stub | ✅ Full | Play copy of sound |
 
 ---
 
@@ -347,22 +350,25 @@ These are intentionally minimal - they support compatibility with old BASIC prog
 
 #### Legacy I/O & Memory
 
-| Function | Inline Returns | External Status | Purpose |
-|----------|----------------|-----------------|---------|
-| `LPOS()` | 1 | ⚠️ Stub only | Get printer carriage position |
-| `FRE()` | Large number | ⚠️ Stub only | Get free memory |
-| `PEEK()` | 0 | ⚠️ Stub only | Read memory byte |
-| `POKE` | void | ⚠️ Stub only | Write memory byte (statement) |
+| Function | Inline Status | External Status | QB64pe | Purpose |
+|----------|---------------|-----------------|--------|---------|
+| `LPOS()` | ✅ Full | ✅ Full | ✅ Full | Get printer carriage position (tracks column) |
+| `FRE()` | ⚠️ Stub (64 MB) | ⚠️ Stub | ⛔ Error | Get free memory (QB64pe returns error) |
+| `PEEK()` | ✅ Full | ✅ Full | ✅ Full | Read memory byte (sandboxed 1.1MB array) |
+| `POKE` | ✅ Full | ✅ Full | ✅ Full | Write memory byte (sandboxed, statement) |
+| `DEF SEG` | ✅ Full | ✅ Full | ✅ Full | Set memory segment (sandboxed, statement) |
 
-#### Port I/O Functions (3 functions) - Intentionally Disabled
+#### Port I/O Functions (3 functions) - VGA Palette Emulation
 
-These are **intentionally not implemented** for security. Direct port I/O is not available on protected-mode operating systems.
+VGA palette ports are emulated for legacy compatibility (matching QB64pe).
 
-| Function | Inline Returns | External Status | Purpose |
-|----------|----------------|-----------------|---------|
-| `INP()` | 0xFF | ❌ Sandboxed | Read from I/O port |
-| `OUT` | void | ❌ Sandboxed | Write to I/O port (statement) |
-| `WAIT` | void | ❌ Sandboxed | Wait for port condition (statement) |
+| Function | Inline Status | External Status | QB64pe | Purpose |
+|----------|---------------|-----------------|--------|---------|
+| `INP()` | ✅ Full | ✅ Full | ✅ Full | Read palette (0x3C9), retrace (0x3DA) |
+| `OUT` | ✅ Full | ✅ Full | ✅ Full | Write palette (0x3C7-0x3C9) |
+| `WAIT` | ✅ Full | ✅ Full | ✅ Full | Returns immediately for unsupported ports |
+
+**Supported ports:** 0x3C7 (read index), 0x3C8 (write index), 0x3C9 (RGB data), 0x3DA (vertical retrace). Other ports safely ignored.
 
 #### Hardware Functions - Obsolete Hardware
 
@@ -405,14 +411,14 @@ Not supported on modern systems for security reasons.
 
 ### Implementation Statistics
 
-**Total Built-in Functions Registered:** 373 (in semantic analyzer)
+**Total Built-in Functions/Subs Registered:** 419 (in semantic analyzer)
 
 | Status | Count | Percentage | Notes |
 |--------|-------|------------|-------|
-| ✅ Fully Implemented (Both Modes) | ~130 | 35% | String, math, file I/O, console |
-| ✅ Fully Implemented (External Only) | ~180 | 48% | Graphics, audio, dialogs, networking |
-| ⚠️ Partial/Stub only | ~45 | 12% | Some audio features, legacy functions |
-| ❌ Not implemented/Disabled | ~18 | 5% | Port I/O, interrupts, obsolete hardware |
+| ✅ Fully Implemented (Both Modes) | ~135 | 32% | String, math, file I/O, console, PEEK/POKE |
+| ✅ Fully Implemented (External Only) | ~170 | 41% | Graphics, core audio, dialogs, networking |
+| ⚠️ Partial/Stub only | ~97 | 23% | Audio features, graphics stubs in inline mode |
+| ❌ Not implemented/Disabled | ~17 | 4% | Port I/O, interrupts, obsolete hardware |
 
 ### What's Still Missing
 
