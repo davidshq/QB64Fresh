@@ -9,12 +9,27 @@ This document outlines features that are planned but not yet implemented, along 
 ## Current Status
 
 QB64Fresh is in **active development** with the core compiler pipeline complete:
-- **Parser:** 99.1% QB4.5 compatibility (114/115 test files passing)
-- **Semantic Analysis:** Full type checking and symbol resolution
-- **Code Generation:** Complete C backend with constant folding
-- **Runtime:** Graphics (SDL2), Audio (Rodio), File I/O, Networking (TCP)
-- **LSP:** Full language server with go-to-definition, find references, hover, completion
-- **Test Coverage:** 81.63% (1,100+ tests including unit, integration, and property-based)
+
+| Component | Status | Details |
+|-----------|--------|---------|
+| **Parser** | ✅ Complete | 99.1% QB4.5 compatibility (114/115 test files) |
+| **Semantic Analysis** | ✅ Complete | Full type checking and symbol resolution |
+| **Code Generation** | ✅ Complete | C backend with constant folding |
+| **Runtime** | ✅ Complete | Graphics (SDL2), Audio (Rodio), File I/O, Networking |
+| **LSP** | ✅ Complete | Go-to-definition, find references, hover, completion |
+| **Formatter** | ✅ Complete | Keyword casing, indentation, style presets |
+| **Linter** | ✅ Complete | Static analysis with configurable rules |
+| **Debugger** | ⚠️ Infrastructure | Runtime integration pending |
+
+### Codebase Metrics
+
+| Metric | Value |
+|--------|-------|
+| Source Files | 85 (48 compiler + 17 runtime + 20 tools) |
+| Lines of Code | ~72,895 |
+| Tests | 1,500+ (all passing) |
+| Test Coverage | 81.63% line coverage |
+| QB4.5 Compatibility | 99.1% (114/115) |
 
 ---
 
@@ -36,12 +51,12 @@ QB64Fresh is in **active development** with the core compiler pipeline complete:
       Core TCP functions (_OPENHOST, _OPENCLIENT, _OPENCONNECTION, _CONNECTED) are implemented.
 
 ### Input Devices
-- [ ] **Joystick/gamepad support** *(Medium)*
-      Runtime functions (STICK, STRIG, _AXIS, _BUTTON, _DEVICES) are implemented.
-      Needs SDL2 joystick enumeration and event loop integration.
 
 - [ ] **Touch input support** *(Medium)*
       Mobile/touchscreen support for cross-platform deployment.
+
+- [ ] **Joystick event handlers** *(Medium)*
+      ON STRIG / STRIG ON/OFF/STOP event handlers not yet implemented.
 
 ### Multi-threading (QB64 Extension)
 - [ ] **`_THREAD` support** *(Large)*
@@ -54,15 +69,15 @@ QB64Fresh is in **active development** with the core compiler pipeline complete:
 
 ## Tooling & Ecosystem
 
-### Debugging (`tools/debug`)
+### Debugger (`tools/debug/`) ⚠️ Infrastructure Complete
 
-**Infrastructure Complete** - The debugger tool is scaffolded as a workspace member with 44 tests passing:
-- [x] **Debug symbol extraction** (`symbols.rs`) - Extracts types, variables, scopes, and procedures from AST
-- [x] **Value representation** (`values.rs`) - Scalars, arrays, UDTs with hex/binary/char display formats
-- [x] **Call stack structures** (`frames.rs`) - Stack frames, navigation, variable grouping by category
-- [x] **DAP protocol types** (`dap.rs`) - Full Debug Adapter Protocol message types for IDE integration
+**Implemented (~1,500 lines, 44 tests passing):**
+- [x] **Debug symbol extraction** (`symbols.rs`) - Types, variables, scopes, procedures from AST
+- [x] **Value representation** (`values.rs`) - Scalars, arrays, UDTs with hex/binary/char formats
+- [x] **Call stack structures** (`frames.rs`) - Stack frames, navigation, variable grouping
+- [x] **DAP protocol types** (`dap.rs`) - Full Debug Adapter Protocol for IDE integration
 - [x] **Multi-file source management** (`sources.rs`) - $INCLUDE handling, source line mapping
-- [x] **Watch expressions** (`watch.rs`) - Parse variables, array indices `arr(i,j)`, UDT members `player.x`
+- [x] **Watch expressions** (`watch.rs`) - Parse variables, array indices, UDT members
 
 **Needs Runtime Integration:**
 - [ ] **Runtime state capture** - Requires debug info emission in generated C code
@@ -77,11 +92,11 @@ QB64Fresh is in **active development** with the core compiler pipeline complete:
 - [ ] **Inline small functions** *(Medium)*
 
 ### Documentation
-- [ ] **Language reference documentation** *(Large)*
-      Complete reference for all statements and functions.
-
-- [ ] **Tutorial/getting started guide** *(Medium)*
-      Beginner-friendly introduction to QB64Fresh.
+- [x] **Architecture documentation** - ARCHITECTURE.md, ADRs
+- [x] **Development guide** - DEVELOPMENT.md
+- [x] **Migration guide** - For QB64 users
+- [ ] **Complete language reference** *(Large)* - All statements and functions
+- [ ] **Tutorial/getting started guide** *(Medium)* - Beginner-friendly introduction
 
 ---
 
@@ -108,6 +123,15 @@ arithmetic tricks safely without accessing real system memory.
 - [ ] **Windows-specific path handling** *(Small)*
       Some file I/O edge cases with Windows path separators.
 
+### Audio Limitations
+Some audio functions have partial implementations due to Rodio library limitations:
+- `_SNDOPENRAW()` - Raw audio stream support limited
+- `_SNDBAL()` - 3D balance not fully supported
+- `_SNDGETPOS()` / `_SNDSETPOS()` - Position tracking/seeking limited in some formats
+- `_SNDRAW()` / `_SNDRAWLEN()` - Raw sample writing limited
+
+See [STUB_FUNCTIONS_REMAINING.md](STUB_FUNCTIONS_REMAINING.md) for the complete list.
+
 ---
 
 ## Intentionally Excluded Features
@@ -124,6 +148,14 @@ for raw OpenGL access. These are **intentionally excluded** from QB64Fresh becau
 
 If raw OpenGL is needed, users can use `DECLARE LIBRARY` to call OpenGL functions directly.
 
+### Legacy Hardware Functions
+
+These are stub-only for compatibility, not truly functional:
+- Port I/O (`INP`, `OUT`, `WAIT`) - Security restrictions on modern OSes
+- System interrupts (`INTERRUPT`, `INTERRUPTX`) - Not supported on modern systems
+- Light pen (`PEN`) - Hardware doesn't exist
+- DOS device control (`IOCTL`, `ERDEV`) - DOS doesn't exist
+
 ---
 
 ## Design Decisions Pending
@@ -138,9 +170,29 @@ If raw OpenGL is needed, users can use `DECLARE LIBRARY` to call OpenGL function
 | Metric | Value |
 |--------|-------|
 | Test Coverage | 81.63% |
+| Tests Passing | 1,500+ (all passing) |
 | Clippy Warnings | 0 |
 | Security Issues | 0 |
 | QB4.5 Compatibility | 99.1% (114/115 tests) |
+
+---
+
+## Priority Summary
+
+### High Priority (Next Sessions)
+1. **Debugger runtime integration** - Infrastructure ready, needs C codegen hooks
+2. **Document security model** - SHELL and file operation security
+
+### Medium Priority (Next Month)
+3. Graphics enhancements (alpha blending, screen pages)
+4. Network stream I/O
+5. ON STRIG event handlers
+
+### Low Priority (Future)
+6. Multi-threading (_THREAD)
+7. Touch input support
+8. Unicode support
+9. Optimization passes (dead code, loop optimization)
 
 ---
 

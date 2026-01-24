@@ -441,13 +441,23 @@ impl StmtEmitter {
             }
         };
 
-        let size = type_size(&var_type);
-        writeln!(
-            output,
-            "{}qb_file_get({}, &{}, {});",
-            indent, file_num_code, target_code, size
-        )
-        .unwrap();
+        // For strings, use specialized function that reads into the string's data buffer
+        if matches!(var_type, BasicType::String) {
+            writeln!(
+                output,
+                "{}qb_file_get_string({}, {});",
+                indent, file_num_code, target_code
+            )
+            .unwrap();
+        } else {
+            let size = type_size(&var_type);
+            writeln!(
+                output,
+                "{}qb_file_get({}, &{}, {});",
+                indent, file_num_code, target_code, size
+            )
+            .unwrap();
+        }
 
         Ok(())
     }
@@ -515,13 +525,23 @@ impl StmtEmitter {
             }
         };
 
-        let size = type_size(&var_type);
-        writeln!(
-            output,
-            "{}qb_file_put({}, &{}, {});",
-            indent, file_num_code, target_code, size
-        )
-        .unwrap();
+        // For strings, use specialized function that writes from the string's data buffer
+        if matches!(var_type, BasicType::String) {
+            writeln!(
+                output,
+                "{}qb_file_put_string({}, {});",
+                indent, file_num_code, target_code
+            )
+            .unwrap();
+        } else {
+            let size = type_size(&var_type);
+            writeln!(
+                output,
+                "{}qb_file_put({}, &{}, {});",
+                indent, file_num_code, target_code, size
+            )
+            .unwrap();
+        }
 
         Ok(())
     }

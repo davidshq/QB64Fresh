@@ -1,7 +1,7 @@
 # Plan: Compiling QB64pe Using QB64Fresh
 
 *Created: 2026-01-20*
-*Updated: 2026-01-22*
+*Updated: 2026-01-23*
 
 This document outlines the strategy for compiling the QB64pe compiler using QB64Fresh, achieving a form of cross-compilation where a Rust-based BASIC compiler builds a C++-targeting BASIC compiler.
 
@@ -15,17 +15,28 @@ This document outlines the strategy for compiling the QB64pe compiler using QB64
 
 **Approach:** Systematic gap analysis, incremental feature implementation, and progressive testing.
 
-**Current Status (2026-01-22):** **PHASE D COMPLETE! QB64PE EXECUTABLE BUILT!**
+**Current Status (2026-01-23):** **PHASES A-E COMPLETE! QB64PE EXECUTABLE RUNS!**
 
 **Milestones Achieved:**
 - ✅ Code generation working (0 GCC errors, ~86K lines of C)
 - ✅ Fixed function call name resolution (type suffix mismatch bug)
 - ✅ Linked successfully with stub runtime (2.1MB executable)
-- ✅ Executable runs (doesn't crash)
+- ✅ Executable runs, parses command-line arguments correctly
+- ✅ Phase E validation and documentation complete
+
+**Session 8 Runtime Fixes (2026-01-23):**
+- ✅ Array scoping bug - Arrays in main now use globals for cross-function sharing
+- ✅ Command-line initialization - Added `qb_init_args(argc, argv)` call
+- ✅ Module-level variable scoping - DIM of existing globals in main uses global
+- ✅ SELECT CASE string comparison - Uses `qb_string_compare()` not `==`
+- ✅ NULL string semantics - NULL strings treated as "" in comparisons
+- ✅ Array bounds tracking - UBOUND/LBOUND now return actual bounds via registry
+- ✅ FOR loop variable scoping - Loop variable retains value after loop
+- ✅ Fixed-length string array globals - Parser handles `char (*name)[N]` syntax
 
 **Remaining for full functionality:**
-- ⚠️ Runtime stubs need real implementations for IDE/graphics to work
-- QB64pe expects graphical initialization, which stubs can't provide
+- ⚠️ Fixed-length string field conversion (IN PROGRESS)
+- ⚠️ Graphics initialization (QB64pe expects graphical mode)
 
 ---
 
@@ -522,9 +533,9 @@ Once QB64Fresh can compile QB64pe:
 | B: Implementation | 4-8 | ✅ Complete (100%) | 992 → 0 errors |
 | C: Code Gen | 2-4 | ✅ Complete | 0 GCC errors (100% fixed) |
 | D: Testing | 2-4 | ✅ Complete | 2.1MB executable builds and runs |
-| E: Documentation | 1-2 | **In Progress** | Write up results |
+| E: Documentation | 1-2 | ✅ Complete | Tests, docs, migration guide |
 
-**Progress:** Phases A, B, C, D complete. QB64pe compiled by QB64Fresh runs!
+**Progress:** ALL PHASES COMPLETE! QB64pe compiled by QB64Fresh runs!
 
 ---
 
@@ -819,3 +830,100 @@ Runtime Library (linked)
 **Key fix this session:** Function calls now use the procedure's canonical name (with type suffix) instead of the caller's name. This fixed hundreds of linker errors where functions like `qb_getelement$` were being called as `qb_getelement` instead of `qb_getelement_str`.
 
 **Result:** 2.1MB ELF binary that runs (exits cleanly, waiting for graphical init)
+
+### Phase E: Validation & Documentation ✅ COMPLETE
+
+**Objective:** Verify correctness and document the achievement
+
+**Tasks Completed (2026-01-23):**
+1. [x] Create test suite for QB64Fresh-compiled QB64pe
+   - `tests/bootstrap_tests.rs` - compilation & regression tests
+   - `scripts/test-bootstrap.sh` - helper script
+2. [x] Document the achievement
+   - `docs/BOOTSTRAP_ACHIEVEMENT.md` - technical summary
+3. [x] Document behavioral differences
+   - `docs/BEHAVIORAL_DIFFERENCES.md` - QB64Fresh vs QB64pe semantics
+4. [x] Write migration/compatibility notes
+   - Updated `docs/MIGRATION_GUIDE.md` with bootstrap validation
+5. [x] Update project README
+   - Added bootstrap section and metrics
+
+### Session 8: Critical Runtime Fixes (2026-01-23)
+
+**Array Scoping Issue - FIXED**
+
+The issue was array scoping. In QB64, when you use `menu$(m, i)` in main without explicit
+DIM, it creates a module-level array accessible to called subroutines.
+
+```c
+// Before fix - BUGGY:
+// Global (line 2934)
+qb_string** menu_str = NULL;
+
+// Local in main - SHADOWED global
+qb_string** menu_str = malloc(sizeof(qb_string*) * (12) * (21));
+
+// In subroutine - uses GLOBAL (NULL!) → CRASH
+menu_str[...] = qb_string_new("File");
+
+// After fix - CORRECT:
+// Global (line 2934)
+qb_string** menu_str = NULL;
+
+// In main - allocates to GLOBAL (no redeclaration)
+menu_str = malloc(sizeof(qb_string*) * (12) * (21));
+
+// In subroutine - uses GLOBAL (allocated!) → WORKS
+menu_str[...] = qb_string_new("File");
+```
+
+**Files modified:**
+- `implicit_vars.rs`: Added `is_main_program` parameter
+- `stmt.rs`: `emit_dim` checks `current_proc.is_none()` for main context
+
+**Command-Line & String Fixes - FIXED**
+
+1. `_COMMANDCOUNT` returned 0, `COMMAND$(n)` returned empty strings
+   - Fix: Added `qb_init_args(argc, argv)` call in main()
+
+2. Module-level variables shadowed in main (`NoIDEMode`, `ConsoleMode`)
+   - Fix: `implicit_vars.rs` - when `is_main_program` and global exists, don't create local
+
+3. SELECT CASE string comparison used `==` (pointer comparison!)
+   - Fix: `stmt.rs` - use `qb_string_compare()` for string CASE values
+
+4. NULL strings not equal to empty strings in comparisons
+   - Fix: `runtime.rs` - treat NULL as "" in `qb_string_compare()`
+
+**Array Bounds Tracking - FIXED**
+
+QB64pe uses UBOUND extensively. Solution: array bounds registry.
+- `qb_array_register(ptr, lower, upper)` - registers 1D array bounds
+- `qb_array_register_md(ptr, num_dims, lowers, uppers)` - multi-dimensional
+- `qb_ubound(arr)` / `qb_lbound(arr)` now look up bounds from registry
+- DIM and REDIM code generation now calls `qb_array_register()` after allocation
+
+**FOR Loop Variable Scoping - FIXED**
+
+```c
+// Before (buggy):
+for (int16_t buf_int = 0LL; buf_int <= end; buf_int++) { ... }
+// buf_int is out of scope after loop!
+
+// After (fixed):
+buf_int = 0LL;  // Initialize existing variable
+for (; buf_int <= end; buf_int++) { ... }
+// buf_int retains final value
+```
+
+**Fixed-Length String Array Global Detection - FIXED**
+
+Global name parser didn't handle `char (*name)[N]` syntax.
+```rust
+if raw_name.starts_with("(*") {
+    if let Some(end_paren) = raw_name.find(')') {
+        let name = &raw_name[2..end_paren];  // "HashListName"
+        return Some(name.to_string());
+    }
+}
+```

@@ -10,12 +10,13 @@ A modern, ground-up rewrite of QB64 — a QuickBASIC compatible compiler that pr
 
 | Component | Status |
 |-----------|--------|
-| Lexer | ✅ Complete (~1,846 lines) |
-| Parser | ✅ Complete (~11,350 lines) |
-| Semantic Analysis | ✅ Complete (~14,440 lines) |
-| Code Generation | ✅ Complete (~11,728 lines) |
-| Runtime | ✅ Complete (~11,678 lines) |
-| LSP Server | ✅ Complete (~2,105 lines) |
+| Lexer | ✅ Complete (~1,850 lines, logos-based) |
+| Parser | ✅ Complete (~11,450 lines) |
+| Semantic Analysis | ✅ Complete (~15,800 lines) |
+| Code Generation | ✅ Complete (~14,750 lines) |
+| Runtime | ✅ Complete (~11,700 lines Rust + inline C) |
+| LSP Server | ✅ Complete (~2,200 lines) |
+| **Test Suite** | **1,500+ tests** (850+ unit, 10 golden, 19 fuzz) |
 | **QB4.5 Compatibility** | **99.1%** (114/115 test files) |
 | **QB64pe Bootstrap** | ✅ Compiles 59K-line compiler |
 
@@ -118,12 +119,15 @@ A full-featured VSCode extension is available in [vscode-qb64fresh/](../vscode-q
 | Real-time diagnostics | Errors and warnings as you type |
 | Go-to-definition | Jump to variable, function, SUB definitions |
 | Find references | Find all usages of a symbol |
+| Rename symbol | Rename variables/functions across files (F2) |
 | Hover information | View types and documentation |
 | Code completion | Keywords, 240+ built-in functions, user symbols |
 | Signature help | Parameter hints for 50+ functions |
+| Document symbols | Outline view (Ctrl+Shift+O) |
+| Workspace symbols | Search symbols across project (Ctrl+T) |
 | Build & Run | F5 to compile and run, Ctrl+Shift+B to build |
 | Code formatting | qb64fresh-fmt integration with style presets |
-| Code linting | qb64fresh-lint integration with configurable rules |
+| Code linting | qb64fresh-lint with quick fix code actions |
 
 Build the tools: `cargo build -p qb64fresh-fmt -p qb64fresh-lint`
 
@@ -143,7 +147,7 @@ cargo test --test bootstrap_tests
 cargo tarpaulin --out Html
 ```
 
-**Test Coverage:** 81.63% (937+ tests)
+**Test Coverage:** 81.63% (1,500+ tests including unit, integration, golden, and fuzz tests)
 
 ## License
 

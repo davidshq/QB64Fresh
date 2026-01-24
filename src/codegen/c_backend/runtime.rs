@@ -301,9 +301,9 @@ fn emit_runtime_declarations(output: &mut String) {
     writeln!(output).unwrap();
 
     emit_string_type(output);
-    emit_stub_declarations(output);
     emit_type_size_dummies(output);
     emit_string_functions(output);
+    emit_stub_declarations(output);
     emit_print_functions(output);
     emit_input_functions(output);
     emit_string_comparison(output);
@@ -339,107 +339,400 @@ fn emit_string_type(output: &mut String) {
 /// declared before use to ensure proper return types (especially for functions
 /// returning qb_string* which would otherwise be assumed to return int).
 fn emit_stub_declarations(output: &mut String) {
-    writeln!(output, "/* External stub function declarations */").unwrap();
-    // File system functions
-    writeln!(output, "int32_t qb_file_exists(qb_string* path);").unwrap();
-    writeln!(output, "int32_t qb_dir_exists(qb_string* path);").unwrap();
-    writeln!(output, "qb_string* qb_fullpath(qb_string* path);").unwrap();
-    writeln!(output, "qb_string* qb_dir(qb_string* spec);").unwrap();
-    writeln!(output, "int32_t qb_chdir(const char* path);").unwrap();
-    writeln!(output, "int32_t qb_mkdir(const char* path);").unwrap();
-    writeln!(output, "int32_t qb_file_kill(const char* filename);").unwrap();
+    writeln!(output, "/* Stub function implementations */").unwrap();
+    writeln!(output).unwrap();
+
+    // File system functions - actual implementations
+    writeln!(output, "#include <sys/stat.h>").unwrap();
+    writeln!(output, "#ifdef _WIN32").unwrap();
+    writeln!(output, "#include <direct.h>").unwrap();
+    writeln!(output, "#define mkdir(path, mode) _mkdir(path)").unwrap();
+    writeln!(output, "#else").unwrap();
+    writeln!(output, "#include <unistd.h>").unwrap();
+    writeln!(output, "#endif").unwrap();
+    writeln!(output).unwrap();
+
+    // Helper to normalize path separators on non-Windows systems
+    writeln!(output, "#ifndef _WIN32").unwrap();
+    writeln!(
+        output,
+        "static void _qb_normalize_path_inplace(char* path) {{"
+    )
+    .unwrap();
+    writeln!(output, "    if (!path) return;").unwrap();
+    writeln!(output, "    for (char* p = path; *p; p++) {{").unwrap();
+    writeln!(output, "        if (*p == '\\\\') *p = '/';").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output, "#else").unwrap();
+    writeln!(output, "#define _qb_normalize_path_inplace(p) ((void)0)").unwrap();
+    writeln!(output, "#endif").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "int32_t qb_file_exists(qb_string* path) {{").unwrap();
+    writeln!(output, "    if (!path || !path->data) return 0;").unwrap();
+    writeln!(output, "    struct stat st;").unwrap();
+    writeln!(
+        output,
+        "    if (stat(path->data, &st) == 0 && S_ISREG(st.st_mode)) return -1;"
+    )
+    .unwrap();
+    writeln!(output, "#ifndef _WIN32").unwrap();
+    writeln!(output, "    /* Try with normalized path */").unwrap();
+    writeln!(output, "    char* norm = strdup(path->data);").unwrap();
+    writeln!(output, "    _qb_normalize_path_inplace(norm);").unwrap();
+    writeln!(
+        output,
+        "    int result = stat(norm, &st) == 0 && S_ISREG(st.st_mode) ? -1 : 0;"
+    )
+    .unwrap();
+    writeln!(output, "    free(norm);").unwrap();
+    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "#else").unwrap();
+    writeln!(output, "    return 0;").unwrap();
+    writeln!(output, "#endif").unwrap();
+    writeln!(output, "}}").unwrap();
+
+    writeln!(output, "int32_t qb_dir_exists(qb_string* path) {{").unwrap();
+    writeln!(output, "    if (!path || !path->data) return 0;").unwrap();
+    writeln!(output, "    struct stat st;").unwrap();
+    writeln!(
+        output,
+        "    if (stat(path->data, &st) == 0 && S_ISDIR(st.st_mode)) return -1;"
+    )
+    .unwrap();
+    writeln!(output, "#ifndef _WIN32").unwrap();
+    writeln!(output, "    /* Try with normalized path */").unwrap();
+    writeln!(output, "    char* norm = strdup(path->data);").unwrap();
+    writeln!(output, "    _qb_normalize_path_inplace(norm);").unwrap();
+    writeln!(
+        output,
+        "    int result = stat(norm, &st) == 0 && S_ISDIR(st.st_mode) ? -1 : 0;"
+    )
+    .unwrap();
+    writeln!(output, "    free(norm);").unwrap();
+    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "#else").unwrap();
+    writeln!(output, "    return 0;").unwrap();
+    writeln!(output, "#endif").unwrap();
+    writeln!(output, "}}").unwrap();
+
+    writeln!(output, "qb_string* qb_fullpath(qb_string* path) {{").unwrap();
+    writeln!(
+        output,
+        "    if (!path || !path->data) return qb_string_new(\"\");"
+    )
+    .unwrap();
+    writeln!(output, "    char resolved[4096];").unwrap();
+    writeln!(output, "#ifdef _WIN32").unwrap();
+    writeln!(
+        output,
+        "    if (_fullpath(resolved, path->data, sizeof(resolved)))"
+    )
+    .unwrap();
+    writeln!(output, "        return qb_string_new(resolved);").unwrap();
+    writeln!(output, "#else").unwrap();
+    writeln!(output, "    if (realpath(path->data, resolved))").unwrap();
+    writeln!(output, "        return qb_string_new(resolved);").unwrap();
+    writeln!(output, "#endif").unwrap();
+    writeln!(
+        output,
+        "    return qb_string_new(path->data ? path->data : \"\");"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+
+    writeln!(
+        output,
+        "qb_string* qb_dir(qb_string* spec) {{ (void)spec; return qb_string_new(\"\"); }}"
+    )
+    .unwrap();
+
+    writeln!(output, "int32_t qb_chdir(const char* path) {{").unwrap();
+    writeln!(output, "    if (!path) return -1;").unwrap();
+    writeln!(output, "#ifdef _WIN32").unwrap();
+    writeln!(output, "    return _chdir(path) == 0 ? 0 : -1;").unwrap();
+    writeln!(output, "#else").unwrap();
+    writeln!(output, "    return chdir(path) == 0 ? 0 : -1;").unwrap();
+    writeln!(output, "#endif").unwrap();
+    writeln!(output, "}}").unwrap();
+
+    writeln!(output, "int32_t qb_mkdir(const char* path) {{").unwrap();
+    writeln!(output, "    if (!path) return -1;").unwrap();
+    writeln!(output, "    return mkdir(path, 0755) == 0 ? 0 : -1;").unwrap();
+    writeln!(output, "}}").unwrap();
+
+    writeln!(output, "int32_t qb_file_kill(const char* filename) {{").unwrap();
+    writeln!(output, "    if (!filename) return -1;").unwrap();
+    writeln!(output, "    return remove(filename) == 0 ? 0 : -1;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
     // Console/shell functions
-    // qb_console: two variants - with and without mode argument
-    // qb_console_get() returns console handle without changing visibility
-    // qb_console(mode) sets visibility (0=hide, 1=show) and returns handle
-    writeln!(output, "int32_t qb_console_get(void);").unwrap();
-    writeln!(output, "int32_t qb_console(int32_t mode);").unwrap();
-    // Shell functions return exit code when used as functions
-    writeln!(output, "int32_t qb_shell(qb_string* cmd);").unwrap();
-    writeln!(output, "int32_t qb_shell_hide(qb_string* cmd);").unwrap();
-    writeln!(output, "int32_t qb_shellhide(qb_string* cmd);").unwrap();
-    writeln!(output, "int32_t qb_echo(int32_t state);").unwrap();
-    writeln!(output, "void qb_controlchr(int32_t state);").unwrap();
+    writeln!(output, "int32_t qb_console_get(void) {{ return 1; }}").unwrap();
+    writeln!(
+        output,
+        "int32_t qb_console(int32_t mode) {{ (void)mode; return 1; }}"
+    )
+    .unwrap();
+
+    writeln!(output, "int32_t qb_shell(qb_string* cmd) {{").unwrap();
+    writeln!(output, "    if (!cmd || !cmd->data) return -1;").unwrap();
+    writeln!(output, "    return system(cmd->data);").unwrap();
+    writeln!(output, "}}").unwrap();
+
+    writeln!(
+        output,
+        "int32_t qb_shell_hide(qb_string* cmd) {{ return qb_shell(cmd); }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "int32_t qb_shellhide(qb_string* cmd) {{ return qb_shell(cmd); }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "int32_t qb_echo(int32_t state) {{ (void)state; return 0; }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "void qb_controlchr(int32_t state) {{ (void)state; }}"
+    )
+    .unwrap();
+    writeln!(output).unwrap();
+
     // String functions
     writeln!(
         output,
-        "void qb_asc_assign(qb_string** s, int32_t pos, int32_t ch);"
+        "void qb_asc_assign(qb_string** s, int32_t pos, int32_t ch) {{"
     )
     .unwrap();
     writeln!(
         output,
-        "int32_t qb_instrrev3(qb_string* s, qb_string* sub, int32_t start);"
+        "    if (!s || !*s || pos < 1 || pos > (int32_t)(*s)->len) return;"
     )
     .unwrap();
-    // Font functions
-    writeln!(output, "void qb_sub__font(int32_t handle);").unwrap();
-    writeln!(output, "void qb_sub__freefont(int32_t handle);").unwrap();
+    writeln!(output, "    (*s)->data[pos - 1] = (char)ch;").unwrap();
+    writeln!(output, "}}").unwrap();
+
     writeln!(
         output,
-        "int32_t qb_loadfont3(qb_string* path, int32_t size, qb_string* req);"
-    )
-    .unwrap();
-    writeln!(output, "void qb_mapunicode(int32_t code, int32_t chr);").unwrap();
-    // _MAPUNICODE function - 1, 2, and 3 arg versions
-    writeln!(output, "int32_t qb__mapunicode1(int32_t code);").unwrap();
-    writeln!(
-        output,
-        "int32_t qb__mapunicode2(int32_t code, int32_t fontpage);"
+        "int32_t qb_instrrev3(qb_string* s, qb_string* sub, int32_t start) {{"
     )
     .unwrap();
     writeln!(
         output,
-        "int32_t qb__mapunicode(int32_t code, int32_t fontpage, int32_t chr);"
+        "    if (!s || !sub || !s->data || !sub->data) return 0;"
     )
     .unwrap();
-    // Window functions
-    writeln!(output, "void qb_sub__title(qb_string* title);").unwrap();
-    writeln!(output, "void qb_sub__screenmove(int32_t x, int32_t y);").unwrap();
-    writeln!(output, "void qb_sub__screenshow(void);").unwrap();
-    // _ICON with different argument counts
-    writeln!(output, "void qb_icon(void);").unwrap();
-    writeln!(output, "void qb_icon1(int32_t handle);").unwrap();
-    writeln!(output, "void qb_icon2(int32_t handle, qb_string* cmd);").unwrap();
+    writeln!(output, "    if (sub->len == 0) return start;").unwrap();
+    writeln!(output, "    if (s->len < sub->len) return 0;").unwrap();
+    writeln!(output, "    int32_t search_start = (start < 1 || start > (int32_t)s->len) ? (int32_t)s->len : start;").unwrap();
+    writeln!(
+        output,
+        "    for (int32_t i = search_start - sub->len; i >= 0; i--) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "        if (memcmp(s->data + i, sub->data, sub->len) == 0) return i + 1;"
+    )
+    .unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    return 0;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // Font functions (stubs)
+    writeln!(
+        output,
+        "void qb_sub__font(int32_t handle) {{ (void)handle; }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "void qb_sub__freefont(int32_t handle) {{ (void)handle; }}"
+    )
+    .unwrap();
+    writeln!(output, "int32_t qb_loadfont3(qb_string* path, int32_t size, qb_string* req) {{ (void)path; (void)size; (void)req; return 0; }}").unwrap();
+    writeln!(
+        output,
+        "void qb_mapunicode(int32_t code, int32_t chr) {{ (void)code; (void)chr; }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "int32_t qb__mapunicode1(int32_t code) {{ (void)code; return 0; }}"
+    )
+    .unwrap();
+    writeln!(output, "int32_t qb__mapunicode2(int32_t code, int32_t fontpage) {{ (void)code; (void)fontpage; return 0; }}").unwrap();
+    writeln!(output, "int32_t qb__mapunicode(int32_t code, int32_t fontpage, int32_t chr) {{ (void)code; (void)fontpage; (void)chr; return 0; }}").unwrap();
+    writeln!(output).unwrap();
+
+    // Window functions (stubs)
+    writeln!(
+        output,
+        "void qb_sub__title(qb_string* title) {{ (void)title; }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "void qb_sub__screenmove(int32_t x, int32_t y) {{ (void)x; (void)y; }}"
+    )
+    .unwrap();
+    writeln!(output, "void qb_sub__screenshow(void) {{ }}").unwrap();
+    writeln!(output, "void qb_icon(void) {{ }}").unwrap();
+    writeln!(output, "void qb_icon1(int32_t handle) {{ (void)handle; }}").unwrap();
+    writeln!(
+        output,
+        "void qb_icon2(int32_t handle, qb_string* cmd) {{ (void)handle; (void)cmd; }}"
+    )
+    .unwrap();
+    writeln!(output).unwrap();
+
     // Environment functions
-    writeln!(output, "void qb_sub_environ(qb_string* env);").unwrap();
-    // Error functions
-    writeln!(output, "int32_t qb_inclerrorline(void);").unwrap();
-    writeln!(output, "qb_string* qb_inclerrorfile(void);").unwrap();
-    writeln!(output, "int32_t qb_exit_state(void);").unwrap();
-    // _STATUSCODE takes a network handle
-    writeln!(output, "int32_t qb_statuscode(int32_t handle);").unwrap();
-    // Network functions
-    writeln!(output, "int32_t qb_net_openhost(qb_string* port);").unwrap();
-    writeln!(output, "int32_t qb_net_openconnection(int32_t host);").unwrap();
-    writeln!(output, "int32_t qb_net_openclient(qb_string* addr);").unwrap();
-    writeln!(output, "int32_t qb_net_connected(int32_t handle);").unwrap();
-    // Drag and drop functions
-    writeln!(output, "int32_t qb_totaldroppedfiles(void);").unwrap();
-    writeln!(output, "qb_string* qb_droppedfile_str(int32_t index);").unwrap();
-    writeln!(output, "void qb_finishdrop(void);").unwrap();
-    // _ACCEPTFILEDROP with optional argument
-    writeln!(output, "void qb_acceptfiledrop(void);").unwrap();
-    writeln!(output, "void qb_acceptfiledrop1(int32_t state);").unwrap();
-    // Dialog functions
     writeln!(
         output,
-        "int32_t qb_messagebox4(qb_string* title, qb_string* msg, qb_string* btns, int32_t def);"
+        "void qb_sub_environ(qb_string* env) {{ (void)env; }}"
     )
     .unwrap();
-    writeln!(output, "qb_string* qb_savefiledialog4(qb_string* title, qb_string* filter, qb_string* def, int32_t flags);").unwrap();
-    writeln!(output, "qb_string* qb_openfiledialog5(qb_string* title, qb_string* filter, qb_string* def, qb_string* opts, int32_t flags);").unwrap();
+    writeln!(output).unwrap();
+
+    // Error functions
+    writeln!(output, "int32_t qb_inclerrorline(void) {{ return 0; }}").unwrap();
+    writeln!(
+        output,
+        "qb_string* qb_inclerrorfile(void) {{ return qb_string_new(\"\"); }}"
+    )
+    .unwrap();
+    writeln!(output, "int32_t qb_exit_state(void) {{ return 0; }}").unwrap();
+    writeln!(
+        output,
+        "int32_t qb_statuscode(int32_t handle) {{ (void)handle; return 0; }}"
+    )
+    .unwrap();
+    writeln!(output).unwrap();
+
+    // Network functions (stubs - no actual network support)
+    writeln!(
+        output,
+        "int32_t qb_net_openhost(qb_string* port) {{ (void)port; return 0; }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "int32_t qb_net_openconnection(int32_t host) {{ (void)host; return 0; }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "int32_t qb_net_openclient(qb_string* addr) {{ (void)addr; return 0; }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "int32_t qb_net_connected(int32_t handle) {{ (void)handle; return 0; }}"
+    )
+    .unwrap();
+    writeln!(output).unwrap();
+
+    // Drag and drop functions (stubs)
+    writeln!(output, "int32_t qb_totaldroppedfiles(void) {{ return 0; }}").unwrap();
+    writeln!(output, "qb_string* qb_droppedfile_str(int32_t index) {{ (void)index; return qb_string_new(\"\"); }}").unwrap();
+    writeln!(output, "void qb_finishdrop(void) {{ }}").unwrap();
+    writeln!(output, "void qb_acceptfiledrop(void) {{ }}").unwrap();
+    writeln!(
+        output,
+        "void qb_acceptfiledrop1(int32_t state) {{ (void)state; }}"
+    )
+    .unwrap();
+    writeln!(output).unwrap();
+
+    // Dialog functions (stubs)
+    writeln!(output, "int32_t qb_messagebox4(qb_string* title, qb_string* msg, qb_string* btns, int32_t def) {{ (void)title; (void)msg; (void)btns; (void)def; return 1; }}").unwrap();
+    writeln!(output, "qb_string* qb_savefiledialog4(qb_string* title, qb_string* filter, qb_string* def, int32_t flags) {{ (void)title; (void)filter; (void)def; (void)flags; return qb_string_new(\"\"); }}").unwrap();
+    writeln!(output, "qb_string* qb_openfiledialog5(qb_string* title, qb_string* filter, qb_string* def, qb_string* opts, int32_t flags) {{ (void)title; (void)filter; (void)def; (void)opts; (void)flags; return qb_string_new(\"\"); }}").unwrap();
+    writeln!(output).unwrap();
+
     // Number conversion functions
-    writeln!(output, "int64_t qb_val_int64(qb_string* s);").unwrap();
-    writeln!(output, "uint64_t qb_val_uint64(qb_string* s);").unwrap();
-    writeln!(output, "double qb_fix(double x);").unwrap();
-    writeln!(output, "qb_string* qb_mkq(double val);").unwrap();
-    writeln!(output, "double qb_cvq(qb_string* s);").unwrap();
-    // Compression functions
-    writeln!(output, "qb_string* qb_deflate(qb_string* data);").unwrap();
-    writeln!(output, "qb_string* qb_md5(qb_string* data);").unwrap();
+    writeln!(output, "int64_t qb_val_int64(qb_string* s) {{ if (!s || !s->data) return 0; return strtoll(s->data, NULL, 10); }}").unwrap();
+    writeln!(output, "uint64_t qb_val_uint64(qb_string* s) {{ if (!s || !s->data) return 0; return strtoull(s->data, NULL, 10); }}").unwrap();
+    writeln!(
+        output,
+        "double qb_fix(double x) {{ return x >= 0 ? floor(x) : ceil(x); }}"
+    )
+    .unwrap();
+    writeln!(output, "qb_string* qb_mkq(double val) {{ char buf[64]; snprintf(buf, sizeof(buf), \"%.17g\", val); return qb_string_new(buf); }}").unwrap();
+    writeln!(output, "double qb_cvq(qb_string* s) {{ if (!s || !s->data || s->len < 8) return 0.0; double d; memcpy(&d, s->data, 8); return d; }}").unwrap();
+    writeln!(output).unwrap();
+
+    // Compression functions (stubs - no actual compression)
+    writeln!(
+        output,
+        "qb_string* qb_deflate(qb_string* data) {{ (void)data; return qb_string_new(\"\"); }}"
+    )
+    .unwrap();
+    writeln!(output, "qb_string* qb_md5(qb_string* data) {{ (void)data; return qb_string_new(\"00000000000000000000000000000000\"); }}").unwrap();
+    writeln!(output).unwrap();
+
     // Windows specific functions
-    // Windows-specific - returns bitmask of available drive letters
-    writeln!(output, "int32_t logical_drives(void);").unwrap();
+    writeln!(output, "int32_t logical_drives(void) {{ return 0; }}").unwrap();
+
+    // Additional stubs needed for QB64pe
+    // _DEFAULTCOLOR and _BACKGROUNDCOLOR can be called with or without handle argument
+    writeln!(output, "int32_t qb_defaultcolor(void) {{ return 7; }}").unwrap();
+    writeln!(
+        output,
+        "int32_t qb_defaultcolor1(int32_t handle) {{ (void)handle; return 7; }}"
+    )
+    .unwrap();
+    writeln!(output, "int32_t qb_backgroundcolor(void) {{ return 0; }}").unwrap();
+    writeln!(
+        output,
+        "int32_t qb_backgroundcolor1(int32_t handle) {{ (void)handle; return 0; }}"
+    )
+    .unwrap();
+
+    // SCREEN function - reads character/attribute at screen position
+    // SCREEN(row, col) returns ASCII code of character
+    // SCREEN(row, col, 1) returns color attribute
+    writeln!(
+        output,
+        "int32_t qb_screen(int32_t row, int32_t col) {{ (void)row; (void)col; return 32; }}"
+    )
+    .unwrap();
+    writeln!(output, "int32_t qb_screen3(int32_t row, int32_t col, int32_t attr) {{ (void)row; (void)col; (void)attr; return attr ? 7 : 32; }}").unwrap();
+
+    // qb_gfx_screen - SCREEN statement for changing screen modes (4 args)
+    writeln!(output, "void qb_gfx_screen(int32_t mode, int32_t colorSwitch, int32_t activePage, int32_t visiblePage) {{ (void)mode; (void)colorSwitch; (void)activePage; (void)visiblePage; }}").unwrap();
+
+    // qb_gfx_resize - resize control (1 arg)
+    writeln!(output, "void qb_gfx_resize(int32_t flag) {{ (void)flag; }}").unwrap();
+
+    // Palette and resize functions
+    writeln!(output, "void qb_palettecolor(int32_t attr, int32_t col, int32_t handle) {{ (void)attr; (void)col; (void)handle; }}").unwrap();
+    writeln!(output, "int32_t qb_resize(void) {{ return 0; }}").unwrap();
+    writeln!(output, "int32_t qb_resizewidth(void) {{ return 80; }}").unwrap();
+    writeln!(output, "int32_t qb_resizeheight(void) {{ return 25; }}").unwrap();
+
+    // Window management stub
+    writeln!(
+        output,
+        "void qb_sub_set_foreground_window(intptr_t hwnd) {{ (void)hwnd; }}"
+    )
+    .unwrap();
+
+    // qb_string_copy - create a copy of a string
+    writeln!(output, "qb_string* qb_string_copy(qb_string* s) {{").unwrap();
+    writeln!(output, "    if (!s) return qb_string_new(\"\");").unwrap();
+    writeln!(
+        output,
+        "    return qb_string_new(s->data ? s->data : \"\");"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 }
 
@@ -1737,6 +2030,37 @@ fn emit_file_io_functions(output: &mut String) {
     writeln!(output, "static int32_t _qb_file_reclen[QB_MAX_FILES];").unwrap();
     writeln!(output).unwrap();
 
+    // _qb_file_set - internal function to set file handle
+    writeln!(output, "static void _qb_file_set(int32_t fnum, FILE* f) {{").unwrap();
+    writeln!(output, "    if (fnum < 1 || fnum >= QB_MAX_FILES) return;").unwrap();
+    writeln!(output, "    if (_qb_files[fnum]) fclose(_qb_files[fnum]);").unwrap();
+    writeln!(output, "    _qb_files[fnum] = f;").unwrap();
+    writeln!(output, "    _qb_file_reclen[fnum] = 128;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // Helper to normalize path separators on non-Windows systems
+    writeln!(output, "#ifndef _WIN32").unwrap();
+    writeln!(
+        output,
+        "static char* _qb_normalize_path(const char* path) {{"
+    )
+    .unwrap();
+    writeln!(output, "    if (!path) return NULL;").unwrap();
+    writeln!(output, "    size_t len = strlen(path);").unwrap();
+    writeln!(output, "    char* normalized = malloc(len + 1);").unwrap();
+    writeln!(output, "    for (size_t i = 0; i <= len; i++) {{").unwrap();
+    writeln!(
+        output,
+        "        normalized[i] = (path[i] == '\\\\') ? '/' : path[i];"
+    )
+    .unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    return normalized;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output, "#endif").unwrap();
+    writeln!(output).unwrap();
+
     // qb_file_open - Open a file
     writeln!(
         output,
@@ -1745,7 +2069,20 @@ fn emit_file_io_functions(output: &mut String) {
     .unwrap();
     writeln!(output, "    if (fnum < 1 || fnum >= QB_MAX_FILES) return;").unwrap();
     writeln!(output, "    if (_qb_files[fnum]) fclose(_qb_files[fnum]);").unwrap();
+    writeln!(output, "#ifdef _WIN32").unwrap();
     writeln!(output, "    _qb_files[fnum] = fopen(filename, mode);").unwrap();
+    writeln!(output, "#else").unwrap();
+    writeln!(output, "    _qb_files[fnum] = fopen(filename, mode);").unwrap();
+    writeln!(output, "    if (!_qb_files[fnum]) {{").unwrap();
+    writeln!(
+        output,
+        "        char* normalized = _qb_normalize_path(filename);"
+    )
+    .unwrap();
+    writeln!(output, "        _qb_files[fnum] = fopen(normalized, mode);").unwrap();
+    writeln!(output, "        free(normalized);").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "#endif").unwrap();
     writeln!(
         output,
         "    _qb_file_reclen[fnum] = 128; /* default record length */"
@@ -2051,6 +2388,38 @@ fn emit_file_io_functions(output: &mut String) {
     )
     .unwrap();
     writeln!(output, "        fread(data, 1, size, _qb_files[fnum]);").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // qb_file_get_string - Read into a string's data buffer
+    writeln!(
+        output,
+        "void qb_file_get_string(int32_t fnum, qb_string* s) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (fnum < 1 || fnum >= QB_MAX_FILES || !_qb_files[fnum]) return;"
+    )
+    .unwrap();
+    writeln!(output, "    if (!s || !s->data || s->len == 0) return;").unwrap();
+    writeln!(output, "    fread(s->data, 1, s->len, _qb_files[fnum]);").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // qb_file_put_string - Write from a string's data buffer
+    writeln!(
+        output,
+        "void qb_file_put_string(int32_t fnum, qb_string* s) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (fnum < 1 || fnum >= QB_MAX_FILES || !_qb_files[fnum]) return;"
+    )
+    .unwrap();
+    writeln!(output, "    if (!s || !s->data || s->len == 0) return;").unwrap();
+    writeln!(output, "    fwrite(s->data, 1, s->len, _qb_files[fnum]);").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
@@ -2554,7 +2923,7 @@ fn emit_keyboard_functions(output: &mut String) {
     writeln!(output, "static char** _qb_argv = NULL;").unwrap();
     writeln!(
         output,
-        "void qb_init_args(int argc, char** argv) {{ _qb_argc = argc; _qb_argv = argv; }}"
+        "void qb_init_args(int argc, char** argv) {{ _qb_argc = argc; _qb_argv = argv; fprintf(stderr, \"INIT: args\\n\"); }}"
     )
     .unwrap();
     writeln!(output).unwrap();
@@ -2615,14 +2984,26 @@ fn emit_keyboard_functions(output: &mut String) {
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
-    // _OS$ - operating system
+    // _OS$ - operating system (QB64 format: [PLATFORM][BITS])
     writeln!(output, "qb_string* qb_os(void) {{").unwrap();
     writeln!(output, "#ifdef _WIN32").unwrap();
-    writeln!(output, "    return qb_string_new(\"WINDOWS\");").unwrap();
+    writeln!(output, "  #if defined(_WIN64) || defined(__x86_64__)").unwrap();
+    writeln!(output, "    return qb_string_new(\"[WINDOWS][64BIT]\");").unwrap();
+    writeln!(output, "  #else").unwrap();
+    writeln!(output, "    return qb_string_new(\"[WINDOWS][32BIT]\");").unwrap();
+    writeln!(output, "  #endif").unwrap();
     writeln!(output, "#elif defined(__APPLE__)").unwrap();
-    writeln!(output, "    return qb_string_new(\"MACOSX\");").unwrap();
+    writeln!(output, "  #if defined(__x86_64__) || defined(__aarch64__)").unwrap();
+    writeln!(output, "    return qb_string_new(\"[MACOSX][64BIT]\");").unwrap();
+    writeln!(output, "  #else").unwrap();
+    writeln!(output, "    return qb_string_new(\"[MACOSX][32BIT]\");").unwrap();
+    writeln!(output, "  #endif").unwrap();
     writeln!(output, "#else").unwrap();
-    writeln!(output, "    return qb_string_new(\"LINUX\");").unwrap();
+    writeln!(output, "  #if defined(__x86_64__) || defined(__aarch64__)").unwrap();
+    writeln!(output, "    return qb_string_new(\"[LINUX][64BIT]\");").unwrap();
+    writeln!(output, "  #else").unwrap();
+    writeln!(output, "    return qb_string_new(\"[LINUX][32BIT]\");").unwrap();
+    writeln!(output, "  #endif").unwrap();
     writeln!(output, "#endif").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
@@ -3843,6 +4224,112 @@ fn emit_graphics_stubs(output: &mut String) {
         "int32_t qb_gfx_image_height(int32_t h) {{ (void)h; return 0; }}"
     )
     .unwrap();
+    writeln!(output).unwrap();
+
+    // Color creation functions (QB64)
+    // _RGB32 creates 32-bit ARGB color - multiple variants for different arg counts
+    writeln!(output, "uint32_t qb__rgb32(int32_t r, int32_t g, int32_t b) {{ return 0xFF000000u | ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF); }}").unwrap();
+    // 4-arg version: either (r,g,b,a) or (gray,gray,gray,alpha) - same implementation
+    writeln!(output, "uint32_t qb__rgb32_4(int32_t r, int32_t g, int32_t b, int32_t a) {{ return ((a & 0xFF) << 24) | ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF); }}").unwrap();
+    writeln!(output, "uint32_t qb__rgba32(int32_t r, int32_t g, int32_t b, int32_t a) {{ return ((a & 0xFF) << 24) | ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF); }}").unwrap();
+    // _RGB/_RGBA for paletted modes (stub - returns index 0)
+    writeln!(output, "uint32_t qb__rgb(int32_t r, int32_t g, int32_t b, int32_t mode) {{ (void)r; (void)g; (void)b; (void)mode; return 0; }}").unwrap();
+    writeln!(output, "uint32_t qb__rgba(int32_t r, int32_t g, int32_t b, int32_t a, int32_t mode) {{ (void)r; (void)g; (void)b; (void)a; (void)mode; return 0; }}").unwrap();
+    writeln!(output).unwrap();
+
+    // Color component extraction (QB64)
+    // 32-bit mode extraction - works on ARGB format
+    writeln!(
+        output,
+        "int32_t qb_red32(uint32_t c) {{ return (c >> 16) & 0xFF; }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "int32_t qb_green32(uint32_t c) {{ return (c >> 8) & 0xFF; }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "int32_t qb_blue32(uint32_t c) {{ return c & 0xFF; }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "int32_t qb_alpha32(uint32_t c) {{ return (c >> 24) & 0xFF; }}"
+    )
+    .unwrap();
+    // Paletted mode extraction (stub - returns 0)
+    writeln!(
+        output,
+        "int32_t qb_red(uint32_t c, int32_t mode) {{ (void)mode; return (c >> 16) & 0xFF; }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "int32_t qb_green(uint32_t c, int32_t mode) {{ (void)mode; return (c >> 8) & 0xFF; }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "int32_t qb_blue(uint32_t c, int32_t mode) {{ (void)mode; return c & 0xFF; }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "int32_t qb_alpha(uint32_t c, int32_t mode) {{ (void)mode; return (c >> 24) & 0xFF; }}"
+    )
+    .unwrap();
+    writeln!(output).unwrap();
+
+    // Legacy file open (for compatibility)
+    // Signature matches generated code: (fnum, mode_char, filename_char)
+    // mode_char is "I" (input), "O" (output), "A" (append), "B" (binary), "R" (random)
+    writeln!(
+        output,
+        "void qb_file_open_legacy(int32_t fnum, const char* mode_char, const char* fname) {{"
+    )
+    .unwrap();
+    writeln!(output, "    const char* fmode = \"r\";").unwrap();
+    writeln!(output, "    if (mode_char && mode_char[0]) {{").unwrap();
+    writeln!(output, "        switch(mode_char[0]) {{").unwrap();
+    writeln!(
+        output,
+        "            case 'I': case 'i': fmode = \"r\"; break;"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "            case 'O': case 'o': fmode = \"w\"; break;"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "            case 'A': case 'a': fmode = \"a\"; break;"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "            case 'B': case 'b': fmode = \"r+b\"; break;"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "            case 'R': case 'r': fmode = \"r+b\"; break;"
+    )
+    .unwrap();
+    writeln!(output, "        }}").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    FILE* f = fopen(fname, fmode);").unwrap();
+    writeln!(
+        output,
+        "    /* For binary/random mode, create file if it doesn't exist */"
+    )
+    .unwrap();
+    writeln!(output, "    if (!f && mode_char && (mode_char[0] == 'B' || mode_char[0] == 'b' || mode_char[0] == 'R' || mode_char[0] == 'r'))").unwrap();
+    writeln!(output, "        f = fopen(fname, \"w+b\");").unwrap();
+    writeln!(output, "    _qb_file_set(fnum, f);").unwrap();
+    writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
     // VIEW PRINT - text viewport

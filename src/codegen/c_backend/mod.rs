@@ -199,7 +199,7 @@ impl CodeGenerator for CBackend {
                 // "type name = init;" -> parts[1] is name
                 // "type name[N];" -> parts[1] is name
                 // "const type name = init;" -> parts[2] is name
-                // "type (*name)[N]" -> special case for function pointers/arrays
+                // "type (*name)[N]" -> fixed-length string arrays
                 let decl = decl.trim_end_matches(';');
                 let parts: Vec<&str> = decl.split_whitespace().collect();
 
@@ -211,8 +211,22 @@ impl CodeGenerator for CBackend {
                 };
 
                 if parts.len() > name_idx {
+                    let raw_name = parts[name_idx];
+                    // Handle fixed-length string array: "char (*name)[N]"
+                    // Pattern: (*name) or (*name)[N] - extract name from parens
+                    if raw_name.starts_with("(*") {
+                        // Extract name between (* and )
+                        if let Some(end_paren) = raw_name.find(')') {
+                            let name = &raw_name[2..end_paren];
+                            if !name.is_empty() {
+                                return Some(name.to_string());
+                            }
+                        }
+                        return None;
+                    }
+
                     // Get the name part (might have [N] or = suffix)
-                    let name = parts[name_idx].split('[').next()?.split('=').next()?.trim();
+                    let name = raw_name.split('[').next()?.split('=').next()?.trim();
                     if !name.is_empty() && !name.starts_with('(') {
                         return Some(name.to_string());
                     }

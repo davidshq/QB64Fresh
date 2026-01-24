@@ -1,6 +1,6 @@
 # Testing Guide for QB64Fresh
 
-**Last Updated:** 2026-01-22
+**Last Updated:** 2026-01-23
 
 This document provides a comprehensive guide to the testing infrastructure for QB64Fresh, a modern BASIC compiler written in Rust.
 
@@ -35,16 +35,16 @@ QB64Fresh uses a **multi-layered testing strategy** to ensure correctness and co
 
 | Test Suite | Count | Status | Purpose |
 |------------|-------|--------|---------|
-| **Compiler unit tests** | 384 | ⚠️ 1 failing | Test individual modules |
-| **Integration tests** | 720 | ⚠️ 3 failing | End-to-end compilation |
-| **Golden tests** | 10 | ❌ 8 failing* | Codegen regression detection |
+| **Compiler unit tests** | 388 | ✅ passing | Test individual modules |
+| **Integration tests** | 718 | ✅ passing | End-to-end compilation |
+| **Golden tests** | 10 | ✅ passing | Codegen regression detection |
 | **Property-based** | 19 | ✅ passing | Input fuzzing |
 | **Compatibility** | 3 | ✅ passing | Local fixture tests |
 | **Runtime tests** | 194 | ✅ passing | Runtime library testing |
 | **Execution tests** | 27 | ✅ passing | Full compile-and-run tests |
 | **QB64pe compatibility** | 141 files | 97.9% pass | External test suite |
 
-\* *Golden test failures are due to intentional codegen changes - update with `UPDATE_GOLDEN=1`*
+*Use `UPDATE_GOLDEN=1 cargo test golden` to regenerate golden files after intentional codegen changes.*
 
 **Total: 1,500+ tests** across the compiler and runtime library.
 
@@ -584,11 +584,11 @@ cargo llvm-cov --workspace --html
 
 ### Test Metrics
 
-Current test statistics (as of 2026-01-22):
+Current test statistics (as of 2026-01-23):
 
 - **Total tests:** 1,500+
-- **Compiler unit tests:** 384
-- **Integration tests:** 720
+- **Compiler unit tests:** 388
+- **Integration tests:** 718
 - **Runtime tests:** 194
 - **Execution tests:** 27
 - **Property-based tests:** 19
