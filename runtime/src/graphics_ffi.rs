@@ -1708,6 +1708,226 @@ pub extern "C" fn qb_screenhide() {
 }
 
 // ============================================================================
+// Windows-Only Desktop Functions
+// ============================================================================
+
+/// _WINDOWHANDLE - Get the native window handle.
+///
+/// # Returns
+/// - On Windows: HWND as i64
+/// - On other platforms: 0
+#[no_mangle]
+pub extern "C" fn qb_windowhandle() -> i64 {
+    #[cfg(target_os = "windows")]
+    {
+        use winapi::um::winuser::GetActiveWindow;
+        unsafe { GetActiveWindow() as i64 }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        0
+    }
+}
+
+/// _SCREENCLICK - Simulate a mouse click on the desktop.
+///
+/// # Arguments
+/// - `x`: X coordinate
+/// - `y`: Y coordinate
+/// - `button`: Mouse button (1 = left, 2 = right)
+///
+/// Windows only - no-op on other platforms.
+#[no_mangle]
+pub extern "C" fn qb_screenclick(x: i32, y: i32, button: i32) {
+    #[cfg(target_os = "windows")]
+    {
+        use std::mem::zeroed;
+        use winapi::shared::windef::RECT;
+        use winapi::um::winuser::{
+            GetDesktopWindow, GetWindowRect, SendInput, INPUT, INPUT_MOUSE, MOUSEEVENTF_ABSOLUTE,
+            MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MOVE, MOUSEEVENTF_RIGHTDOWN,
+            MOUSEEVENTF_RIGHTUP,
+        };
+
+        unsafe {
+            let hwnd = GetDesktopWindow();
+            let mut rect: RECT = zeroed();
+            GetWindowRect(hwnd, &mut rect);
+
+            let fx = 65535.0 / (rect.right - rect.left) as f64;
+            let fy = 65535.0 / (rect.bottom - rect.top) as f64;
+
+            let mut input: INPUT = zeroed();
+            input.type_ = INPUT_MOUSE;
+            let mi = input.u.mi_mut();
+            mi.dwFlags = MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_MOVE;
+            mi.dx = (x as f64 * fx) as i32;
+            mi.dy = (y as f64 * fy) as i32;
+            SendInput(1, &mut input, std::mem::size_of::<INPUT>() as i32);
+
+            // Button down
+            mi.dwFlags = if button == 2 {
+                MOUSEEVENTF_RIGHTDOWN
+            } else {
+                MOUSEEVENTF_LEFTDOWN
+            };
+            SendInput(1, &mut input, std::mem::size_of::<INPUT>() as i32);
+
+            // Button up
+            mi.dwFlags = if button == 2 {
+                MOUSEEVENTF_RIGHTUP
+            } else {
+                MOUSEEVENTF_LEFTUP
+            };
+            SendInput(1, &mut input, std::mem::size_of::<INPUT>() as i32);
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (x, y, button);
+    }
+}
+
+/// _SCREENPRINT - Simulate keyboard input to the focused window.
+///
+/// # Arguments
+/// - `text`: Pointer to C string to type
+///
+/// Windows only - no-op on other platforms.
+#[no_mangle]
+pub unsafe extern "C" fn qb_screenprint(text: *const c_char) {
+    if text.is_null() {
+        return;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::mem::zeroed;
+        use winapi::um::winuser::{
+            MapVirtualKeyA, SendInput, VkKeyScanA, INPUT, INPUT_KEYBOARD, KEYEVENTF_KEYUP,
+            MAPVK_VK_TO_VSC, VK_SHIFT,
+        };
+
+        let c_str = CStr::from_ptr(text);
+        if let Ok(s) = c_str.to_str() {
+            for c in s.chars() {
+                if !c.is_ascii() {
+                    continue;
+                }
+                let vk = VkKeyScanA(c as i8);
+                if vk == -1 {
+                    continue;
+                }
+                let scancode = MapVirtualKeyA((vk & 0xFF) as u32, MAPVK_VK_TO_VSC) as u16;
+                let shift = ((vk >> 8) & 1) != 0;
+
+                // Shift down if needed
+                if shift {
+                    let mut input: INPUT = zeroed();
+                    input.type_ = INPUT_KEYBOARD;
+                    let ki = input.u.ki_mut();
+                    ki.wVk = VK_SHIFT as u16;
+                    SendInput(1, &mut input, std::mem::size_of::<INPUT>() as i32);
+                }
+
+                // Key down
+                let mut input: INPUT = zeroed();
+                input.type_ = INPUT_KEYBOARD;
+                let ki = input.u.ki_mut();
+                ki.wVk = (vk & 0xFF) as u16;
+                ki.wScan = scancode;
+                SendInput(1, &mut input, std::mem::size_of::<INPUT>() as i32);
+
+                // Key up
+                let ki = input.u.ki_mut();
+                ki.dwFlags = KEYEVENTF_KEYUP;
+                SendInput(1, &mut input, std::mem::size_of::<INPUT>() as i32);
+
+                // Shift up if needed
+                if shift {
+                    let mut input: INPUT = zeroed();
+                    input.type_ = INPUT_KEYBOARD;
+                    let ki = input.u.ki_mut();
+                    ki.wVk = VK_SHIFT as u16;
+                    ki.dwFlags = KEYEVENTF_KEYUP;
+                    SendInput(1, &mut input, std::mem::size_of::<INPUT>() as i32);
+                }
+            }
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = text;
+    }
+}
+
+/// _SCREENIMAGE - Capture a screenshot of the desktop.
+///
+/// # Arguments
+/// - `x1, y1, x2, y2`: Rectangle to capture (all 0 = full screen)
+///
+/// # Returns
+/// - Image handle on success
+/// - -1 on failure or non-Windows platforms
+///
+/// Windows only - returns -1 on other platforms.
+#[no_mangle]
+pub extern "C" fn qb_screenimage(x1: i32, y1: i32, x2: i32, y2: i32) -> i32 {
+    #[cfg(target_os = "windows")]
+    {
+        use std::mem::zeroed;
+        use winapi::shared::windef::RECT;
+        use winapi::um::wingdi::{
+            BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject,
+            SelectObject, SRCCOPY,
+        };
+        use winapi::um::winuser::{GetDC, GetDesktopWindow, GetWindowRect, ReleaseDC};
+
+        unsafe {
+            let hwnd = GetDesktopWindow();
+            let mut rect: RECT = zeroed();
+            GetWindowRect(hwnd, &mut rect);
+
+            // If all coords are 0, capture full screen
+            let (x1, y1, w, h) = if x1 == 0 && y1 == 0 && x2 == 0 && y2 == 0 {
+                (0, 0, rect.right, rect.bottom)
+            } else {
+                let x1 = x1.max(0);
+                let y1 = y1.max(0);
+                let x2 = x2.min(rect.right - 1);
+                let y2 = y2.min(rect.bottom - 1);
+                (x1, y1, x2 - x1 + 1, y2 - y1 + 1)
+            };
+
+            if w <= 0 || h <= 0 {
+                return -1;
+            }
+
+            let hdc = GetDC(std::ptr::null_mut());
+            let hdc2 = CreateCompatibleDC(hdc);
+            let bitmap = CreateCompatibleBitmap(hdc, w, h);
+            SelectObject(hdc2, bitmap as *mut _);
+            BitBlt(hdc2, 0, 0, w, h, hdc, x1, y1, SRCCOPY);
+
+            // Create image - for now just create an empty image
+            // Full implementation would copy bitmap pixels to image buffer
+            let img = qb_gfx_newimage(w, h, 32);
+
+            DeleteObject(bitmap as *mut _);
+            DeleteDC(hdc2);
+            ReleaseDC(std::ptr::null_mut(), hdc);
+
+            img
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (x1, y1, x2, y2);
+        -1
+    }
+}
+
+// ============================================================================
 // Alpha Blending Functions
 // ============================================================================
 

@@ -149,6 +149,9 @@ impl<'a> Parser<'a> {
             TokenKind::SndLen => self.parse_builtin_function("_SNDLEN"),
             TokenKind::SndPaused => self.parse_builtin_function("_SNDPAUSED"),
 
+            // QB64 Windows-only desktop functions
+            TokenKind::ScreenImage => self.parse_builtin_function("_SCREENIMAGE"),
+
             // QB64 Procedure pointer (for callbacks)
             TokenKind::ProcPtr => self.parse_procptr(),
 

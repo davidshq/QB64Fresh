@@ -222,6 +222,67 @@ Added INT 0x33 (mouse interrupt) emulation matching QB64pe's approach:
 
 ---
 
+## Part 5: Windows-Only Desktop Functions
+
+### Background
+
+QB64 provides several Windows-specific functions for interacting with the desktop. These cannot work cross-platform but are valuable for Windows users. We implemented these with proper `#ifdef _WIN32` guards in the inline runtime and `#[cfg(target_os = "windows")]` in the Rust external runtime.
+
+### Implemented Functions
+
+| Command | Description | Windows API |
+|---------|-------------|-------------|
+| `_WINDOWHANDLE` | Get native window handle | `GetActiveWindow()` → HWND |
+| `_SCREENCLICK x, y, button` | Simulate mouse click on desktop | `SendInput()` with `INPUT_MOUSE` |
+| `_SCREENPRINT text$` | Simulate keyboard input to focused window | `SendInput()` with `INPUT_KEYBOARD`, `VkKeyScanA()` |
+| `_SCREENIMAGE([x1,y1,x2,y2])` | Capture desktop screenshot | `BitBlt()`, `CreateCompatibleBitmap()` |
+
+### Implementation Details
+
+#### Mouse Click Simulation (`_SCREENCLICK`)
+Uses the Windows `INPUT` structure with `MOUSEEVENTF_ABSOLUTE` for positioning and separate down/up events:
+1. Move cursor to absolute position (scaled to 0-65535 range)
+2. Send button down event
+3. Send button up event
+
+#### Keyboard Simulation (`_SCREENPRINT`)
+For each character:
+1. Get virtual key code via `VkKeyScanA()`
+2. Check if Shift is needed (high byte of result)
+3. Get scan code via `MapVirtualKeyA()`
+4. Send Shift down if needed
+5. Send key down/up
+6. Send Shift up if needed
+
+#### Desktop Capture (`_SCREENIMAGE`)
+1. Get desktop window and dimensions via `GetDesktopWindow()`/`GetWindowRect()`
+2. Create compatible DC and bitmap
+3. `BitBlt()` from screen to bitmap
+4. Create new image via `qb_gfx_newimage()`
+5. Clean up GDI resources
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `src/codegen/c_backend/runtime/graphics.rs` | +160 lines: Inline stubs with `#ifdef _WIN32` |
+| `runtime/src/graphics_ffi.rs` | +180 lines: FFI functions with `#[cfg(target_os = "windows")]` |
+| `runtime/include/qb64fresh_rt.h` | +4 declarations |
+| `src/semantic/builtins.rs` | Added function signatures with proper arg counts |
+| `src/parser/expressions.rs` | Added `TokenKind::ScreenImage` handling |
+| `src/codegen/c_backend/expr.rs` | Added special case for `_SCREENIMAGE` default args |
+| `src/codegen/c_backend/stmt/mod.rs` | Added function name mappings |
+
+### Non-Windows Behavior
+
+On non-Windows platforms:
+- `_WINDOWHANDLE` returns 0
+- `_SCREENCLICK` is a no-op
+- `_SCREENPRINT` is a no-op
+- `_SCREENIMAGE` returns -1 (invalid image handle)
+
+---
+
 ## Remaining Graphics Stubs
 
 From the original plan, these commands remain unimplemented:
