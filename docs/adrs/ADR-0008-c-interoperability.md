@@ -276,26 +276,100 @@ For SHELL, file operations, path handling, and the no-sandbox execution model, s
 
 | Component | Status |
 |-----------|--------|
-| Parser (DECLARE LIBRARY) | Complete |
-| AST representation | Complete |
-| Semantic analysis | Complete |
-| Symbol table integration | Complete |
-| C code generation | Complete |
-| Static library support | Complete |
-| Dynamic library support | Complete |
-| ALIAS support | Complete |
-| BYVAL/BYREF | Complete |
-| _OFFSET type | Partial |
+| Parser (DECLARE LIBRARY) | ✅ Complete |
+| AST representation | ✅ Complete |
+| Semantic analysis | ✅ Complete |
+| Symbol table integration | ✅ Complete |
+| C code generation | ✅ Complete |
+| Static library support | ✅ Complete |
+| Dynamic library support | ✅ Complete |
+| ALIAS support | ✅ Complete |
+| BYVAL/BYREF | ✅ Complete |
+| _OFFSET type | ✅ Complete |
+| **Memory Functions** | |
+| VARPTR(variable) | ✅ Complete |
+| VARPTR$(variable) | ✅ Complete |
+| VARSEG(variable) | ✅ Complete |
+| SADD(string$) | ✅ Complete |
+| **_MEM Support** | |
+| _MEM type in parameters | ✅ Complete |
+| _MEM(variable) function | ✅ Complete |
+| _MEMGET AS type clause | ✅ Complete |
+| _MEMPUT AS type clause | ✅ Complete |
+| **Callback Functions** | |
+| _PROCPTR(procedureName) | ✅ Complete |
+| FUNCTION callback signatures | ✅ Complete |
+| SUB callback signatures | ✅ Complete |
 | **Header Parsing** | |
-| Function declarations | Complete |
-| `#define` constants | Complete |
-| `#ifdef`/`#ifndef`/`#endif` | Complete |
-| `#if`/`#elif`/`#else` | Complete |
-| `defined()` expressions | Complete |
-| struct definitions | Complete |
-| typedef struct | Complete |
-| Array members | Complete |
-| Platform detection | Complete |
+| Function declarations | ✅ Complete |
+| `#define` constants | ✅ Complete |
+| `#ifdef`/`#ifndef`/`#endif` | ✅ Complete |
+| `#if`/`#elif`/`#else` | ✅ Complete |
+| `defined()` expressions | ✅ Complete |
+| struct definitions | ✅ Complete |
+| typedef struct | ✅ Complete |
+| Array members | ✅ Complete |
+| Platform detection | ✅ Complete |
+
+### Memory Address Functions
+
+```basic
+' VARPTR - Get address of variable as LONG
+DIM x AS INTEGER
+addr& = VARPTR(x)
+
+' VARPTR$ - Get address as binary string (4 bytes)
+DIM y AS LONG
+addrStr$ = VARPTR$(y)
+
+' VARSEG - Returns 0 (flat memory model, no segmentation)
+seg% = VARSEG(x)  ' Always 0
+
+' SADD - Get address of string data
+DIM s AS STRING
+s = "Hello"
+strAddr& = SADD(s)
+```
+
+### _MEM Type Support
+
+```basic
+' _MEM as parameter type in DECLARE LIBRARY
+DECLARE LIBRARY
+    SUB process_memory (BYVAL mem AS _MEM)
+END DECLARE
+
+' _MEM(variable) - Get _MEM block for variable's memory
+DIM arr(100) AS INTEGER
+DIM m AS _MEM
+m = _MEM(arr())
+
+' _MEMGET/_MEMPUT with AS type clause
+DIM mem AS _MEM
+x = _MEMGET(mem, offset, AS INTEGER)
+_MEMPUT mem, offset, value AS DOUBLE
+```
+
+### Callback Functions (_PROCPTR)
+
+```basic
+' Define callback procedure
+SUB MyCallback (BYVAL x AS LONG)
+    PRINT "Callback received:"; x
+END SUB
+
+' Get procedure pointer for C library
+DECLARE LIBRARY "somelib"
+    SUB register_callback (BYVAL cb AS _OFFSET)
+END DECLARE
+
+register_callback(_PROCPTR(MyCallback))
+```
+
+The compiler generates proper C function signatures:
+- FUNCTION callbacks return the appropriate C type
+- SUB callbacks return `void`
+- BYVAL/BYREF parameters are handled correctly in the wrapper
 
 ### Example Usage
 

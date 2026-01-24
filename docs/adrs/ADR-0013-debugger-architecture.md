@@ -56,14 +56,24 @@ Key considerations:
 - **DAP** enables any DAP-capable editor (VS Code, Cursor, etc.) to support breakpoints, step, watches, and stack without a custom IDE.
 - **Alternative (TCP/custom):** Would require a custom VS Code extension and reimplementation for other editors. DAP is the standard.
 
-### Infrastructure vs. Runtime Integration
+### Runtime Integration (Complete)
 
-The `tools/debug` library and `qb64fresh-debug` CLI provide:
+The debugger is now fully implemented with:
 
-- **Done:** Symbol extraction from AST, DAP types, frames/values/sources/watch data structures, CLI scaffolding
-- **Pending:** Debug info in generated C (line mappings, variable locations), runtime hooks to pause on breakpoints, and a protocol between the debugger and the running process to read memory and control execution (e.g., spawn/handle the debugee, implement `launch`/`attach`).
+**Compiler Support (`--debug` flag):**
+- `qb_dbg_line()` calls emitted before each executable statement
+- `qb_dbg_enter_proc()`/`qb_dbg_exit_proc()` for call stack tracking
+- Named pipe IPC initialization for debugger communication
 
-This “infrastructure first” approach allows the debugger’s data model and DAP surface to be designed and tested before committing to a specific runtime integration (e.g., GDB-style, custom agent, or instrumentation in generated C).
+**Debug Protocol (`tools/debug/src/protocol.rs`):**
+- `DebugCommand` enum: Continue, StepInto, StepOver, StepOut, Pause, Terminate, breakpoint management
+- `DebugEvent` enum: Ready, Stopped, Terminated, variable values, location updates
+- Text-based serialization for pipe communication
+
+**DAP Server (`tools/debug/src/server.rs`):**
+- Full Debug Adapter Protocol implementation for VS Code/Cursor
+- Handles: initialize, launch, setBreakpoints, threads, stackTrace, scopes, variables, continue, step*, pause, evaluate, disconnect
+- Named pipe communication with debugee process
 
 ## Consequences
 
@@ -84,19 +94,22 @@ This “infrastructure first” approach allows the debugger’s data model and 
 
 | Component           | Status |
 |--------------------|--------|
-| `tools/debug` lib  | Complete |
-| Symbol extraction  | Complete |
-| Frames, values     | Complete |
-| DAP types          | Complete |
-| Sources, watch     | Complete |
-| CLI (`qb64fresh-debug`) | Scaffolding |
-| Debug info in C output | Not started |
-| Runtime hooks      | Not started |
-| Launch/attach flow | Not started |
+| `tools/debug` lib  | ✅ Complete |
+| Symbol extraction  | ✅ Complete |
+| Frames, values     | ✅ Complete |
+| DAP types          | ✅ Complete |
+| Sources, watch     | ✅ Complete |
+| CLI (`qb64fresh-debug`) | ✅ Complete |
+| Debug info in C output | ✅ Complete |
+| Runtime hooks      | ✅ Complete |
+| Debug protocol     | ✅ Complete |
+| DAP server         | ✅ Complete |
+| Launch flow        | ✅ Complete |
+
+**Tests:** 50 tests passing in the debugger crate.
 
 ## References
 
 - [DEBUGGING.md](../DEBUGGING.md) – QB64pe vwatch and protocol
-- [FUTURE.md](../ThingsToDo/FUTURE.md) – Debugger runtime integration (High Priority)
-- [CODEBASE_REVIEW_CONSOLIDATED.md](../ThingsToDo/CODEBASE_REVIEW_CONSOLIDATED.md) – Debugger subsection
+- [tools/README.md](../../tools/README.md) – Debugger tool documentation
 - [Debug Adapter Protocol](https://microsoft.github.io/debug-adapter-protocol/) – DAP specification

@@ -503,6 +503,8 @@ The following BASIC graphics statements are fully supported:
 
 ### Screen Management
 - `SCREEN` - Set screen mode and page configuration
+- `SCREEN mode, , active_page, visual_page` - Set drawing and display pages for double buffering
+- `PCOPY source, dest` - Copy page contents between screen pages
 - `WIDTH` - Set text mode dimensions
 - `CLS` - Clear screen
 - `COLOR` - Set foreground/background colors
@@ -510,6 +512,7 @@ The following BASIC graphics statements are fully supported:
 - `VIEW` - Set viewport for graphics
 - `WINDOW` - Set world coordinate system
 - `PALETTE` - Set palette entries
+- `_COPYPALETTE` - Copy palette between images
 
 ### Window Control (QB64 Extensions)
 - `_FULLSCREEN` - Set/get fullscreen mode (0=windowed, 1=fullscreen, 2=desktop)
@@ -525,6 +528,12 @@ The following BASIC graphics statements are fully supported:
 - `PAINT` / `PAINT STEP` - Flood fill
 - `DRAW` - Turtle graphics commands
 
+### 3D Graphics (QB64 Extensions)
+- `_MAPTRIANGLE` - Software texture mapping rasterizer for 3D graphics
+  - Maps texture coordinates from source image to destination triangle
+  - Supports perspective-correct interpolation
+  - Used for 3D rendering without OpenGL
+
 ### Image Buffers (QB64 Extensions)
 - `_NEWIMAGE` - Create new image buffer
 - `_LOADIMAGE` - Load image from file
@@ -532,6 +541,7 @@ The following BASIC graphics statements are fully supported:
 - `_FREEIMAGE` - Release image buffer
 - `_SOURCE` / `_DEST` - Set source/destination buffer
 - `_AUTODISPLAY` - Enable/disable auto-display
+- `_DISPLAYORDER` - Control rendering layer order (hardware, software, text layers)
 
 ### Alpha Blending (QB64 Extensions)
 - `_BLEND` - Enable alpha blending for image (uses alpha channel during `_PUTIMAGE`)
@@ -556,9 +566,19 @@ The following BASIC graphics statements are fully supported:
 
 ### Fonts
 - `_LOADFONT` - Load TrueType font
+- `_LOADFONT(path$, size, "UNICODE")` - Load TrueType font with Unicode support
 - `_FONT` - Set current font
+- `_FREEFONT` - Release font resources
 - `_FONTHEIGHT`, `_FONTWIDTH` - Get font dimensions
 - `_PRINTWIDTH` - Get text width in pixels
+
+### Unicode Text Rendering (QB64 Extensions)
+- `_UPRINTSTRING(x, y, text$)` - Render Unicode text at position
+- `_UPRINTWIDTH(text$)` - Get Unicode text width in pixels
+- `_UFONTHEIGHT` - Get Unicode font height
+- `_ULINESPACING` - Get Unicode line spacing
+- `_UCHARPOS(text$, pos)` - Get character X position within string
+- `_MAPUNICODE` - CP437 to Unicode mapping table (256 codepoints)
 
 ---
 

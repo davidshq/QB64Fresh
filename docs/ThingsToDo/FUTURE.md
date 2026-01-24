@@ -8,101 +8,17 @@ This document outlines features that are planned but not yet implemented, along 
 
 ---
 
-## Recently Completed Features
+## Feature Documentation
 
-### Debugger Runtime Integration ✓
+Completed features are documented in their respective locations:
 
-Full source-level debugging support with IDE integration:
-
-**Runtime Debug Hooks:**
-- `--debug` compiler flag emits debug hooks in generated C code
-- `qb_dbg_line()` called before each executable statement
-- `qb_dbg_enter_proc()`/`qb_dbg_exit_proc()` for call tracking
-- Named pipe IPC for debugger↔debugee communication
-
-**Debug Protocol:**
-- `DebugCommand` enum for debugger commands (continue, step, breakpoints)
-- `DebugEvent` enum for debugee events (stopped, terminated)
-- Serialization for pipe-based communication
-
-**DAP Server (`tools/debug/`):**
-- Full Debug Adapter Protocol implementation for VS Code/Cursor
-- Breakpoint management (set, clear, enable, disable)
-- Step execution (into, over, out)
-- Stack trace and variable inspection
-- 50 tests passing
-
-### Unicode Font Rendering ✓
-
-FreeType-based TrueType/OpenType font support:
-- `_LOADFONT(path$, size, "UNICODE")` - Load TrueType fonts
-- `_FREEFONT(handle)` - Release font resources
-- `_UPRINTSTRING(x, y, text$)` - Render Unicode text
-- `_UPRINTWIDTH(text$)` - Get text width in pixels
-- `_UFONTHEIGHT` - Get font height
-- `_ULINESPACING` - Get line spacing
-- `_UCHARPOS(text$, pos)` - Get character X position
-- `_MAPUNICODE` - CP437 to Unicode mapping table (256 codepoints)
-
-### Screen Pages & Double Buffering ✓
-
-Full support for SCREEN page parameters:
-- `SCREEN mode, , active_page, visual_page` - Set drawing and display pages
-- `PCOPY source, dest` - Copy page contents
-- 4 screen pages available for double/triple buffering
-- Classic QB45 double-buffering patterns work correctly
-
-### DECLARE LIBRARY ✓
-
-Full QB64PE parity achieved:
-
-1. **`_MEMGET`/`_MEMPUT` AS type** – Optional `AS type` clause:
-   - `x = _MEMGET(mem, offset, AS INTEGER)`
-   - `_MEMPUT mem, offset, value AS DOUBLE`
-
-2. **`_MEM` type in parameters** – `_MEM` as parameter type in DECLARE LIBRARY
-
-3. **`_MEM(variable)` function** – Returns `_MEM` block for variable's memory
-
-4. **Header Parsing** – `DECLARE LIBRARY "file.h"` parses C prototypes:
-   - `#define` constants
-   - `#ifdef`/`#ifndef` conditionals
-   - Struct definitions (requires `header-parsing` feature)
-
-5. **Callback Functions** – `_PROCPTR(procedureName)` with correct signatures:
-   - FUNCTION callbacks return proper C type
-   - SUB callbacks return void
-   - BYVAL/BYREF parameters handled correctly
-
-6. **VARPTR/VARSEG/SADD** – Memory address functions:
-   - `VARPTR(variable)` - address as LONG
-   - `VARPTR$(variable)` - binary string of address
-   - `VARSEG(variable)` - returns 0 (flat memory model)
-   - `SADD(string$)` - address of string data
-
-### Graphics Features ✓
-
-- **`_MAPTRIANGLE`** - Software texture mapping rasterizer for 3D
-- **`_COPYPALETTE`** - Copy palette between images
-- **`_DISPLAYORDER`** - Control rendering layer order
-
-### Platform Features ✓
-
-**Conditional Compilation Constants:**
-
-| Constant | Description |
-|----------|-------------|
-| `_WINDOWS` / `_WIN` | True (-1) on Windows |
-| `_LINUX` | True (-1) on Linux |
-| `_MACOSX` / `_MAC` | True (-1) on macOS |
-| `_64BIT` | True (-1) on 64-bit platforms |
-| `_32BIT` | True (-1) on 32-bit platforms |
-
-**Windows-Only Functions:** Desktop manipulation functions (Windows builds only)
-
-**Legacy DOS Emulation:**
-- `INTERRUPT`/`INTERRUPTX` - INT 0x33 mouse emulation
-- Runtime warnings for unsupported legacy DOS functions
+| Feature Area | Documentation |
+|--------------|---------------|
+| **Debugger** | [ADR-0013](../adrs/ADR-0013-debugger-architecture.md), [tools/README.md](../../tools/README.md) |
+| **Graphics** | [GRAPHICS.md](../GRAPHICS.md) |
+| **C Interop (DECLARE LIBRARY)** | [ADR-0008](../adrs/ADR-0008-c-interoperability.md) |
+| **Language Reference** | [QB64Fresh_LANGUAGE_REFERENCE.md](../QB64Fresh_LANGUAGE_REFERENCE.md) |
+| **Audio System** | [ADR-0007](../adrs/ADR-0007-audio-system.md) |
 
 ---
 
