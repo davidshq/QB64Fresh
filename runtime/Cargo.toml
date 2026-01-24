@@ -27,11 +27,19 @@ rodio = { version = "0.21", optional = true }
 # For native file dialogs (_OPENFILEDIALOG$, _SAVEFILEDIALOG$, etc.)
 rfd = { version = "0.17", optional = true }
 
+# For FreeType-based font rendering (_LOADFONT, Unicode support)
+freetype-rs = { version = "0.35", optional = true }
+
+# For global lazy initialization (FontManager singleton)
+lazy_static = { version = "1.5", optional = true }
+
 [features]
 default = ["graphics-sdl2", "audio-rodio", "dialogs"]
 graphics-sdl2 = ["sdl2", "image"]
 graphics-sdl2-ttf = ["sdl2/ttf"]  # Requires SDL2_ttf library
+graphics-sdl2-freetype = ["graphics-sdl2", "freetype"]  # FreeType-based font rendering
 graphics-mock = []  # For testing without display
+freetype = ["freetype-rs", "lazy_static"]  # FreeType font library support
 audio-rodio = ["rodio"]
 audio-mock = []  # For testing without audio
 dialogs = ["rfd"]  # Native file dialogs

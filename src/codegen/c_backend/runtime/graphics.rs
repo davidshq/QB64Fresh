@@ -605,6 +605,112 @@ pub(super) fn emit_graphics_stubs(output: &mut String) {
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
+    // Unicode font functions
+    // In inline mode, these provide basic functionality using the built-in font.
+    // For full Unicode/FreeType support, use --runtime external.
+    writeln!(output, "/* Unicode Font Functions */").unwrap();
+    writeln!(
+        output,
+        "/* For full Unicode rendering, use --runtime external with FreeType */"
+    )
+    .unwrap();
+    writeln!(output).unwrap();
+
+    // Font loading option flags
+    writeln!(
+        output,
+        "#define QB_FONT_DONTBLEND   8   /* No anti-aliasing */"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "#define QB_FONT_MONOSPACE   16  /* Force monospace */"
+    )
+    .unwrap();
+    writeln!(output, "#define QB_FONT_UNICODE     32  /* UTF-8 mode */").unwrap();
+    writeln!(
+        output,
+        "#define QB_FONT_AUTOMONO    64  /* Auto-detect mono */"
+    )
+    .unwrap();
+    writeln!(output).unwrap();
+
+    // _UPRINTSTRING - print Unicode text at pixel position
+    // Falls back to regular print (ASCII subset only in inline mode)
+    writeln!(
+        output,
+        "void qb_uprintstring(int64_t x, int64_t y, qb_string* text) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    if (text == NULL || text->data == NULL) return;"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    /* Inline mode: render using built-in 8x8 font (ASCII only) */"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    qb_gfx_printstring((int32_t)x, (int32_t)y, text->data);"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _UPRINTWIDTH - returns pixel width of Unicode text
+    writeln!(output, "int64_t qb_uprintwidth(qb_string* text) {{").unwrap();
+    writeln!(
+        output,
+        "    /* In inline mode, use byte-based width (8 pixels/char) */"
+    )
+    .unwrap();
+    writeln!(output, "    return qb_printwidth(text);").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _UCHARPOS - returns x position of character at index
+    writeln!(
+        output,
+        "int64_t qb_ucharpos(qb_string* text, int64_t pos) {{"
+    )
+    .unwrap();
+    writeln!(output, "    (void)text;").unwrap();
+    writeln!(
+        output,
+        "    /* In inline mode, assume 8 pixels per character */"
+    )
+    .unwrap();
+    writeln!(output, "    if (pos < 1) return -1;").unwrap();
+    writeln!(output, "    return (pos - 1) * qb_fontwidth();").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _UFONTHEIGHT - returns Unicode font height
+    writeln!(output, "int64_t qb_ufontheight(int64_t handle) {{").unwrap();
+    writeln!(output, "    (void)handle;").unwrap();
+    writeln!(
+        output,
+        "    /* Returns current font height (16 for built-in font) */"
+    )
+    .unwrap();
+    writeln!(output, "    return qb_fontheight();").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // _ULINESPACING - returns Unicode line spacing
+    writeln!(output, "int64_t qb_ulinespacing(void) {{").unwrap();
+    writeln!(
+        output,
+        "    /* Returns current font height as line spacing */"
+    )
+    .unwrap();
+    writeln!(output, "    return qb_fontheight();").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
     // Desktop/Window functions
     writeln!(output, "/* Desktop/Window Functions */").unwrap();
     writeln!(output, "#ifdef _WIN32").unwrap();

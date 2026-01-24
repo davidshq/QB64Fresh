@@ -37,11 +37,11 @@ This document outlines features that are planned but not yet implemented, along 
 ## Known Limitations
 
 ### Unicode Support
-- [ ] **Unicode support** *(Large)*
+- [x] **Unicode support** *(Stub-level parity achieved)*
       Currently ASCII-focused. Full Unicode would require significant changes to string handling.
-      **Partial:** UTF-8 in source and string literals; **`_MAPUNICODE`** (statement and function) is fully implemented with CP437 default table and customizable ASCII→Unicode mapping; inline C runtime has `qb_utf8_char_count`/`qb_utf8_char_to_byte`/`qb_strlen_chars` (unused by BASIC built-ins); UCASE$/LCASE$ preserve multi-byte UTF-8.
+      **Implemented:** UTF-8 in source and string literals; **`_MAPUNICODE`** (statement and function) is fully implemented with CP437 default table and customizable ASCII→Unicode mapping; inline C runtime has `qb_utf8_char_count`/`qb_utf8_char_to_byte`/`qb_strlen_chars` (unused by BASIC built-ins); UCASE$/LCASE$ preserve multi-byte UTF-8.
       LEN, LEFT$, RIGHT$, MID$, INSTR, CHR$, ASC, and compares remain byte-based.
-      **QB64pe parity gap:** QB64pe implements `_UPRINTSTRING`, `_UPRINTWIDTH`, `_UCHARPOS`, `_UFONTHEIGHT`, `_ULINESPACING` in its font layer (FreeType). QB64Fresh parses and emits `qb_*` calls for all five, but the inline runtime **does not define** those symbols—programs using them would fail at link. To achieve stub-level parity, add definitions for `qb_uprintstring`, `qb_uprintwidth`, `qb_ucharpos`, `qb_ufontheight`, `qb_ulinespacing` (e.g. no-op/safe defaults).
+      **QB64pe parity:** `_UPRINTSTRING`, `_UPRINTWIDTH`, `_UCHARPOS`, `_UFONTHEIGHT`, `_ULINESPACING` are implemented as stubs (no-op or safe defaults). Full Unicode rendering would require FreeType integration.
 
 ---
 
