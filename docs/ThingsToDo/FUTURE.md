@@ -29,11 +29,33 @@ This document outlines features that are planned but not yet implemented, along 
    - `_MEMPUT mem, offset, value AS DOUBLE` - writes typed value to memory
    - Generates efficient C pointer dereferences without runtime overhead
 
+2. **`_MEM` type in parameters** ✓ – `_MEM` can be used as parameter type in DECLARE LIBRARY declarations.
+
+3. **`_MEM(variable)` function** ✓ – Returns a `_MEM` block for the specified variable's memory.
+
+4. **Header Parsing** ✓ – `DECLARE LIBRARY "file.h"` automatically parses C function prototypes from header files (requires `header-parsing` feature).
+
 ### Remaining Limitations
 
 1. **Callback Functions** – Callback signatures other than qsort-style (`int (*)(const void*, const void*)` via `_PROCPTR`) are not supported. Workaround: implement callback wrapper in C and link.
 
-3. **VARPTR/cmem Integration** – VARPTR and conventional memory segment access are not implemented. Workaround: use `_OFFSET` with C helper functions for C interop.
+2. **VARPTR/cmem Integration** – VARPTR and conventional memory segment access are not implemented. Workaround: use `_OFFSET` with C helper functions for C interop.
+
+---
+
+## Platform Constants
+
+### Implemented Features
+
+The following platform detection constants are available for `$IF` conditional compilation:
+
+| Constant | Description |
+|----------|-------------|
+| `_WINDOWS` / `_WIN` | True (-1) on Windows |
+| `_LINUX` | True (-1) on Linux |
+| `_MACOSX` / `_MAC` | True (-1) on macOS |
+| `_64BIT` | True (-1) on 64-bit platforms |
+| `_32BIT` | True (-1) on 32-bit platforms |
 
 ---
 
