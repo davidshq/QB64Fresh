@@ -12,30 +12,16 @@ For the complete function reference (including all implemented functions), see [
 
 | Status | Count | Description |
 |--------|-------|-------------|
-| ⚠️ Graphics stubs | 3 | _MAPTRIANGLE, _COPYPALETTE, _DISPLAYORDER |
 | ⚠️ Legacy stubs | ~4 | ERDEV, device error functions, event handlers |
 | ❌ Compile errors | 4 | FRE, SETMEM, IOCTL$, FILEATTR (match QB64pe) |
 | ❌ Obsolete hardware | ~5 | Light pen, some joystick events |
-| **Total Remaining** | **~16** | Out of 419 registered functions |
+| **Total Remaining** | **~13** | Out of 419 registered functions |
 
-**Note:** All audio functions were implemented in session 040 (2026-01-24).
-
-
----
-
-## Graphics Functions - Not Yet Implemented
-
-These graphics functions are parsed but not yet implemented in the SDL2 backend.
-
-| Function | Fresh Status | QB64pe Status | Notes |
-|----------|--------------|---------------|-------|
-| `_MAPTRIANGLE` | ❌ Stub | ✅ Full | 3D textured triangle; needs SDL_RenderGeometry or custom rasterizer |
-| `_COPYPALETTE` | ❌ Stub | ✅ Full | Copy palette between images |
-| `_DISPLAYORDER` | ❌ Stub | ✅ Full | Set hardware/software layer rendering order |
-
-**Priority:** Low - `_MAPTRIANGLE` is the most complex (requires triangle rasterization with texture mapping). `_COPYPALETTE` and `_DISPLAYORDER` are less commonly used.
-
-**Note:** Alpha blending (`_BLEND`, `_DONTBLEND`, `_CLEARCOLOR`) was implemented in session 040 (2026-01-24).
+**Recent completions:**
+- All audio functions (session 040)
+- Alpha blending (`_BLEND`, `_DONTBLEND`, `_CLEARCOLOR`)
+- Graphics: `_MAPTRIANGLE`, `_COPYPALETTE`, `_DISPLAYORDER`
+- Debugger runtime integration (session 041)
 
 ---
 
@@ -81,7 +67,7 @@ These functions exist for QB4.5 compatibility but are stubs or have minimal impl
 
 These functions are **not implemented for security or obsolescence reasons** in QB64Fresh, though QB64pe implements some of them.
 
-### Port I/O - VGA Palette Emulation (COMPLETED)
+### Port I/O - VGA Palette Emulation ✅
 
 | Function | Fresh Status | QB64pe Status | Notes |
 |----------|--------------|---------------|-------|
@@ -124,8 +110,6 @@ Other interrupts are no-ops (safe defaults).
 | `ON STRIG` | ⛔ Stub | ⚠️ Ignored | QB64pe parses but ignores for compatibility |
 | `STRIG ON/OFF/STOP` | ⛔ Stub | ⚠️ Ignored | QB64pe parses but ignores |
 
-**Priority:** Low - Consider implementing INP/OUT for VGA palette compatibility if needed.
-
 ---
 
 ## Potential Future Work
@@ -156,13 +140,12 @@ Other interrupts are no-ops (safe defaults).
 
 | Category | Count | Percentage |
 |----------|-------|------------|
-| ✅ Fully Implemented | ~406 | 97% |
-| ⚠️ Graphics Stubs | 3 | 1% |
+| ✅ Fully Implemented | ~409 | 97.6% |
 | ⚠️ Legacy Stubs | ~4 | 1% |
 | ❌ Compile Errors (match QB64pe) | 4 | 1% |
-| ❌ Obsolete | ~5 | 1% |
+| ❌ Obsolete | ~5 | 1.2% |
 
 The vast majority of QB64 programs will work without issues. The remaining issues are:
-- Graphics: `_MAPTRIANGLE`, `_COPYPALETTE`, `_DISPLAYORDER` (low priority)
 - Obsolete legacy functions throw compile errors (FRE, SETMEM, IOCTL$, FILEATTR) - matches QB64pe
 - Obsolete hardware (light pen) - QB64pe also doesn't implement
+- Event handlers (ON COM, ON UEVENT, etc.) - QB64pe also doesn't implement
