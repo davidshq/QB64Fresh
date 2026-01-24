@@ -238,6 +238,10 @@ fn collect_used_variables_in_expr(expr: &Expr, used: &mut HashSet<String>) {
         | ExprKind::ValWithType { value, .. } => {
             collect_used_variables_in_expr(value, used);
         }
+        ExprKind::MemGetTyped { mem, offset, .. } => {
+            collect_used_variables_in_expr(mem, used);
+            collect_used_variables_in_expr(offset, used);
+        }
         // Literals don't contain variable references
         ExprKind::IntegerLiteral(_)
         | ExprKind::FloatLiteral(_)

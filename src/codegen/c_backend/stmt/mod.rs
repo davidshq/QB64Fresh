@@ -79,6 +79,10 @@ pub(super) struct StmtEmitter {
     pub strig_event_counter: u32,
     /// Registered STRIG event handlers: (event_id, target_label).
     pub strig_handlers: Vec<(u32, String)>,
+    /// Debug mode enabled (emit qb_dbg_line calls).
+    pub debug_enabled: bool,
+    /// Source file name for debug tracking.
+    pub debug_source_file: Option<String>,
 }
 
 impl StmtEmitter {
@@ -94,6 +98,8 @@ impl StmtEmitter {
             global_var_names: std::collections::HashSet::new(),
             strig_event_counter: 0,
             strig_handlers: Vec::new(),
+            debug_enabled: false,
+            debug_source_file: None,
         }
     }
 
@@ -120,6 +126,60 @@ impl StmtEmitter {
         "    ".repeat(self.indent)
     }
 
+    /// Determines if a statement is executable (should have debug hooks).
+    ///
+    /// Non-executable statements include:
+    /// - Labels (just markers, no code)
+    /// - DATA statements (compile-time data)
+    /// - DIM/REDIM declarations (compile-time structure)
+    /// - SUB/FUNCTION definitions (handled separately)
+    /// - External declarations
+    fn is_executable_statement(kind: &TypedStatementKind) -> bool {
+        !matches!(
+            kind,
+            TypedStatementKind::Label { .. }
+                | TypedStatementKind::Data { .. }
+                | TypedStatementKind::SubDefinition { .. }
+                | TypedStatementKind::FunctionDefinition { .. }
+                | TypedStatementKind::DeclareLibrary { .. }
+        )
+    }
+
+    /// Emits a debug line hook if debug mode is enabled.
+    ///
+    /// This calls `qb_dbg_line(line, file)` before executing the actual statement,
+    /// allowing the debugger to check breakpoints and step mode.
+    fn emit_debug_line(&self, stmt: &TypedStatement, output: &mut String) {
+        if !self.debug_enabled {
+            return;
+        }
+
+        // Extract line number from span
+        // The span contains byte offsets; we need to get the source file name
+        let line = stmt.span.start; // This is actually byte offset, but we'll use it for now
+        let file = self
+            .debug_source_file
+            .as_deref()
+            .unwrap_or("_qb_dbg_source_file");
+
+        let indent = self.indent_str();
+
+        // For now, use byte offset as line (the runtime can compute actual line number)
+        // TODO: Store actual line numbers during parsing
+        writeln!(
+            output,
+            "{}qb_dbg_line({}, {});",
+            indent,
+            line,
+            if file == "_qb_dbg_source_file" {
+                file.to_string()
+            } else {
+                format!("\"{}\"", file.replace('\\', "\\\\").replace('"', "\\\""))
+            }
+        )
+        .unwrap();
+    }
+
     /// Emits a statement.
     pub fn emit_stmt(
         &mut self,
@@ -127,6 +187,12 @@ impl StmtEmitter {
         output: &mut String,
     ) -> Result<(), CodeGenError> {
         let indent = self.indent_str();
+
+        // Emit debug line hook for executable statements
+        // (skip labels, data, declarations that don't execute)
+        if self.debug_enabled && Self::is_executable_statement(&stmt.kind) {
+            self.emit_debug_line(stmt, output);
+        }
 
         match &stmt.kind {
             TypedStatementKind::Assignment {

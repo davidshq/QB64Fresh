@@ -69,7 +69,7 @@ use crate::semantic::typed_ir::{TypedProgram, TypedStatement, TypedStatementKind
 
 use self::analysis::{collect_callback_wrappers, collect_data_values, collect_type_definitions};
 use self::implicit_vars::collect_implicit_locals;
-use self::runtime::emit_header;
+use self::runtime::emit_header_with_debug;
 use self::stmt::{StmtEmitter, emit_params};
 
 /// Runtime mode for code generation.
@@ -98,6 +98,10 @@ pub enum RuntimeMode {
 pub struct CBackend {
     /// Runtime mode.
     runtime_mode: RuntimeMode,
+    /// Enable debug hooks for breakpoints, stepping, etc.
+    debug_enabled: bool,
+    /// Source file name (for debug tracking).
+    source_file: Option<String>,
 }
 
 impl Default for CBackend {
@@ -111,12 +115,35 @@ impl CBackend {
     pub fn new() -> Self {
         Self {
             runtime_mode: RuntimeMode::Inline,
+            debug_enabled: false,
+            source_file: None,
         }
     }
 
     /// Creates a new C backend with the specified runtime mode.
     pub fn with_runtime_mode(runtime_mode: RuntimeMode) -> Self {
-        Self { runtime_mode }
+        Self {
+            runtime_mode,
+            debug_enabled: false,
+            source_file: None,
+        }
+    }
+
+    /// Enables debug mode for breakpoints, stepping, and debugger integration.
+    ///
+    /// When enabled, the generated code includes:
+    /// - `qb_dbg_line()` calls before each statement
+    /// - `qb_dbg_enter_proc()`/`qb_dbg_exit_proc()` for SUB/FUNCTION tracking
+    /// - Debug IPC for communication with the debugger
+    pub fn with_debug(mut self, enabled: bool) -> Self {
+        self.debug_enabled = enabled;
+        self
+    }
+
+    /// Sets the source file name for debug tracking.
+    pub fn with_source_file(mut self, source_file: &str) -> Self {
+        self.source_file = Some(source_file.to_string());
+        self
     }
 
     /// Emits a callback wrapper function for _PROCPTR.
@@ -182,10 +209,17 @@ impl CBackend {
 impl CodeGenerator for CBackend {
     fn generate(&self, program: &TypedProgram) -> Result<GeneratedOutput, CodeGenError> {
         let mut emitter = StmtEmitter::new();
+        emitter.debug_enabled = self.debug_enabled;
+        emitter.debug_source_file = self.source_file.clone();
         let mut output = String::new();
 
-        // Header
-        emit_header(&mut output, self.runtime_mode);
+        // Header (with optional debug support)
+        emit_header_with_debug(
+            &mut output,
+            self.runtime_mode,
+            self.debug_enabled,
+            self.source_file.as_deref(),
+        );
 
         // TYPE definitions (must come before global variables that use those types)
         let type_defs = collect_type_definitions(program);
@@ -330,6 +364,20 @@ impl CodeGenerator for CBackend {
         writeln!(output, "    static uint32_t _qb_strig_event_id = 0;").unwrap();
         writeln!(output).unwrap();
 
+        // Debug initialization (if debug mode enabled)
+        if self.debug_enabled {
+            writeln!(output, "    /* Initialize debugger connection */").unwrap();
+            writeln!(
+                output,
+                "    const char* _qb_dbg_pipe_env = getenv(\"QB64FRESH_DEBUG_PIPE\");"
+            )
+            .unwrap();
+            writeln!(output, "    if (_qb_dbg_pipe_env) {{").unwrap();
+            writeln!(output, "        qb_dbg_init(_qb_dbg_pipe_env);").unwrap();
+            writeln!(output, "    }}").unwrap();
+            writeln!(output).unwrap();
+        }
+
         // Initialize string constants (can't be done at global scope in C)
         if !string_const_inits.is_empty() {
             writeln!(output, "    /* Initialize string constants */").unwrap();
@@ -406,6 +454,10 @@ impl CodeGenerator for CBackend {
         writeln!(output, "_qb_strig_dispatch_end:").unwrap();
 
         writeln!(output).unwrap();
+        // Debug shutdown before exit
+        if self.debug_enabled {
+            writeln!(output, "    qb_dbg_shutdown();").unwrap();
+        }
         writeln!(output, "    return 0;").unwrap();
         writeln!(output, "}}").unwrap();
 

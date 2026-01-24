@@ -8,7 +8,7 @@ This document outlines features that are planned but not yet implemented, along 
 
 ---
 
-## Tooling & Ecosystem
+## Pending Work
 
 ### Debugger (`tools/debug/`) ⚠️ Infrastructure Complete
 
@@ -20,44 +20,65 @@ This document outlines features that are planned but not yet implemented, along 
 
 ---
 
-## DECLARE LIBRARY
+## Recently Completed Features
 
-### Implemented Features
+### Unicode Font Rendering ✓
 
-1. **`_MEMGET`/`_MEMPUT` AS type** ✓ – Optional `AS type` clause is fully supported:
-   - `x = _MEMGET(mem, offset, AS INTEGER)` - reads typed value from memory
-   - `_MEMPUT mem, offset, value AS DOUBLE` - writes typed value to memory
-   - Generates efficient C pointer dereferences without runtime overhead
+FreeType-based TrueType/OpenType font support:
+- `_LOADFONT(path$, size, "UNICODE")` - Load TrueType fonts
+- `_FREEFONT(handle)` - Release font resources
+- `_UPRINTSTRING(x, y, text$)` - Render Unicode text
+- `_UPRINTWIDTH(text$)` - Get text width in pixels
+- `_UFONTHEIGHT` - Get font height
+- `_ULINESPACING` - Get line spacing
+- `_UCHARPOS(text$, pos)` - Get character X position
+- `_MAPUNICODE` - CP437 to Unicode mapping table (256 codepoints)
 
-2. **`_MEM` type in parameters** ✓ – `_MEM` can be used as parameter type in DECLARE LIBRARY.
+### Screen Pages & Double Buffering ✓
 
-3. **`_MEM(variable)` function** ✓ – Returns a `_MEM` block for the specified variable's memory.
+Full support for SCREEN page parameters:
+- `SCREEN mode, , active_page, visual_page` - Set drawing and display pages
+- `PCOPY source, dest` - Copy page contents
+- 4 screen pages available for double/triple buffering
+- Classic QB45 double-buffering patterns work correctly
 
-4. **Header Parsing** ✓ – `DECLARE LIBRARY "file.h"` parses C prototypes (requires `header-parsing` feature).
+### DECLARE LIBRARY ✓
 
-5. **Callback Functions** ✓ – `_PROCPTR(procedureName)` generates wrappers with correct signatures:
-   - FUNCTION callbacks return the proper C type
+Full QB64PE parity achieved:
+
+1. **`_MEMGET`/`_MEMPUT` AS type** – Optional `AS type` clause:
+   - `x = _MEMGET(mem, offset, AS INTEGER)`
+   - `_MEMPUT mem, offset, value AS DOUBLE`
+
+2. **`_MEM` type in parameters** – `_MEM` as parameter type in DECLARE LIBRARY
+
+3. **`_MEM(variable)` function** – Returns `_MEM` block for variable's memory
+
+4. **Header Parsing** – `DECLARE LIBRARY "file.h"` parses C prototypes:
+   - `#define` constants
+   - `#ifdef`/`#ifndef` conditionals
+   - Struct definitions (requires `header-parsing` feature)
+
+5. **Callback Functions** – `_PROCPTR(procedureName)` with correct signatures:
+   - FUNCTION callbacks return proper C type
    - SUB callbacks return void
    - BYVAL/BYREF parameters handled correctly
-   - Works with any parameter types (INTEGER, LONG, DOUBLE, etc.)
 
-6. **VARPTR/VARSEG/SADD** ✓ – Memory address functions fully implemented:
-   - `VARPTR(variable)` - returns address of variable as LONG
-   - `VARPTR$(variable)` - returns binary string of address
+6. **VARPTR/VARSEG/SADD** – Memory address functions:
+   - `VARPTR(variable)` - address as LONG
+   - `VARPTR$(variable)` - binary string of address
    - `VARSEG(variable)` - returns 0 (flat memory model)
-   - `SADD(string$)` - returns address of string data
+   - `SADD(string$)` - address of string data
 
-### Remaining Limitations
+### Graphics Features ✓
 
-None - full QB64PE parity achieved for DECLARE LIBRARY features.
+- **`_MAPTRIANGLE`** - Software texture mapping rasterizer for 3D
+- **`_COPYPALETTE`** - Copy palette between images
+- **`_DISPLAYORDER`** - Control rendering layer order
 
----
+### Platform Features ✓
 
-## Platform Constants
-
-### Implemented Features
-
-The following platform detection constants are available for `$IF` conditional compilation:
+**Conditional Compilation Constants:**
 
 | Constant | Description |
 |----------|-------------|
@@ -66,6 +87,12 @@ The following platform detection constants are available for `$IF` conditional c
 | `_MACOSX` / `_MAC` | True (-1) on macOS |
 | `_64BIT` | True (-1) on 64-bit platforms |
 | `_32BIT` | True (-1) on 32-bit platforms |
+
+**Windows-Only Functions:** Desktop manipulation functions (Windows builds only)
+
+**Legacy DOS Emulation:**
+- `INTERRUPT`/`INTERRUPTX` - INT 0x33 mouse emulation
+- Runtime warnings for unsupported legacy DOS functions
 
 ---
 

@@ -467,14 +467,19 @@ fn print_help() {
     println!();
 }
 
-fn run_dap_mode(port: u16) -> ExitCode {
-    println!("Starting DAP server on port {}...", port);
-    println!("(DAP mode not yet implemented)");
+fn run_dap_mode(_port: u16) -> ExitCode {
+    // Note: The port is ignored for now; we use stdio mode for DAP
+    // which is the standard way VS Code connects to debug adapters.
+    eprintln!("Starting DAP server in stdio mode...");
 
-    // TODO: Implement Debug Adapter Protocol server
-    // This will allow IDE integration (VS Code, etc.)
-
-    ExitCode::SUCCESS
+    let mut server = qb64fresh_debug::DapServer::new();
+    match server.run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("DAP server error: {}", e);
+            ExitCode::FAILURE
+        }
+    }
 }
 
 fn list_commands() -> ExitCode {

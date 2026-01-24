@@ -67,6 +67,8 @@ pub enum DebugType {
     Integer64,
     Float,
     Offset,
+    /// _MEM memory block descriptor.
+    Mem,
     Unsigned(Box<DebugType>),
     /// User-defined type.
     UserDefined(String),
@@ -94,6 +96,7 @@ impl DebugType {
             TypeSpec::Integer64 => DebugType::Integer64,
             TypeSpec::Float => DebugType::Float,
             TypeSpec::Offset => DebugType::Offset,
+            TypeSpec::Mem => DebugType::Mem,
             TypeSpec::Unsigned(inner) => {
                 DebugType::Unsigned(Box::new(DebugType::from_type_spec(inner)))
             }
@@ -115,6 +118,7 @@ impl DebugType {
             DebugType::Integer64 => "_INTEGER64".to_string(),
             DebugType::Float => "_FLOAT".to_string(),
             DebugType::Offset => "_OFFSET".to_string(),
+            DebugType::Mem => "_MEM".to_string(),
             DebugType::Unsigned(inner) => format!("_UNSIGNED {}", inner.display_name()),
             DebugType::UserDefined(name) => name.clone(),
             DebugType::Array {
