@@ -118,6 +118,65 @@ impl CBackend {
     pub fn with_runtime_mode(runtime_mode: RuntimeMode) -> Self {
         Self { runtime_mode }
     }
+
+    /// Emits a callback wrapper function for _PROCPTR.
+    ///
+    /// Generates a C function with the signature matching the BASIC procedure
+    /// that can be passed to C library functions expecting callbacks.
+    fn emit_callback_wrapper(&self, output: &mut String, wrapper: &analysis::CallbackWrapperInfo) {
+        use std::fmt::Write;
+        use types::c_type;
+
+        // Determine return type
+        let return_type_str = match &wrapper.return_type {
+            Some(bt) => c_type(bt),
+            None => "void".to_string(),
+        };
+
+        // Build parameter list for wrapper signature
+        let mut wrapper_params = Vec::new();
+        let mut call_args = Vec::new();
+
+        for (i, param) in wrapper.params.iter().enumerate() {
+            let param_name = format!("p{}", i);
+            let c_ty = c_type(&param.basic_type);
+
+            if param.by_val {
+                // BYVAL: pass value directly
+                wrapper_params.push(format!("{} {}", c_ty, param_name));
+                call_args.push(param_name);
+            } else {
+                // BYREF: pass pointer, BASIC function expects pointer
+                wrapper_params.push(format!("{}* {}", c_ty, param_name));
+                call_args.push(param_name);
+            }
+        }
+
+        let params_str = if wrapper_params.is_empty() {
+            "void".to_string()
+        } else {
+            wrapper_params.join(", ")
+        };
+
+        let args_str = call_args.join(", ");
+
+        // Emit wrapper function
+        writeln!(
+            output,
+            "static {} {}({}) {{",
+            return_type_str, wrapper.wrapper_name, params_str
+        )
+        .unwrap();
+
+        if wrapper.return_type.is_some() {
+            writeln!(output, "    return {}({});", wrapper.c_func_name, args_str).unwrap();
+        } else {
+            writeln!(output, "    {}({});", wrapper.c_func_name, args_str).unwrap();
+        }
+
+        writeln!(output, "}}").unwrap();
+        writeln!(output).unwrap();
+    }
 }
 
 impl CodeGenerator for CBackend {
@@ -254,23 +313,8 @@ impl CodeGenerator for CBackend {
         if !callback_wrappers.is_empty() {
             writeln!(output, "/* Callback Wrappers for _PROCPTR */").unwrap();
             for wrapper in &callback_wrappers {
-                // Generate a simple thunk wrapper that calls the BASIC function
-                // For now, we generate a generic int(const void*, const void*) signature
-                // which is compatible with qsort and similar C library functions
-                writeln!(
-                    output,
-                    "static int {}(const void* a, const void* b) {{",
-                    wrapper.wrapper_name
-                )
-                .unwrap();
-                writeln!(
-                    output,
-                    "    return {}((int32_t*)a, (int32_t*)b);",
-                    wrapper.c_func_name
-                )
-                .unwrap();
-                writeln!(output, "}}").unwrap();
-                writeln!(output).unwrap();
+                // Generate a wrapper function with the actual procedure signature
+                self.emit_callback_wrapper(&mut output, wrapper);
             }
         }
 

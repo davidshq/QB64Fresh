@@ -157,6 +157,55 @@ pub(super) fn emit_expr(expr: &TypedExpr) -> Result<String, CodeGenError> {
                 }
             }
 
+            // Special case: VARPTR - returns address of variable as integer
+            // Must pass &variable, not the value
+            if upper_name == "VARPTR" && args.len() == 1 {
+                let arg = &args[0];
+                // Check if this is an addressable lvalue
+                let is_lvalue = matches!(
+                    arg.kind,
+                    TypedExprKind::Variable { .. }
+                        | TypedExprKind::ArrayAccess { .. }
+                        | TypedExprKind::FieldAccess { .. }
+                );
+                if is_lvalue {
+                    let arg_code = emit_expr(arg)?;
+                    return Ok(format!("((int32_t)(intptr_t)&({}))", arg_code));
+                } else {
+                    // Non-lvalue - can't take address, return 0
+                    return Ok("0".to_string());
+                }
+            }
+
+            // Special case: VARPTR$ - returns binary string of variable's address
+            if upper_name == "VARPTR$" && args.len() == 1 {
+                let arg = &args[0];
+                let is_lvalue = matches!(
+                    arg.kind,
+                    TypedExprKind::Variable { .. }
+                        | TypedExprKind::ArrayAccess { .. }
+                        | TypedExprKind::FieldAccess { .. }
+                );
+                if is_lvalue {
+                    let arg_code = emit_expr(arg)?;
+                    return Ok(format!("qb_varptr_str(&({}))", arg_code));
+                } else {
+                    return Ok("qb_string_new(\"\")".to_string());
+                }
+            }
+
+            // Special case: VARSEG - returns segment (always 0 in flat memory model)
+            if upper_name == "VARSEG" && args.len() == 1 {
+                // In modern flat memory model, segment is meaningless - return 0
+                return Ok("0".to_string());
+            }
+
+            // Special case: SADD - returns address of string data
+            if upper_name == "SADD" && args.len() == 1 {
+                let arg_code = emit_expr(&args[0])?;
+                return Ok(format!("((int32_t)(intptr_t)({}).data)", arg_code));
+            }
+
             // Special case: _MESSAGEBOX with different argument counts
             if upper_name == "_MESSAGEBOX" {
                 let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();

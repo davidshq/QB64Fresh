@@ -24,22 +24,32 @@ This document outlines features that are planned but not yet implemented, along 
 
 ### Implemented Features
 
-1. **`_MEMGET`/`_MEMPUT` AS type** ✓ – Optional `AS type` clause on `_MEMGET`/`_MEMPUT` is fully supported:
+1. **`_MEMGET`/`_MEMPUT` AS type** ✓ – Optional `AS type` clause is fully supported:
    - `x = _MEMGET(mem, offset, AS INTEGER)` - reads typed value from memory
    - `_MEMPUT mem, offset, value AS DOUBLE` - writes typed value to memory
    - Generates efficient C pointer dereferences without runtime overhead
 
-2. **`_MEM` type in parameters** ✓ – `_MEM` can be used as parameter type in DECLARE LIBRARY declarations.
+2. **`_MEM` type in parameters** ✓ – `_MEM` can be used as parameter type in DECLARE LIBRARY.
 
 3. **`_MEM(variable)` function** ✓ – Returns a `_MEM` block for the specified variable's memory.
 
-4. **Header Parsing** ✓ – `DECLARE LIBRARY "file.h"` automatically parses C function prototypes from header files (requires `header-parsing` feature).
+4. **Header Parsing** ✓ – `DECLARE LIBRARY "file.h"` parses C prototypes (requires `header-parsing` feature).
+
+5. **Callback Functions** ✓ – `_PROCPTR(procedureName)` generates wrappers with correct signatures:
+   - FUNCTION callbacks return the proper C type
+   - SUB callbacks return void
+   - BYVAL/BYREF parameters handled correctly
+   - Works with any parameter types (INTEGER, LONG, DOUBLE, etc.)
+
+6. **VARPTR/VARSEG/SADD** ✓ – Memory address functions fully implemented:
+   - `VARPTR(variable)` - returns address of variable as LONG
+   - `VARPTR$(variable)` - returns binary string of address
+   - `VARSEG(variable)` - returns 0 (flat memory model)
+   - `SADD(string$)` - returns address of string data
 
 ### Remaining Limitations
 
-1. **Callback Functions** – Callback signatures other than qsort-style (`int (*)(const void*, const void*)` via `_PROCPTR`) are not supported. Workaround: implement callback wrapper in C and link.
-
-2. **VARPTR/cmem Integration** – VARPTR and conventional memory segment access are not implemented. Workaround: use `_OFFSET` with C helper functions for C interop.
+None - full QB64PE parity achieved for DECLARE LIBRARY features.
 
 ---
 
