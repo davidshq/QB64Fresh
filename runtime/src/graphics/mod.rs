@@ -769,6 +769,54 @@ pub trait GraphicsBackend {
     fn set_display_order(&mut self, _layer1: i32, _layer2: i32, _layer3: i32, _layer4: i32) {
         // Default: no-op
     }
+
+    // ========================================================================
+    // Triangle Mapping (_MAPTRIANGLE)
+    // ========================================================================
+
+    /// Map a triangular portion of a source image onto a destination triangle.
+    ///
+    /// This is the core of QB64's 2D/3D texture mapping capability.
+    /// Uses barycentric coordinate interpolation to map texels from the
+    /// source triangle to the destination triangle.
+    ///
+    /// # Arguments
+    /// - `sx1, sy1, sx2, sy2, sx3, sy3`: Source triangle coordinates (texture space)
+    /// - `dx1, dy1, dx2, dy2, dx3, dy3`: Destination triangle coordinates (screen space)
+    /// - `src_handle`: Source image handle (0 = screen)
+    /// - `dest_handle`: Destination image handle (0 = screen)
+    /// - `smooth`: Enable bilinear filtering for smoother rendering
+    /// - `seamless`: Skip rightmost/bottommost pixels to avoid seams
+    ///
+    /// # Algorithm
+    ///
+    /// For each pixel in the destination triangle:
+    /// 1. Calculate barycentric coordinates (u, v, w)
+    /// 2. Use these to interpolate source coordinates
+    /// 3. Sample source image at interpolated position
+    /// 4. Write pixel to destination
+    #[allow(clippy::too_many_arguments)]
+    fn map_triangle(
+        &mut self,
+        _sx1: f32,
+        _sy1: f32,
+        _sx2: f32,
+        _sy2: f32,
+        _sx3: f32,
+        _sy3: f32,
+        _dx1: f32,
+        _dy1: f32,
+        _dx2: f32,
+        _dy2: f32,
+        _dx3: f32,
+        _dy3: f32,
+        _src_handle: i32,
+        _dest_handle: i32,
+        _smooth: bool,
+        _seamless: bool,
+    ) {
+        // Default: no-op
+    }
 }
 
 /// Global graphics backend instance.

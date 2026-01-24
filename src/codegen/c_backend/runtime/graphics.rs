@@ -1044,4 +1044,44 @@ pub(super) fn emit_graphics_stubs(output: &mut String) {
     writeln!(output, "    return qb_string_new(\"\");").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
+
+    // _MAPTRIANGLE - Triangle texture mapping (stub for inline runtime)
+    writeln!(output, "/* Triangle Mapping */").unwrap();
+    writeln!(output, "void qb_maptriangle(double sx1, double sy1, double sx2, double sy2, double sx3, double sy3,").unwrap();
+    writeln!(output, "                    double dx1, double dy1, double dx2, double dy2, double dx3, double dy3) {{").unwrap();
+    writeln!(output, "    _qb_gfx_warn();").unwrap();
+    writeln!(
+        output,
+        "    (void)sx1; (void)sy1; (void)sx2; (void)sy2; (void)sx3; (void)sy3;"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    (void)dx1; (void)dy1; (void)dx2; (void)dy2; (void)dx3; (void)dy3;"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "void qb_maptriangle_ex(double sx1, double sy1, double sx2, double sy2, double sx3, double sy3,").unwrap();
+    writeln!(output, "                       double dx1, double dy1, double dx2, double dy2, double dx3, double dy3,").unwrap();
+    writeln!(output, "                       int32_t src_handle, int32_t dest_handle, int32_t smooth, int32_t seamless) {{").unwrap();
+    writeln!(output, "    _qb_gfx_warn();").unwrap();
+    writeln!(
+        output,
+        "    (void)sx1; (void)sy1; (void)sx2; (void)sy2; (void)sx3; (void)sy3;"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    (void)dx1; (void)dy1; (void)dx2; (void)dy2; (void)dx3; (void)dy3;"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    (void)src_handle; (void)dest_handle; (void)smooth; (void)seamless;"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
 }
