@@ -1,12 +1,23 @@
 # QB64Fresh Language Reference
 
-**Version:** 1.0  
-**Last Updated:** 2026-01-23
+**Version:** 0.1.0  
+**Last Updated:** 2026-01-24
 
 This document provides a comprehensive reference for all statements and functions available in QB64Fresh. QB64Fresh is a modern BASIC compiler that maintains compatibility with QB4.5 and QB64 while providing a clean, well-documented implementation.
 
+## Scope and Implementation Status
+
+QB64Fresh supports **QB4.5 compatibility** and a **curated set of QB64 extensions**. The reference documents the full QB64/QB4.5 language; implementation status may vary.
+
+- **Excluded:** Raw OpenGL (`_GL*` commands) are intentionally excluded. QB64Fresh uses SDL2/winit for graphics. Use `DECLARE LIBRARY` to call OpenGL directly if needed.
+- **Stub-only (compile, limited/no runtime):** `INP`, `OUT`, `WAIT`, `INTERRUPT`/`INTERRUPTX`, `PEN`, `IOCTL`/`IOCTL$`, `ERDEV`/`ERDEV$`, `ON COM`, `ON UEVENT`, `ON SIGNAL`—accepted for porting but behavior is no-op or undefined.
+- **Authoritative source:** For the exact set of built-in functions and procedure signatures, see `src/semantic/builtins.rs`. For parser coverage, see `src/ast/stmt.rs` and the parser modules.
+
+See [ADR-0014: Scope and Intentionally Excluded Features](adrs/ADR-0014-scope-and-excluded-features.md) and [FUTURE.md](ThingsToDo/FUTURE.md) for rationale and details.
+
 ## Table of Contents
 
+0. [Scope and Implementation Status](#scope-and-implementation-status)
 1. [Statements](#statements)
    - [I/O Statements](#io-statements)
    - [Control Flow](#control-flow)
@@ -39,12 +50,12 @@ This document provides a comprehensive reference for all statements and function
 
 ### I/O Statements
 
-#### `PRINT [expression [{;|,} expression]...]`
-Prints values to the console. Use `;` for no spacing, `,` for tab spacing. Trailing `;` suppresses newline.
+#### `PRINT [expression [{;|,} expression]...]` or `? [expression ...]`
+Prints values to the console. Use `;` for no spacing, `,` for tab spacing. Trailing `;` suppresses newline. `?` is shorthand for `PRINT`.
 
 ```basic
 PRINT "Hello, World!"
-PRINT x; y; z
+? x; y; z
 PRINT "Name: "; name$; ", Age: "; age%
 ```
 
@@ -415,6 +426,13 @@ Left/right align string in field buffer.
 ```basic
 LSET name$ = "John"
 RSET age$ = "25"
+```
+
+#### `_WRITEFILE path$, content$` (QB64)
+Write a string to a file. Overwrites if the file exists.
+
+```basic
+_WRITEFILE "output.txt", data$
 ```
 
 ---
@@ -1605,6 +1623,12 @@ DECLARE DYNAMIC LIBRARY "mydll"
 END DECLARE
 ```
 
+#### `DECLARE STATIC LIBRARY "name" ... END DECLARE`
+Declare external C functions from a static library (linked at compile time). Syntax otherwise matches `DECLARE LIBRARY`.
+
+#### `_PROCPTR(procedureName)` (QB64) — Callbacks
+Returns a procedure pointer for use as a C callback (e.g. `qsort`). Supported signatures: BASIC function with two `LONG` or `INTEGER` parameters, returning `INTEGER` or `LONG`, matching `int (*)(const void*, const void*)`. For other callback shapes, implement in C and link. See [ADR-0008](adrs/ADR-0008-c-interoperability.md).
+
 ---
 
 ## Functions
@@ -2092,6 +2116,14 @@ Copy image.
 
 ```basic
 copy& = _COPYIMAGE(img&, 32)
+```
+
+#### `_SCREENIMAGE[(x1, y1, x2, y2)]` (QB64)
+Capture screen (or region) to an image. With no arguments, captures the full screen. With four coordinates, captures the given rectangle.
+
+```basic
+img& = _SCREENIMAGE
+img& = _SCREENIMAGE(0, 0, 639, 479)
 ```
 
 #### `_WIDTH[(imageHandle&)]` / `_HEIGHT[(imageHandle&)]` (QB64)
@@ -3315,20 +3347,35 @@ pos% = LPOS(0)
 
 ## Constants
 
-QB64Fresh provides several built-in constants:
+QB64Fresh provides built-in constants in several categories.
 
 ### Math Constants
-- `_PI` - π (pi), approximately 3.141592653589793
+- `_PI` — π (pi), approximately 3.141592653589793
+
+### Boolean and Handle Constants
+- `_TRUE` — -1 (all bits set, BASIC convention for true)
+- `_FALSE` — 0
+- `_NONE` — 0 (null/none for handles, modes)
 
 ### Platform Constants (for `$IF` directives)
-- `WIN` - Defined on Windows
-- `LINUX` - Defined on Linux
-- `MAC` - Defined on macOS
-- `MACOSX` - Alias for MAC
+- `_WINDOWS` — -1 on Windows, 0 otherwise
+- `_LINUX` — -1 on Linux, 0 otherwise
+- `_MACOSX` — -1 on macOS, 0 otherwise  
+  Legacy names `WIN`, `LINUX`, `MAC` may also be used in some directives.
 
-### Boolean Constants
-- `-1` - TRUE (QB4.5/QB64 convention)
-- `0` - FALSE
+### Error Code Constants (`_ERR_*`)
+QB45-compatible error codes, e.g.: `_ERR_SYNTAX_ERROR`, `_ERR_RETURN_WITHOUT_GOSUB`, `_ERR_ILLEGAL_FUNCTION_CALL`, `_ERR_DIVISION_BY_ZERO`, `_ERR_SUBSCRIPT_OUT_OF_RANGE`, `_ERR_FILE_NOT_FOUND`, `_ERR_OUT_OF_MEMORY`, and many others. See `src/semantic/builtins.rs` for the full list.
+
+### Keyboard Scan Code Constants (`_KEY_*`)
+- Function keys: `_KEY_F1` … `_KEY_F12`
+- Navigation: `_KEY_HOME`, `_KEY_END`, `_KEY_PAGEUP`, `_KEY_PAGEDOWN`, `_KEY_INSERT`, `_KEY_DELETE`
+- Arrows: `_KEY_UP`, `_KEY_DOWN`, `_KEY_LEFT`, `_KEY_RIGHT`
+- Modifiers: `_KEY_LSHIFT`, `_KEY_RSHIFT`, `_KEY_LCTRL`, `_KEY_RCTRL`, `_KEY_LALT`, `_KEY_RALT`, `_KEY_CAPSLOCK`, `_KEY_NUMLOCK`, `_KEY_SCROLLLOCK`
+- Others: `_KEY_PRINT`, `_KEY_PAUSE`
+
+### Character Constants (ASCII control codes)
+- `_NUL`, `_SOH`, `_STX`, … `_US` (0–31), `_DEL` (127)
+- Common: `_TAB`/`_HT` (9), `_LF` (10), `_CR` (13), `_ESC` (27)
 
 ---
 
@@ -3358,9 +3405,9 @@ QB64Fresh supports type suffixes for variable names:
 
 5. **String Functions**: String functions ending with `$` return strings. Functions without `$` return numeric values.
 
-6. **QB64 Extensions**: Functions and statements prefixed with `_` are QB64 extensions and may not be available in standard QB4.5.
+6. **QB64 Extensions**: Functions and statements prefixed with `_` are QB64 extensions and may not be available in standard QB4.5. `_GL*` (OpenGL) is excluded in QB64Fresh; see Scope and Implementation Status above.
 
-7. **Legacy Features**: Some features (PEEK/POKE, hardware I/O) are provided for compatibility but may be sandboxed or have limited functionality on modern systems.
+7. **Legacy and Stub-Only Features**: PEEK/POKE, DEF SEG, and hardware I/O (`INP`, `OUT`, `WAIT`) are provided for porting; runtime behavior may be no-op or emulated. Event handlers such as `ON COM`, `ON UEVENT`, `ON SIGNAL` are stub-only. See ADR-0014.
 
 ---
 
@@ -3369,7 +3416,8 @@ QB64Fresh supports type suffixes for variable names:
 - [Architecture Documentation](ARCHITECTURE.md)
 - [Development Guide](DEVELOPMENT.md)
 - [Testing Guide](TESTING.md)
-- [Migration Guide](MIGRATION_GUIDE.md)
+- [QB64PE to QB64Fresh Migration Guide](QB64PE_TO_QB64Fresh_MIGRATION_GUIDE.md)
+- [Scope and Excluded Features](adrs/ADR-0014-scope-and-excluded-features.md)
 
 ---
 

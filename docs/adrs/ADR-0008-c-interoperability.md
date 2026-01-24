@@ -270,6 +270,8 @@ BASIC strings are converted to C strings for external calls:
 3. **String lifetime**: Temporary C strings invalid after call
 4. **Pointer arithmetic**: _OFFSET enables unsafe operations
 
+For SHELL, file operations, path handling, and the no-sandbox execution model, see [ADR-0015](ADR-0015-no-sandbox-execution-model.md) and [SECURITY_MODEL.md](../SECURITY_MODEL.md).
+
 ### Implementation Status
 
 | Component | Status |

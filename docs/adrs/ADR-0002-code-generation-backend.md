@@ -65,3 +65,7 @@ pub trait CodeGenerator {
 - Generated C may be verbose compared to hand-written
 - Some advanced optimizations require LLVM-level IR
 - C's type system doesn't perfectly map to QB64's semantics
+
+### Implementation notes: GOSUB and compiler-specific C
+
+**GOSUB/RETURN** use GCC’s computed goto extension (`&&label` for label addresses, `goto *ptr` for indirect jumps). This works with **GCC and Clang** but **not MSVC**. Supporting MSVC would require an alternative (e.g. switch-based dispatch). We accept this tradeoff: MSVC support is low priority, and QB64pe uses the same pattern (`goto *_gosub_stack[--_gosub_sp]`), so we match QB64. See [ADR-0014](ADR-0014-scope-and-excluded-features.md) §4 for scope rationale.

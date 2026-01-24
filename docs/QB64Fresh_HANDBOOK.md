@@ -1,6 +1,6 @@
 # QB64Fresh Handbook
 
-A comprehensive guide to using QB64Fresh — the modern BASIC compiler.
+A comprehensive guide to using QB64Fresh — the modern BASIC compiler. It serves as the beginner-friendly **tutorial and getting started guide**, covering [Getting Started](#getting-started), [Installation](#installation), and your [first program](#compiling-your-first-program).
 
 ---
 

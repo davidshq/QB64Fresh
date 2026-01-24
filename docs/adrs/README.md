@@ -16,6 +16,9 @@ This directory contains Architecture Decision Records (ADRs) for QB64Fresh.
 - [ADR-0010: Parser Modularization](ADR-0010-parser-modularization.md)
 - [ADR-0011: Error Handling](ADR-0011-error-handling.md)
 - [ADR-0012: Preprocessor Architecture](ADR-0012-preprocessor-architecture.md)
+- [ADR-0013: Debugger Architecture (DAP, tools/debug)](ADR-0013-debugger-architecture.md)
+- [ADR-0014: Scope and Intentionally Excluded Features](ADR-0014-scope-and-excluded-features.md)
+- [ADR-0015: No-Sandbox Execution Model](ADR-0015-no-sandbox-execution-model.md)
 
 ## Format
 
