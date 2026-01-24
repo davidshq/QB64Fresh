@@ -52,7 +52,11 @@ END DECLARE
 
 ### Automatic Header Parsing
 
-QB64Fresh includes a simple C header parser that can automatically extract function declarations when using `DECLARE LIBRARY "header.h"` syntax. This reduces boilerplate for common use cases.
+QB64Fresh includes a comprehensive C header parser that can automatically extract declarations when using `DECLARE LIBRARY "header.h"` syntax. This feature requires the `header-parsing` feature flag.
+
+```bash
+cargo build --features header-parsing
+```
 
 ```basic
 ' Automatically parse and import functions from a C header
@@ -62,20 +66,86 @@ END DECLARE
 ```
 
 **Supported constructs:**
-- Simple function declarations (no complex macros)
-- Basic C types (int, char, float, double, void, pointers)
-- Common stdint types (int32_t, uint8_t, etc.)
+- Function declarations with full type mapping
+- `#define` constants (integer, hex, float, string literals)
+- `#ifdef`/`#ifndef`/`#if`/`#elif`/`#else`/`#endif` conditional compilation
+- `struct` and `typedef struct` definitions
+- Array members (e.g., `char name[64]`)
+- Basic C types and stdint types
+
+**Platform-Aware Parsing:**
+
+The parser pre-defines platform macros to handle platform-specific code:
+
+| Platform | Defined Macros |
+|----------|---------------|
+| Windows | `WIN32`, `_WIN32`, `__WIN32__`, `_MSC_VER` |
+| Linux | `__linux__`, `__unix__`, `__GNUC__`, `linux`, `unix` |
+| macOS | `__APPLE__`, `__MACH__`, `__unix__`, `__GNUC__` |
 
 **Limitations:**
-- Does not handle preprocessor macros or conditional compilation
-- Complex type definitions (structs, unions) require manual declaration
-- Function-like macros are ignored
+- Function-like macros (`#define FOO(x)`) are skipped
+- Complex `#if` expressions may not evaluate correctly
+- Nested structs and unions inside structs are not supported
+- Bit fields are not supported
 
-The header parser is implemented in `src/header_parser/` and maps C types to BASIC types using these rules:
-- `char*` / `const char*` → `STRING`
-- `int` / `int32_t` / `long` → `LONG`
-- `double` → `DOUBLE`
-- `void*` and other pointers → `_OFFSET`
+**Programmatic API:**
+
+```rust
+use qb64fresh::header_parser::{parse_header_full, Platform, HeaderParseResult};
+
+let header = r#"
+    #define VERSION 100
+    #ifdef WIN32
+    int win_only_func();
+    #endif
+    struct Point { int x; int y; };
+    int cross_platform_func();
+"#;
+
+let result: HeaderParseResult = parse_header_full(header, Some(Platform::Linux));
+// result.constants: VERSION = 100
+// result.structs: Point with members x, y
+// result.functions: cross_platform_func (win_only_func excluded on Linux)
+```
+
+The header parser maps C types to BASIC types:
+
+| C Type | BASIC Type | Notes |
+|--------|------------|-------|
+| `int`, `int32_t`, `long` | `LONG` | 32-bit signed |
+| `short`, `int16_t` | `INTEGER` | 16-bit signed |
+| `char`, `int8_t` | `_BYTE` | 8-bit signed |
+| `long long`, `int64_t` | `_INTEGER64` | 64-bit signed |
+| `float` | `SINGLE` | 32-bit float |
+| `double` | `DOUBLE` | 64-bit float |
+| `char*`, `const char*` | `STRING` | String pointer |
+| `void*`, other pointers | `_OFFSET` | Generic pointer |
+| `char[N]` | `STRING * N` | Fixed-length string |
+| `unsigned` variants | `_UNSIGNED` variants | Unsigned types |
+
+**Struct to TYPE Conversion:**
+
+Parsed structs can be automatically converted to QB64 TYPE definitions:
+
+```c
+// C header
+struct Player {
+    char name[64];
+    int score;
+    float x, y;
+};
+```
+
+```basic
+' Generated QB64 TYPE
+TYPE Player
+    name AS STRING * 64
+    score AS LONG
+    x AS SINGLE
+    y AS SINGLE
+END TYPE
+```
 
 ### AST Representation
 
@@ -214,7 +284,16 @@ BASIC strings are converted to C strings for external calls:
 | ALIAS support | Complete |
 | BYVAL/BYREF | Complete |
 | _OFFSET type | Partial |
-| Automatic header parsing | Complete |
+| **Header Parsing** | |
+| Function declarations | Complete |
+| `#define` constants | Complete |
+| `#ifdef`/`#ifndef`/`#endif` | Complete |
+| `#if`/`#elif`/`#else` | Complete |
+| `defined()` expressions | Complete |
+| struct definitions | Complete |
+| typedef struct | Complete |
+| Array members | Complete |
+| Platform detection | Complete |
 
 ### Example Usage
 
