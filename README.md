@@ -90,6 +90,8 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed documentation.
 - Keyboard input (INKEY$, _KEYHIT, _KEYDOWN)
 - Networking (_OPENHOST, _OPENCLIENT, _CONNECTED)
 - Error handling (ON ERROR GOTO, RESUME)
+- C library integration (DECLARE LIBRARY)
+- **C header parsing** (auto-extract functions, constants, structs from `.h` files)
 - 240+ built-in functions
 
 ### Not Yet Implemented
@@ -100,13 +102,22 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed documentation.
 
 ## Docs
 
-- [DEVELOPMENT.md](DEVELOPMENT.md) — Setup & contributing
-- [ARCHITECTURE.md](ARCHITECTURE.md) — Compiler pipeline design
+### User Guides
+- **[QB64Fresh Handbook](docs/QB64Fresh_HANDBOOK.md)** — Comprehensive user guide
 - [Migration Guide](docs/MIGRATION_GUIDE.md) — For QB64 users switching to QB64Fresh
-- [Bootstrap Achievement](docs/BOOTSTRAP_ACHIEVEMENT.md) — Compiling QB64pe with QB64Fresh
-- [Behavioral Differences](docs/BEHAVIORAL_DIFFERENCES.md) — QB64Fresh vs QB64pe semantics
-- [Language Spec](docs/QB64PE_LANGUAGE_SPECIFICATION.md) — QB64PE language reference
 - [Examples](examples/) — Example programs
+
+### Reference
+- [Language Reference](docs/QB64Fresh_LANGUAGE_REFERENCE.md) — Supported language features
+- [Language Spec](docs/QB64PE_LANGUAGE_SPECIFICATION.md) — QB64PE language reference
+- [Header Parser API](docs/HEADER_PARSER_API.md) — C header parsing for DECLARE LIBRARY
+
+### Developer Docs
+- [DEVELOPMENT.md](docs/DEVELOPMENT.md) — Setup & contributing
+- [ARCHITECTURE.md](docs/ARCHITECTURE.md) — Compiler pipeline design
+- [Behavioral Differences](docs/BEHAVIORAL_DIFFERENCES.md) — QB64Fresh vs QB64pe semantics
+- [QB64Fresh and Modern Languages](docs/QB64Fresh_AND_MODERN_LANGUAGES.md) — Comparison to modern languages
+- [Bootstrap Achievement](docs/archive/BOOTSTRAP_ACHIEVEMENT.md) — Compiling QB64pe with QB64Fresh
 - [AgenticLogs/](AgenticLogs/) — Development history
 
 ## VSCode Extension
