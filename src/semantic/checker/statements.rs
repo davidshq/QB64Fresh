@@ -4,14 +4,29 @@
 //! to appropriate handlers based on statement type. Simple pass-through
 //! statements are handled directly here, while complex statements delegate
 //! to specialized modules.
+//!
+//! # Module Structure
+//!
+//! Statement type checking is split into focused submodules:
+//! - [`audio`] - Audio statements (BEEP, SOUND, PLAY, _SND*)
+//! - [`graphics`] - Graphics statements (SCREEN, PSET, LINE, CIRCLE, etc.)
+//! - [`data`] - DATA/READ/RESTORE statements
+//! - [`error_flow`] - Error handling and computed control flow (ON ERROR, ON...GOTO)
+//! - [`graphics`] - Graphics statements (SCREEN, PSET, LINE, CIRCLE, etc.)
+//! - [`io`] - File I/O statements (OPEN, CLOSE, PRINT #, GET, PUT)
+
+mod audio;
+mod data;
+mod error_flow;
+mod graphics;
+mod io;
 
 use crate::ast::{
-    ArrayDimension, DataValue, ExternalDeclaration, PrintItem, Span, Statement, StatementKind,
-    ViewCoords,
+    ArrayDimension, ExternalDeclaration, PrintItem, Span, Statement, StatementKind, ViewCoords,
 };
 use crate::semantic::{
     error::SemanticError,
-    symbols::{ConstValue, ScopeKind, Symbol, SymbolKind, UserTypeDefinition, UserTypeMember},
+    symbols::{ConstValue, Symbol, SymbolKind, UserTypeDefinition, UserTypeMember},
     typed_ir::*,
     types::{BasicType, from_type_spec, type_from_suffix},
 };
@@ -512,171 +527,13 @@ impl<'a> TypeChecker<'a> {
                 )
             }
 
-            StatementKind::Data { values } => {
-                // Convert AST data values to typed data values
-                let typed_values: Vec<TypedDataValue> = values
-                    .iter()
-                    .map(|v| match v {
-                        DataValue::Integer(n) => TypedDataValue::Integer(*n),
-                        DataValue::Float(f) => TypedDataValue::Float(*f),
-                        DataValue::String(s) => TypedDataValue::String(s.clone()),
-                    })
-                    .collect();
+            StatementKind::Data { values } => self.check_data(values, stmt.span),
 
-                TypedStatement::new(
-                    TypedStatementKind::Data {
-                        values: typed_values,
-                    },
-                    stmt.span,
-                )
-            }
+            StatementKind::Read { targets } => self.check_read(targets, stmt.span),
 
-            StatementKind::Read { targets } => {
-                use crate::ast::ReadTarget;
-                use crate::semantic::typed_ir::TypedReadTarget;
+            StatementKind::Restore { label } => self.check_restore(label.as_deref(), stmt.span),
 
-                // Process each target (variable or array element)
-                let typed_targets: Vec<TypedReadTarget> = targets
-                    .iter()
-                    .map(|target| match target {
-                        ReadTarget::Variable(var_name) => {
-                            let var_type =
-                                if let Some(symbol) = self.symbols.lookup_symbol(var_name) {
-                                    symbol.basic_type.clone()
-                                } else {
-                                    // Infer type from suffix or default
-                                    let inferred = type_from_suffix(var_name)
-                                        .unwrap_or_else(|| self.symbols.default_type_for(var_name));
-
-                                    // Define the variable
-                                    let symbol = Symbol {
-                                        name: var_name.clone(),
-                                        kind: SymbolKind::Variable,
-                                        basic_type: inferred.clone(),
-                                        span: stmt.span,
-                                        is_mutable: true,
-                                    };
-                                    let _ = self.symbols.define_symbol(symbol);
-
-                                    inferred
-                                };
-                            TypedReadTarget::Variable {
-                                name: var_name.clone(),
-                                basic_type: var_type,
-                            }
-                        }
-                        ReadTarget::ArrayElement { name, indices } => {
-                            // Type check indices
-                            let typed_indices: Vec<_> =
-                                indices.iter().map(|e| self.check_expr(e)).collect();
-
-                            // Look up array and get element type
-                            let basic_type = if let Some(symbol) = self.symbols.lookup_symbol(name)
-                            {
-                                symbol.basic_type.clone()
-                            } else {
-                                // Array not declared - error
-                                self.errors.push(SemanticError::UndefinedVariable {
-                                    name: name.clone(),
-                                    span: stmt.span,
-                                });
-                                BasicType::Single // Default on error
-                            };
-
-                            TypedReadTarget::ArrayElement {
-                                name: name.clone(),
-                                indices: typed_indices,
-                                basic_type,
-                            }
-                        }
-                        ReadTarget::ArrayFieldElement {
-                            name,
-                            indices,
-                            field,
-                        } => {
-                            // Type check indices
-                            let typed_indices: Vec<_> =
-                                indices.iter().map(|e| self.check_expr(e)).collect();
-
-                            // Look up array and get element type, then resolve field type
-                            let basic_type = if let Some(symbol) = self.symbols.lookup_symbol(name)
-                            {
-                                // Get the element type of the array
-                                let element_type = match &symbol.basic_type {
-                                    BasicType::Array { element_type, .. } => {
-                                        (**element_type).clone()
-                                    }
-                                    other => other.clone(),
-                                };
-
-                                // Resolve the field type from the UDT
-                                let field_type = self.resolve_field_chain_type(
-                                    &element_type,
-                                    std::slice::from_ref(field),
-                                );
-
-                                if field_type == BasicType::Unknown {
-                                    // Fall back to suffix-based inference if UDT resolution fails
-                                    type_from_suffix(field)
-                                        .unwrap_or_else(|| self.symbols.default_type_for(field))
-                                } else {
-                                    field_type
-                                }
-                            } else {
-                                // Array not declared - error
-                                self.errors.push(SemanticError::UndefinedVariable {
-                                    name: name.clone(),
-                                    span: stmt.span,
-                                });
-                                BasicType::Single // Default on error
-                            };
-
-                            TypedReadTarget::ArrayFieldElement {
-                                name: name.clone(),
-                                indices: typed_indices,
-                                field: field.clone(),
-                                basic_type,
-                            }
-                        }
-                    })
-                    .collect();
-
-                TypedStatement::new(
-                    TypedStatementKind::Read {
-                        targets: typed_targets,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::Restore { label } => {
-                // RESTORE with optional label - no semantic validation needed here
-                // (label validation could be done during codegen or in a later pass)
-                TypedStatement::new(
-                    TypedStatementKind::Restore {
-                        label: label.clone(),
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::Randomize { seed } => {
-                // Type check the seed expression if provided
-                let typed_seed = seed.as_ref().map(|s| self.check_expr(s));
-
-                // Seed should be a numeric type (but we'll allow any for flexibility)
-                if let Some(ref typed) = typed_seed
-                    && typed.basic_type.is_string()
-                {
-                    self.errors
-                        .push(SemanticError::type_mismatch("numeric", "STRING", stmt.span));
-                }
-
-                TypedStatement::new(
-                    TypedStatementKind::Randomize { seed: typed_seed },
-                    stmt.span,
-                )
-            }
+            StatementKind::Randomize { seed } => self.check_randomize(seed.as_ref(), stmt.span),
 
             // ==================== File I/O Statements ====================
             StatementKind::OpenFile {
@@ -686,670 +543,93 @@ impl<'a> TypeChecker<'a> {
                 lock,
                 file_num,
                 record_len,
-            } => {
-                let typed_filename = self.check_expr(filename);
-                let typed_file_num = self.check_expr(file_num);
-                let typed_record_len = record_len.as_ref().map(|e| self.check_expr(e));
-
-                // Filename should be a string (STRING or STRING * N)
-                if !typed_filename.basic_type.is_string() {
-                    self.errors.push(SemanticError::TypeMismatch {
-                        expected: "STRING".to_string(),
-                        found: typed_filename.basic_type.to_string(),
-                        span: typed_filename.span,
-                    });
-                }
-
-                TypedStatement::new(
-                    TypedStatementKind::OpenFile {
-                        filename: typed_filename,
-                        mode: *mode,
-                        access: *access,
-                        lock: *lock,
-                        file_num: typed_file_num,
-                        record_len: typed_record_len,
-                    },
-                    stmt.span,
-                )
-            }
+            } => self.check_open_file(
+                filename,
+                *mode,
+                *access,
+                *lock,
+                file_num,
+                record_len.as_ref(),
+                stmt.span,
+            ),
 
             StatementKind::OpenFileLegacy {
                 mode_expr,
                 file_num,
                 filename,
                 record_len,
-            } => {
-                let typed_mode = self.check_expr(mode_expr);
-                let typed_file_num = self.check_expr(file_num);
-                let typed_filename = self.check_expr(filename);
-                let typed_record_len = record_len.as_ref().map(|e| self.check_expr(e));
+            } => self.check_open_file_legacy(
+                mode_expr,
+                file_num,
+                filename,
+                record_len.as_ref(),
+                stmt.span,
+            ),
 
-                // Mode should be a string (STRING or STRING * N)
-                if !typed_mode.basic_type.is_string() {
-                    self.errors.push(SemanticError::TypeMismatch {
-                        expected: "STRING".to_string(),
-                        found: typed_mode.basic_type.to_string(),
-                        span: typed_mode.span,
-                    });
-                }
-
-                // Filename should be a string (STRING or STRING * N)
-                if !typed_filename.basic_type.is_string() {
-                    self.errors.push(SemanticError::TypeMismatch {
-                        expected: "STRING".to_string(),
-                        found: typed_filename.basic_type.to_string(),
-                        span: typed_filename.span,
-                    });
-                }
-
-                TypedStatement::new(
-                    TypedStatementKind::OpenFileLegacy {
-                        mode_expr: typed_mode,
-                        file_num: typed_file_num,
-                        filename: typed_filename,
-                        record_len: typed_record_len,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::CloseFile { file_nums } => {
-                let typed_file_nums: Vec<TypedExpr> =
-                    file_nums.iter().map(|e| self.check_expr(e)).collect();
-
-                TypedStatement::new(
-                    TypedStatementKind::CloseFile {
-                        file_nums: typed_file_nums,
-                    },
-                    stmt.span,
-                )
-            }
+            StatementKind::CloseFile { file_nums } => self.check_close_file(file_nums, stmt.span),
 
             StatementKind::FilePrint {
                 file_num,
                 values,
                 newline,
-            } => {
-                let typed_file_num = self.check_expr(file_num);
-                let typed_items = self.check_print_items(values);
-
-                TypedStatement::new(
-                    TypedStatementKind::FilePrint {
-                        file_num: typed_file_num,
-                        items: typed_items,
-                        newline: *newline,
-                    },
-                    stmt.span,
-                )
-            }
+            } => self.check_file_print(file_num, values, *newline, stmt.span),
 
             StatementKind::FileWrite { file_num, values } => {
-                let typed_file_num = self.check_expr(file_num);
-                let typed_values: Vec<TypedExpr> =
-                    values.iter().map(|e| self.check_expr(e)).collect();
-
-                TypedStatement::new(
-                    TypedStatementKind::FileWrite {
-                        file_num: typed_file_num,
-                        values: typed_values,
-                    },
-                    stmt.span,
-                )
+                self.check_file_write(file_num, values, stmt.span)
             }
 
             StatementKind::FileInput { file_num, targets } => {
-                use crate::ast::InputTarget;
-                use crate::semantic::typed_ir::TypedInputTarget;
-
-                let typed_file_num = self.check_expr(file_num);
-
-                // Type-check each input target
-                let typed_targets: Vec<TypedInputTarget> = targets
-                    .iter()
-                    .map(|target| match target {
-                        InputTarget::Variable(name) => {
-                            let var_type = if let Some(symbol) = self.symbols.lookup_symbol(name) {
-                                symbol.basic_type.clone()
-                            } else {
-                                // Infer type from suffix or default
-                                let inferred = type_from_suffix(name)
-                                    .unwrap_or_else(|| self.symbols.default_type_for(name));
-                                let symbol = Symbol {
-                                    name: name.clone(),
-                                    kind: SymbolKind::Variable,
-                                    basic_type: inferred.clone(),
-                                    span: stmt.span,
-                                    is_mutable: true,
-                                };
-                                let _ = self.symbols.define_symbol(symbol);
-                                inferred
-                            };
-                            TypedInputTarget::Variable {
-                                name: name.clone(),
-                                basic_type: var_type,
-                            }
-                        }
-                        InputTarget::ArrayElement { name, indices } => {
-                            let typed_indices: Vec<_> =
-                                indices.iter().map(|i| self.check_expr(i)).collect();
-                            let element_type = if let Some(symbol) =
-                                self.symbols.lookup_symbol(name)
-                            {
-                                if let BasicType::Array { element_type, .. } = &symbol.basic_type {
-                                    (**element_type).clone()
-                                } else {
-                                    symbol.basic_type.clone()
-                                }
-                            } else {
-                                type_from_suffix(name)
-                                    .unwrap_or_else(|| self.symbols.default_type_for(name))
-                            };
-                            TypedInputTarget::ArrayElement {
-                                name: name.clone(),
-                                indices: typed_indices,
-                                element_type,
-                            }
-                        }
-                        InputTarget::ArrayElementField {
-                            name,
-                            indices,
-                            fields,
-                        } => {
-                            let typed_indices: Vec<_> =
-                                indices.iter().map(|i| self.check_expr(i)).collect();
-                            // For now, assume the field type based on suffix of field name
-                            let field_type = fields
-                                .last()
-                                .and_then(|f| type_from_suffix(f))
-                                .unwrap_or(BasicType::Single);
-                            TypedInputTarget::ArrayElementField {
-                                name: name.clone(),
-                                indices: typed_indices,
-                                fields: fields.clone(),
-                                field_type,
-                            }
-                        }
-                        InputTarget::Field { name, fields } => {
-                            let field_type = fields
-                                .last()
-                                .and_then(|f| type_from_suffix(f))
-                                .unwrap_or(BasicType::Single);
-                            TypedInputTarget::Field {
-                                name: name.clone(),
-                                fields: fields.clone(),
-                                field_type,
-                            }
-                        }
-                    })
-                    .collect();
-
-                TypedStatement::new(
-                    TypedStatementKind::FileInput {
-                        file_num: typed_file_num,
-                        targets: typed_targets,
-                    },
-                    stmt.span,
-                )
+                self.check_file_input(file_num, targets, stmt.span)
             }
 
             StatementKind::FileLineInput { file_num, target } => {
-                use crate::ast::InputTarget;
-                use crate::semantic::typed_ir::TypedInputTarget;
-
-                let typed_file_num = self.check_expr(file_num);
-
-                // LINE INPUT # always reads into a string
-                let typed_target = match target {
-                    InputTarget::Variable(name) => {
-                        if self.symbols.lookup_symbol(name).is_none() {
-                            let symbol = Symbol {
-                                name: name.clone(),
-                                kind: SymbolKind::Variable,
-                                basic_type: BasicType::String,
-                                span: stmt.span,
-                                is_mutable: true,
-                            };
-                            let _ = self.symbols.define_symbol(symbol);
-                        }
-                        TypedInputTarget::Variable {
-                            name: name.clone(),
-                            basic_type: BasicType::String,
-                        }
-                    }
-                    InputTarget::ArrayElement { name, indices } => {
-                        let typed_indices: Vec<_> =
-                            indices.iter().map(|i| self.check_expr(i)).collect();
-                        TypedInputTarget::ArrayElement {
-                            name: name.clone(),
-                            indices: typed_indices,
-                            element_type: BasicType::String,
-                        }
-                    }
-                    InputTarget::ArrayElementField {
-                        name,
-                        indices,
-                        fields,
-                    } => {
-                        let typed_indices: Vec<_> =
-                            indices.iter().map(|i| self.check_expr(i)).collect();
-                        TypedInputTarget::ArrayElementField {
-                            name: name.clone(),
-                            indices: typed_indices,
-                            fields: fields.clone(),
-                            field_type: BasicType::String,
-                        }
-                    }
-                    InputTarget::Field { name, fields } => TypedInputTarget::Field {
-                        name: name.clone(),
-                        fields: fields.clone(),
-                        field_type: BasicType::String,
-                    },
-                };
-
-                TypedStatement::new(
-                    TypedStatementKind::FileLineInput {
-                        file_num: typed_file_num,
-                        target: typed_target,
-                    },
-                    stmt.span,
-                )
+                self.check_file_line_input(file_num, target, stmt.span)
             }
 
             StatementKind::FileGet {
                 file_num,
                 position,
                 target,
-            } => {
-                use crate::ast::InputTarget;
-                use crate::semantic::typed_ir::TypedInputTarget;
-
-                let typed_file_num = self.check_expr(file_num);
-                let typed_position = position.as_ref().map(|e| self.check_expr(e));
-
-                // Convert InputTarget to TypedInputTarget, inferring types
-                // When a symbol is found via suffix fallback, use the symbol's declared name
-                let typed_target = match target {
-                    InputTarget::Variable(name) => {
-                        let (resolved_name, var_type) =
-                            if let Some(symbol) = self.symbols.lookup_symbol(name) {
-                                (symbol.name.clone(), symbol.basic_type.clone())
-                            } else {
-                                let inferred = type_from_suffix(name)
-                                    .unwrap_or_else(|| self.symbols.default_type_for(name));
-                                let symbol = Symbol {
-                                    name: name.clone(),
-                                    kind: SymbolKind::Variable,
-                                    basic_type: inferred.clone(),
-                                    span: stmt.span,
-                                    is_mutable: true,
-                                };
-                                let _ = self.symbols.define_symbol(symbol);
-                                (name.clone(), inferred)
-                            };
-                        TypedInputTarget::Variable {
-                            name: resolved_name,
-                            basic_type: var_type,
-                        }
-                    }
-                    InputTarget::ArrayElement { name, indices } => {
-                        let typed_indices: Vec<_> =
-                            indices.iter().map(|i| self.check_expr(i)).collect();
-                        let (resolved_name, element_type) =
-                            if let Some(symbol) = self.symbols.lookup_array(name) {
-                                (symbol.name.clone(), symbol.basic_type.clone())
-                            } else {
-                                let element_type = type_from_suffix(name)
-                                    .unwrap_or_else(|| self.symbols.default_type_for(name));
-                                (name.clone(), element_type)
-                            };
-                        TypedInputTarget::ArrayElement {
-                            name: resolved_name,
-                            indices: typed_indices,
-                            element_type,
-                        }
-                    }
-                    InputTarget::ArrayElementField {
-                        name,
-                        indices,
-                        fields,
-                    } => {
-                        let typed_indices: Vec<_> =
-                            indices.iter().map(|i| self.check_expr(i)).collect();
-                        let resolved_name = if let Some(symbol) = self.symbols.lookup_array(name) {
-                            symbol.name.clone()
-                        } else {
-                            name.clone()
-                        };
-                        // Field type would need UDT lookup; use SINGLE as placeholder
-                        TypedInputTarget::ArrayElementField {
-                            name: resolved_name,
-                            indices: typed_indices,
-                            fields: fields.clone(),
-                            field_type: BasicType::Single,
-                        }
-                    }
-                    InputTarget::Field { name, fields } => {
-                        let resolved_name = if let Some(symbol) = self.symbols.lookup_symbol(name) {
-                            symbol.name.clone()
-                        } else {
-                            name.clone()
-                        };
-                        // Field type would need UDT lookup; use SINGLE as placeholder
-                        TypedInputTarget::Field {
-                            name: resolved_name,
-                            fields: fields.clone(),
-                            field_type: BasicType::Single,
-                        }
-                    }
-                };
-
-                TypedStatement::new(
-                    TypedStatementKind::FileGet {
-                        file_num: typed_file_num,
-                        position: typed_position,
-                        target: typed_target,
-                    },
-                    stmt.span,
-                )
-            }
+            } => self.check_file_get(file_num, position.as_ref(), target, stmt.span),
 
             StatementKind::FilePut {
                 file_num,
                 position,
                 target,
-            } => {
-                use crate::ast::InputTarget;
-                use crate::semantic::typed_ir::TypedInputTarget;
-
-                let typed_file_num = self.check_expr(file_num);
-                let typed_position = position.as_ref().map(|e| self.check_expr(e));
-
-                // Convert InputTarget to TypedInputTarget, inferring types
-                // When a symbol is found via suffix fallback, use the symbol's declared name
-                let typed_target = match target {
-                    InputTarget::Variable(name) => {
-                        let (resolved_name, var_type) =
-                            if let Some(symbol) = self.symbols.lookup_symbol(name) {
-                                (symbol.name.clone(), symbol.basic_type.clone())
-                            } else {
-                                let inferred = type_from_suffix(name)
-                                    .unwrap_or_else(|| self.symbols.default_type_for(name));
-                                let symbol = Symbol {
-                                    name: name.clone(),
-                                    kind: SymbolKind::Variable,
-                                    basic_type: inferred.clone(),
-                                    span: stmt.span,
-                                    is_mutable: true,
-                                };
-                                let _ = self.symbols.define_symbol(symbol);
-                                (name.clone(), inferred)
-                            };
-                        TypedInputTarget::Variable {
-                            name: resolved_name,
-                            basic_type: var_type,
-                        }
-                    }
-                    InputTarget::ArrayElement { name, indices } => {
-                        let typed_indices: Vec<_> =
-                            indices.iter().map(|i| self.check_expr(i)).collect();
-                        let (resolved_name, element_type) =
-                            if let Some(symbol) = self.symbols.lookup_array(name) {
-                                (symbol.name.clone(), symbol.basic_type.clone())
-                            } else {
-                                let element_type = type_from_suffix(name)
-                                    .unwrap_or_else(|| self.symbols.default_type_for(name));
-                                (name.clone(), element_type)
-                            };
-                        TypedInputTarget::ArrayElement {
-                            name: resolved_name,
-                            indices: typed_indices,
-                            element_type,
-                        }
-                    }
-                    InputTarget::ArrayElementField {
-                        name,
-                        indices,
-                        fields,
-                    } => {
-                        let typed_indices: Vec<_> =
-                            indices.iter().map(|i| self.check_expr(i)).collect();
-                        let resolved_name = if let Some(symbol) = self.symbols.lookup_array(name) {
-                            symbol.name.clone()
-                        } else {
-                            name.clone()
-                        };
-                        // Field type would need UDT lookup; use SINGLE as placeholder
-                        TypedInputTarget::ArrayElementField {
-                            name: resolved_name,
-                            indices: typed_indices,
-                            fields: fields.clone(),
-                            field_type: BasicType::Single,
-                        }
-                    }
-                    InputTarget::Field { name, fields } => {
-                        let resolved_name = if let Some(symbol) = self.symbols.lookup_symbol(name) {
-                            symbol.name.clone()
-                        } else {
-                            name.clone()
-                        };
-                        // Field type would need UDT lookup; use SINGLE as placeholder
-                        TypedInputTarget::Field {
-                            name: resolved_name,
-                            fields: fields.clone(),
-                            field_type: BasicType::Single,
-                        }
-                    }
-                };
-
-                TypedStatement::new(
-                    TypedStatementKind::FilePut {
-                        file_num: typed_file_num,
-                        position: typed_position,
-                        target: typed_target,
-                    },
-                    stmt.span,
-                )
-            }
+            } => self.check_file_put(file_num, position.as_ref(), target, stmt.span),
 
             StatementKind::FileSeek { file_num, position } => {
-                let typed_file_num = self.check_expr(file_num);
-                let typed_position = self.check_expr(position);
-
-                TypedStatement::new(
-                    TypedStatementKind::FileSeek {
-                        file_num: typed_file_num,
-                        position: typed_position,
-                    },
-                    stmt.span,
-                )
+                self.check_file_seek(file_num, position, stmt.span)
             }
 
             // ==================== Error Handling Statements ====================
-            StatementKind::OnErrorGoto { target } => TypedStatement::new(
-                TypedStatementKind::OnErrorGoto {
-                    target: target.clone(),
-                },
-                stmt.span,
-            ),
+            StatementKind::OnErrorGoto { target } => self.check_on_error_goto(target, stmt.span),
 
-            StatementKind::OnErrorResumeNext => {
-                TypedStatement::new(TypedStatementKind::OnErrorResumeNext, stmt.span)
-            }
+            StatementKind::OnErrorResumeNext => self.check_on_error_resume_next(stmt.span),
 
-            StatementKind::ResumeStmt { target } => TypedStatement::new(
-                TypedStatementKind::ResumeStmt {
-                    target: target.clone(),
-                },
-                stmt.span,
-            ),
+            StatementKind::ResumeStmt { target } => self.check_resume_stmt(target, stmt.span),
 
-            StatementKind::ErrorStmt { code } => {
-                let typed_code = self.check_expr(code);
-
-                TypedStatement::new(
-                    TypedStatementKind::ErrorStmt { code: typed_code },
-                    stmt.span,
-                )
-            }
+            StatementKind::ErrorStmt { code } => self.check_error_stmt(code, stmt.span),
 
             // ==================== Computed Control Flow ====================
             StatementKind::OnGoto { selector, targets } => {
-                let typed_selector = self.check_expr(selector);
-
-                // Selector should be numeric
-                if !typed_selector.basic_type.is_numeric() {
-                    self.errors.push(SemanticError::TypeMismatch {
-                        expected: "numeric".to_string(),
-                        found: typed_selector.basic_type.to_string(),
-                        span: typed_selector.span,
-                    });
-                }
-
-                TypedStatement::new(
-                    TypedStatementKind::OnGoto {
-                        selector: typed_selector,
-                        targets: targets.clone(),
-                    },
-                    stmt.span,
-                )
+                self.check_on_goto(selector, targets, stmt.span)
             }
 
             StatementKind::OnGosub { selector, targets } => {
-                let typed_selector = self.check_expr(selector);
-
-                if !typed_selector.basic_type.is_numeric() {
-                    self.errors.push(SemanticError::TypeMismatch {
-                        expected: "numeric".to_string(),
-                        found: typed_selector.basic_type.to_string(),
-                        span: typed_selector.span,
-                    });
-                }
-
-                TypedStatement::new(
-                    TypedStatementKind::OnGosub {
-                        selector: typed_selector,
-                        targets: targets.clone(),
-                    },
-                    stmt.span,
-                )
+                self.check_on_gosub(selector, targets, stmt.span)
             }
 
             // ==================== DEF FN ====================
             StatementKind::DefFn { name, params, body } => {
-                // Enter a new scope for the function
-                self.symbols.enter_scope(ScopeKind::Function);
-
-                // Define parameters in the scope
-                let typed_params: Vec<TypedParameter> = params
-                    .iter()
-                    .map(|p| {
-                        let param_type = p
-                            .type_spec
-                            .as_ref()
-                            .map(from_type_spec)
-                            .or_else(|| type_from_suffix(&p.name))
-                            .unwrap_or(BasicType::Single); // DEF FN defaults to Single
-                        let symbol = Symbol {
-                            name: p.name.clone(),
-                            kind: SymbolKind::Variable,
-                            basic_type: param_type.clone(),
-                            span: stmt.span,
-                            is_mutable: !p.by_val,
-                        };
-                        let _ = self.symbols.define_symbol(symbol);
-
-                        TypedParameter {
-                            name: p.name.clone(),
-                            basic_type: param_type,
-                            by_val: p.by_val,
-                            is_array: false, // DEF FN doesn't support array params
-                        }
-                    })
-                    .collect();
-
-                // Check the body expression
-                let typed_body = self.check_expr(body);
-
-                // Return type is inferred from the function name suffix or body
-                let return_type =
-                    type_from_suffix(name).unwrap_or_else(|| typed_body.basic_type.clone());
-
-                self.symbols.exit_scope();
-
-                TypedStatement::new(
-                    TypedStatementKind::DefFn {
-                        name: name.clone(),
-                        params: typed_params,
-                        return_type,
-                        body: typed_body,
-                    },
-                    stmt.span,
-                )
+                self.check_def_fn(name, params, body, stmt.span)
             }
 
             StatementKind::DefFnMultiLine { name, params, body } => {
-                // Enter a new scope for the function
-                self.symbols.enter_scope(ScopeKind::Function);
-
-                // Define parameters in the scope
-                let typed_params: Vec<TypedParameter> = params
-                    .iter()
-                    .map(|p| {
-                        let param_type = p
-                            .type_spec
-                            .as_ref()
-                            .map(from_type_spec)
-                            .or_else(|| type_from_suffix(&p.name))
-                            .unwrap_or_else(|| self.symbols.default_type_for(&p.name));
-
-                        // Define parameter as a local variable
-                        let symbol = Symbol {
-                            name: p.name.clone(),
-                            kind: SymbolKind::Parameter { by_val: p.by_val },
-                            basic_type: param_type.clone(),
-                            span: stmt.span,
-                            is_mutable: true,
-                        };
-                        let _ = self.symbols.define_symbol(symbol);
-
-                        TypedParameter {
-                            name: p.name.clone(),
-                            basic_type: param_type,
-                            by_val: p.by_val,
-                            is_array: p.is_array,
-                        }
-                    })
-                    .collect();
-
-                // Check the body statements
-                let typed_body: Vec<TypedStatement> =
-                    body.iter().map(|s| self.check_statement(s)).collect();
-
-                // Return type is inferred from the function name suffix or defaults to SINGLE
-                let return_type = type_from_suffix(name).unwrap_or(BasicType::Single);
-
-                self.symbols.exit_scope();
-
-                TypedStatement::new(
-                    TypedStatementKind::DefFnMultiLine {
-                        name: name.clone(),
-                        params: typed_params,
-                        return_type,
-                        body: typed_body,
-                    },
-                    stmt.span,
-                )
+                self.check_def_fn_multi_line(name, params, body, stmt.span)
             }
 
-            StatementKind::DefSeg { segment } => {
-                let typed_segment = segment.as_ref().map(|e| self.check_expr(e));
-                TypedStatement::new(
-                    TypedStatementKind::DefSeg {
-                        segment: typed_segment,
-                    },
-                    stmt.span,
-                )
-            }
+            StatementKind::DefSeg { segment } => self.check_def_seg(segment.as_ref(), stmt.span),
 
             StatementKind::Poke { address, value } => {
                 let typed_address = self.check_expr(address);
@@ -1669,84 +949,36 @@ impl<'a> TypeChecker<'a> {
                 color_switch,
                 active_page,
                 visual_page,
-            } => {
-                let typed_mode = mode.as_ref().map(|e| self.check_expr(e));
-                let typed_color_switch = color_switch.as_ref().map(|e| self.check_expr(e));
-                let typed_active_page = active_page.as_ref().map(|e| self.check_expr(e));
-                let typed_visual_page = visual_page.as_ref().map(|e| self.check_expr(e));
-                TypedStatement::new(
-                    TypedStatementKind::Screen {
-                        mode: typed_mode,
-                        color_switch: typed_color_switch,
-                        active_page: typed_active_page,
-                        visual_page: typed_visual_page,
-                    },
-                    stmt.span,
-                )
-            }
+            } => self.check_screen(
+                mode.as_ref(),
+                color_switch.as_ref(),
+                active_page.as_ref(),
+                visual_page.as_ref(),
+                stmt.span,
+            ),
 
-            StatementKind::Cls { mode } => {
-                let typed_mode = mode.as_ref().map(|e| self.check_expr(e));
-                TypedStatement::new(TypedStatementKind::Cls { mode: typed_mode }, stmt.span)
-            }
+            StatementKind::Cls { mode } => self.check_cls(mode.as_ref(), stmt.span),
 
             StatementKind::Color {
                 foreground,
                 background,
                 border,
-            } => {
-                let typed_fg = foreground.as_ref().map(|e| self.check_expr(e));
-                let typed_bg = background.as_ref().map(|e| self.check_expr(e));
-                let typed_border = border.as_ref().map(|e| self.check_expr(e));
-                TypedStatement::new(
-                    TypedStatementKind::Color {
-                        foreground: typed_fg,
-                        background: typed_bg,
-                        border: typed_border,
-                    },
-                    stmt.span,
-                )
-            }
+            } => self.check_color(
+                foreground.as_ref(),
+                background.as_ref(),
+                border.as_ref(),
+                stmt.span,
+            ),
 
             StatementKind::Locate { row, col } => {
-                let typed_row = row.as_ref().map(|e| self.check_expr(e));
-                let typed_col = col.as_ref().map(|e| self.check_expr(e));
-                TypedStatement::new(
-                    TypedStatementKind::Locate {
-                        row: typed_row,
-                        col: typed_col,
-                    },
-                    stmt.span,
-                )
+                self.check_locate(row.as_ref(), col.as_ref(), stmt.span)
             }
 
             StatementKind::Pset { step, x, y, color } => {
-                let typed_x = self.check_expr(x);
-                let typed_y = self.check_expr(y);
-                let typed_color = color.as_ref().map(|e| self.check_expr(e));
-                TypedStatement::new(
-                    TypedStatementKind::Pset {
-                        step: *step,
-                        x: typed_x,
-                        y: typed_y,
-                        color: typed_color,
-                    },
-                    stmt.span,
-                )
+                self.check_pset(*step, x, y, color.as_ref(), stmt.span)
             }
 
-            StatementKind::Preset { step, x, y } => {
-                let typed_x = self.check_expr(x);
-                let typed_y = self.check_expr(y);
-                TypedStatement::new(
-                    TypedStatementKind::Preset {
-                        step: *step,
-                        x: typed_x,
-                        y: typed_y,
-                    },
-                    stmt.span,
-                )
-            }
+            StatementKind::Preset { step, x, y } => self.check_preset(*step, x, y, stmt.span),
 
             StatementKind::Line {
                 x1,
@@ -1757,27 +989,17 @@ impl<'a> TypeChecker<'a> {
                 color,
                 box_style,
                 style,
-            } => {
-                let typed_x1 = x1.as_ref().map(|e| self.check_expr(e));
-                let typed_y1 = y1.as_ref().map(|e| self.check_expr(e));
-                let typed_x2 = self.check_expr(x2);
-                let typed_y2 = self.check_expr(y2);
-                let typed_color = color.as_ref().map(|e| self.check_expr(e));
-                let typed_style = style.as_ref().map(|e| self.check_expr(e));
-                TypedStatement::new(
-                    TypedStatementKind::Line {
-                        x1: typed_x1,
-                        y1: typed_y1,
-                        x2: typed_x2,
-                        y2: typed_y2,
-                        step2: *step2,
-                        color: typed_color,
-                        box_style: *box_style,
-                        style: typed_style,
-                    },
-                    stmt.span,
-                )
-            }
+            } => self.check_line(
+                x1.as_ref(),
+                y1.as_ref(),
+                x2,
+                y2,
+                *step2,
+                color.as_ref(),
+                *box_style,
+                style.as_ref(),
+                stmt.span,
+            ),
 
             StatementKind::Circle {
                 step,
@@ -1786,23 +1008,7 @@ impl<'a> TypeChecker<'a> {
                 radius,
                 color,
                 filled,
-            } => {
-                let typed_x = self.check_expr(x);
-                let typed_y = self.check_expr(y);
-                let typed_radius = self.check_expr(radius);
-                let typed_color = color.as_ref().map(|e| self.check_expr(e));
-                TypedStatement::new(
-                    TypedStatementKind::Circle {
-                        step: *step,
-                        x: typed_x,
-                        y: typed_y,
-                        radius: typed_radius,
-                        color: typed_color,
-                        filled: *filled,
-                    },
-                    stmt.span,
-                )
-            }
+            } => self.check_circle(*step, x, y, radius, color.as_ref(), *filled, stmt.span),
 
             StatementKind::Paint {
                 step,
@@ -1810,87 +1016,28 @@ impl<'a> TypeChecker<'a> {
                 y,
                 color,
                 border,
-            } => {
-                let typed_x = self.check_expr(x);
-                let typed_y = self.check_expr(y);
-                let typed_color = color.as_ref().map(|e| self.check_expr(e));
-                let typed_border = border.as_ref().map(|e| self.check_expr(e));
-                TypedStatement::new(
-                    TypedStatementKind::Paint {
-                        step: *step,
-                        x: typed_x,
-                        y: typed_y,
-                        color: typed_color,
-                        border: typed_border,
-                    },
-                    stmt.span,
-                )
-            }
+            } => self.check_paint(*step, x, y, color.as_ref(), border.as_ref(), stmt.span),
 
-            StatementKind::GfxDisplay => {
-                TypedStatement::new(TypedStatementKind::GfxDisplay, stmt.span)
-            }
+            StatementKind::GfxDisplay => self.check_gfx_display(stmt.span),
 
-            StatementKind::ControlChr { enabled } => TypedStatement::new(
-                TypedStatementKind::ControlChr { enabled: *enabled },
-                stmt.span,
-            ),
+            StatementKind::ControlChr { enabled } => self.check_control_chr(*enabled, stmt.span),
 
             StatementKind::MapUnicode {
                 unicode_value,
                 char_position,
-            } => {
-                let typed_unicode = self.check_expr(unicode_value);
-                let typed_char = self.check_expr(char_position);
-                TypedStatement::new(
-                    TypedStatementKind::MapUnicode {
-                        unicode_value: typed_unicode,
-                        char_position: typed_char,
-                    },
-                    stmt.span,
-                )
-            }
+            } => self.check_map_unicode(unicode_value, char_position, stmt.span),
 
             StatementKind::Palette { attribute, color } => {
-                let typed_attr = attribute.as_ref().map(|e| self.check_expr(e));
-                let typed_color = color.as_ref().map(|e| self.check_expr(e));
-                TypedStatement::new(
-                    TypedStatementKind::Palette {
-                        attribute: typed_attr,
-                        color: typed_color,
-                    },
-                    stmt.span,
-                )
+                self.check_palette(attribute.as_ref(), color.as_ref(), stmt.span)
             }
 
-            StatementKind::GfxResize { enabled } => TypedStatement::new(
-                TypedStatementKind::GfxResize { enabled: *enabled },
-                stmt.span,
-            ),
+            StatementKind::GfxResize { enabled } => self.check_gfx_resize(*enabled, stmt.span),
 
-            StatementKind::Pcopy { source, dest } => {
-                let typed_source = self.check_expr(source);
-                let typed_dest = self.check_expr(dest);
-                TypedStatement::new(
-                    TypedStatementKind::Pcopy {
-                        source: typed_source,
-                        dest: typed_dest,
-                    },
-                    stmt.span,
-                )
-            }
+            StatementKind::Pcopy { source, dest } => self.check_pcopy(source, dest, stmt.span),
 
             // ==================== Additional Graphics Statements ====================
             StatementKind::Width { columns, rows } => {
-                let typed_columns = self.check_expr(columns);
-                let typed_rows = rows.as_ref().map(|e| self.check_expr(e));
-                TypedStatement::new(
-                    TypedStatementKind::Width {
-                        columns: typed_columns,
-                        rows: typed_rows,
-                    },
-                    stmt.span,
-                )
+                self.check_width(columns, rows.as_ref(), stmt.span)
             }
 
             StatementKind::View {
@@ -1898,53 +1045,23 @@ impl<'a> TypeChecker<'a> {
                 coords,
                 fill_color,
                 border_color,
-            } => {
-                let typed_coords = coords.as_ref().map(|c| self.check_view_coords(c));
-                let typed_fill = fill_color.as_ref().map(|e| self.check_expr(e));
-                let typed_border = border_color.as_ref().map(|e| self.check_expr(e));
-                TypedStatement::new(
-                    TypedStatementKind::View {
-                        screen: *screen,
-                        coords: typed_coords,
-                        fill_color: typed_fill,
-                        border_color: typed_border,
-                    },
-                    stmt.span,
-                )
-            }
+            } => self.check_view(
+                *screen,
+                coords.as_ref(),
+                fill_color.as_ref(),
+                border_color.as_ref(),
+                stmt.span,
+            ),
 
             StatementKind::ViewPrint { top, bottom } => {
-                let typed_top = top.as_ref().map(|e| self.check_expr(e));
-                let typed_bottom = bottom.as_ref().map(|e| self.check_expr(e));
-                TypedStatement::new(
-                    TypedStatementKind::ViewPrint {
-                        top: typed_top,
-                        bottom: typed_bottom,
-                    },
-                    stmt.span,
-                )
+                self.check_view_print(top.as_ref(), bottom.as_ref(), stmt.span)
             }
 
             StatementKind::WindowCoords { screen, coords } => {
-                let typed_coords = coords.as_ref().map(|c| self.check_view_coords(c));
-                TypedStatement::new(
-                    TypedStatementKind::WindowCoords {
-                        screen: *screen,
-                        coords: typed_coords,
-                    },
-                    stmt.span,
-                )
+                self.check_window(*screen, coords.as_ref(), stmt.span)
             }
 
-            StatementKind::DrawCmd { commands } => {
-                let typed_commands = self.check_expr(commands);
-                TypedStatement::new(
-                    TypedStatementKind::DrawCmd {
-                        commands: typed_commands,
-                    },
-                    stmt.span,
-                )
-            }
+            StatementKind::DrawCmd { commands } => self.check_draw_cmd(commands, stmt.span),
 
             StatementKind::GraphicsGet {
                 step1,
@@ -1955,27 +1072,17 @@ impl<'a> TypeChecker<'a> {
                 y2,
                 array_name,
                 array_indices,
-            } => {
-                let typed_x1 = self.check_expr(x1);
-                let typed_y1 = self.check_expr(y1);
-                let typed_x2 = self.check_expr(x2);
-                let typed_y2 = self.check_expr(y2);
-                let typed_indices: Vec<_> =
-                    array_indices.iter().map(|e| self.check_expr(e)).collect();
-                TypedStatement::new(
-                    TypedStatementKind::GraphicsGet {
-                        step1: *step1,
-                        x1: typed_x1,
-                        y1: typed_y1,
-                        step2: *step2,
-                        x2: typed_x2,
-                        y2: typed_y2,
-                        array_name: array_name.clone(),
-                        array_indices: typed_indices,
-                    },
-                    stmt.span,
-                )
-            }
+            } => self.check_gfx_get(
+                *step1,
+                x1,
+                y1,
+                *step2,
+                x2,
+                y2,
+                array_name,
+                array_indices,
+                stmt.span,
+            ),
 
             StatementKind::GraphicsPut {
                 x,
@@ -1986,37 +1093,20 @@ impl<'a> TypeChecker<'a> {
                 clip,
                 action,
                 transparent_color,
-            } => {
-                let typed_x = self.check_expr(x);
-                let typed_y = self.check_expr(y);
-                let typed_indices: Vec<_> =
-                    array_indices.iter().map(|e| self.check_expr(e)).collect();
-                let typed_transparent = transparent_color.as_ref().map(|e| self.check_expr(e));
-                TypedStatement::new(
-                    TypedStatementKind::GraphicsPut {
-                        x: typed_x,
-                        y: typed_y,
-                        step: *step,
-                        array_name: array_name.clone(),
-                        array_indices: typed_indices,
-                        clip: *clip,
-                        action: *action,
-                        transparent_color: typed_transparent,
-                    },
-                    stmt.span,
-                )
-            }
+            } => self.check_gfx_put(
+                x,
+                y,
+                *step,
+                array_name,
+                array_indices,
+                *clip,
+                *action,
+                transparent_color.as_ref(),
+                stmt.span,
+            ),
 
             // ==================== QB64 Graphics Extensions ====================
-            StatementKind::FreeImage { handle } => {
-                let typed_handle = self.check_expr(handle);
-                TypedStatement::new(
-                    TypedStatementKind::FreeImage {
-                        handle: typed_handle,
-                    },
-                    stmt.span,
-                )
-            }
+            StatementKind::FreeImage { handle } => self.check_free_image(handle, stmt.span),
 
             StatementKind::PutImage {
                 dest_coords,
@@ -2024,154 +1114,47 @@ impl<'a> TypeChecker<'a> {
                 dest,
                 source_coords,
                 scale_mode,
-            } => {
-                let typed_dest_coords = dest_coords
-                    .as_ref()
-                    .map(|c| Box::new(self.check_view_coords(c)));
-                let typed_source = source.as_ref().map(|e| self.check_expr(e));
-                let typed_dest = dest.as_ref().map(|e| self.check_expr(e));
-                let typed_source_coords = source_coords
-                    .as_ref()
-                    .map(|c| Box::new(self.check_view_coords(c)));
-                TypedStatement::new(
-                    TypedStatementKind::PutImage {
-                        dest_coords: typed_dest_coords,
-                        source: typed_source,
-                        dest: typed_dest,
-                        source_coords: typed_source_coords,
-                        scale_mode: *scale_mode,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::SourceImg { handle } => {
-                let typed_handle = self.check_expr(handle);
-                TypedStatement::new(
-                    TypedStatementKind::SourceImg {
-                        handle: typed_handle,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::DestImg { handle } => {
-                let typed_handle = self.check_expr(handle);
-                TypedStatement::new(
-                    TypedStatementKind::DestImg {
-                        handle: typed_handle,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::PrintStringStmt { x, y, text } => {
-                let typed_x = self.check_expr(x);
-                let typed_y = self.check_expr(y);
-                let typed_text = self.check_expr(text);
-                TypedStatement::new(
-                    TypedStatementKind::PrintStringStmt {
-                        x: typed_x,
-                        y: typed_y,
-                        text: typed_text,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::AutoDisplay { enabled } => TypedStatement::new(
-                TypedStatementKind::AutoDisplay { enabled: *enabled },
+            } => self.check_put_image(
+                dest_coords.as_ref().map(|v| &**v),
+                source.as_ref(),
+                dest.as_ref(),
+                source_coords.as_ref().map(|v| &**v),
+                *scale_mode,
                 stmt.span,
             ),
 
+            StatementKind::SourceImg { handle } => self.check_source_img(handle, stmt.span),
+
+            StatementKind::DestImg { handle } => self.check_dest_img(handle, stmt.span),
+
+            StatementKind::PrintStringStmt { x, y, text } => {
+                self.check_print_string_stmt(x, y, text, stmt.span)
+            }
+
+            StatementKind::AutoDisplay { enabled } => self.check_auto_display(*enabled, stmt.span),
+
             // ==================== Audio Statements ====================
-            StatementKind::Beep => TypedStatement::new(TypedStatementKind::Beep, stmt.span),
+            StatementKind::Beep => self.check_beep(stmt.span),
 
             StatementKind::SoundStmt {
                 frequency,
                 duration,
-            } => {
-                let typed_freq = self.check_expr(frequency);
-                let typed_dur = self.check_expr(duration);
-                TypedStatement::new(
-                    TypedStatementKind::SoundStmt {
-                        frequency: typed_freq,
-                        duration: typed_dur,
-                    },
-                    stmt.span,
-                )
-            }
+            } => self.check_sound(frequency, duration, stmt.span),
 
-            StatementKind::PlayStmt { commands } => {
-                let typed_commands = self.check_expr(commands);
-                TypedStatement::new(
-                    TypedStatementKind::PlayStmt {
-                        commands: typed_commands,
-                    },
-                    stmt.span,
-                )
-            }
+            StatementKind::PlayStmt { commands } => self.check_play(commands, stmt.span),
 
-            StatementKind::SndClose { handle } => {
-                let typed_handle = self.check_expr(handle);
-                TypedStatement::new(
-                    TypedStatementKind::SndClose {
-                        handle: typed_handle,
-                    },
-                    stmt.span,
-                )
-            }
+            StatementKind::SndClose { handle } => self.check_snd_close(handle, stmt.span),
 
-            StatementKind::SndPlay { handle } => {
-                let typed_handle = self.check_expr(handle);
-                TypedStatement::new(
-                    TypedStatementKind::SndPlay {
-                        handle: typed_handle,
-                    },
-                    stmt.span,
-                )
-            }
+            StatementKind::SndPlay { handle } => self.check_snd_play(handle, stmt.span),
 
-            StatementKind::SndStop { handle } => {
-                let typed_handle = self.check_expr(handle);
-                TypedStatement::new(
-                    TypedStatementKind::SndStop {
-                        handle: typed_handle,
-                    },
-                    stmt.span,
-                )
-            }
+            StatementKind::SndStop { handle } => self.check_snd_stop(handle, stmt.span),
 
-            StatementKind::SndPause { handle } => {
-                let typed_handle = self.check_expr(handle);
-                TypedStatement::new(
-                    TypedStatementKind::SndPause {
-                        handle: typed_handle,
-                    },
-                    stmt.span,
-                )
-            }
+            StatementKind::SndPause { handle } => self.check_snd_pause(handle, stmt.span),
 
-            StatementKind::SndLoop { handle } => {
-                let typed_handle = self.check_expr(handle);
-                TypedStatement::new(
-                    TypedStatementKind::SndLoop {
-                        handle: typed_handle,
-                    },
-                    stmt.span,
-                )
-            }
+            StatementKind::SndLoop { handle } => self.check_snd_loop(handle, stmt.span),
 
             StatementKind::SndVol { handle, volume } => {
-                let typed_handle = self.check_expr(handle);
-                let typed_volume = self.check_expr(volume);
-                TypedStatement::new(
-                    TypedStatementKind::SndVol {
-                        handle: typed_handle,
-                        volume: typed_volume,
-                    },
-                    stmt.span,
-                )
+                self.check_snd_vol(handle, volume, stmt.span)
             }
 
             StatementKind::SndBal {
@@ -2180,34 +1163,17 @@ impl<'a> TypeChecker<'a> {
                 y,
                 z,
                 channel,
-            } => {
-                let typed_handle = self.check_expr(handle);
-                let typed_x = x.as_ref().map(|e| self.check_expr(e));
-                let typed_y = y.as_ref().map(|e| self.check_expr(e));
-                let typed_z = z.as_ref().map(|e| self.check_expr(e));
-                let typed_channel = channel.as_ref().map(|e| self.check_expr(e));
-                TypedStatement::new(
-                    TypedStatementKind::SndBal {
-                        handle: typed_handle,
-                        x: typed_x,
-                        y: typed_y,
-                        z: typed_z,
-                        channel: typed_channel,
-                    },
-                    stmt.span,
-                )
-            }
+            } => self.check_snd_bal(
+                handle,
+                x.as_ref(),
+                y.as_ref(),
+                z.as_ref(),
+                channel.as_ref(),
+                stmt.span,
+            ),
 
             StatementKind::SndRaw { left, right } => {
-                let typed_left = self.check_expr(left);
-                let typed_right = right.as_ref().map(|e| self.check_expr(e));
-                TypedStatement::new(
-                    TypedStatementKind::SndRaw {
-                        left: typed_left,
-                        right: typed_right,
-                    },
-                    stmt.span,
-                )
+                self.check_snd_raw(left, right.as_ref(), stmt.span)
             }
 
             StatementKind::SndPlayFile {
@@ -2216,46 +1182,21 @@ impl<'a> TypeChecker<'a> {
                 x,
                 y,
                 z,
-            } => {
-                let typed_filename = self.check_expr(filename);
-                let typed_volume = volume.as_ref().map(|e| self.check_expr(e));
-                let typed_x = x.as_ref().map(|e| self.check_expr(e));
-                let typed_y = y.as_ref().map(|e| self.check_expr(e));
-                let typed_z = z.as_ref().map(|e| self.check_expr(e));
-                TypedStatement::new(
-                    TypedStatementKind::SndPlayFile {
-                        filename: typed_filename,
-                        volume: typed_volume,
-                        x: typed_x,
-                        y: typed_y,
-                        z: typed_z,
-                    },
-                    stmt.span,
-                )
-            }
+            } => self.check_snd_playfile(
+                filename,
+                volume.as_ref(),
+                x.as_ref(),
+                y.as_ref(),
+                z.as_ref(),
+                stmt.span,
+            ),
 
             StatementKind::SndPlayCopy { handle, volume } => {
-                let typed_handle = self.check_expr(handle);
-                let typed_volume = volume.as_ref().map(|e| self.check_expr(e));
-                TypedStatement::new(
-                    TypedStatementKind::SndPlayCopy {
-                        handle: typed_handle,
-                        volume: typed_volume,
-                    },
-                    stmt.span,
-                )
+                self.check_snd_playcopy(handle, volume.as_ref(), stmt.span)
             }
 
             StatementKind::SndSetPos { handle, position } => {
-                let typed_handle = self.check_expr(handle);
-                let typed_position = self.check_expr(position);
-                TypedStatement::new(
-                    TypedStatementKind::SndSetPos {
-                        handle: typed_handle,
-                        position: typed_position,
-                    },
-                    stmt.span,
-                )
+                self.check_snd_setpos(handle, position, stmt.span)
             }
 
             // ==================== System Integration Statements ====================
