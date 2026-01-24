@@ -2,9 +2,9 @@
 
 *Updated: 2026-01-24*
 
-This document lists functions that are **not fully implemented** - either stub-only in inline mode with partial external support, or intentionally disabled.
+This document lists functions that are **not fully implemented** - either stub-only, intentionally disabled, or obsolete.
 
-For the complete function reference (including all implemented functions), see [STUB_FUNCTIONS_FULL.md](STUB_FUNCTIONS_FULL.md).
+For implemented functions, see [STUB_FUNCTIONS_FULL.md](STUB_FUNCTIONS_FULL.md).
 
 ---
 
@@ -12,16 +12,11 @@ For the complete function reference (including all implemented functions), see [
 
 | Status | Count | Description |
 |--------|-------|-------------|
-| ⚠️ Legacy stubs | ~4 | ERDEV, device error functions, event handlers |
+| ⚠️ Legacy stubs | ~4 | ERDEV, device error functions |
+| ⚠️ Event handler stubs | ~7 | ON COM, ON UEVENT, ON SIGNAL |
 | ❌ Compile errors | 4 | FRE, SETMEM, IOCTL$, FILEATTR (match QB64pe) |
-| ❌ Obsolete hardware | ~5 | Light pen, some joystick events |
+| ❌ Obsolete hardware | ~5 | Light pen, joystick events |
 | **Total Remaining** | **~13** | Out of 419 registered functions |
-
-**Recent completions:**
-- All audio functions (session 040)
-- Alpha blending (`_BLEND`, `_DONTBLEND`, `_CLEARCOLOR`)
-- Graphics: `_MAPTRIANGLE`, `_COPYPALETTE`, `_DISPLAYORDER`
-- Debugger runtime integration (session 041)
 
 ---
 
@@ -29,14 +24,13 @@ For the complete function reference (including all implemented functions), see [
 
 These functions exist for QB4.5 compatibility but are stubs or have minimal implementation.
 
-### Legacy I/O & Memory
+### Legacy I/O & Memory (Compile Errors)
 
 | Function | Fresh Status | QB64pe Status | Notes |
 |----------|--------------|---------------|-------|
 | `FRE()` | ❌ Error | ⛔ Stub (error) | Throws compile error matching QB64pe |
 | `SETMEM` | ❌ Error | ⛔ Stub (error) | Throws compile error matching QB64pe |
 | `FILEATTR()` | ❌ Error | ⛔ Stub (error) | Throws compile error matching QB64pe |
-
 
 ### Device Functions
 
@@ -59,42 +53,15 @@ These functions exist for QB4.5 compatibility but are stubs or have minimal impl
 | `ON SIGNAL` | ⚠️ Stub | ❌ Not registered | Signal handler |
 | `SIGNAL ON/OFF/STOP` | ⚠️ Stub | ❌ Not registered | Signal control |
 
-**Priority:** Very Low - QB64pe doesn't implement these either. They're rarely used in modern programs.
+**Priority:** Very Low - QB64pe doesn't implement these either.
 
 ---
 
-## Intentionally Disabled Functions
+## Obsolete Hardware
 
-These functions are **not implemented for security or obsolescence reasons** in QB64Fresh, though QB64pe implements some of them.
+These functions are stubs because the hardware no longer exists.
 
-### Port I/O - VGA Palette Emulation ✅
-
-| Function | Fresh Status | QB64pe Status | Notes |
-|----------|--------------|---------------|-------|
-| `INP()` | ✅ Full | ✅ Full | VGA palette (0x3C9) and retrace (0x3DA) |
-| `OUT` | ✅ Full | ✅ Full | Palette registers (0x3C7, 0x3C8, 0x3C9) |
-| `WAIT` | ✅ Full | ✅ Full | Returns immediately for unsupported ports |
-
-**Supported ports:** 0x3C7 (palette read index), 0x3C8 (palette write index), 0x3C9 (palette RGB), 0x3DA (vertical retrace). Other ports return 0 or no-op (safe defaults).
-
-### System Interrupts - INT 0x33 Mouse Emulation ✅
-
-Emulates INT 0x33 (mouse interrupt) like QB64pe for legacy program compatibility.
-
-| Function | Fresh Status | QB64pe Status | Notes |
-|----------|--------------|---------------|-------|
-| `INTERRUPT` | ✅ Full | ✅ Full | INT 0x33 mouse emulation |
-| `INTERRUPTX` | ✅ Full | ✅ Full | Extended version (same emulation) |
-
-**Supported INT 0x33 subfunctions:**
-- AX=0: Check mouse installed → returns AX=0xFFFF, BX=2
-- AX=1: Show mouse cursor
-- AX=2: Hide mouse cursor
-- AX=3: Get status → BX=buttons, CX=X, DX=Y
-
-Other interrupts are no-ops (safe defaults).
-
-### Obsolete Hardware
+### Light Pen
 
 | Function | Fresh Status | QB64pe Status | Notes |
 |----------|--------------|---------------|-------|
@@ -106,8 +73,8 @@ Other interrupts are no-ops (safe defaults).
 
 | Function | Fresh Status | QB64pe Status | Notes |
 |----------|--------------|---------------|-------|
-| `STRIG()` | ⛔ Stub | ✅ Full (`libqb.cpp:25613`) | QB64pe polls controller buttons |
-| `ON STRIG` | ⛔ Stub | ⚠️ Ignored | QB64pe parses but ignores for compatibility |
+| `STRIG()` | ⛔ Stub | ✅ Full | QB64pe polls controller buttons |
+| `ON STRIG` | ⛔ Stub | ⚠️ Ignored | QB64pe parses but ignores |
 | `STRIG ON/OFF/STOP` | ⛔ Stub | ⚠️ Ignored | QB64pe parses but ignores |
 
 ---
@@ -141,11 +108,8 @@ Other interrupts are no-ops (safe defaults).
 | Category | Count | Percentage |
 |----------|-------|------------|
 | ✅ Fully Implemented | ~409 | 97.6% |
-| ⚠️ Legacy Stubs | ~4 | 1% |
+| ⚠️ Legacy/Event Stubs | ~11 | 2.6% |
 | ❌ Compile Errors (match QB64pe) | 4 | 1% |
-| ❌ Obsolete | ~5 | 1.2% |
+| ❌ Obsolete Hardware | ~5 | 1.2% |
 
-The vast majority of QB64 programs will work without issues. The remaining issues are:
-- Obsolete legacy functions throw compile errors (FRE, SETMEM, IOCTL$, FILEATTR) - matches QB64pe
-- Obsolete hardware (light pen) - QB64pe also doesn't implement
-- Event handlers (ON COM, ON UEVENT, etc.) - QB64pe also doesn't implement
+The vast majority of QB64 programs will work without issues.
