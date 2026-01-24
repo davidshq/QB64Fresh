@@ -42,33 +42,42 @@ impl super::StmtEmitter {
         target: &str,
         output: &mut String,
     ) -> Result<(), CodeGenError> {
-        if target == "0" {
+        // Extract actual label from _NEWHANDLER modifier if present
+        let (is_new_handler, actual_target) = if target.to_uppercase().starts_with("_NEWHANDLER ") {
+            (true, &target[12..]) // Skip "_NEWHANDLER "
+        } else {
+            (false, target)
+        };
+
+        if actual_target == "0" {
             writeln!(output, "{}_qb_error_handler = NULL;", indent).unwrap();
             writeln!(output, "{}_qb_error_resume_next = 0;", indent).unwrap();
-        } else if target.eq_ignore_ascii_case("_LASTHANDLER") {
+        } else if actual_target.eq_ignore_ascii_case("_LASTHANDLER") {
             // QB64 extension: restore the previous error handler
             // For now, just disable error handling (simpler behavior)
             writeln!(output, "{}_qb_error_handler = NULL;", indent).unwrap();
             writeln!(output, "{}_qb_error_resume_next = 0;", indent).unwrap();
         } else if self.current_proc.is_some()
-            && (target.eq_ignore_ascii_case("qberror_test")
-                || target.eq_ignore_ascii_case("qberror")
-                || target.eq_ignore_ascii_case("errhandler")
-                || target.eq_ignore_ascii_case("errorhandler"))
+            && (is_new_handler
+                || actual_target.eq_ignore_ascii_case("qberror_test")
+                || actual_target.eq_ignore_ascii_case("qberror")
+                || actual_target.eq_ignore_ascii_case("errhandler")
+                || actual_target.eq_ignore_ascii_case("errorhandler"))
         {
             // Known global error handler labels referenced from subroutines
+            // _NEWHANDLER also indicates a scoped handler that may reference main code
             // C doesn't support cross-function goto, so we disable error handling here
             // In the future, this could use setjmp/longjmp or function pointer callbacks
             writeln!(
                 output,
                 "{}/* Global error handler {} - disabled in subroutine context */",
-                indent, target
+                indent, actual_target
             )
             .unwrap();
             writeln!(output, "{}_qb_error_handler = NULL;", indent).unwrap();
             writeln!(output, "{}_qb_error_resume_next = 0;", indent).unwrap();
         } else {
-            let label = self.proc_label(target);
+            let label = self.proc_label(actual_target);
             writeln!(output, "{}_qb_error_handler = &&{};", indent, label).unwrap();
             writeln!(output, "{}_qb_error_resume_next = 0;", indent).unwrap();
         }

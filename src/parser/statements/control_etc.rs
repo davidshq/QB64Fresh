@@ -148,6 +148,10 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses a label target (identifier or line number).
+    ///
+    /// Also handles QB64 error handler modifiers:
+    /// - `_NEWHANDLER label` - Push a new error handler
+    /// - `_LASTHANDLER` - Pop to previous error handler
     pub(in crate::parser) fn parse_label_target(&mut self) -> Result<String, ()> {
         let token = match self.peek() {
             Some(t) => t,
@@ -161,7 +165,18 @@ impl<'a> Parser<'a> {
             TokenKind::Identifier | TokenKind::IntegerLiteral | TokenKind::FloatLiteral => {
                 let label = token.text.to_string();
                 self.advance();
-                Ok(label)
+
+                // Check for QB64 error handler modifiers
+                if label.eq_ignore_ascii_case("_NEWHANDLER") {
+                    // _NEWHANDLER is followed by the actual label name
+                    let actual_label = self.parse_label_target()?;
+                    Ok(format!("_NEWHANDLER {}", actual_label))
+                } else if label.eq_ignore_ascii_case("_LASTHANDLER") {
+                    // _LASTHANDLER is a standalone target (restore previous handler)
+                    Ok(label)
+                } else {
+                    Ok(label)
+                }
             }
             _ => {
                 let span: Span = token.span.clone().into();
