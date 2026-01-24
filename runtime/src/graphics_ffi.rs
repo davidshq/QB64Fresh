@@ -78,8 +78,8 @@ pub extern "C" fn qb_gfx_shutdown() -> c_int {
 pub extern "C" fn qb_gfx_screen(
     mode: i32,
     _color_switch: i32,
-    _active_page: i32,
-    _visual_page: i32,
+    active_page: i32,
+    visual_page: i32,
 ) -> c_int {
     // Map SCREEN mode to dimensions
     let (width, height) = match mode {
@@ -111,10 +111,30 @@ pub extern "C" fn qb_gfx_screen(
         }
     };
 
-    match crate::graphics::init_graphics(width, height) {
-        Ok(()) => 0,
-        Err(_) => 1,
+    // Initialize graphics with the mode dimensions
+    if let Err(_) = crate::graphics::init_graphics(width, height) {
+        return 1;
     }
+
+    // Set active and visual pages if specified (>= 0 means use that page)
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            // Set active page if specified
+            if active_page >= 0 {
+                if let Err(_) = backend.set_active_page(active_page) {
+                    return 1;
+                }
+            }
+            // Set visual page if specified
+            if visual_page >= 0 {
+                if let Err(_) = backend.set_visual_page(visual_page) {
+                    return 1;
+                }
+            }
+        }
+    }
+
+    0
 }
 
 /// Clear the screen with the current background color.
@@ -634,6 +654,79 @@ pub extern "C" fn qb_gfx_pcopy(src: i32, dst: i32) -> c_int {
             }
         } else {
             1
+        }
+    }
+}
+
+/// Set the active page for drawing operations.
+///
+/// All subsequent drawing commands will target this page.
+///
+/// # Arguments
+/// - `page`: Page number (0-3 for most modes)
+///
+/// # Returns
+/// - `0` on success, non-zero on error
+#[no_mangle]
+pub extern "C" fn qb_gfx_set_active_page(page: i32) -> c_int {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            match backend.set_active_page(page) {
+                Ok(()) => 0,
+                Err(_) => 1,
+            }
+        } else {
+            1
+        }
+    }
+}
+
+/// Set the visual page for display.
+///
+/// This page is rendered to the screen when display() is called.
+///
+/// # Arguments
+/// - `page`: Page number (0-3 for most modes)
+///
+/// # Returns
+/// - `0` on success, non-zero on error
+#[no_mangle]
+pub extern "C" fn qb_gfx_set_visual_page(page: i32) -> c_int {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            match backend.set_visual_page(page) {
+                Ok(()) => 0,
+                Err(_) => 1,
+            }
+        } else {
+            1
+        }
+    }
+}
+
+/// Get the current active and visual page numbers.
+///
+/// # Arguments
+/// - `active_page`: Pointer to store active page number
+/// - `visual_page`: Pointer to store visual page number
+#[no_mangle]
+pub extern "C" fn qb_gfx_get_pages(active_page: *mut i32, visual_page: *mut i32) {
+    unsafe {
+        if let Some(ref backend) = crate::graphics::GRAPHICS_BACKEND {
+            let (active, visual) = backend.get_pages();
+            if !active_page.is_null() {
+                *active_page = active;
+            }
+            if !visual_page.is_null() {
+                *visual_page = visual;
+            }
+        } else {
+            if !active_page.is_null() {
+                *active_page = 0;
+            }
+            if !visual_page.is_null() {
+                *visual_page = 0;
+            }
         }
     }
 }

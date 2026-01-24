@@ -88,6 +88,22 @@ pub(super) fn emit_graphics_stubs(output: &mut String) {
         "int qb_gfx_pcopy(int32_t src, int32_t dst) {{ (void)src; (void)dst; return 0; }}"
     )
     .unwrap();
+    // Page control for double buffering
+    writeln!(
+        output,
+        "int qb_gfx_set_active_page(int32_t page) {{ (void)page; return 0; }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "int qb_gfx_set_visual_page(int32_t page) {{ (void)page; return 0; }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "void qb_gfx_get_pages(int32_t* active, int32_t* visual) {{ if (active) *active = 0; if (visual) *visual = 0; }}"
+    )
+    .unwrap();
     // PMAP: coordinate mapping (stub returns coordinate unchanged)
     writeln!(
         output,
