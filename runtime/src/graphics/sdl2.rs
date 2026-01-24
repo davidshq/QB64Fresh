@@ -551,6 +551,130 @@ impl SDL2Backend {
         }
     }
 
+    /// Draw a FreeType glyph with alpha blending.
+    ///
+    /// This method blends the glyph's alpha values with the foreground color
+    /// onto the pixel buffer, providing anti-aliased text rendering.
+    #[cfg(feature = "freetype")]
+    fn draw_glyph_alpha(
+        &mut self,
+        x: i32,
+        y: i32,
+        glyph: &crate::font_manager::GlyphBitmap,
+        fg_color: u32,
+    ) {
+        let width = self.width;
+        let height = self.height;
+
+        // Empty glyphs (like space) have no bitmap data
+        if glyph.width == 0 || glyph.height == 0 {
+            return;
+        }
+
+        // Extract foreground RGB components
+        let fg_r = ((fg_color >> 16) & 0xFF) as u8;
+        let fg_g = ((fg_color >> 8) & 0xFF) as u8;
+        let fg_b = (fg_color & 0xFF) as u8;
+
+        // First pass: update pixel buffer with alpha blending
+        for gy in 0..glyph.height {
+            for gx in 0..glyph.width {
+                let px = x + gx as i32;
+                let py = y + gy as i32;
+
+                if px < 0 || py < 0 || px >= width as i32 || py >= height as i32 {
+                    continue;
+                }
+
+                let alpha_idx = (gy * glyph.width + gx) as usize;
+                if alpha_idx >= glyph.data.len() {
+                    continue;
+                }
+
+                let alpha = glyph.data[alpha_idx];
+                if alpha == 0 {
+                    continue; // Fully transparent, skip
+                }
+
+                if let Some(idx) = self.pixel_index(px, py) {
+                    if let Some(page) = self.page_buffers.get_mut(self.active_page) {
+                        if idx < page.len() {
+                            let bg = page[idx];
+                            let blended = Self::blend_alpha(fg_r, fg_g, fg_b, alpha, bg);
+                            page[idx] = blended;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Second pass: draw to canvas (if active page is visual)
+        if self.active_page == self.visual_page {
+            // Collect points to draw first to avoid borrow conflicts
+            let mut draw_points: Vec<(i32, i32, u32)> = Vec::new();
+
+            for gy in 0..glyph.height {
+                for gx in 0..glyph.width {
+                    let px = x + gx as i32;
+                    let py = y + gy as i32;
+
+                    if px < 0 || py < 0 || px >= width as i32 || py >= height as i32 {
+                        continue;
+                    }
+
+                    let alpha_idx = (gy * glyph.width + gx) as usize;
+                    if alpha_idx >= glyph.data.len() {
+                        continue;
+                    }
+
+                    let alpha = glyph.data[alpha_idx];
+                    if alpha == 0 {
+                        continue;
+                    }
+
+                    // Get the blended color from pixel buffer
+                    if let Some(idx) = self.pixel_index(px, py) {
+                        if let Some(page) = self.page_buffers.get(self.active_page) {
+                            if idx < page.len() {
+                                let color = page[idx];
+                                draw_points.push((px, py, color));
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Now draw all the points to canvas
+            if let Some(canvas) = self.canvas.as_mut() {
+                for (px, py, color) in draw_points {
+                    canvas.set_draw_color(Self::argb_to_sdl_color(color));
+                    let _ = canvas.draw_point(Point::new(px, py));
+                }
+            }
+        }
+    }
+
+    /// Blend a foreground color with an alpha value onto a background color.
+    #[cfg(feature = "freetype")]
+    fn blend_alpha(fg_r: u8, fg_g: u8, fg_b: u8, alpha: u8, bg: u32) -> u32 {
+        let bg_r = ((bg >> 16) & 0xFF) as u8;
+        let bg_g = ((bg >> 8) & 0xFF) as u8;
+        let bg_b = (bg & 0xFF) as u8;
+        let bg_a = ((bg >> 24) & 0xFF) as u8;
+
+        let alpha_f = alpha as f32 / 255.0;
+        let inv_alpha = 1.0 - alpha_f;
+
+        let r = (fg_r as f32 * alpha_f + bg_r as f32 * inv_alpha) as u8;
+        let g = (fg_g as f32 * alpha_f + bg_g as f32 * inv_alpha) as u8;
+        let b = (fg_b as f32 * alpha_f + bg_b as f32 * inv_alpha) as u8;
+
+        // Keep background alpha or set to fully opaque
+        let a = if bg_a == 0 { 255 } else { bg_a };
+
+        ((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32)
+    }
+
     fn draw_circle_outline(&mut self, cx: i32, cy: i32, radius: i32, color: u32) {
         if radius <= 0 {
             return;
@@ -2730,6 +2854,170 @@ impl GraphicsBackend for SDL2Backend {
                 }
             }
         }
+    }
+
+    // ========================================================================
+    // Unicode Font Support (FreeType)
+    // ========================================================================
+
+    #[cfg(feature = "freetype")]
+    fn load_font_with_options(&mut self, path: &str, size: u16, options: u32) -> i64 {
+        use crate::font_manager::FONT_MANAGER;
+        let mut fm = FONT_MANAGER.lock().unwrap();
+        fm.load_font(path, size, options)
+    }
+
+    #[cfg(not(feature = "freetype"))]
+    fn load_font_with_options(&mut self, path: &str, size: u16, _options: u32) -> i64 {
+        // Fall back to SDL2_TTF if available, otherwise return 0
+        self.load_font(path, size)
+    }
+
+    #[cfg(feature = "freetype")]
+    fn print_string_unicode(&mut self, x: i32, y: i32, text: &str) -> Result<(), GraphicsError> {
+        use crate::font_manager::FONT_MANAGER;
+
+        if !self.initialized {
+            return Err(GraphicsError::not_initialized());
+        }
+
+        #[cfg(feature = "graphics-sdl2-ttf")]
+        let current_font = self.current_font;
+        #[cfg(not(feature = "graphics-sdl2-ttf"))]
+        let current_font: i64 = 0;
+
+        // If using built-in font (handle 0), fall back to ASCII rendering
+        if current_font == 0 {
+            return self.print_string(x, y, text);
+        }
+
+        // Use FreeType font rendering
+        let mut fm = FONT_MANAGER.lock().unwrap();
+        if let Some(font) = fm.get_font_mut(current_font) {
+            let mut px = x;
+            let baseline = font.baseline;
+
+            for ch in text.chars() {
+                if let Some(glyph) = font.get_glyph(ch) {
+                    // Calculate glyph position
+                    let gx = px + glyph.bearing_x;
+                    let gy = y + baseline - glyph.bearing_y;
+
+                    // Render glyph with alpha blending
+                    self.draw_glyph_alpha(gx, gy, glyph, self.fg_color);
+
+                    px += glyph.advance_x;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    #[cfg(not(feature = "freetype"))]
+    fn print_string_unicode(&mut self, x: i32, y: i32, text: &str) -> Result<(), GraphicsError> {
+        // Fall back to ASCII print_string
+        self.print_string(x, y, text)
+    }
+
+    #[cfg(feature = "freetype")]
+    fn get_print_width_unicode(&mut self, text: &str) -> i64 {
+        use crate::font_manager::FONT_MANAGER;
+
+        #[cfg(feature = "graphics-sdl2-ttf")]
+        let current_font = self.current_font;
+        #[cfg(not(feature = "graphics-sdl2-ttf"))]
+        let current_font: i64 = 0;
+
+        if current_font == 0 {
+            return self.get_print_width(text);
+        }
+
+        let mut fm = FONT_MANAGER.lock().unwrap();
+        fm.get_text_width(current_font, text)
+    }
+
+    #[cfg(not(feature = "freetype"))]
+    fn get_print_width_unicode(&mut self, text: &str) -> i64 {
+        self.get_print_width(text)
+    }
+
+    #[cfg(feature = "freetype")]
+    fn get_unicode_font_height(&self, handle: i64) -> i64 {
+        use crate::font_manager::FONT_MANAGER;
+
+        if handle == 0 {
+            return self.get_font_height() as i64;
+        }
+
+        let fm = FONT_MANAGER.lock().unwrap();
+        fm.get_font_height(handle).unwrap_or(16) as i64
+    }
+
+    #[cfg(not(feature = "freetype"))]
+    fn get_unicode_font_height(&self, _handle: i64) -> i64 {
+        self.get_font_height() as i64
+    }
+
+    #[cfg(feature = "freetype")]
+    fn get_unicode_line_spacing(&self) -> i64 {
+        use crate::font_manager::FONT_MANAGER;
+
+        #[cfg(feature = "graphics-sdl2-ttf")]
+        let current_font = self.current_font;
+        #[cfg(not(feature = "graphics-sdl2-ttf"))]
+        let current_font: i64 = 0;
+
+        if current_font == 0 {
+            return self.get_font_height() as i64;
+        }
+
+        let fm = FONT_MANAGER.lock().unwrap();
+        fm.get_font_height(current_font).unwrap_or(16) as i64
+    }
+
+    #[cfg(not(feature = "freetype"))]
+    fn get_unicode_line_spacing(&self) -> i64 {
+        self.get_font_height() as i64
+    }
+
+    #[cfg(feature = "freetype")]
+    fn get_unicode_char_positions(&mut self, text: &str) -> Vec<i64> {
+        use crate::font_manager::FONT_MANAGER;
+
+        #[cfg(feature = "graphics-sdl2-ttf")]
+        let current_font = self.current_font;
+        #[cfg(not(feature = "graphics-sdl2-ttf"))]
+        let current_font: i64 = 0;
+
+        if current_font == 0 {
+            return text
+                .chars()
+                .enumerate()
+                .map(|(i, _)| (i as i64) * (FONT_WIDTH as i64))
+                .collect();
+        }
+
+        let mut fm = FONT_MANAGER.lock().unwrap();
+        fm.get_char_positions(current_font, text)
+    }
+
+    #[cfg(not(feature = "freetype"))]
+    fn get_unicode_char_positions(&mut self, text: &str) -> Vec<i64> {
+        text.chars()
+            .enumerate()
+            .map(|(i, _)| (i as i64) * (FONT_WIDTH as i64))
+            .collect()
+    }
+
+    #[cfg(feature = "graphics-sdl2-ttf")]
+    fn get_current_font(&self) -> i64 {
+        self.current_font
+    }
+
+    #[cfg(not(feature = "graphics-sdl2-ttf"))]
+    fn get_current_font(&self) -> i64 {
+        0
     }
 }
 

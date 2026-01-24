@@ -365,12 +365,27 @@ QbString* qb_clipboard_get(void);
 void qb_clipboard_set(const char* text);
 
 /* Font functions */
-int64_t qb_loadfont(const char* path, int64_t size);
+int64_t qb_loadfont(const char* path, int32_t size, int32_t options);
+int64_t qb_loadfont_qb(const QbString* path, int64_t size, int32_t options);
 int64_t qb_font(int64_t handle);
-int64_t qb_freefont(int64_t handle);
+void qb_freefont(int64_t handle);
 int64_t qb_fontheight(void);
 int64_t qb_fontwidth(void);
-int64_t qb_printwidth(const char* text);
+int64_t qb_printwidth(const QbString* text);
+int64_t qb_font_get(void);
+
+/* Unicode font functions (FreeType-based) */
+void qb_uprintstring(int64_t x, int64_t y, const QbString* text);
+int64_t qb_uprintwidth(const QbString* text);
+int64_t qb_ufontheight(int64_t handle);
+int64_t qb_ulinespacing(void);
+int64_t qb_ucharpos(const QbString* text, int64_t pos);
+
+/* Font loading option flags */
+#define QB_FONT_DONTBLEND   8   /* No anti-aliasing (1-bit rendering) */
+#define QB_FONT_MONOSPACE   16  /* Force monospace width */
+#define QB_FONT_UNICODE     32  /* UTF-8 input mode */
+#define QB_FONT_AUTOMONO    64  /* Auto-detect monospace */
 
 /* Window control functions */
 int32_t qb_fullscreen(int32_t mode);

@@ -644,6 +644,85 @@ pub trait GraphicsBackend {
     }
 
     // ============================================================================
+    // Unicode Font Support (FreeType)
+    // ============================================================================
+
+    /// Load a font with extended options.
+    ///
+    /// # Arguments
+    /// - `path`: Path to the TrueType/OpenType font file
+    /// - `size`: Pixel height of the font
+    /// - `options`: QB64 font loading options:
+    ///   - 8: DONTBLEND (no anti-aliasing)
+    ///   - 16: MONOSPACE (force fixed width)
+    ///   - 32: UNICODE (UTF-8 input mode)
+    ///   - 64: AUTOMONO (auto-detect monospace)
+    ///
+    /// # Returns
+    /// Font handle on success (positive), or 0 on failure
+    fn load_font_with_options(&mut self, path: &str, size: u16, _options: u32) -> i64 {
+        // Default implementation ignores options
+        self.load_font(path, size)
+    }
+
+    /// Print Unicode text at pixel coordinates.
+    ///
+    /// This is the Unicode-aware version of `print_string` that properly
+    /// handles UTF-8 encoded text and renders using the current font.
+    ///
+    /// # Arguments
+    /// - `x`, `y`: Pixel coordinates for text origin
+    /// - `text`: UTF-8 encoded text string
+    fn print_string_unicode(&mut self, x: i32, y: i32, text: &str) -> Result<(), GraphicsError> {
+        // Default: fall back to ASCII print_string
+        self.print_string(x, y, text)
+    }
+
+    /// Get the pixel width of a Unicode text string.
+    ///
+    /// Returns the total advance width for rendering the given UTF-8 text
+    /// with the current font.
+    fn get_print_width_unicode(&mut self, text: &str) -> i64 {
+        // Default: fall back to ASCII width calculation
+        self.get_print_width(text)
+    }
+
+    /// Get the height of a specific font in pixels.
+    ///
+    /// # Arguments
+    /// - `handle`: Font handle (0 = current font)
+    fn get_unicode_font_height(&self, _handle: i64) -> i64 {
+        self.get_font_height() as i64
+    }
+
+    /// Get the line spacing for the current font.
+    ///
+    /// This is typically the font height plus any extra leading.
+    fn get_unicode_line_spacing(&self) -> i64 {
+        self.get_font_height() as i64
+    }
+
+    /// Get the x-position of each character in a text string.
+    ///
+    /// Returns a vector of x-offsets where each character would be rendered.
+    /// Useful for cursor positioning and text selection in proportional fonts.
+    ///
+    /// # Arguments
+    /// - `text`: UTF-8 encoded text string
+    fn get_unicode_char_positions(&mut self, text: &str) -> Vec<i64> {
+        // Default: assume 8-pixel wide characters
+        text.chars()
+            .enumerate()
+            .map(|(i, _)| (i as i64) * 8)
+            .collect()
+    }
+
+    /// Get the current font handle.
+    fn get_current_font(&self) -> i64 {
+        0 // Default: built-in font
+    }
+
+    // ============================================================================
     // Window Control Functions
     // ============================================================================
 

@@ -584,6 +584,24 @@ impl SemanticAnalyzer {
             &[("text", BasicType::String)],
             BasicType::Long,
         ); // Get pixel width of text
+
+        // Unicode font functions (stubs for QB64PE parity)
+        self.register_builtin_function(
+            "_UPRINTWIDTH",
+            &[("text", BasicType::String)],
+            BasicType::Long,
+        );
+        self.register_builtin_function(
+            "_UCHARPOS",
+            &[("text", BasicType::String), ("pos", BasicType::Long)],
+            BasicType::Long,
+        );
+        self.register_builtin_function_with_optionals(
+            "_UFONTHEIGHT",
+            &[("handle", BasicType::Long, true)],
+            BasicType::Long,
+        );
+        self.register_builtin_function("_ULINESPACING", &[], BasicType::Long);
         self.register_builtin_function("_FONT", &[("handle", BasicType::Long)], BasicType::Long); // Sets current font, returns previous handle
         self.register_builtin_function(
             "_FREEFONT",
@@ -1389,6 +1407,16 @@ impl SemanticAnalyzer {
 
         // Print mode
         self.register_builtin_sub("_PRINTMODE", &[("mode", BasicType::Integer)]);
+
+        // Unicode print statement (stub for QB64PE parity)
+        self.register_builtin_sub(
+            "_UPRINTSTRING",
+            &[
+                ("x", BasicType::Long),
+                ("y", BasicType::Long),
+                ("text", BasicType::String),
+            ],
+        );
 
         // Console statements
         self.register_builtin_sub("_ECHO", &[("text", BasicType::String)]);

@@ -26,6 +26,9 @@
 pub mod audio;
 pub mod audio_ffi;
 pub mod dialogs;
+pub mod font_ffi;
+#[cfg(feature = "freetype")]
+pub mod font_manager;
 pub mod graphics;
 pub mod graphics_ffi;
 pub mod io;
@@ -37,6 +40,9 @@ pub mod string;
 pub use audio::*;
 pub use audio_ffi::*;
 pub use dialogs::*;
+pub use font_ffi::*;
+#[cfg(feature = "freetype")]
+pub use font_manager::*;
 pub use graphics::*;
 pub use graphics_ffi::*;
 pub use io::*;
