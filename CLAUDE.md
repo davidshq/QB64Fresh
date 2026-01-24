@@ -665,8 +665,32 @@ Infrastructure complete, awaiting runtime integration:
 
 ### Runtime Modes
 Code generation supports two modes via `--runtime` flag:
-- `inline` (default) - Self-contained C with embedded runtime
-- `external` - Links against `libqb64fresh_rt` static library
+- `inline` (default) - Self-contained C with embedded runtime (graphics are stubs)
+- `external` - Links against `libqb64fresh_rt` static library (full graphics support)
+
+**Inline Runtime:**
+```bash
+cargo run --bin qb64fresh -- program.bas --emit-c
+```
+Embeds all runtime functions directly in generated C. Graphics calls become no-ops.
+
+**External Runtime:**
+```bash
+# Build runtime library
+cd runtime && cargo build --release --features graphics-sdl2
+
+# Compile BASIC to C
+cargo run --bin qb64fresh -- program.bas --emit-c --runtime external
+
+# Compile and link
+gcc -I runtime/include program.c -L target/release -lqb64fresh_rt \
+    $(pkg-config --libs sdl2) -lasound -lm -lpthread -ldl -o program
+```
+
+**Key files:**
+- `runtime/include/qb64fresh_rt.h` - C header with all FFI declarations
+- `runtime/src/graphics_ffi.rs` - Graphics FFI layer (100+ functions)
+- `runtime/src/lib.rs` - Runtime initialization functions
 
 ---
 
