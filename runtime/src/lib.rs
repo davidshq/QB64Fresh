@@ -81,6 +81,64 @@ pub extern "C" fn qb_stop() {
     std::process::exit(1);
 }
 
+// ============================================================================
+// Program Initialization Functions
+// ============================================================================
+
+use std::os::raw::c_char;
+use std::sync::OnceLock;
+
+/// Storage for command line arguments
+static ARGS: OnceLock<(i32, Vec<String>)> = OnceLock::new();
+
+/// Storage for starting directory
+static START_DIR: OnceLock<String> = OnceLock::new();
+
+/// Initialize command line arguments.
+///
+/// Stores argc and argv for later access by COMMAND$ function.
+///
+/// # Safety
+/// - `argv` must be a valid array of null-terminated C strings with `argc` elements
+#[no_mangle]
+pub unsafe extern "C" fn qb_init_args(argc: i32, argv: *const *const c_char) {
+    let mut args = Vec::new();
+    if !argv.is_null() && argc > 0 {
+        for i in 0..argc as usize {
+            let arg_ptr = *argv.add(i);
+            if !arg_ptr.is_null() {
+                if let Ok(s) = std::ffi::CStr::from_ptr(arg_ptr).to_str() {
+                    args.push(s.to_string());
+                }
+            }
+        }
+    }
+    let _ = ARGS.set((argc, args));
+}
+
+/// Initialize the starting directory.
+///
+/// Stores the current working directory at program start.
+#[no_mangle]
+pub extern "C" fn qb_init_startdir() {
+    if let Ok(cwd) = std::env::current_dir() {
+        let _ = START_DIR.set(cwd.to_string_lossy().to_string());
+    } else {
+        let _ = START_DIR.set(String::new());
+    }
+}
+
+/// Initialize the default palette.
+///
+/// Sets up the 256-color palette with default VGA colors.
+/// This is a no-op if graphics haven't been initialized.
+#[no_mangle]
+pub extern "C" fn _qb_init_palette() {
+    // The graphics backend initializes its own palette when created.
+    // This function exists for compatibility with code that expects
+    // explicit palette initialization.
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

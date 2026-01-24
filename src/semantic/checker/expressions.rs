@@ -556,6 +556,21 @@ impl<'a> TypeChecker<'a> {
             return self.check_iif_call(args, span);
         }
 
+        // Check for unimplemented legacy functions (matching QB64pe behavior)
+        // These functions exist in classic BASIC but are meaningless in modern systems
+        // and QB64pe throws compile errors for them
+        let upper_name = name.to_uppercase();
+        if matches!(
+            upper_name.as_str(),
+            "FRE" | "IOCTL$" | "SETMEM" | "FILEATTR"
+        ) {
+            self.errors.push(SemanticError::CommandNotImplemented {
+                name: name.to_string(),
+                span,
+            });
+            return TypedExpr::new(TypedExprKind::IntegerLiteral(0), BasicType::Long, span);
+        }
+
         // Look up procedure
         let proc = match self.symbols.lookup_procedure(name) {
             Some(p) => p.clone(),
