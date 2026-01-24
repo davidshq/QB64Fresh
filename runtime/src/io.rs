@@ -693,15 +693,115 @@ pub unsafe extern "C" fn qb_dir(spec: *const QbString) -> *mut QbString {
 // ============================================================================
 
 use std::collections::HashMap;
+use std::io::Read;
 use std::net::{TcpListener, TcpStream};
 use std::sync::Mutex;
+
+/// Buffered stream wrapper for network connections.
+///
+/// TCP streams may return partial data on read, so we buffer incoming data
+/// to allow QB64's `GET #` to read exact byte counts. The buffer grows as
+/// data arrives and shrinks as data is consumed.
+struct BufferedStream {
+    /// The underlying TCP stream.
+    stream: TcpStream,
+    /// Input buffer for received data.
+    in_buffer: Vec<u8>,
+    /// True if the connection has been closed by the remote end.
+    eof: bool,
+}
+
+impl BufferedStream {
+    /// Creates a new buffered stream wrapping a TCP stream.
+    fn new(stream: TcpStream) -> Self {
+        Self {
+            stream,
+            in_buffer: Vec::with_capacity(4096),
+            eof: false,
+        }
+    }
+
+    /// Reads any available data from the stream into the buffer (non-blocking).
+    ///
+    /// Returns the number of bytes read, or 0 if no data available.
+    fn update(&mut self) -> usize {
+        if self.eof {
+            return 0;
+        }
+
+        let mut temp = [0u8; 4096];
+        match self.stream.read(&mut temp) {
+            Ok(0) => {
+                // EOF - connection closed by remote
+                self.eof = true;
+                0
+            }
+            Ok(n) => {
+                self.in_buffer.extend_from_slice(&temp[..n]);
+                n
+            }
+            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                // No data available right now
+                0
+            }
+            Err(_) => {
+                // Error - mark as EOF
+                self.eof = true;
+                0
+            }
+        }
+    }
+
+    /// Returns the number of bytes available in the buffer.
+    fn available(&self) -> usize {
+        self.in_buffer.len()
+    }
+
+    /// Returns true if EOF has been reached.
+    fn is_eof(&self) -> bool {
+        self.eof && self.in_buffer.is_empty()
+    }
+
+    /// Reads up to `size` bytes from the buffer into `data`.
+    ///
+    /// Returns the number of bytes actually read.
+    fn read(&mut self, data: &mut [u8], size: usize) -> usize {
+        // First, try to get more data from the stream
+        self.update();
+
+        let to_read = size.min(self.in_buffer.len()).min(data.len());
+        if to_read > 0 {
+            data[..to_read].copy_from_slice(&self.in_buffer[..to_read]);
+            self.in_buffer.drain(..to_read);
+        }
+        to_read
+    }
+
+    /// Writes data to the stream.
+    ///
+    /// Returns the number of bytes written, or 0 on error.
+    fn write(&mut self, data: &[u8]) -> usize {
+        match self.stream.write_all(data) {
+            Ok(()) => {
+                let _ = self.stream.flush();
+                data.len()
+            }
+            Err(_) => 0,
+        }
+    }
+
+    /// Returns a reference to the underlying stream.
+    fn stream(&self) -> &TcpStream {
+        &self.stream
+    }
+}
 
 /// Network handle types
 enum NetHandle {
     /// TCP server listener
     Host(TcpListener),
-    /// TCP connection (client or accepted)
-    Connection(TcpStream),
+    /// TCP connection (client or accepted) with buffered I/O
+    Connection(BufferedStream),
 }
 
 /// Global network handle storage
@@ -777,7 +877,7 @@ pub extern "C" fn qb_net_openconnection(host_handle: i64) -> i64 {
                     }
 
                     let handle = next_net_handle();
-                    map.insert(handle, NetHandle::Connection(stream));
+                    map.insert(handle, NetHandle::Connection(BufferedStream::new(stream)));
                     return handle;
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
@@ -842,7 +942,7 @@ pub unsafe extern "C" fn qb_net_openclient(connection_string: *const c_char) -> 
             let handle = next_net_handle();
             let mut handles = NET_HANDLES.lock().unwrap();
             if let Some(ref mut map) = *handles {
-                map.insert(handle, NetHandle::Connection(stream));
+                map.insert(handle, NetHandle::Connection(BufferedStream::new(stream)));
             }
             handle
         }
@@ -860,36 +960,163 @@ pub unsafe extern "C" fn qb_net_openclient(connection_string: *const c_char) -> 
 pub extern "C" fn qb_net_connected(handle: i64) -> i32 {
     init_net_handles();
 
-    let handles = NET_HANDLES.lock().unwrap();
-    if let Some(ref map) = *handles {
-        if let Some(NetHandle::Connection(stream)) = map.get(&handle) {
-            // Try to peek at the stream to check if it's still connected
-            // A zero-byte peek will fail if the connection is closed
-            use std::io::Read;
-            let mut buf = [0u8; 1];
-
-            // Clone the stream to avoid borrowing issues
-            match stream.try_clone() {
-                Ok(mut clone) => {
-                    // Set blocking temporarily for the peek
-                    let _ = clone.set_nonblocking(false);
-                    match clone.peek(&mut buf) {
-                        Ok(0) => return 0,  // Connection closed
-                        Ok(_) => return -1, // Data available, still connected
-                        Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                            return -1; // No data but still connected
-                        }
-                        Err(_) => return 0, // Error, assume disconnected
-                    }
-                }
-                Err(_) => return 0,
+    let mut handles = NET_HANDLES.lock().unwrap();
+    if let Some(ref mut map) = *handles {
+        if let Some(NetHandle::Connection(ref mut buf_stream)) = map.get_mut(&handle) {
+            // If we already know it's EOF, return disconnected
+            if buf_stream.is_eof() {
+                return 0;
             }
+
+            // Try to update the buffer - this will detect EOF
+            buf_stream.update();
+
+            // If EOF now, return disconnected (but only if buffer is empty)
+            if buf_stream.is_eof() {
+                return 0;
+            }
+
+            // Still connected
+            return -1;
         } else if map.contains_key(&handle) {
             // It's a host handle, which is always "connected" while open
             return -1;
         }
     }
     0 // Invalid handle
+}
+
+// ============================================================================
+// Network I/O Functions (PUT/GET for network handles)
+// ============================================================================
+
+/// Read binary data from a network connection (GET #).
+///
+/// Reads up to `size` bytes into the provided buffer. May read fewer bytes
+/// if not enough data is available in the buffer.
+///
+/// # Safety
+/// - `data` must be a valid pointer to a buffer of at least `size` bytes
+#[no_mangle]
+pub unsafe extern "C" fn qb_net_get(handle: i64, data: *mut u8, size: usize) -> usize {
+    if data.is_null() || size == 0 {
+        return 0;
+    }
+
+    init_net_handles();
+
+    let mut handles = NET_HANDLES.lock().unwrap();
+    if let Some(ref mut map) = *handles {
+        if let Some(NetHandle::Connection(ref mut buf_stream)) = map.get_mut(&handle) {
+            let slice = std::slice::from_raw_parts_mut(data, size);
+            return buf_stream.read(slice, size);
+        }
+    }
+    0
+}
+
+/// Write binary data to a network connection (PUT #).
+///
+/// Writes `size` bytes from the provided buffer to the connection.
+///
+/// # Safety
+/// - `data` must be a valid pointer to a buffer of at least `size` bytes
+#[no_mangle]
+pub unsafe extern "C" fn qb_net_put(handle: i64, data: *const u8, size: usize) -> usize {
+    if data.is_null() || size == 0 {
+        return 0;
+    }
+
+    init_net_handles();
+
+    let mut handles = NET_HANDLES.lock().unwrap();
+    if let Some(ref mut map) = *handles {
+        if let Some(NetHandle::Connection(ref mut buf_stream)) = map.get_mut(&handle) {
+            let slice = std::slice::from_raw_parts(data, size);
+            return buf_stream.write(slice);
+        }
+    }
+    0
+}
+
+/// Read a string from a network connection (GET # for strings).
+///
+/// Reads into the string's existing buffer (fixed-length string or pre-sized).
+///
+/// # Safety
+/// - `s` must be a valid QbString pointer
+#[no_mangle]
+pub unsafe extern "C" fn qb_net_get_string(handle: i64, s: *mut QbString) -> usize {
+    if s.is_null() {
+        return 0;
+    }
+
+    let data_ptr = qb_string_data(s);
+    let len = qb_string_len(s);
+
+    if data_ptr.is_null() || len == 0 {
+        return 0;
+    }
+
+    qb_net_get(handle, data_ptr as *mut u8, len)
+}
+
+/// Write a string to a network connection (PUT # for strings).
+///
+/// Writes the entire string content to the connection.
+///
+/// # Safety
+/// - `s` must be a valid QbString pointer
+#[no_mangle]
+pub unsafe extern "C" fn qb_net_put_string(handle: i64, s: *const QbString) -> usize {
+    if s.is_null() {
+        return 0;
+    }
+
+    let data_ptr = qb_string_data(s);
+    let len = qb_string_len(s);
+
+    if data_ptr.is_null() || len == 0 {
+        return 0;
+    }
+
+    qb_net_put(handle, data_ptr as *const u8, len)
+}
+
+/// Check if EOF has been reached on a network connection.
+///
+/// Returns -1 (true) if EOF, 0 (false) if more data may be available.
+#[no_mangle]
+pub extern "C" fn qb_net_eof(handle: i64) -> i32 {
+    init_net_handles();
+
+    let mut handles = NET_HANDLES.lock().unwrap();
+    if let Some(ref mut map) = *handles {
+        if let Some(NetHandle::Connection(ref mut buf_stream)) = map.get_mut(&handle) {
+            // Update buffer to check for new data
+            buf_stream.update();
+            return if buf_stream.is_eof() { -1 } else { 0 };
+        }
+    }
+    -1 // Invalid handle = EOF
+}
+
+/// Return the number of bytes available in the network buffer (LOF for networks).
+///
+/// For network handles, this returns the amount of buffered input data.
+#[no_mangle]
+pub extern "C" fn qb_net_lof(handle: i64) -> i64 {
+    init_net_handles();
+
+    let mut handles = NET_HANDLES.lock().unwrap();
+    if let Some(ref mut map) = *handles {
+        if let Some(NetHandle::Connection(ref mut buf_stream)) = map.get_mut(&handle) {
+            // Update buffer to get latest data
+            buf_stream.update();
+            return buf_stream.available() as i64;
+        }
+    }
+    0
 }
 
 /// Close a network handle (internal helper).

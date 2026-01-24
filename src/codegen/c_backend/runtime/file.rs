@@ -38,6 +38,38 @@ pub(super) fn emit_file_io_functions(output: &mut String) {
     writeln!(output, "static int32_t _qb_file_reclen[QB_MAX_FILES];").unwrap();
     writeln!(output).unwrap();
 
+    // Network I/O function declarations (implemented in Rust runtime)
+    // Negative file numbers indicate network handles
+    writeln!(
+        output,
+        "/* Network I/O Functions (extern - from Rust runtime) */"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "extern size_t qb_net_get(int64_t handle, uint8_t* data, size_t size);"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "extern size_t qb_net_put(int64_t handle, const uint8_t* data, size_t size);"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "extern size_t qb_net_get_string(int64_t handle, qb_string* s);"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "extern size_t qb_net_put_string(int64_t handle, const qb_string* s);"
+    )
+    .unwrap();
+    writeln!(output, "extern int32_t qb_net_eof(int64_t handle);").unwrap();
+    writeln!(output, "extern int64_t qb_net_lof(int64_t handle);").unwrap();
+    writeln!(output, "extern void qb_net_close(int64_t handle);").unwrap();
+    writeln!(output).unwrap();
+
     // _qb_file_set - internal function to set file handle
     writeln!(output, "static void _qb_file_set(int32_t fnum, FILE* f) {{").unwrap();
     writeln!(output, "    if (fnum < 1 || fnum >= QB_MAX_FILES) return;").unwrap();
@@ -117,8 +149,12 @@ pub(super) fn emit_file_io_functions(output: &mut String) {
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
-    // qb_file_close - Close a file
+    // qb_file_close - Close a file or network connection
     writeln!(output, "void qb_file_close(int32_t fnum) {{").unwrap();
+    writeln!(output, "    if (fnum < 0) {{").unwrap();
+    writeln!(output, "        qb_net_close((int64_t)fnum);").unwrap();
+    writeln!(output, "        return;").unwrap();
+    writeln!(output, "    }}").unwrap();
     writeln!(
         output,
         "    if (fnum >= 1 && fnum < QB_MAX_FILES && _qb_files[fnum]) {{"
@@ -394,6 +430,14 @@ pub(super) fn emit_file_io_functions(output: &mut String) {
         "void qb_file_get(int32_t fnum, void* data, size_t size) {{"
     )
     .unwrap();
+    writeln!(output, "    if (fnum < 0) {{").unwrap();
+    writeln!(
+        output,
+        "        qb_net_get((int64_t)fnum, (uint8_t*)data, size);"
+    )
+    .unwrap();
+    writeln!(output, "        return;").unwrap();
+    writeln!(output, "    }}").unwrap();
     writeln!(
         output,
         "    if (fnum >= 1 && fnum < QB_MAX_FILES && _qb_files[fnum])"
@@ -409,6 +453,10 @@ pub(super) fn emit_file_io_functions(output: &mut String) {
         "void qb_file_get_string(int32_t fnum, qb_string* s) {{"
     )
     .unwrap();
+    writeln!(output, "    if (fnum < 0) {{").unwrap();
+    writeln!(output, "        qb_net_get_string((int64_t)fnum, s);").unwrap();
+    writeln!(output, "        return;").unwrap();
+    writeln!(output, "    }}").unwrap();
     writeln!(
         output,
         "    if (fnum < 1 || fnum >= QB_MAX_FILES || !_qb_files[fnum]) return;"
@@ -425,6 +473,10 @@ pub(super) fn emit_file_io_functions(output: &mut String) {
         "void qb_file_put_string(int32_t fnum, qb_string* s) {{"
     )
     .unwrap();
+    writeln!(output, "    if (fnum < 0) {{").unwrap();
+    writeln!(output, "        qb_net_put_string((int64_t)fnum, s);").unwrap();
+    writeln!(output, "        return;").unwrap();
+    writeln!(output, "    }}").unwrap();
     writeln!(
         output,
         "    if (fnum < 1 || fnum >= QB_MAX_FILES || !_qb_files[fnum]) return;"
@@ -440,6 +492,14 @@ pub(super) fn emit_file_io_functions(output: &mut String) {
         "void qb_file_put(int32_t fnum, const void* data, size_t size) {{"
     )
     .unwrap();
+    writeln!(output, "    if (fnum < 0) {{").unwrap();
+    writeln!(
+        output,
+        "        qb_net_put((int64_t)fnum, (const uint8_t*)data, size);"
+    )
+    .unwrap();
+    writeln!(output, "        return;").unwrap();
+    writeln!(output, "    }}").unwrap();
     writeln!(
         output,
         "    if (fnum >= 1 && fnum < QB_MAX_FILES && _qb_files[fnum])"
@@ -451,6 +511,9 @@ pub(super) fn emit_file_io_functions(output: &mut String) {
 
     // File functions
     writeln!(output, "int32_t qb_eof(int32_t fnum) {{").unwrap();
+    writeln!(output, "    if (fnum < 0) {{").unwrap();
+    writeln!(output, "        return qb_net_eof((int64_t)fnum);").unwrap();
+    writeln!(output, "    }}").unwrap();
     writeln!(
         output,
         "    if (fnum >= 1 && fnum < QB_MAX_FILES && _qb_files[fnum])"
@@ -462,6 +525,9 @@ pub(super) fn emit_file_io_functions(output: &mut String) {
     writeln!(output).unwrap();
 
     writeln!(output, "int64_t qb_lof(int32_t fnum) {{").unwrap();
+    writeln!(output, "    if (fnum < 0) {{").unwrap();
+    writeln!(output, "        return qb_net_lof((int64_t)fnum);").unwrap();
+    writeln!(output, "    }}").unwrap();
     writeln!(
         output,
         "    if (fnum < 1 || fnum >= QB_MAX_FILES || !_qb_files[fnum]) return 0;"

@@ -26,6 +26,38 @@ use super::super::types::{c_identifier, c_type};
 use super::LoopContext;
 
 impl super::StmtEmitter {
+    /// Emits a STRIG event check point.
+    ///
+    /// This inserts code that checks for pending STRIG events and dispatches
+    /// to the appropriate handler. Each check point has a unique return label
+    /// so execution resumes at the right place after the handler returns.
+    ///
+    /// The check uses a global `_qb_strig_event_id` variable to pass the event ID
+    /// to the dispatch switch, and calls `qb_strig_event_done()` after the handler
+    /// returns to allow new events to fire.
+    fn emit_strig_check(&mut self, indent: &str, output: &mut String) {
+        let return_label = self.next_label("strig_ret");
+
+        writeln!(output, "{}/* STRIG event check */", indent).unwrap();
+        writeln!(
+            output,
+            "{}_qb_strig_event_id = qb_strig_check_event();",
+            indent
+        )
+        .unwrap();
+        writeln!(output, "{}if (_qb_strig_event_id) {{", indent).unwrap();
+        writeln!(
+            output,
+            "{}    _gosub_stack[_gosub_sp++] = &&{};",
+            indent, return_label
+        )
+        .unwrap();
+        writeln!(output, "{}    goto _qb_strig_dispatch;", indent).unwrap();
+        writeln!(output, "{}}}", indent).unwrap();
+        writeln!(output, "{}{}:;", indent, return_label).unwrap();
+        writeln!(output, "{}qb_strig_event_done();", indent).unwrap();
+    }
+
     /// Emits an IF/ELSEIF/ELSE statement.
     ///
     /// Generates C `if`/`else if`/`else` blocks with proper indentation
@@ -243,6 +275,9 @@ impl super::StmtEmitter {
         .unwrap();
 
         self.indent += 1;
+        // STRIG event check at loop iteration
+        let inner_indent = "    ".repeat(self.indent);
+        self.emit_strig_check(&inner_indent, output);
         for stmt in body {
             self.emit_stmt(stmt, output)?;
         }
@@ -283,6 +318,9 @@ impl super::StmtEmitter {
         writeln!(output, "{}while ({}) {{", indent, cond_code).unwrap();
 
         self.indent += 1;
+        // STRIG event check at loop iteration
+        let inner_indent = "    ".repeat(self.indent);
+        self.emit_strig_check(&inner_indent, output);
         for stmt in body {
             self.emit_stmt(stmt, output)?;
         }
@@ -345,6 +383,9 @@ impl super::StmtEmitter {
         }
 
         self.indent += 1;
+        // STRIG event check at loop iteration
+        let inner_indent = "    ".repeat(self.indent);
+        self.emit_strig_check(&inner_indent, output);
         for stmt in body {
             self.emit_stmt(stmt, output)?;
         }

@@ -483,12 +483,20 @@ pub(super) fn emit_legacy_functions(output: &mut String) {
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
+    // STRIG event handling - uses event ID-based dispatch instead of computed goto
+    // The generated code calls qb_strig_check_event() at loop iterations and
+    // dispatches to the appropriate GOSUB label via a switch statement
     writeln!(
         output,
-        "void qb_on_strig(int32_t button_num, void* target) {{"
+        "void qb_on_strig(int32_t button_num, uint32_t event_id) {{"
     )
     .unwrap();
-    writeln!(output, "    (void)button_num; (void)target;").unwrap();
+    writeln!(output, "    (void)button_num; (void)event_id;").unwrap();
+    writeln!(
+        output,
+        "    /* Stub - full implementation in Rust runtime */"
+    )
+    .unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
@@ -498,6 +506,29 @@ pub(super) fn emit_legacy_functions(output: &mut String) {
     )
     .unwrap();
     writeln!(output, "    (void)button_num; (void)mode;").unwrap();
+    writeln!(
+        output,
+        "    /* Stub - full implementation in Rust runtime */"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "uint32_t qb_strig_check_event(void) {{").unwrap();
+    writeln!(
+        output,
+        "    return 0; /* No events in stub implementation */"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(output, "void qb_strig_event_done(void) {{").unwrap();
+    writeln!(
+        output,
+        "    /* Stub - full implementation in Rust runtime */"
+    )
+    .unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
