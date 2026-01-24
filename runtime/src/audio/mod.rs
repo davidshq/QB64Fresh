@@ -137,6 +137,37 @@ pub trait AudioBackend {
         48000 // Default sample rate
     }
 
+    /// Copy a sound handle (creates an independent copy).
+    ///
+    /// # Arguments
+    /// - `handle`: Source sound handle
+    ///
+    /// # Returns
+    /// New sound handle, or -1 on error
+    fn snd_copy(&mut self, handle: i32) -> i32 {
+        let _ = handle;
+        -1 // Default: not supported
+    }
+
+    /// Play a sound file directly without creating a handle.
+    ///
+    /// # Arguments
+    /// - `filename`: Path to the sound file
+    /// - `sync`: If true, block until playback completes
+    fn snd_playfile(&mut self, filename: &str, sync: bool) -> Result<(), AudioError> {
+        let _ = (filename, sync);
+        Ok(()) // Default: no-op
+    }
+
+    /// Play a copy of a sound (allows overlapping playback).
+    ///
+    /// # Arguments
+    /// - `handle`: Sound handle to play a copy of
+    fn snd_playcopy(&mut self, handle: i32) -> Result<(), AudioError> {
+        let _ = handle;
+        Ok(()) // Default: no-op
+    }
+
     // ============================================================================
     // Raw Audio Synthesis
     // ============================================================================

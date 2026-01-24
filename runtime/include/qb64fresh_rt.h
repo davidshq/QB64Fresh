@@ -386,6 +386,51 @@ void qb_clearcolor(uint32_t color, int32_t handle);
 void qb_clearcolor_none(int32_t handle);
 int64_t qb_clearcolor_get(int32_t handle);
 
+/* ============================================================================
+ * Audio Functions
+ * ============================================================================ */
+
+/* Initialization and shutdown */
+int qb_audio_init(void);
+int qb_audio_shutdown(void);
+
+/* Classic BASIC sound */
+int qb_beep(void);
+int qb_sound(double frequency, double duration);
+int qb_play(const char* commands);
+
+/* QB64 _SND* functions - file operations */
+int32_t qb_sndopen(const char* filename);
+int qb_sndclose(int32_t handle);
+int qb_sndplay(int32_t handle);
+int qb_sndstop(int32_t handle);
+int qb_sndpause(int32_t handle);
+int qb_sndresume(int32_t handle);
+int qb_sndloop(int32_t handle);
+
+/* Sound control */
+int qb_sndvol(int32_t handle, double volume);
+int qb_sndbal(int32_t handle, double balance);
+
+/* Sound queries */
+double qb_sndlen(int32_t handle);
+double qb_sndgetpos(int32_t handle);
+int qb_sndsetpos(int32_t handle, double position);
+int qb_sndplaying(int32_t handle);
+int qb_sndpaused(int32_t handle);
+int32_t qb_sndrate(void);
+
+/* Sound copying and direct playback */
+int32_t qb_sndcopy(int32_t handle);
+int qb_sndplayfile(const char* filename, int sync);
+int qb_sndplaycopy(int32_t handle);
+
+/* Raw audio synthesis */
+int32_t qb_sndopenraw(void);
+int qb_sndraw(double sample);
+int qb_sndraw_stereo(double left, double right);
+double qb_sndrawlen(void);
+
 #ifdef __cplusplus
 }
 #endif

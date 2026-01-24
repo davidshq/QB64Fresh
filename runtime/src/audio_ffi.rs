@@ -425,6 +425,70 @@ pub extern "C" fn qb_sndrawlen() -> f64 {
     }
 }
 
+/// Copy a sound handle (creates an independent copy).
+///
+/// # Returns
+/// New sound handle, or -1 on error
+#[no_mangle]
+pub extern "C" fn qb_sndcopy(handle: i32) -> i32 {
+    unsafe {
+        if let Some(ref mut backend) = crate::audio::AUDIO_BACKEND {
+            backend.snd_copy(handle)
+        } else {
+            -1
+        }
+    }
+}
+
+/// Play a sound file directly without creating a handle.
+///
+/// # Safety
+/// - `filename` must be a valid null-terminated C string
+///
+/// # Arguments
+/// - `filename`: Path to the sound file
+/// - `sync`: If non-zero, block until playback completes
+#[no_mangle]
+pub unsafe extern "C" fn qb_sndplayfile(filename: *const c_char, sync: c_int) -> c_int {
+    if filename.is_null() {
+        return 1;
+    }
+
+    let fname = match CStr::from_ptr(filename).to_str() {
+        Ok(s) => s,
+        Err(_) => return 1,
+    };
+
+    // Auto-initialize if needed
+    if crate::audio::AUDIO_BACKEND.is_none() {
+        let _ = crate::audio::init_audio();
+    }
+
+    if let Some(ref mut backend) = crate::audio::AUDIO_BACKEND {
+        match backend.snd_playfile(fname, sync != 0) {
+            Ok(()) => 0,
+            Err(_) => 1,
+        }
+    } else {
+        1
+    }
+}
+
+/// Play a copy of a sound (allows overlapping playback).
+#[no_mangle]
+pub extern "C" fn qb_sndplaycopy(handle: i32) -> c_int {
+    unsafe {
+        if let Some(ref mut backend) = crate::audio::AUDIO_BACKEND {
+            match backend.snd_playcopy(handle) {
+                Ok(()) => 0,
+                Err(_) => 1,
+            }
+        } else {
+            1
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
