@@ -20,17 +20,23 @@ This document outlines features that are planned but not yet implemented, along 
 
 ---
 
-## DECLARE LIBRARY Limitations
+## DECLARE LIBRARY
 
-*(Only unimplemented items are listed.)*
+### Implemented Features
 
-2. **Header Parsing** *(Implemented with `--features header-parsing`)* – `DECLARE LIBRARY "file.h"` can optionally parse the header to auto-generate function declarations. Build with `--features header-parsing` to enable. Supports `#define`, `#ifdef`, structs; not function-like macros, unions, or C++. Manual declarations still work and take precedence.
+- **Header Parsing** *(opt-in: `--features header-parsing`)* – `DECLARE LIBRARY "file.h"` can parse the header to auto-generate function declarations. Supports `#define`, `#ifdef`, structs; not function-like macros, unions, or C++. Manual declarations take precedence over parsed ones.
 
-3. **`_MEM` Advanced Features** – `_MEM` type works in DECLARE LIBRARY parameters and `_MEM(variable)` works as a function. **Remaining limitations:** optional `AS type` on `_MEMGET`/`_MEMPUT` is not supported; use typed helper functions instead. VARPTR/cmem integration is not implemented; use `_OFFSET` with C helpers for C interop.
+- **`_MEM` Support** – `_MEM` type works in DECLARE LIBRARY parameters. `_MEM(variable)` works as a function to get a memory descriptor.
 
-4. **Callback Functions** – Callback signatures other than qsort-style (`int (*)(const void*, const void*)` via `_PROCPTR`) are not supported; implement in C and link.
+- **Platform Constants** – `_64BIT`, `_32BIT`, `_WIN`, `_MAC`, `_WINDOWS`, `_LINUX`, `_MACOSX` are available as builtin constants for `$IF` conditions.
 
-5. **Platform-Specific** *(Implemented)* – `_64BIT`/`_32BIT`, `_WIN`/`_MAC`, `_WINDOWS`, `_LINUX`, `_MACOSX` are available as builtin constants for `$IF` conditions.
+### Remaining Limitations
+
+1. **`_MEMGET`/`_MEMPUT` AS type** – Optional `AS type` clause on `_MEMGET`/`_MEMPUT` is not supported. Workaround: use typed helper functions or cast via `_MK*`/`_CV*`.
+
+2. **Callback Functions** – Callback signatures other than qsort-style (`int (*)(const void*, const void*)` via `_PROCPTR`) are not supported. Workaround: implement callback wrapper in C and link.
+
+3. **VARPTR/cmem Integration** – VARPTR and conventional memory segment access are not implemented. Workaround: use `_OFFSET` with C helper functions for C interop.
 
 ---
 
