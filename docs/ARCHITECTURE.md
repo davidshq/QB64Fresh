@@ -509,6 +509,9 @@ dialogs = ["rfd"]  # Native file dialogs
 - [docs/PARSER_PLAN.md](docs/PARSER_PLAN.md) - Parser implementation details
 - [docs/QB64_SYNTAX_REFERENCE.md](docs/QB64_SYNTAX_REFERENCE.md) - Language syntax reference
 - [docs/QB64PE_LANGUAGE_SPECIFICATION.md](docs/QB64PE_LANGUAGE_SPECIFICATION.md) - QB64PE language reference
+- [docs/INFORM_FUNCTIONALITY.md](docs/INFORM_FUNCTIONALITY.md) - InForm WYSIWYG UI designer and GUI engine (external to QB64pe)
+- [docs/INFORM_EXPERT_DISCUSSION.md](docs/INFORM_EXPERT_DISCUSSION.md) - Expert discussion: enhanced InForm (usefulness, direction, classic vs. modern, AI)
+- [SECURITY_MODEL.md](SECURITY_MODEL.md) - SHELL and file operation security (command injection, path traversal, no sandbox)
 
 ### Architecture Decision Records (ADRs)
 
@@ -526,6 +529,9 @@ dialogs = ["rfd"]  # Native file dialogs
 | ADR-0010 | Parser modularization |
 | ADR-0011 | Error handling |
 | ADR-0012 | Preprocessor architecture |
+| ADR-0013 | Debugger architecture (DAP, tools/debug) |
+| ADR-0014 | Scope and intentionally excluded features |
+| ADR-0015 | No-sandbox execution model (SHELL, file ops) |
 
 ## Code Statistics Summary
 
