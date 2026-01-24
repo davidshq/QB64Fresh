@@ -188,6 +188,40 @@ All 194 runtime tests continue to pass. Audio functionality requires hardware fo
 | Audio | 19 | ✅ Complete |
 | **Total Implemented** | **26** | |
 
+---
+
+## Part 4: System Interrupt Emulation (INT 0x33 Mouse)
+
+### Background
+
+Legacy BASIC programs commonly used `INTERRUPT` and `INTERRUPTX` to access DOS services, particularly INT 0x33 for mouse control. QB64pe emulates this, so we added the same emulation for compatibility.
+
+### Implementation
+
+Added INT 0x33 (mouse interrupt) emulation matching QB64pe's approach:
+
+| Subfunction | AX Value | Action |
+|-------------|----------|--------|
+| Check installed | 0 | Returns AX=0xFFFF, BX=2 (mouse present, 2 buttons) |
+| Show cursor | 1 | Calls `qb_mouse_show()` |
+| Hide cursor | 2 | Calls `qb_mouse_hide()` |
+| Get status | 3 | Returns BX=buttons, CX=X, DX=Y |
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `src/codegen/c_backend/runtime/legacy.rs` | Replaced stub warnings with actual INT 0x33 emulation |
+| `runtime/src/graphics_ffi.rs` | Added `qb_interrupt`, `qb_interruptx` FFI functions |
+| `runtime/include/qb64fresh_rt.h` | Added C declarations |
+
+### Register Structures
+
+- **RegType** (INTERRUPT): 16 bytes - AX, BX, CX, DX, BP, SI, DI, FLAGS
+- **RegTypeX** (INTERRUPTX): 20 bytes - Same plus DS, ES segments
+
+---
+
 ## Remaining Graphics Stubs
 
 From the original plan, these commands remain unimplemented:

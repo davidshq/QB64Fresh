@@ -859,34 +859,121 @@ pub(super) fn emit_legacy_functions(output: &mut String) {
     writeln!(output).unwrap();
 
     // ==================== QB4.5 System Interrupt Functions ====================
-    writeln!(output, "/* QB4.5 System Interrupt Functions (stubs) */").unwrap();
+    // Emulates INT 0x33 (mouse) like QB64pe for legacy compatibility
+    writeln!(
+        output,
+        "/* QB4.5 System Interrupt Functions (INT 0x33 mouse emulation) */"
+    )
+    .unwrap();
     writeln!(output).unwrap();
 
-    // INTERRUPT - call system interrupt
-    // This is not implementable on modern protected-mode systems
+    // Internal function to emulate specific interrupts
+    writeln!(
+        output,
+        "static void _qb_call_int(int32_t int_num, int16_t* regs) {{"
+    )
+    .unwrap();
+    writeln!(output, "    /* regs: AX, BX, CX, DX, BP, SI, DI, FLAGS */").unwrap();
+    writeln!(output, "    if (int_num == 0x33) {{").unwrap();
+    writeln!(output, "        /* Mouse interrupt emulation */").unwrap();
+    writeln!(output, "        int16_t ax = regs[0];").unwrap();
+    writeln!(output, "        if (ax == 0) {{").unwrap();
+    writeln!(output, "            /* Check mouse installed */").unwrap();
+    writeln!(
+        output,
+        "            regs[0] = (int16_t)0xFFFF; /* Mouse installed */"
+    )
+    .unwrap();
+    writeln!(output, "            regs[1] = 2; /* 2 buttons */").unwrap();
+    writeln!(output, "            return;").unwrap();
+    writeln!(output, "        }}").unwrap();
+    writeln!(output, "        if (ax == 1) {{").unwrap();
+    writeln!(output, "            /* Show mouse cursor */").unwrap();
+    writeln!(output, "            qb_mouse_show();").unwrap();
+    writeln!(output, "            return;").unwrap();
+    writeln!(output, "        }}").unwrap();
+    writeln!(output, "        if (ax == 2) {{").unwrap();
+    writeln!(output, "            /* Hide mouse cursor */").unwrap();
+    writeln!(output, "            qb_mouse_hide();").unwrap();
+    writeln!(output, "            return;").unwrap();
+    writeln!(output, "        }}").unwrap();
+    writeln!(output, "        if (ax == 3) {{").unwrap();
+    writeln!(
+        output,
+        "            /* Get mouse position and button status */"
+    )
+    .unwrap();
+    writeln!(output, "            int32_t buttons = 0;").unwrap();
+    writeln!(output, "            if (qb_mouse_button(1)) buttons |= 1;").unwrap();
+    writeln!(output, "            if (qb_mouse_button(2)) buttons |= 2;").unwrap();
+    writeln!(output, "            if (qb_mouse_button(3)) buttons |= 4;").unwrap();
+    writeln!(
+        output,
+        "            regs[1] = (int16_t)buttons; /* BX = buttons */"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "            regs[2] = (int16_t)qb_mouse_x(); /* CX = X */"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "            regs[3] = (int16_t)qb_mouse_y(); /* DX = Y */"
+    )
+    .unwrap();
+    writeln!(output, "            return;").unwrap();
+    writeln!(output, "        }}").unwrap();
+    writeln!(
+        output,
+        "        /* AX=7,8 (min/max range) - no-op for compatibility */"
+    )
+    .unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // INTERRUPT - call system interrupt (RegType: 8 x int16)
     writeln!(
         output,
         "void qb_interrupt(int32_t int_num, void* in_regs, void* out_regs) {{"
     )
     .unwrap();
-    writeln!(output, "    (void)int_num; (void)in_regs; (void)out_regs;").unwrap();
+    writeln!(output, "    int16_t* in_r = (int16_t*)in_regs;").unwrap();
+    writeln!(output, "    int16_t* out_r = (int16_t*)out_regs;").unwrap();
     writeln!(
         output,
-        "    // System interrupts not available on protected-mode systems"
+        "    /* Copy input registers to output as working copy */"
     )
     .unwrap();
-    writeln!(output, "    fprintf(stderr, \"Warning: INTERRUPT statement is not supported on modern systems\\n\");").unwrap();
+    writeln!(
+        output,
+        "    for (int i = 0; i < 8; i++) out_r[i] = in_r[i];"
+    )
+    .unwrap();
+    writeln!(output, "    _qb_call_int(int_num, out_r);").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
-    // INTERRUPTX - extended system interrupt
+    // INTERRUPTX - extended system interrupt (RegTypeX: 10 x int16)
     writeln!(
         output,
         "void qb_interruptx(int32_t int_num, void* in_regs, void* out_regs) {{"
     )
     .unwrap();
-    writeln!(output, "    (void)int_num; (void)in_regs; (void)out_regs;").unwrap();
-    writeln!(output, "    fprintf(stderr, \"Warning: INTERRUPTX statement is not supported on modern systems\\n\");").unwrap();
+    writeln!(output, "    int16_t* in_r = (int16_t*)in_regs;").unwrap();
+    writeln!(output, "    int16_t* out_r = (int16_t*)out_regs;").unwrap();
+    writeln!(
+        output,
+        "    /* Copy input registers to output as working copy */"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    for (int i = 0; i < 10; i++) out_r[i] = in_r[i];"
+    )
+    .unwrap();
+    writeln!(output, "    _qb_call_int(int_num, out_r);").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 }

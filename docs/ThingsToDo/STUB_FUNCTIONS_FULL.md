@@ -152,11 +152,13 @@ QB64Fresh supports two runtime modes:
 
 ---
 
-### Audio Functions (~20 functions)
+### Audio Functions (~20 functions) - ✅ Fully Implemented (2026-01-24)
 
-**External Runtime:** `runtime/src/audio/rodio_backend.rs` (543 lines)
-**External Runtime FFI:** `runtime/src/audio_ffi.rs` (439 lines)
+**External Runtime:** `runtime/src/audio/rodio_backend.rs` (~950 lines)
+**External Runtime FFI:** `runtime/src/audio_ffi.rs` (~500 lines)
 **QB64pe uses:** miniaudio library with full AudioEngine C++ class
+
+All audio functions are now fully implemented in the external runtime using Rodio.
 
 | Function | Inline | External | QB64pe | Purpose |
 |----------|--------|----------|--------|---------|
@@ -170,19 +172,24 @@ QB64Fresh supports two runtime modes:
 | `_SNDPAUSE()` | void | ✅ Full | ✅ Full | Pause playback (statement) |
 | `_SNDRESUME()` | void | ✅ Full | ✅ Full | Resume playback (statement) |
 | `_SNDLOOP()` | void | ✅ Full | ✅ Full | Set loop mode (statement) |
-| `_SNDVOL()` | void | ⚠️ Stub | ✅ Full | Set volume (statement) |
-| `_SNDBAL()` | void | ⚠️ Stub | ✅ Full | Set 3D balance |
-| `_SNDLEN()` | 0.0 | ⚠️ Stub | ✅ Full | Get audio length |
-| `_SNDGETPOS()` | 0.0 | ⚠️ Stub | ✅ Full | Get playback position |
-| `_SNDSETPOS()` | void | ⚠️ Stub | ✅ Full | Set playback position |
-| `_SNDPLAYING()` | 0 | ⚠️ Stub | ✅ Full | Check if playing |
-| `_SNDPAUSED()` | 0 | ⚠️ Stub | ✅ Full | Check if paused |
-| `_SNDCOPY()` | -1 | ⚠️ Stub | ✅ Full | Copy audio handle |
-| `_SNDOPENRAW()` | -1 | ⚠️ Stub | ✅ Full | Open raw audio stream |
-| `_SNDRAW()` | void | ⚠️ Stub | ✅ Full | Write raw audio sample |
-| `_SNDRAWLEN()` | 0.0 | ⚠️ Stub | ✅ Full | Get raw audio queue length |
-| `_SNDPLAYFILE()` | void | ⚠️ Stub | ✅ Full | Play file directly |
-| `_SNDPLAYCOPY()` | void | ⚠️ Stub | ✅ Full | Play copy of sound |
+| `_SNDVOL()` | void | ✅ Full | ✅ Full | Set volume (0.0 to 1.0) |
+| `_SNDBAL()` | void | ✅ Full | ✅ Full | Set stereo balance (-1.0 to 1.0) |
+| `_SNDLEN()` | 0.0 | ✅ Full | ✅ Full | Get audio length in seconds |
+| `_SNDGETPOS()` | 0.0 | ✅ Full | ✅ Full | Get playback position |
+| `_SNDSETPOS()` | void | ✅ Full | ✅ Full | Seek to position |
+| `_SNDPLAYING()` | 0 | ✅ Full | ✅ Full | Check if playing |
+| `_SNDPAUSED()` | 0 | ✅ Full | ✅ Full | Check if paused |
+| `_SNDCOPY()` | -1 | ✅ Full | ✅ Full | Copy audio handle |
+| `_SNDOPENRAW()` | -1 | ✅ Full | ✅ Full | Open raw audio stream |
+| `_SNDRAW()` | void | ✅ Full | ✅ Full | Write raw audio sample |
+| `_SNDRAWLEN()` | 0.0 | ✅ Full | ✅ Full | Get raw audio queue length |
+| `_SNDPLAYFILE()` | void | ✅ Full | ✅ Full | Play file directly (sync/async) |
+| `_SNDPLAYCOPY()` | void | ✅ Full | ✅ Full | Play copy for overlapping sounds |
+
+**Implementation notes:**
+- Position tracking uses `Instant` timestamps since Rodio doesn't expose position
+- `BalancedSource<S>` wrapper provides stereo panning
+- `RawAudioSource` with shared buffer enables real-time synthesis
 
 ---
 
@@ -409,14 +416,20 @@ VGA palette ports are emulated for legacy compatibility (matching QB64pe).
 | `IOCTL$()` | "" | ⚠️ Stub only | Get device status string |
 | `IOCTL` | void | ⚠️ Stub only | Send device control (statement) |
 
-#### System Interrupts (2 functions) - Intentionally Disabled
+#### System Interrupts (2 functions) - INT 0x33 Mouse Emulation ✅
 
-Not supported on modern systems for security reasons.
+Emulates INT 0x33 (mouse) like QB64pe for legacy program compatibility.
 
-| Function | Inline Returns | External Status | Purpose |
-|----------|----------------|-----------------|---------|
-| `INTERRUPT` | void (warns) | ❌ Disabled | Call system interrupt (statement) |
-| `INTERRUPTX` | void (warns) | ❌ Disabled | Extended interrupt (statement) |
+| Function | Inline | External | Purpose |
+|----------|--------|----------|---------|
+| `INTERRUPT` | ✅ Full | ✅ Full | Call system interrupt (INT 0x33 mouse emulated) |
+| `INTERRUPTX` | ✅ Full | ✅ Full | Extended interrupt (INT 0x33 mouse emulated) |
+
+**Supported INT 0x33 subfunctions:**
+- AX=0: Check mouse installed → AX=0xFFFF, BX=2
+- AX=1: Show cursor
+- AX=2: Hide cursor
+- AX=3: Get status → BX=buttons, CX=X, DX=Y
 
 #### Event Handlers (~11 functions)
 
@@ -444,21 +457,23 @@ Not supported on modern systems for security reasons.
 
 | Status | Count | Percentage | Notes |
 |--------|-------|------------|-------|
-| ✅ Fully Implemented (Both Modes) | ~135 | 32% | String, math, file I/O, console, PEEK/POKE |
-| ✅ Fully Implemented (External Only) | ~170 | 41% | Graphics, core audio, dialogs, networking |
-| ⚠️ Partial/Stub only | ~97 | 23% | Audio features, graphics stubs in inline mode |
-| ❌ Not implemented/Disabled | ~17 | 4% | Port I/O, interrupts, obsolete hardware |
+| ✅ Fully Implemented (Both Modes) | ~137 | 33% | String, math, file I/O, console, PEEK/POKE, interrupts |
+| ✅ Fully Implemented (External Only) | ~182 | 44% | Graphics, audio (complete), dialogs, networking |
+| ⚠️ Partial/Stub only | ~85 | 20% | Graphics stubs in inline mode, legacy hardware |
+| ❌ Not implemented/Disabled | ~15 | 3% | Light pen, some legacy device functions |
 
 ### What's Still Missing
 
-**Low Priority (rarely used):**
+**Graphics (Low Priority):**
+1. `_MAPTRIANGLE` - 3D textured triangle (needs SDL_RenderGeometry)
+2. `_COPYPALETTE` - Copy palette between images
+3. `_DISPLAYORDER` - Layer rendering order
+
+**Legacy (Very Low Priority):**
 1. Serial port (COM) support - ON COM handlers
 2. User-defined events (UEVENT) - full implementation
-3. Some audio features - raw audio streaming limitations
 
 **Intentionally Not Implemented:**
-- Port I/O (INP, OUT, WAIT) - security restrictions
-- System interrupts (INTERRUPT, INTERRUPTX) - security restrictions
 - Light pen (PEN) - obsolete hardware
 
 ---
@@ -475,8 +490,8 @@ Not supported on modern systems for security reasons.
 | `runtime/src/graphics/font.rs` | 600 | Font rendering support |
 | `runtime/src/graphics/mod.rs` | 692 | Graphics module entry |
 | `runtime/src/graphics_ffi.rs` | 1,597 | Graphics C FFI layer |
-| `runtime/src/audio/rodio_backend.rs` | 543 | Rodio audio backend |
-| `runtime/src/audio_ffi.rs` | 439 | Audio C FFI layer |
+| `runtime/src/audio/rodio_backend.rs` | ~950 | Rodio audio backend (full implementation) |
+| `runtime/src/audio_ffi.rs` | ~500 | Audio C FFI layer |
 | `runtime/src/dialogs.rs` | 348 | Native file dialogs (rfd) |
 | `runtime/src/joystick.rs` | 306 | Gamepad/joystick support (SDL2) |
 | `runtime/include/qb64fresh_rt.h` | 259 | External runtime header (104 functions) |

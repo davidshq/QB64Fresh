@@ -1782,6 +1782,118 @@ pub extern "C" fn qb_clearcolor_get(handle: i32) -> i64 {
     }
 }
 
+// ============================================================================
+// System Interrupt Emulation (INT 0x33 mouse)
+// ============================================================================
+
+/// Internal function to emulate specific DOS interrupts.
+///
+/// Supports INT 0x33 (mouse) with the following subfunctions:
+/// - AX=0: Check mouse installed (returns AX=0xFFFF, BX=2)
+/// - AX=1: Show mouse cursor
+/// - AX=2: Hide mouse cursor
+/// - AX=3: Get position and buttons (BX=buttons, CX=X, DX=Y)
+fn call_int(int_num: i32, regs: &mut [i16; 10]) {
+    if int_num == 0x33 {
+        // Mouse interrupt emulation
+        let ax = regs[0];
+
+        if ax == 0 {
+            // Check if mouse installed
+            regs[0] = -1_i16; // 0xFFFF = mouse installed
+            regs[1] = 2; // 2 buttons
+            return;
+        }
+
+        if ax == 1 {
+            // Show mouse cursor
+            qb_mouse_show();
+            return;
+        }
+
+        if ax == 2 {
+            // Hide mouse cursor
+            qb_mouse_hide();
+            return;
+        }
+
+        if ax == 3 {
+            // Get mouse position and button status
+            let mut buttons: i16 = 0;
+            if qb_mouse_button(1) != 0 {
+                buttons |= 1;
+            }
+            if qb_mouse_button(2) != 0 {
+                buttons |= 2;
+            }
+            if qb_mouse_button(3) != 0 {
+                buttons |= 4;
+            }
+            regs[1] = buttons; // BX = buttons
+            regs[2] = qb_mouse_x() as i16; // CX = X
+            regs[3] = qb_mouse_y() as i16; // DX = Y
+            return;
+        }
+
+        // AX=7,8 (min/max range) and others - no-op for compatibility
+    }
+    // Other interrupts are no-ops
+}
+
+/// INTERRUPT statement - call system interrupt with RegType structure.
+///
+/// RegType is 16 bytes: AX, BX, CX, DX, BP, SI, DI, FLAGS (8 x int16)
+///
+/// # Safety
+/// - `in_regs` and `out_regs` must point to valid 16-byte buffers
+#[no_mangle]
+pub unsafe extern "C" fn qb_interrupt(int_num: i32, in_regs: *const i16, out_regs: *mut i16) {
+    if in_regs.is_null() || out_regs.is_null() {
+        return;
+    }
+
+    // Copy input registers to working buffer (10 elements for compatibility with INTERRUPTX)
+    let mut regs: [i16; 10] = [0; 10];
+    for i in 0..8 {
+        regs[i] = *in_regs.add(i);
+    }
+
+    // Call interrupt emulation
+    call_int(int_num, &mut regs);
+
+    // Copy result to output registers
+    for i in 0..8 {
+        *out_regs.add(i) = regs[i];
+    }
+}
+
+/// INTERRUPTX statement - call system interrupt with RegTypeX structure.
+///
+/// RegTypeX is 20 bytes: AX, BX, CX, DX, BP, SI, DI, FLAGS, DS, ES (10 x int16)
+///
+/// # Safety
+/// - `in_regs` and `out_regs` must point to valid 20-byte buffers
+#[no_mangle]
+pub unsafe extern "C" fn qb_interruptx(int_num: i32, in_regs: *const i16, out_regs: *mut i16) {
+    if in_regs.is_null() || out_regs.is_null() {
+        return;
+    }
+
+    // Copy input registers to working buffer
+    let mut regs: [i16; 10] = [0; 10];
+    for i in 0..10 {
+        regs[i] = *in_regs.add(i);
+    }
+
+    // Call interrupt emulation
+    call_int(int_num, &mut regs);
+
+    // Copy result to output registers
+    for i in 0..10 {
+        *out_regs.add(i) = regs[i];
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
