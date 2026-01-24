@@ -230,3 +230,123 @@ forest.bas
 - **--backup** - Automatic backup creation
 - **Binary detection** - Automatically skips non-text files
 - **DATA preservation** - Protects embedded sprite/image data from corruption
+
+---
+
+## qb64fresh-debug
+
+A source-level debugger for QB64Fresh programs with full Debug Adapter Protocol (DAP) support for VS Code, Cursor, and other DAP-compatible IDEs.
+
+### Features
+
+- **Breakpoints** - Set, clear, enable, and disable line breakpoints
+- **Step execution** - Step into, step over, step out of procedures
+- **Call stack** - View the complete call hierarchy
+- **Variable inspection** - Examine variable values at runtime
+- **DAP server** - Full Debug Adapter Protocol for IDE integration
+- **Interactive CLI** - Debug directly from the terminal
+
+### Installation
+
+Build from the QB64Fresh workspace root:
+
+```bash
+cargo build --release -p qb64fresh-debug
+```
+
+The binary will be at `target/release/qb64fresh-debug`.
+
+### Usage
+
+```
+qb64fresh-debug [OPTIONS] <FILE>
+
+Options:
+  -b, --break <LOCATION>    Set initial breakpoint (line number or function name)
+      --break-on-entry      Break on program entry
+      --break-on-error      Break on runtime errors (default: true)
+      --dap                 Start in DAP mode for IDE integration
+      --port <PORT>         Port for DAP mode (default: 4711)
+      --verbosity <LEVEL>   Output verbosity: quiet, normal, verbose, trace
+      --config <FILE>       Configuration file path
+  -I, --source-path <PATH>  Source file search paths
+      --list-commands       List available debugger commands
+  -h, --help                Show help message
+```
+
+### Interactive Commands
+
+When running in interactive mode, the following commands are available:
+
+| Command | Alias | Description |
+|---------|-------|-------------|
+| `run` | `r` | Start/restart program execution |
+| `continue` | `c` | Continue execution until next breakpoint |
+| `step` | `s`, `n` | Step to next statement (step over) |
+| `stepin` | `si` | Step into function/sub call |
+| `stepout` | `so` | Step out of current function/sub |
+| `break [loc]` | `b` | Set breakpoint or list all breakpoints |
+| `delete [id]` | `d` | Delete breakpoint (all if no ID given) |
+| `enable <id>` | | Enable a breakpoint |
+| `disable <id>` | | Disable a breakpoint |
+| `list [line]` | `l` | Show source code around line |
+| `info breakpoints` | | List all breakpoints |
+| `info sources` | | List loaded source files |
+| `quit` | `q` | Exit the debugger |
+
+### Examples
+
+```bash
+# Debug a program interactively
+qb64fresh-debug myprogram.bas
+
+# Debug with breakpoint set at startup
+qb64fresh-debug --break 10 myprogram.bas
+qb64fresh-debug --break main myprogram.bas
+
+# Start in DAP mode for VS Code
+qb64fresh-debug --dap
+
+# Run with verbose output
+qb64fresh-debug --verbosity verbose myprogram.bas
+```
+
+### VS Code Integration
+
+To use with VS Code, add a debug configuration to `.vscode/launch.json`:
+
+```json
+{
+    "version": "0.2.0",
+    "configurations": [{
+        "type": "qb64fresh",
+        "request": "launch",
+        "name": "Debug BASIC",
+        "program": "${file}"
+    }]
+}
+```
+
+### Compiling with Debug Support
+
+To enable debugging, compile your BASIC program with the `--debug` flag:
+
+```bash
+qb64fresh myprogram.bas --emit-c --debug
+```
+
+This adds debug hooks to the generated C code:
+- `qb_dbg_line()` calls before each statement for breakpoint checking
+- `qb_dbg_enter_proc()`/`qb_dbg_exit_proc()` for call stack tracking
+- Named pipe IPC for debugger communication
+
+### Architecture
+
+```
+┌─────────────┐     ┌──────────────────┐     ┌─────────────────────┐
+│ VS Code /   │ DAP │ qb64fresh-debug  │pipe │ Compiled program    │
+│ Cursor      │◄───►│ (DAP server)     │◄───►│ + debug hooks       │
+└─────────────┘     └──────────────────┘     └─────────────────────┘
+```
+
+See [ADR-0013: Debugger Architecture](../docs/adrs/ADR-0013-debugger-architecture.md) for design details.
