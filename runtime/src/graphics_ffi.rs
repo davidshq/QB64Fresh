@@ -2003,6 +2003,44 @@ pub extern "C" fn qb_clearcolor_get(handle: i32) -> i64 {
 }
 
 // ============================================================================
+// Palette Operations
+// ============================================================================
+
+/// _COPYPALETTE - Copy palette from one image to another.
+///
+/// # Arguments
+/// - `src_handle`: Source image handle (0 = screen)
+/// - `dest_handle`: Destination image handle (0 = screen)
+#[no_mangle]
+pub extern "C" fn qb_copypalette(src_handle: i32, dest_handle: i32) {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            backend.copy_palette(src_handle, dest_handle);
+        }
+    }
+}
+
+// ============================================================================
+// Display Layer Ordering
+// ============================================================================
+
+/// _DISPLAYORDER - Set the display layer order.
+///
+/// Controls which rendering layers appear on top of others.
+/// Layer constants: _SOFTWARE=1, _HARDWARE=2, _HARDWARE1=3, _GLRENDER=4
+///
+/// # Arguments
+/// - `layer1` to `layer4`: Layer constants in back-to-front order
+#[no_mangle]
+pub extern "C" fn qb_displayorder(layer1: i32, layer2: i32, layer3: i32, layer4: i32) {
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            backend.set_display_order(layer1, layer2, layer3, layer4);
+        }
+    }
+}
+
+// ============================================================================
 // System Interrupt Emulation (INT 0x33 mouse)
 // ============================================================================
 

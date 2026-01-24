@@ -733,6 +733,42 @@ pub trait GraphicsBackend {
     fn get_clearcolor(&self, _handle: i32) -> i64 {
         -1 // Default: no clear color
     }
+
+    // ============================================================================
+    // Palette Operations
+    // ============================================================================
+
+    /// Copy the palette from one image to another.
+    ///
+    /// For 256-color images, this copies the entire 256-entry color palette.
+    /// For 32-bit images, this may be a no-op as colors are stored directly.
+    ///
+    /// # Arguments
+    /// - `src_handle`: Source image handle (0 = screen)
+    /// - `dest_handle`: Destination image handle (0 = screen)
+    fn copy_palette(&mut self, _src_handle: i32, _dest_handle: i32) {
+        // Default: no-op
+    }
+
+    // ============================================================================
+    // Display Layer Ordering
+    // ============================================================================
+
+    /// Set the display layer order.
+    ///
+    /// Controls the z-order of rendering layers. In QB64, the layers are:
+    /// - `_SOFTWARE` (1) - Software-rendered layer (most BASIC graphics)
+    /// - `_HARDWARE` (2) - Hardware-accelerated layer
+    /// - `_HARDWARE1` (3) - Additional hardware layer
+    /// - `_GLRENDER` (4) - OpenGL rendering layer (not supported in QB64Fresh)
+    ///
+    /// The first layer appears at the back, the last at the front.
+    ///
+    /// # Arguments
+    /// - `order`: Array of layer constants (up to 4)
+    fn set_display_order(&mut self, _layer1: i32, _layer2: i32, _layer3: i32, _layer4: i32) {
+        // Default: no-op
+    }
 }
 
 /// Global graphics backend instance.

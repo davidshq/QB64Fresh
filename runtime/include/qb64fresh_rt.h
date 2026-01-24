@@ -392,6 +392,12 @@ void qb_clearcolor(uint32_t color, int32_t handle);
 void qb_clearcolor_none(int32_t handle);
 int64_t qb_clearcolor_get(int32_t handle);
 
+/* Palette operations */
+void qb_copypalette(int32_t src_handle, int32_t dest_handle);
+
+/* Display layer ordering */
+void qb_displayorder(int32_t layer1, int32_t layer2, int32_t layer3, int32_t layer4);
+
 /* ============================================================================
  * Audio Functions
  * ============================================================================ */

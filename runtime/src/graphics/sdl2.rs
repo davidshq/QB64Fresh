@@ -29,11 +29,14 @@ struct ImageBuffer {
     mode: i32,                // 0 = text, 32 = 32-bit color, etc.
     blend_enabled: bool,      // _BLEND/_DONTBLEND state (true = alpha blending on)
     clear_color: Option<u32>, // _CLEARCOLOR transparency key (None = disabled)
+    palette: [u32; 256],      // Per-image palette (for 256-color modes)
 }
 
 impl ImageBuffer {
     fn new(width: u32, height: u32, mode: i32, fill_color: u32) -> Self {
         let pixels = vec![fill_color; (width * height) as usize];
+        // Initialize with default EGA/VGA palette
+        let palette = ColorPalette::default().colors;
         Self {
             width,
             height,
@@ -41,6 +44,7 @@ impl ImageBuffer {
             mode,
             blend_enabled: true, // Alpha blending enabled by default
             clear_color: None,   // No transparency key by default
+            palette,
         }
     }
 
@@ -244,6 +248,13 @@ pub struct SDL2Backend {
     screen_blend_enabled: bool,
     /// Transparency key for the screen (None = disabled)
     screen_clear_color: Option<u32>,
+    // Display layer ordering
+    /// Display order for layers: [layer1, layer2, layer3, layer4]
+    /// Constants: _SOFTWARE=1, _HARDWARE=2, _HARDWARE1=3, _GLRENDER=4
+    display_order: [i32; 4],
+    // Screen palette (for handle 0)
+    /// Palette for the main screen buffer
+    screen_palette: [u32; 256],
 }
 
 impl std::fmt::Debug for SDL2Backend {
@@ -305,6 +316,10 @@ impl SDL2Backend {
             // Screen blending
             screen_blend_enabled: true,
             screen_clear_color: None,
+            // Display order: default is SOFTWARE at back, then HARDWARE layers
+            display_order: [1, 2, 3, 4], // _SOFTWARE, _HARDWARE, _HARDWARE1, _GLRENDER
+            // Screen palette
+            screen_palette: ColorPalette::default().colors,
         }
     }
 
@@ -1917,6 +1932,7 @@ impl GraphicsBackend for SDL2Backend {
                 mode,
                 blend_enabled: true,
                 clear_color: None,
+                palette: ColorPalette::default().colors,
             };
             self.images.insert(handle, img_buf);
 
@@ -2023,13 +2039,14 @@ impl GraphicsBackend for SDL2Backend {
     }
 
     fn copy_image(&mut self, handle: i32, mode: i32) -> i32 {
-        let (width, height, pixels, blend_enabled, clear_color) = if handle == 0 {
+        let (width, height, pixels, blend_enabled, clear_color, src_palette) = if handle == 0 {
             (
                 self.width,
                 self.height,
                 self.pixel_buffer.clone(),
                 self.screen_blend_enabled,
                 self.screen_clear_color,
+                self.screen_palette,
             )
         } else if let Some(img) = self.images.get(&handle) {
             (
@@ -2038,6 +2055,7 @@ impl GraphicsBackend for SDL2Backend {
                 img.pixels.clone(),
                 img.blend_enabled,
                 img.clear_color,
+                img.palette,
             )
         } else {
             return -1;
@@ -2053,6 +2071,7 @@ impl GraphicsBackend for SDL2Backend {
             mode,
             blend_enabled,
             clear_color,
+            palette: src_palette,
         };
         self.images.insert(new_handle, img);
 
@@ -2081,6 +2100,7 @@ impl GraphicsBackend for SDL2Backend {
             mode: 32,
             blend_enabled: true,
             clear_color: None,
+            palette: self.screen_palette,
         };
         self.images.insert(handle, img);
 
@@ -2311,6 +2331,33 @@ impl GraphicsBackend for SDL2Backend {
             Some(c) => c as i64,
             None => -1, // No clear color set
         }
+    }
+
+    fn copy_palette(&mut self, src_handle: i32, dest_handle: i32) {
+        // Get source palette
+        let src_palette = if src_handle == 0 {
+            self.screen_palette
+        } else if let Some(src_img) = self.images.get(&src_handle) {
+            src_img.palette
+        } else {
+            return; // Invalid source handle
+        };
+
+        // Copy to destination
+        if dest_handle == 0 {
+            self.screen_palette = src_palette;
+            // Also update the global palette for compatibility
+            self.palette.colors = src_palette;
+        } else if let Some(dest_img) = self.images.get_mut(&dest_handle) {
+            dest_img.palette = src_palette;
+        }
+        // Invalid dest handle is silently ignored
+    }
+
+    fn set_display_order(&mut self, layer1: i32, layer2: i32, layer3: i32, layer4: i32) {
+        self.display_order = [layer1, layer2, layer3, layer4];
+        // Note: In a full implementation, this would affect compositing order
+        // For now, we store the order but SDL2 rendering is immediate mode
     }
 }
 

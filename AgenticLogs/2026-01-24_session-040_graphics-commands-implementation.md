@@ -283,11 +283,43 @@ On non-Windows platforms:
 
 ---
 
+## Part 6: Palette and Display Order Functions
+
+### Implemented Functions
+
+| Command | Description | Implementation |
+|---------|-------------|----------------|
+| `_COPYPALETTE src, dest` | Copy palette between images | Per-image 256-entry palette array |
+| `_DISPLAYORDER l1, l2, l3, l4` | Set layer rendering order | Stores order for compositing |
+
+### Implementation Details
+
+#### _COPYPALETTE
+- Added `palette: [u32; 256]` field to `ImageBuffer` struct
+- Added `screen_palette: [u32; 256]` to `SDL2Backend` for handle 0
+- Copies all 256 palette entries from source to destination image
+- Works with both screen (handle 0) and image buffers
+
+#### _DISPLAYORDER
+- Layer constants: `_SOFTWARE=1`, `_HARDWARE=2`, `_HARDWARE1=3`, `_GLRENDER=4`
+- Stores the rendering order in `display_order: [i32; 4]` array
+- Note: Full compositing requires multiple render passes (future work)
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `runtime/src/graphics/mod.rs` | +35 lines: Trait methods `copy_palette`, `set_display_order` |
+| `runtime/src/graphics/sdl2.rs` | +40 lines: ImageBuffer palette field, backend fields, implementations |
+| `runtime/src/graphics_ffi.rs` | +35 lines: FFI functions |
+| `runtime/include/qb64fresh_rt.h` | +5 lines: C declarations |
+| `src/codegen/c_backend/runtime/graphics.rs` | +45 lines: Inline stubs |
+
+---
+
 ## Remaining Graphics Stubs
 
-From the original plan, these commands remain unimplemented:
-- `_COPYPALETTE` - Copy palette between images
-- `_DISPLAYORDER` - Layer ordering for hardware/software
-- `_MAPTRIANGLE` - 3D triangle with texture mapping
+From the original plan, only one command remains unimplemented:
+- `_MAPTRIANGLE` - 3D triangle with texture mapping (requires SDL_RenderGeometry or custom rasterizer)
 
-These can be added in future sessions using the same pattern.
+This is significantly more complex than the others and may require SDL 2.0.18+ or a custom software rasterizer.
