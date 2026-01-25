@@ -59,8 +59,14 @@ use super::types::{add_reserved_identifiers, c_identifier, declare_array_var, de
 /// module level. These are automatically accessible from all functions without needing
 /// a local SHARED statement, so they shouldn't be shadowed by implicit locals.
 ///
+/// The `global_consts` set contains names of global CONST values. These are emitted as
+/// C-level global constants and should NEVER be shadowed by local variable declarations,
+/// as this would break code that references the constants (they'd get local var with
+/// default value 0 instead of the const value).
+///
 /// REDIM always uses an existing global if one exists (in both main and SUB/FUNCTION)
 /// because BASIC's REDIM on a SHARED array operates on the global, not a new local.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn collect_implicit_locals(
     body: &[TypedStatement],
     params: &[TypedParameter],
@@ -68,6 +74,7 @@ pub(super) fn collect_implicit_locals(
     always_exclude: &HashSet<String>,
     global_arrays: &HashSet<String>,
     shared_globals: &HashSet<String>,
+    global_consts: &HashSet<String>,
     is_main_program: bool,
 ) -> Vec<String> {
     let mut locals = Vec::new();
@@ -90,6 +97,12 @@ pub(super) fn collect_implicit_locals(
 
     // Add DIM SHARED globals - these are accessible from all functions
     for var in shared_globals {
+        dim_declared.insert(var.clone());
+    }
+
+    // Add global CONST names - these must NEVER be shadowed by local declarations
+    // because they're emitted as C-level global constants
+    for var in global_consts {
         dim_declared.insert(var.clone());
     }
 
@@ -719,6 +732,7 @@ mod tests {
             &HashSet::new(),
             &HashSet::new(),
             &HashSet::new(),
+            &HashSet::new(),
             false,
         );
 
@@ -742,6 +756,7 @@ mod tests {
         let locals = collect_implicit_locals(
             &body,
             &[],
+            &HashSet::new(),
             &HashSet::new(),
             &HashSet::new(),
             &HashSet::new(),
@@ -777,6 +792,7 @@ mod tests {
         let locals = collect_implicit_locals(
             &body,
             &params,
+            &HashSet::new(),
             &HashSet::new(),
             &HashSet::new(),
             &HashSet::new(),

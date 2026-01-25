@@ -22,6 +22,77 @@
 
 use std::fmt::Write;
 
+/// Emits the temporary string pool for automatic cleanup.
+///
+/// This provides a mechanism similar to QB64pe's qbs_tmp_base/qbs_cleanup pattern
+/// to prevent memory leaks from temporary strings created during expression evaluation.
+///
+/// - `qb_tmp_str_mark()` - Returns current pool position
+/// - `qb_tmp_str_register()` - Registers a temp string and returns it
+/// - `qb_tmp_str_cleanup()` - Frees all temps since a mark
+pub(super) fn emit_temp_string_pool(output: &mut String) {
+    // Static empty string - defined early so it can be referenced by temp pool
+    writeln!(output, "/* Static Empty String */").unwrap();
+    writeln!(output, "static char _qbs_empty_data[1] = {{'\\0'}};").unwrap();
+    writeln!(
+        output,
+        "static qb_string _qbs_empty = {{_qbs_empty_data, 0, 1, 999999}};"
+    )
+    .unwrap();
+    writeln!(output).unwrap();
+
+    // Temporary string pool for automatic cleanup
+    writeln!(output, "/* Temporary String Pool */").unwrap();
+    writeln!(output, "#define QBS_TMP_MAX 16384").unwrap();
+    writeln!(output, "static qb_string* _qbs_tmp_pool[QBS_TMP_MAX];").unwrap();
+    writeln!(output, "static uint32_t _qbs_tmp_next = 0;").unwrap();
+    writeln!(output).unwrap();
+
+    // Mark current position
+    writeln!(output, "uint32_t qbs_tmp_base_get(void) {{").unwrap();
+    writeln!(output, "    return _qbs_tmp_next;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // Register a temporary string - strings start with refcount 1
+    // When assigned to a variable, retain() increments to 2
+    // When cleanup runs, release() decrements back to 1 (variable still has it)
+    writeln!(output, "qb_string* qbs_tmp_register(qb_string* s) {{").unwrap();
+    writeln!(output, "    if (!s || s == &_qbs_empty) return s;").unwrap();
+    writeln!(output, "    if (_qbs_tmp_next < QBS_TMP_MAX) {{").unwrap();
+    writeln!(output, "        _qbs_tmp_pool[_qbs_tmp_next++] = s;").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    return s;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // Cleanup - release all temps since mark (only frees if refcount reaches 0)
+    writeln!(output, "void qbs_cleanup(uint32_t base, int dummy) {{").unwrap();
+    writeln!(output, "    (void)dummy;").unwrap();
+    writeln!(output, "    while (_qbs_tmp_next > base) {{").unwrap();
+    writeln!(output, "        _qbs_tmp_next--;").unwrap();
+    writeln!(
+        output,
+        "        qb_string* s = _qbs_tmp_pool[_qbs_tmp_next];"
+    )
+    .unwrap();
+    writeln!(output, "        _qbs_tmp_pool[_qbs_tmp_next] = NULL;").unwrap();
+    writeln!(
+        output,
+        "        if (s && s != &_qbs_empty && s->refcount > 0) {{"
+    )
+    .unwrap();
+    writeln!(output, "            s->refcount--;").unwrap();
+    writeln!(output, "            if (s->refcount == 0) {{").unwrap();
+    writeln!(output, "                free(s->data);").unwrap();
+    writeln!(output, "                free(s);").unwrap();
+    writeln!(output, "            }}").unwrap();
+    writeln!(output, "        }}").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+}
+
 /// Emits core string allocation and manipulation functions.
 ///
 /// This includes:
@@ -33,15 +104,22 @@ use std::fmt::Write;
 /// - `qb_string_concat` - Concatenate two strings
 /// - `qb_string_data` - Get raw C string pointer
 pub(super) fn emit_string_functions(output: &mut String) {
+    // _qbs_empty is already defined in emit_temp_string_pool
+
     // String creation from null-terminated C string
+    // Optimization: return static empty string for empty input
+    // All new strings are registered as temps - with scoped cleanup, each loop/function
+    // only cleans its own temps (from its saved base position forward), so strings
+    // created by callers are preserved.
     writeln!(output, "qb_string* qb_string_new(const char* s) {{").unwrap();
+    writeln!(output, "    if (!s || s[0] == '\\0') return &_qbs_empty;").unwrap();
     writeln!(output, "    qb_string* str = malloc(sizeof(qb_string));").unwrap();
     writeln!(output, "    str->len = strlen(s);").unwrap();
     writeln!(output, "    str->capacity = str->len + 1;").unwrap();
     writeln!(output, "    str->data = malloc(str->capacity);").unwrap();
     writeln!(output, "    memcpy(str->data, s, str->len + 1);").unwrap();
     writeln!(output, "    str->refcount = 1;").unwrap();
-    writeln!(output, "    return str;").unwrap();
+    writeln!(output, "    return qbs_tmp_register(str);").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
@@ -58,22 +136,28 @@ pub(super) fn emit_string_functions(output: &mut String) {
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
-    // String deallocation
+    // String deallocation - skip static empty string
     writeln!(output, "void qb_string_free(qb_string* s) {{").unwrap();
-    writeln!(output, "    if (s) {{ free(s->data); free(s); }}").unwrap();
+    writeln!(
+        output,
+        "    if (s && s != &_qbs_empty) {{ free(s->data); free(s); }}"
+    )
+    .unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
     // Reference counting - retain
+    // Skip static empty string as it's never freed
     writeln!(output, "qb_string* qb_string_retain(qb_string* s) {{").unwrap();
-    writeln!(output, "    if (s) s->refcount++;").unwrap();
+    writeln!(output, "    if (s && s != &_qbs_empty) s->refcount++;").unwrap();
     writeln!(output, "    return s;").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
     // Reference counting - release
+    // Skip static empty string to avoid decrementing its refcount
     writeln!(output, "void qb_string_release(qb_string* s) {{").unwrap();
-    writeln!(output, "    if (s) {{").unwrap();
+    writeln!(output, "    if (s && s != &_qbs_empty) {{").unwrap();
     writeln!(output, "        s->refcount--;").unwrap();
     writeln!(output, "        if (s->refcount <= 0) {{").unwrap();
     writeln!(output, "            free(s->data);").unwrap();
@@ -100,11 +184,7 @@ pub(super) fn emit_string_functions(output: &mut String) {
         "    int b_valid = b && b->data && b->len < 0x10000000;"
     )
     .unwrap();
-    writeln!(
-        output,
-        "    if (!a_valid && !b_valid) return qb_string_new(\"\");"
-    )
-    .unwrap();
+    writeln!(output, "    if (!a_valid && !b_valid) return &_qbs_empty;").unwrap();
     writeln!(output, "    if (!a_valid) return qb_string_new(b->data);").unwrap();
     writeln!(output, "    if (!b_valid) return qb_string_new(a->data);").unwrap();
     writeln!(output, "    qb_string* result = malloc(sizeof(qb_string));").unwrap();
@@ -118,7 +198,7 @@ pub(super) fn emit_string_functions(output: &mut String) {
         "    memcpy(result->data + a->len, b->data, b->len + 1);"
     )
     .unwrap();
-    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "    return qbs_tmp_register(result);").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
@@ -180,7 +260,7 @@ pub(super) fn emit_string_comparison(output: &mut String) {
 pub(super) fn emit_string_manipulation(output: &mut String) {
     // LEFT$(s$, n)
     writeln!(output, "qb_string* qb_left(qb_string* s, int32_t n) {{").unwrap();
-    writeln!(output, "    if (!s || n <= 0) return qb_string_new(\"\");").unwrap();
+    writeln!(output, "    if (!s || n <= 0) return &_qbs_empty;").unwrap();
     writeln!(
         output,
         "    size_t len = (size_t)n < s->len ? (size_t)n : s->len;"
@@ -192,13 +272,14 @@ pub(super) fn emit_string_manipulation(output: &mut String) {
     writeln!(output, "    result->data = malloc(result->capacity);").unwrap();
     writeln!(output, "    memcpy(result->data, s->data, len);").unwrap();
     writeln!(output, "    result->data[len] = '\\0';").unwrap();
+    writeln!(output, "    result->refcount = 1;").unwrap();
     writeln!(output, "    return result;").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
     // RIGHT$(s$, n)
     writeln!(output, "qb_string* qb_right(qb_string* s, int32_t n) {{").unwrap();
-    writeln!(output, "    if (!s || n <= 0) return qb_string_new(\"\");").unwrap();
+    writeln!(output, "    if (!s || n <= 0) return &_qbs_empty;").unwrap();
     writeln!(
         output,
         "    size_t len = (size_t)n < s->len ? (size_t)n : s->len;"
@@ -211,6 +292,7 @@ pub(super) fn emit_string_manipulation(output: &mut String) {
     writeln!(output, "    result->data = malloc(result->capacity);").unwrap();
     writeln!(output, "    memcpy(result->data, s->data + start, len);").unwrap();
     writeln!(output, "    result->data[len] = '\\0';").unwrap();
+    writeln!(output, "    result->refcount = 1;").unwrap();
     writeln!(output, "    return result;").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
@@ -223,7 +305,7 @@ pub(super) fn emit_string_manipulation(output: &mut String) {
     .unwrap();
     writeln!(
         output,
-        "    if (!s || start < 1 || n <= 0 || (size_t)start > s->len) return qb_string_new(\"\");"
+        "    if (!s || start < 1 || n <= 0 || (size_t)start > s->len) return &_qbs_empty;"
     )
     .unwrap();
     writeln!(output, "    size_t idx = (size_t)(start - 1);").unwrap();
@@ -238,6 +320,7 @@ pub(super) fn emit_string_manipulation(output: &mut String) {
     writeln!(output, "    result->data = malloc(result->capacity);").unwrap();
     writeln!(output, "    memcpy(result->data, s->data + idx, len);").unwrap();
     writeln!(output, "    result->data[len] = '\\0';").unwrap();
+    writeln!(output, "    result->refcount = 1;").unwrap();
     writeln!(output, "    return result;").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
@@ -246,7 +329,7 @@ pub(super) fn emit_string_manipulation(output: &mut String) {
     writeln!(output, "qb_string* qb_mid2(qb_string* s, int32_t start) {{").unwrap();
     writeln!(
         output,
-        "    if (!s || start < 1 || (size_t)start > s->len) return qb_string_new(\"\");"
+        "    if (!s || start < 1 || (size_t)start > s->len) return &_qbs_empty;"
     )
     .unwrap();
     writeln!(output, "    size_t idx = (size_t)(start - 1);").unwrap();
@@ -354,7 +437,7 @@ pub(super) fn emit_string_manipulation(output: &mut String) {
     // UCASE$(s$) - UTF-8 safe: only converts ASCII a-z to A-Z
     // Multi-byte UTF-8 sequences are preserved unchanged
     writeln!(output, "qb_string* qb_ucase(qb_string* s) {{").unwrap();
-    writeln!(output, "    if (!s) return qb_string_new(\"\");").unwrap();
+    writeln!(output, "    if (!s) return &_qbs_empty;").unwrap();
     writeln!(output, "    qb_string* result = malloc(sizeof(qb_string));").unwrap();
     writeln!(output, "    result->len = s->len;").unwrap();
     writeln!(output, "    result->capacity = s->len + 1;").unwrap();
@@ -377,6 +460,7 @@ pub(super) fn emit_string_manipulation(output: &mut String) {
     writeln!(output, "        }}").unwrap();
     writeln!(output, "    }}").unwrap();
     writeln!(output, "    result->data[s->len] = '\\0';").unwrap();
+    writeln!(output, "    result->refcount = 1;").unwrap();
     writeln!(output, "    return result;").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
@@ -384,7 +468,7 @@ pub(super) fn emit_string_manipulation(output: &mut String) {
     // LCASE$(s$) - UTF-8 safe: only converts ASCII A-Z to a-z
     // Multi-byte UTF-8 sequences are preserved unchanged
     writeln!(output, "qb_string* qb_lcase(qb_string* s) {{").unwrap();
-    writeln!(output, "    if (!s) return qb_string_new(\"\");").unwrap();
+    writeln!(output, "    if (!s) return &_qbs_empty;").unwrap();
     writeln!(output, "    qb_string* result = malloc(sizeof(qb_string));").unwrap();
     writeln!(output, "    result->len = s->len;").unwrap();
     writeln!(output, "    result->capacity = s->len + 1;").unwrap();
@@ -407,13 +491,14 @@ pub(super) fn emit_string_manipulation(output: &mut String) {
     writeln!(output, "        }}").unwrap();
     writeln!(output, "    }}").unwrap();
     writeln!(output, "    result->data[s->len] = '\\0';").unwrap();
+    writeln!(output, "    result->refcount = 1;").unwrap();
     writeln!(output, "    return result;").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
     // LTRIM$(s$)
     writeln!(output, "qb_string* qb_ltrim(qb_string* s) {{").unwrap();
-    writeln!(output, "    if (!s) return qb_string_new(\"\");").unwrap();
+    writeln!(output, "    if (!s) return &_qbs_empty;").unwrap();
     writeln!(output, "    size_t start = 0;").unwrap();
     writeln!(
         output,
@@ -426,7 +511,7 @@ pub(super) fn emit_string_manipulation(output: &mut String) {
 
     // RTRIM$(s$)
     writeln!(output, "qb_string* qb_rtrim(qb_string* s) {{").unwrap();
-    writeln!(output, "    if (!s) return qb_string_new(\"\");").unwrap();
+    writeln!(output, "    if (!s) return &_qbs_empty;").unwrap();
     writeln!(output, "    size_t end = s->len;").unwrap();
     writeln!(
         output,
@@ -439,13 +524,14 @@ pub(super) fn emit_string_manipulation(output: &mut String) {
 
     // SPACE$(n)
     writeln!(output, "qb_string* qb_space(int32_t n) {{").unwrap();
-    writeln!(output, "    if (n <= 0) return qb_string_new(\"\");").unwrap();
+    writeln!(output, "    if (n <= 0) return &_qbs_empty;").unwrap();
     writeln!(output, "    qb_string* result = malloc(sizeof(qb_string));").unwrap();
     writeln!(output, "    result->len = (size_t)n;").unwrap();
     writeln!(output, "    result->capacity = result->len + 1;").unwrap();
     writeln!(output, "    result->data = malloc(result->capacity);").unwrap();
     writeln!(output, "    memset(result->data, ' ', result->len);").unwrap();
     writeln!(output, "    result->data[result->len] = '\\0';").unwrap();
+    writeln!(output, "    result->refcount = 1;").unwrap();
     writeln!(output, "    return result;").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
@@ -458,7 +544,7 @@ pub(super) fn emit_string_manipulation(output: &mut String) {
     .unwrap();
     writeln!(
         output,
-        "    if (n <= 0 || !c || c->len == 0) return qb_string_new(\"\");"
+        "    if (n <= 0 || !c || c->len == 0) return &_qbs_empty;"
     )
     .unwrap();
     writeln!(output, "    qb_string* result = malloc(sizeof(qb_string));").unwrap();
@@ -467,6 +553,7 @@ pub(super) fn emit_string_manipulation(output: &mut String) {
     writeln!(output, "    result->data = malloc(result->capacity);").unwrap();
     writeln!(output, "    memset(result->data, c->data[0], result->len);").unwrap();
     writeln!(output, "    result->data[result->len] = '\\0';").unwrap();
+    writeln!(output, "    result->refcount = 1;").unwrap();
     writeln!(output, "    return result;").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
@@ -477,7 +564,7 @@ pub(super) fn emit_string_manipulation(output: &mut String) {
         "qb_string* qb_string_fill_code(int32_t n, int32_t code) {{"
     )
     .unwrap();
-    writeln!(output, "    if (n <= 0) return qb_string_new(\"\");").unwrap();
+    writeln!(output, "    if (n <= 0) return &_qbs_empty;").unwrap();
     writeln!(output, "    qb_string* result = malloc(sizeof(qb_string));").unwrap();
     writeln!(output, "    result->len = (size_t)n;").unwrap();
     writeln!(output, "    result->capacity = result->len + 1;").unwrap();

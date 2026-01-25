@@ -226,6 +226,7 @@ impl super::StmtEmitter {
         // Pass empty always_exclude: SUB has no return variable
         // Pass global_array_names: arrays can't be shadowed by implicit scalars
         // Pass shared_global_names: DIM SHARED vars are accessible without local SHARED
+        // Pass global_const_names: CONST values must never be shadowed by local vars
         let implicit_locals = collect_implicit_locals(
             body,
             params,
@@ -233,6 +234,7 @@ impl super::StmtEmitter {
             &HashSet::new(),
             &self.global_array_names,
             &self.shared_global_names,
+            &self.global_const_names,
             false,
         );
         for decl in &implicit_locals {
@@ -245,9 +247,15 @@ impl super::StmtEmitter {
         // Set current procedure name for unique label generation
         self.current_proc = Some(c_name.clone());
 
+        // Save temp pool base for this procedure - cleanup after each statement
+        writeln!(output, "    uint32_t _qbs_proc_base = qbs_tmp_base_get();").unwrap();
+        writeln!(output).unwrap();
+
         self.indent += 1;
         for stmt in body {
             self.emit_stmt(stmt, output)?;
+            // Clean up temp strings after each statement
+            writeln!(output, "    qbs_cleanup(_qbs_proc_base, 0);").unwrap();
         }
         self.indent -= 1;
 
@@ -337,6 +345,7 @@ impl super::StmtEmitter {
         // Pass return variable in always_exclude to prevent redeclaration
         // Pass global_array_names: arrays can't be shadowed by implicit scalars
         // Pass shared_global_names: DIM SHARED vars are accessible without local SHARED
+        // Pass global_const_names: CONST values must never be shadowed by local vars
         let mut always_exclude = HashSet::new();
         always_exclude.insert(ret_var.clone());
         let implicit_locals = collect_implicit_locals(
@@ -346,6 +355,7 @@ impl super::StmtEmitter {
             &always_exclude,
             &self.global_array_names,
             &self.shared_global_names,
+            &self.global_const_names,
             false,
         );
         for decl in &implicit_locals {
@@ -360,9 +370,15 @@ impl super::StmtEmitter {
         // Set return variable for EXIT FUNCTION
         self.current_func_ret_var = Some(ret_var.clone());
 
+        // Save temp pool base for this function - cleanup after each statement
+        writeln!(output, "    uint32_t _qbs_proc_base = qbs_tmp_base_get();").unwrap();
+        writeln!(output).unwrap();
+
         self.indent += 1;
         for stmt in body {
             self.emit_stmt(stmt, output)?;
+            // Clean up temp strings after each statement
+            writeln!(output, "    qbs_cleanup(_qbs_proc_base, 0);").unwrap();
         }
         self.indent -= 1;
 
@@ -466,23 +482,49 @@ impl super::StmtEmitter {
                     .collect();
                 let size_expr = sizes.join(" * ");
 
+                // Use calloc for string arrays to ensure NULL initialization
+                // (uninitialized string pointers would cause crashes in string operations)
+                let _alloc_fn = if *basic_type == BasicType::String {
+                    "calloc"
+                } else {
+                    "malloc"
+                };
+
                 if use_global {
                     // In main with existing global: allocate to global (don't create shadowing local)
                     // This is critical for arrays used by subroutines - they access the global
-                    writeln!(
-                        output,
-                        "{}{} = malloc(sizeof({}) * {});",
-                        indent, c_name, c_ty, size_expr
-                    )
-                    .unwrap();
+                    if *basic_type == BasicType::String {
+                        writeln!(
+                            output,
+                            "{}{} = calloc({}, sizeof({}));",
+                            indent, c_name, size_expr, c_ty
+                        )
+                        .unwrap();
+                    } else {
+                        writeln!(
+                            output,
+                            "{}{} = malloc(sizeof({}) * {});",
+                            indent, c_name, c_ty, size_expr
+                        )
+                        .unwrap();
+                    }
                 } else {
                     // In SUB/FUNCTION or no global exists: create local array
-                    writeln!(
-                        output,
-                        "{}{}* {} = malloc(sizeof({}) * {});",
-                        indent, c_ty, c_name, c_ty, size_expr
-                    )
-                    .unwrap();
+                    if *basic_type == BasicType::String {
+                        writeln!(
+                            output,
+                            "{}{}* {} = calloc({}, sizeof({}));",
+                            indent, c_ty, c_name, size_expr, c_ty
+                        )
+                        .unwrap();
+                    } else {
+                        writeln!(
+                            output,
+                            "{}{}* {} = malloc(sizeof({}) * {});",
+                            indent, c_ty, c_name, c_ty, size_expr
+                        )
+                        .unwrap();
+                    }
                 }
             }
 

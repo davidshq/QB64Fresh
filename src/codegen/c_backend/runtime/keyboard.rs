@@ -40,7 +40,11 @@ pub(super) fn emit_keyboard_functions(output: &mut String) {
     writeln!(output, "        char buf[2] = {{(char)ch, 0}};").unwrap();
     writeln!(output, "        return qb_string_new(buf);").unwrap();
     writeln!(output, "    }}").unwrap();
-    writeln!(output, "    return qb_string_new(\"\");").unwrap();
+    writeln!(
+        output,
+        "    return &_qbs_empty; /* No allocation for empty */"
+    )
+    .unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output, "#else").unwrap();
     writeln!(output, "#include <termios.h>").unwrap();
@@ -54,7 +58,11 @@ pub(super) fn emit_keyboard_functions(output: &mut String) {
     writeln!(output, "    tcsetattr(STDIN_FILENO, TCSANOW, &newt);").unwrap();
     writeln!(output, "    fd_set fds; struct timeval tv = {{0, 0}};").unwrap();
     writeln!(output, "    FD_ZERO(&fds); FD_SET(STDIN_FILENO, &fds);").unwrap();
-    writeln!(output, "    qb_string* result = qb_string_new(\"\");").unwrap();
+    writeln!(
+        output,
+        "    qb_string* result = &_qbs_empty; /* No allocation for empty */"
+    )
+    .unwrap();
     writeln!(
         output,
         "    if (select(STDIN_FILENO + 1, &fds, NULL, NULL, &tv) > 0) {{"
@@ -76,7 +84,7 @@ pub(super) fn emit_keyboard_functions(output: &mut String) {
 
     // INPUT$(n) - read n characters
     writeln!(output, "qb_string* qb_input_chars(int32_t n) {{").unwrap();
-    writeln!(output, "    if (n <= 0) return qb_string_new(\"\");").unwrap();
+    writeln!(output, "    if (n <= 0) return &_qbs_empty;").unwrap();
     writeln!(output, "    char* buf = malloc((size_t)n + 1);").unwrap();
     writeln!(
         output,
@@ -101,7 +109,7 @@ pub(super) fn emit_keyboard_functions(output: &mut String) {
         "    if (n <= 0 || fnum < 1 || fnum >= QB_MAX_FILES || !_qb_files[fnum])"
     )
     .unwrap();
-    writeln!(output, "        return qb_string_new(\"\");").unwrap();
+    writeln!(output, "        return &_qbs_empty;").unwrap();
     writeln!(output, "    char* buf = malloc((size_t)n + 1);").unwrap();
     writeln!(
         output,
@@ -241,17 +249,9 @@ pub(super) fn emit_keyboard_functions(output: &mut String) {
 
     // ENVIRON$(var$) - get environment variable
     writeln!(output, "qb_string* qb_environ(qb_string* var) {{").unwrap();
-    writeln!(
-        output,
-        "    if (!var || !var->data) return qb_string_new(\"\");"
-    )
-    .unwrap();
+    writeln!(output, "    if (!var || !var->data) return &_qbs_empty;").unwrap();
     writeln!(output, "    const char* val = getenv(var->data);").unwrap();
-    writeln!(
-        output,
-        "    return val ? qb_string_new(val) : qb_string_new(\"\");"
-    )
-    .unwrap();
+    writeln!(output, "    return val ? qb_string_new(val) : &_qbs_empty;").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
@@ -268,7 +268,7 @@ pub(super) fn emit_keyboard_functions(output: &mut String) {
     writeln!(output, "qb_string* qb_command(void) {{").unwrap();
     writeln!(
         output,
-        "    if (_qb_argc <= 1 || !_qb_argv) return qb_string_new(\"\");"
+        "    if (_qb_argc <= 1 || !_qb_argv) return &_qbs_empty;"
     )
     .unwrap();
     writeln!(output, "    size_t len = 0;").unwrap();
@@ -293,7 +293,7 @@ pub(super) fn emit_keyboard_functions(output: &mut String) {
     writeln!(output, "qb_string* qb_command_n(int64_t n) {{").unwrap();
     writeln!(
         output,
-        "    if (n < 0 || n >= _qb_argc || !_qb_argv) return qb_string_new(\"\");"
+        "    if (n < 0 || n >= _qb_argc || !_qb_argv) return &_qbs_empty;"
     )
     .unwrap();
     writeln!(
@@ -317,7 +317,7 @@ pub(super) fn emit_keyboard_functions(output: &mut String) {
         "    if (getcwd(buf, sizeof(buf))) return qb_string_new(buf);"
     )
     .unwrap();
-    writeln!(output, "    return qb_string_new(\"\");").unwrap();
+    writeln!(output, "    return &_qbs_empty;").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
@@ -392,11 +392,7 @@ pub(super) fn emit_keyboard_functions(output: &mut String) {
 
     // _TRIM$(s$) - trim whitespace from both ends
     writeln!(output, "qb_string* qb_trim(qb_string* s) {{").unwrap();
-    writeln!(
-        output,
-        "    if (!s || s->len == 0) return qb_string_new(\"\");"
-    )
-    .unwrap();
+    writeln!(output, "    if (!s || s->len == 0) return &_qbs_empty;").unwrap();
     writeln!(output, "    int32_t start = 0, end = s->len - 1;").unwrap();
     writeln!(
         output,
@@ -408,7 +404,7 @@ pub(super) fn emit_keyboard_functions(output: &mut String) {
         "    while (end >= start && (s->data[end] == ' ' || s->data[end] == '\\t')) end--;"
     )
     .unwrap();
-    writeln!(output, "    if (start > end) return qb_string_new(\"\");").unwrap();
+    writeln!(output, "    if (start > end) return &_qbs_empty;").unwrap();
     writeln!(output, "    int32_t newlen = end - start + 1;").unwrap();
     writeln!(
         output,

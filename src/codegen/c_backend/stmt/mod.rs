@@ -79,6 +79,8 @@ pub(super) struct StmtEmitter {
     pub global_array_names: std::collections::HashSet<String>,
     /// DIM SHARED global variable names (accessible from all functions without local SHARED).
     pub shared_global_names: std::collections::HashSet<String>,
+    /// Global CONST names (shouldn't be redeclared as local variables).
+    pub global_const_names: std::collections::HashSet<String>,
     /// Counter for generating unique STRIG event IDs.
     pub strig_event_counter: u32,
     /// Registered STRIG event handlers: (event_id, target_label).
@@ -104,6 +106,7 @@ impl StmtEmitter {
             global_var_names: std::collections::HashSet::new(),
             global_array_names: std::collections::HashSet::new(),
             shared_global_names: std::collections::HashSet::new(),
+            global_const_names: std::collections::HashSet::new(),
             strig_event_counter: 0,
             strig_handlers: Vec::new(),
             debug_enabled: false,
