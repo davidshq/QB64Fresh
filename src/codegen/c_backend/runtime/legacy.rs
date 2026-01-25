@@ -558,6 +558,7 @@ pub(super) fn emit_legacy_functions(output: &mut String) {
     writeln!(output, "    if (!_qb_warned_on_com) {{").unwrap();
     writeln!(output, "        _qb_warned_on_com = 1;").unwrap();
     writeln!(output, "        fprintf(stderr, \"QB64Fresh: ON COM is not implemented (serial port event trapping)\\n\");").unwrap();
+    writeln!(output, "        fflush(stderr);").unwrap();
     writeln!(output, "    }}").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
@@ -567,6 +568,7 @@ pub(super) fn emit_legacy_functions(output: &mut String) {
     writeln!(output, "    if (!_qb_warned_on_com) {{").unwrap();
     writeln!(output, "        _qb_warned_on_com = 1;").unwrap();
     writeln!(output, "        fprintf(stderr, \"QB64Fresh: ON COM is not implemented (serial port event trapping)\\n\");").unwrap();
+    writeln!(output, "        fflush(stderr);").unwrap();
     writeln!(output, "    }}").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
@@ -576,6 +578,7 @@ pub(super) fn emit_legacy_functions(output: &mut String) {
     writeln!(output, "    if (!_qb_warned_on_pen) {{").unwrap();
     writeln!(output, "        _qb_warned_on_pen = 1;").unwrap();
     writeln!(output, "        fprintf(stderr, \"QB64Fresh: ON PEN is not implemented (light pen event trapping)\\n\");").unwrap();
+    writeln!(output, "        fflush(stderr);").unwrap();
     writeln!(output, "    }}").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
@@ -585,6 +588,7 @@ pub(super) fn emit_legacy_functions(output: &mut String) {
     writeln!(output, "    if (!_qb_warned_on_pen) {{").unwrap();
     writeln!(output, "        _qb_warned_on_pen = 1;").unwrap();
     writeln!(output, "        fprintf(stderr, \"QB64Fresh: ON PEN is not implemented (light pen event trapping)\\n\");").unwrap();
+    writeln!(output, "        fflush(stderr);").unwrap();
     writeln!(output, "    }}").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
@@ -594,6 +598,7 @@ pub(super) fn emit_legacy_functions(output: &mut String) {
     writeln!(output, "    if (!_qb_warned_on_uevent) {{").unwrap();
     writeln!(output, "        _qb_warned_on_uevent = 1;").unwrap();
     writeln!(output, "        fprintf(stderr, \"QB64Fresh: ON UEVENT is not implemented (user event trapping)\\n\");").unwrap();
+    writeln!(output, "        fflush(stderr);").unwrap();
     writeln!(output, "    }}").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
@@ -603,6 +608,7 @@ pub(super) fn emit_legacy_functions(output: &mut String) {
     writeln!(output, "    if (!_qb_warned_on_uevent) {{").unwrap();
     writeln!(output, "        _qb_warned_on_uevent = 1;").unwrap();
     writeln!(output, "        fprintf(stderr, \"QB64Fresh: ON UEVENT is not implemented (user event trapping)\\n\");").unwrap();
+    writeln!(output, "        fflush(stderr);").unwrap();
     writeln!(output, "    }}").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
@@ -611,6 +617,7 @@ pub(super) fn emit_legacy_functions(output: &mut String) {
     writeln!(output, "    if (!_qb_warned_on_uevent) {{").unwrap();
     writeln!(output, "        _qb_warned_on_uevent = 1;").unwrap();
     writeln!(output, "        fprintf(stderr, \"QB64Fresh: UEVENT is not implemented (user event trapping)\\n\");").unwrap();
+    writeln!(output, "        fflush(stderr);").unwrap();
     writeln!(output, "    }}").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
@@ -624,6 +631,7 @@ pub(super) fn emit_legacy_functions(output: &mut String) {
     writeln!(output, "    if (!_qb_warned_on_signal) {{").unwrap();
     writeln!(output, "        _qb_warned_on_signal = 1;").unwrap();
     writeln!(output, "        fprintf(stderr, \"QB64Fresh: ON SIGNAL is not implemented (BASIC signal trapping)\\n\");").unwrap();
+    writeln!(output, "        fflush(stderr);").unwrap();
     writeln!(output, "    }}").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
@@ -637,6 +645,7 @@ pub(super) fn emit_legacy_functions(output: &mut String) {
     writeln!(output, "    if (!_qb_warned_on_signal) {{").unwrap();
     writeln!(output, "        _qb_warned_on_signal = 1;").unwrap();
     writeln!(output, "        fprintf(stderr, \"QB64Fresh: ON SIGNAL is not implemented (BASIC signal trapping)\\n\");").unwrap();
+    writeln!(output, "        fflush(stderr);").unwrap();
     writeln!(output, "    }}").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
@@ -975,6 +984,7 @@ pub(super) fn emit_legacy_functions(output: &mut String) {
     writeln!(output, "    if (!_qb_warned_pen) {{").unwrap();
     writeln!(output, "        _qb_warned_pen = 1;").unwrap();
     writeln!(output, "        fprintf(stderr, \"QB64Fresh: PEN() is not supported on modern systems (light pens are obsolete hardware)\\n\");").unwrap();
+    writeln!(output, "        fflush(stderr);").unwrap();
     writeln!(output, "    }}").unwrap();
     writeln!(output, "    return 0; // Light pen not present").unwrap();
     writeln!(output, "}}").unwrap();
@@ -999,6 +1009,7 @@ pub(super) fn emit_legacy_functions(output: &mut String) {
     writeln!(output, "    if (!_qb_warned_erdev) {{").unwrap();
     writeln!(output, "        _qb_warned_erdev = 1;").unwrap();
     writeln!(output, "        fprintf(stderr, \"QB64Fresh: ERDEV/ERDEV$ are not supported (DOS device error functions)\\n\");").unwrap();
+    writeln!(output, "        fflush(stderr);").unwrap();
     writeln!(output, "    }}").unwrap();
     writeln!(output, "    return 0; // No device error").unwrap();
     writeln!(output, "}}").unwrap();
@@ -1009,6 +1020,7 @@ pub(super) fn emit_legacy_functions(output: &mut String) {
     writeln!(output, "    if (!_qb_warned_erdev) {{").unwrap();
     writeln!(output, "        _qb_warned_erdev = 1;").unwrap();
     writeln!(output, "        fprintf(stderr, \"QB64Fresh: ERDEV/ERDEV$ are not supported (DOS device error functions)\\n\");").unwrap();
+    writeln!(output, "        fflush(stderr);").unwrap();
     writeln!(output, "    }}").unwrap();
     writeln!(output, "    return qb_string_new(\"\"); // No device error").unwrap();
     writeln!(output, "}}").unwrap();
@@ -1024,6 +1036,7 @@ pub(super) fn emit_legacy_functions(output: &mut String) {
     writeln!(output, "    if (!_qb_warned_ioctl) {{").unwrap();
     writeln!(output, "        _qb_warned_ioctl = 1;").unwrap();
     writeln!(output, "        fprintf(stderr, \"QB64Fresh: IOCTL/IOCTL$ are not supported (DOS device control functions)\\n\");").unwrap();
+    writeln!(output, "        fflush(stderr);").unwrap();
     writeln!(output, "    }}").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
@@ -1034,6 +1047,7 @@ pub(super) fn emit_legacy_functions(output: &mut String) {
     writeln!(output, "    if (!_qb_warned_ioctl) {{").unwrap();
     writeln!(output, "        _qb_warned_ioctl = 1;").unwrap();
     writeln!(output, "        fprintf(stderr, \"QB64Fresh: IOCTL/IOCTL$ are not supported (DOS device control functions)\\n\");").unwrap();
+    writeln!(output, "        fflush(stderr);").unwrap();
     writeln!(output, "    }}").unwrap();
     writeln!(
         output,
@@ -1155,6 +1169,7 @@ pub(super) fn emit_legacy_functions(output: &mut String) {
     writeln!(output, "    if (!_qb_warned_interrupt) {{").unwrap();
     writeln!(output, "        _qb_warned_interrupt = 1;").unwrap();
     writeln!(output, "        fprintf(stderr, \"QB64Fresh: INTERRUPT/INTERRUPTX only supports INT 0x33 (mouse). Other interrupts (0x%02X) are ignored.\\n\", int_num);").unwrap();
+    writeln!(output, "        fflush(stderr);").unwrap();
     writeln!(output, "    }}").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();

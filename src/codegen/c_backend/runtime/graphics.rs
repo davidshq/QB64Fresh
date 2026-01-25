@@ -36,6 +36,7 @@ pub(super) fn emit_graphics_stubs(output: &mut String) {
     writeln!(output, "    if (!_qb_gfx_warned) {{").unwrap();
     writeln!(output, "        fprintf(stderr, \"Warning: Graphics functions require external runtime. Use --runtime external\\n\");").unwrap();
     writeln!(output, "        fprintf(stderr, \"         Programs with game loops will exit after %d frames in stub mode.\\n\", _qb_gfx_max_frames);").unwrap();
+    writeln!(output, "        fflush(stderr);").unwrap();
     writeln!(output, "        _qb_gfx_warned = 1;").unwrap();
     writeln!(output, "    }}").unwrap();
     writeln!(output, "}}").unwrap();
@@ -138,6 +139,7 @@ pub(super) fn emit_graphics_stubs(output: &mut String) {
     .unwrap();
     writeln!(output, "            fprintf(stderr, \"Note: Stub graphics reached %d frames, signaling window close.\\n\", _qb_gfx_max_frames);").unwrap();
     writeln!(output, "            fprintf(stderr, \"      Set QB64FRESH_MAX_FRAMES environment variable to change limit.\\n\");").unwrap();
+    writeln!(output, "            fflush(stderr);").unwrap();
     writeln!(
         output,
         "            _qb_gfx_frame_count++; /* Only print once */"
@@ -854,6 +856,7 @@ pub(super) fn emit_graphics_stubs(output: &mut String) {
     .unwrap();
     writeln!(output, "            fprintf(stderr, \"Note: Stub graphics reached %d frames, _SCREENEXISTS returning FALSE.\\n\", _qb_gfx_max_frames);").unwrap();
     writeln!(output, "            fprintf(stderr, \"      Set QB64FRESH_MAX_FRAMES environment variable to change limit.\\n\");").unwrap();
+    writeln!(output, "            fflush(stderr);").unwrap();
     writeln!(
         output,
         "            _qb_gfx_frame_count++; /* Only print once */"
@@ -1298,6 +1301,7 @@ pub(super) fn emit_graphics_stubs(output: &mut String) {
     .unwrap();
     writeln!(output, "    (void)title; (void)filter;").unwrap();
     writeln!(output, "    fprintf(stderr, \"Note: _OPENFILEDIALOG$ requires external runtime for GUI support\\n\");").unwrap();
+    writeln!(output, "    fflush(stderr);").unwrap();
     writeln!(output, "    return qb_string_new(\"\");").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
@@ -1309,6 +1313,7 @@ pub(super) fn emit_graphics_stubs(output: &mut String) {
     .unwrap();
     writeln!(output, "    (void)title; (void)filter;").unwrap();
     writeln!(output, "    fprintf(stderr, \"Note: _SAVEFILEDIALOG$ requires external runtime for GUI support\\n\");").unwrap();
+    writeln!(output, "    fflush(stderr);").unwrap();
     writeln!(output, "    return qb_string_new(\"\");").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
@@ -1320,6 +1325,7 @@ pub(super) fn emit_graphics_stubs(output: &mut String) {
     .unwrap();
     writeln!(output, "    (void)title;").unwrap();
     writeln!(output, "    fprintf(stderr, \"Note: _SELECTFOLDERDIALOG$ requires external runtime for GUI support\\n\");").unwrap();
+    writeln!(output, "    fflush(stderr);").unwrap();
     writeln!(output, "    return qb_string_new(\"\");").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
