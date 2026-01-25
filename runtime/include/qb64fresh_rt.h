@@ -92,6 +92,10 @@ void qb_color_reset(void);
 
 /* Keyboard */
 QbString* qb_inkey(void);
+int64_t qb_keyhit(void);
+int32_t qb_keydown(int64_t keycode);
+void qb_keyclear(void);
+void qb_keyboard_shutdown(void);
 
 /* ============================================================================
  * Math Functions

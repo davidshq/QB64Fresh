@@ -47,20 +47,51 @@ use super::types::{add_reserved_identifiers, c_identifier, declare_array_var, de
 /// This affects DIM handling: in main, DIM on an existing global allocates to the global
 /// (for cross-function sharing). In SUB/FUNCTIONs, DIM always creates locals.
 ///
+/// The `always_exclude` set contains variable names that should never be declared as
+/// implicit locals regardless of scope (e.g., FUNCTION return variables which are
+/// explicitly declared in the function header).
+///
+/// The `global_arrays` set contains names of global array variables. Arrays cannot be
+/// implicitly declared (they require explicit DIM/REDIM), so global arrays should never
+/// be shadowed by implicit scalar declarations.
+///
+/// The `shared_globals` set contains names of variables declared with `DIM SHARED` at
+/// module level. These are automatically accessible from all functions without needing
+/// a local SHARED statement, so they shouldn't be shadowed by implicit locals.
+///
 /// REDIM always uses an existing global if one exists (in both main and SUB/FUNCTION)
 /// because BASIC's REDIM on a SHARED array operates on the global, not a new local.
 pub(super) fn collect_implicit_locals(
     body: &[TypedStatement],
     params: &[TypedParameter],
     existing_vars: &HashSet<String>,
+    always_exclude: &HashSet<String>,
+    global_arrays: &HashSet<String>,
+    shared_globals: &HashSet<String>,
     is_main_program: bool,
 ) -> Vec<String> {
     let mut locals = Vec::new();
 
     // Start with a clean set for DIM collection - DIMs should shadow globals
-    // We only include reserved identifiers and parameters here
+    // We only include reserved identifiers, parameters, always-excluded vars,
+    // global arrays, and DIM SHARED globals here
     let mut dim_declared: HashSet<String> = HashSet::new();
     add_reserved_identifiers(&mut dim_declared);
+
+    // Add always-excluded variables (e.g., FUNCTION return variable)
+    for var in always_exclude {
+        dim_declared.insert(var.clone());
+    }
+
+    // Add global array names - arrays can't be implicitly declared as local scalars
+    for var in global_arrays {
+        dim_declared.insert(var.clone());
+    }
+
+    // Add DIM SHARED globals - these are accessible from all functions
+    for var in shared_globals {
+        dim_declared.insert(var.clone());
+    }
 
     // Add parameter names to declared set
     for p in params {
@@ -80,11 +111,17 @@ pub(super) fn collect_implicit_locals(
         );
     }
 
-    // Now combine with globals for implicit variable collection
-    // Implicit variables should NOT shadow globals (only explicit DIM does)
+    // For implicit variable collection:
+    // - In SUB/FUNCTION (is_main_program=false): All variables are LOCAL by default.
+    //   Globals are only accessed if explicitly imported via SHARED statement.
+    //   The SHARED handling in Pass 1 already added those to dim_declared.
+    // - In main program (is_main_program=true): There's no separate scope,
+    //   so we include existing globals to avoid re-declaring them.
     let mut declared_vars = dim_declared.clone();
-    for var in existing_vars {
-        declared_vars.insert(var.clone());
+    if is_main_program {
+        for var in existing_vars {
+            declared_vars.insert(var.clone());
+        }
     }
 
     // PASS 2: Collect implicit variables (assignments to non-declared variables)
@@ -675,7 +712,15 @@ mod tests {
             Span::new(0, 6),
         )];
 
-        let locals = collect_implicit_locals(&body, &[], &HashSet::new(), false);
+        let locals = collect_implicit_locals(
+            &body,
+            &[],
+            &HashSet::new(),
+            &HashSet::new(),
+            &HashSet::new(),
+            &HashSet::new(),
+            false,
+        );
 
         assert_eq!(locals.len(), 1);
         assert!(locals[0].contains("x"));
@@ -694,7 +739,15 @@ mod tests {
             Span::new(0, 9),
         )];
 
-        let locals = collect_implicit_locals(&body, &[], &HashSet::new(), false);
+        let locals = collect_implicit_locals(
+            &body,
+            &[],
+            &HashSet::new(),
+            &HashSet::new(),
+            &HashSet::new(),
+            &HashSet::new(),
+            false,
+        );
 
         // _TRUE should not be in locals because it's a reserved identifier
         assert!(
@@ -721,7 +774,15 @@ mod tests {
             is_array: false,
         }];
 
-        let locals = collect_implicit_locals(&body, &params, &HashSet::new(), false);
+        let locals = collect_implicit_locals(
+            &body,
+            &params,
+            &HashSet::new(),
+            &HashSet::new(),
+            &HashSet::new(),
+            &HashSet::new(),
+            false,
+        );
 
         // param1 should not be in locals because it's a parameter
         assert!(

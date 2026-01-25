@@ -71,6 +71,7 @@ use self::analysis::{collect_callback_wrappers, collect_data_values, collect_typ
 use self::implicit_vars::collect_implicit_locals;
 use self::runtime::emit_header_with_debug;
 use self::stmt::{StmtEmitter, emit_params};
+use self::types::c_identifier;
 
 /// Runtime mode for code generation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -283,53 +284,88 @@ impl CodeGenerator for CBackend {
             writeln!(output).unwrap();
         }
 
-        // Build set of global variable names for use by SUB/FUNCTION implicit local detection
+        // Collect names of DIM SHARED variables - these are accessible from all functions
+        // without needing local SHARED statements, so they shouldn't be shadowed by implicit locals
+        let mut shared_global_names: HashSet<String> = HashSet::new();
+        for stmt in &program.statements {
+            if let TypedStatementKind::Dim { variables, shared } = &stmt.kind
+                && *shared
+            {
+                for var in variables {
+                    shared_global_names.insert(c_identifier(&var.name));
+                }
+            }
+        }
+
+        // Build sets of global variable names for use by SUB/FUNCTION implicit local detection
         // Global declarations look like "type name = init;" or "const type name = init;"
-        let global_var_names: HashSet<String> = globals
-            .iter()
-            .filter_map(|decl| {
-                // Parse various declaration forms:
-                // "type name = init;" -> parts[1] is name
-                // "type name[N];" -> parts[1] is name
-                // "const type name = init;" -> parts[2] is name
-                // "type (*name)[N]" -> fixed-length string arrays
-                let decl = decl.trim_end_matches(';');
-                let parts: Vec<&str> = decl.split_whitespace().collect();
+        // Arrays are identified by: pointer types (type*, type**) or static arrays (name[N])
+        let mut global_var_names: HashSet<String> = HashSet::new();
+        let mut global_array_names: HashSet<String> = HashSet::new();
 
-                // Handle "const type name" form (const is parts[0])
-                let name_idx = if parts.first() == Some(&"const") {
-                    2
-                } else {
-                    1
-                };
+        for decl in &globals {
+            // Parse various declaration forms:
+            // "type name = init;" -> parts[1] is name
+            // "type name[N];" -> parts[1] is name (static array)
+            // "type* name = NULL;" -> parts[1] is name (dynamic array)
+            // "type** name = NULL;" -> parts[1] is name (2D dynamic array)
+            // "const type name = init;" -> parts[2] is name
+            // "type (*name)[N]" -> fixed-length string arrays
+            let decl_trimmed = decl.trim_end_matches(';');
+            let parts: Vec<&str> = decl_trimmed.split_whitespace().collect();
 
-                if parts.len() > name_idx {
-                    let raw_name = parts[name_idx];
-                    // Handle fixed-length string array: "char (*name)[N]"
-                    // Pattern: (*name) or (*name)[N] - extract name from parens
-                    if raw_name.starts_with("(*") {
-                        // Extract name between (* and )
-                        if let Some(end_paren) = raw_name.find(')') {
-                            let name = &raw_name[2..end_paren];
-                            if !name.is_empty() {
-                                return Some(name.to_string());
+            // Handle "const type name" form (const is parts[0])
+            let (type_idx, name_idx) = if parts.first() == Some(&"const") {
+                (1, 2)
+            } else {
+                (0, 1)
+            };
+
+            if parts.len() > name_idx {
+                let type_part = parts.get(type_idx).unwrap_or(&"");
+                let raw_name = parts[name_idx];
+
+                // Determine if this is an array:
+                // - Type contains * (pointer = dynamic array)
+                // - Name contains [ (static array)
+                // - Pattern (*name) (fixed-length string array)
+                let is_array =
+                    type_part.contains('*') || raw_name.contains('[') || raw_name.starts_with("(*");
+
+                // Handle fixed-length string array: "char (*name)[N]"
+                // Pattern: (*name) or (*name)[N] - extract name from parens
+                if raw_name.starts_with("(*") {
+                    if let Some(end_paren) = raw_name.find(')') {
+                        let name = &raw_name[2..end_paren];
+                        if !name.is_empty() {
+                            global_var_names.insert(name.to_string());
+                            if is_array {
+                                global_array_names.insert(name.to_string());
                             }
                         }
-                        return None;
                     }
+                    continue;
+                }
 
-                    // Get the name part (might have [N] or = suffix)
-                    let name = raw_name.split('[').next()?.split('=').next()?.trim();
+                // Get the name part (might have [N] or = suffix)
+                if let Some(name) = raw_name.split('[').next()
+                    && let Some(name) = name.split('=').next()
+                {
+                    let name = name.trim();
                     if !name.is_empty() && !name.starts_with('(') {
-                        return Some(name.to_string());
+                        global_var_names.insert(name.to_string());
+                        if is_array {
+                            global_array_names.insert(name.to_string());
+                        }
                     }
                 }
-                None
-            })
-            .collect();
+            }
+        }
 
         // Set global variable names on emitter for SUB/FUNCTION implicit local detection
         emitter.global_var_names = global_var_names.clone();
+        emitter.global_array_names = global_array_names.clone();
+        emitter.shared_global_names = shared_global_names.clone();
 
         // SUB/FUNCTION definitions (emit before main)
         for stmt in &program.statements {
@@ -406,8 +442,17 @@ impl CodeGenerator for CBackend {
             main_stmts.iter().map(|s| (*s).clone()).collect();
         // Pass is_main_program=true so arrays with existing globals use the global
         // (for cross-function sharing) instead of creating shadowing locals
-        let implicit_locals =
-            collect_implicit_locals(&main_stmts_owned, &[], &global_var_names, true);
+        // Pass empty always_exclude: main has no return variable
+        // Pass shared_global_names: DIM SHARED vars shouldn't be re-declared
+        let implicit_locals = collect_implicit_locals(
+            &main_stmts_owned,
+            &[],
+            &global_var_names,
+            &HashSet::new(),
+            &global_array_names,
+            &shared_global_names,
+            true,
+        );
 
         // Emit implicit local declarations
         if !implicit_locals.is_empty() {

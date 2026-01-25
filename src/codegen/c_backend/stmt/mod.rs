@@ -75,6 +75,10 @@ pub(super) struct StmtEmitter {
     pub current_func_ret_var: Option<String>,
     /// Global variable names (to avoid re-declaring as locals).
     pub global_var_names: std::collections::HashSet<String>,
+    /// Global array variable names (arrays can't be implicitly declared as scalars).
+    pub global_array_names: std::collections::HashSet<String>,
+    /// DIM SHARED global variable names (accessible from all functions without local SHARED).
+    pub shared_global_names: std::collections::HashSet<String>,
     /// Counter for generating unique STRIG event IDs.
     pub strig_event_counter: u32,
     /// Registered STRIG event handlers: (event_id, target_label).
@@ -83,6 +87,8 @@ pub(super) struct StmtEmitter {
     pub debug_enabled: bool,
     /// Source file name for debug tracking.
     pub debug_source_file: Option<String>,
+    /// Labels already emitted (to skip duplicates from ambiguous parsing).
+    pub emitted_labels: std::collections::HashSet<String>,
 }
 
 impl StmtEmitter {
@@ -96,10 +102,13 @@ impl StmtEmitter {
             current_proc: None,
             current_func_ret_var: None,
             global_var_names: std::collections::HashSet::new(),
+            global_array_names: std::collections::HashSet::new(),
+            shared_global_names: std::collections::HashSet::new(),
             strig_event_counter: 0,
             strig_handlers: Vec::new(),
             debug_enabled: false,
             debug_source_file: None,
+            emitted_labels: std::collections::HashSet::new(),
         }
     }
 
@@ -891,7 +900,11 @@ impl StmtEmitter {
 
             TypedStatementKind::Label { name } => {
                 let c_label = self.proc_label(name);
-                writeln!(output, "{}:", c_label).unwrap();
+                // Skip duplicate labels (can occur from ambiguous parsing of
+                // "SubName: AnotherSub" patterns that look like labels)
+                if self.emitted_labels.insert(c_label.clone()) {
+                    writeln!(output, "{}:", c_label).unwrap();
+                }
             }
 
             TypedStatementKind::Comment(text) => {

@@ -10,6 +10,7 @@
 //! These methods are part of [`StmtEmitter`](super::StmtEmitter) and handle
 //! the generation of C code for BASIC definition statements.
 
+use std::collections::HashSet;
 use std::fmt::Write;
 
 use crate::codegen::error::CodeGenError;
@@ -222,7 +223,18 @@ impl super::StmtEmitter {
         // Collect and emit implicit local variables
         // Use global_var_names to avoid re-declaring globals as locals
         // Pass is_main_program=false: SUB creates locals even if globals with same name exist
-        let implicit_locals = collect_implicit_locals(body, params, &self.global_var_names, false);
+        // Pass empty always_exclude: SUB has no return variable
+        // Pass global_array_names: arrays can't be shadowed by implicit scalars
+        // Pass shared_global_names: DIM SHARED vars are accessible without local SHARED
+        let implicit_locals = collect_implicit_locals(
+            body,
+            params,
+            &self.global_var_names,
+            &HashSet::new(),
+            &self.global_array_names,
+            &self.shared_global_names,
+            false,
+        );
         for decl in &implicit_locals {
             writeln!(output, "    {}", decl).unwrap();
         }
@@ -240,6 +252,12 @@ impl super::StmtEmitter {
         self.indent -= 1;
 
         self.current_proc = None;
+
+        // Emit STRIG dispatch label (required because loops emit goto _qb_strig_dispatch)
+        // This is a no-op stub - actual dispatch happens in main() only
+        writeln!(output, "    goto _qb_strig_dispatch_end;").unwrap();
+        writeln!(output, "_qb_strig_dispatch:").unwrap();
+        writeln!(output, "_qb_strig_dispatch_end:").unwrap();
 
         // Emit debug exit hook
         if self.debug_enabled {
@@ -315,11 +333,21 @@ impl super::StmtEmitter {
         emit_byref_copies(params, output);
 
         // Collect and emit implicit local variables
-        // Include the return variable as already declared, plus all global variables
-        let mut existing_vars = self.global_var_names.clone();
-        existing_vars.insert(ret_var.clone());
         // Pass is_main_program=false: FUNCTION creates locals even if globals with same name exist
-        let implicit_locals = collect_implicit_locals(body, params, &existing_vars, false);
+        // Pass return variable in always_exclude to prevent redeclaration
+        // Pass global_array_names: arrays can't be shadowed by implicit scalars
+        // Pass shared_global_names: DIM SHARED vars are accessible without local SHARED
+        let mut always_exclude = HashSet::new();
+        always_exclude.insert(ret_var.clone());
+        let implicit_locals = collect_implicit_locals(
+            body,
+            params,
+            &self.global_var_names,
+            &always_exclude,
+            &self.global_array_names,
+            &self.shared_global_names,
+            false,
+        );
         for decl in &implicit_locals {
             writeln!(output, "    {}", decl).unwrap();
         }
@@ -340,6 +368,12 @@ impl super::StmtEmitter {
 
         self.current_proc = None;
         self.current_func_ret_var = None;
+
+        // Emit STRIG dispatch label (required because loops emit goto _qb_strig_dispatch)
+        // This is a no-op stub - actual dispatch happens in main() only
+        writeln!(output, "    goto _qb_strig_dispatch_end;").unwrap();
+        writeln!(output, "_qb_strig_dispatch:").unwrap();
+        writeln!(output, "_qb_strig_dispatch_end:").unwrap();
 
         // Emit debug exit hook
         if self.debug_enabled {

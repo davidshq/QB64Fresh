@@ -704,6 +704,30 @@ fn emit_binary_expr(
     }
 
     let op_str = c_binary_op(op)?;
+
+    // Comparison and short-circuit boolean operators in BASIC return -1 for TRUE and 0 for FALSE.
+    // C comparison/logical operators return 1 for true and 0 for false.
+    // The NOT operator in BASIC is bitwise (~), so:
+    //   NOT TRUE = NOT -1 = 0 = FALSE  (works correctly)
+    //   NOT FALSE = NOT 0 = -1 = TRUE  (works correctly)
+    // But if we use C's 1 for true:
+    //   NOT 1 = ~1 = -2 (which is truthy in C!) - WRONG!
+    // We must convert boolean results: -(a > b) gives -1 or 0.
+    if matches!(
+        op,
+        BinaryOp::Equal
+            | BinaryOp::NotEqual
+            | BinaryOp::LessThan
+            | BinaryOp::LessEqual
+            | BinaryOp::GreaterThan
+            | BinaryOp::GreaterEqual
+            | BinaryOp::AndAlso
+            | BinaryOp::OrElse
+    ) {
+        // Negate to convert C bool (0/1) to BASIC bool (0/-1)
+        return Ok(format!("-({} {} {})", left_code, op_str, right_code));
+    }
+
     Ok(format!("({} {} {})", left_code, op_str, right_code))
 }
 
@@ -803,15 +827,19 @@ fn c_binary_op(op: &BinaryOp) -> Result<String, CodeGenError> {
 ///
 /// BASIC string comparisons use lexicographic ordering, which is handled
 /// by `qb_string_compare()` returning -1, 0, or 1 like strcmp.
+///
+/// Note: We negate the result to convert C bool (0/1) to BASIC bool (0/-1).
+/// This is critical for NOT operator compatibility (NOT in BASIC is bitwise ~).
 fn emit_string_comparison(left: &str, right: &str, op: &BinaryOp) -> Result<String, CodeGenError> {
     let cmp = format!("qb_string_compare({}, {})", left, right);
+    // Negate to convert C bool (0/1) to BASIC bool (0/-1)
     let result = match op {
-        BinaryOp::Equal => format!("({} == 0)", cmp),
-        BinaryOp::NotEqual => format!("({} != 0)", cmp),
-        BinaryOp::LessThan => format!("({} < 0)", cmp),
-        BinaryOp::LessEqual => format!("({} <= 0)", cmp),
-        BinaryOp::GreaterThan => format!("({} > 0)", cmp),
-        BinaryOp::GreaterEqual => format!("({} >= 0)", cmp),
+        BinaryOp::Equal => format!("-({} == 0)", cmp),
+        BinaryOp::NotEqual => format!("-({} != 0)", cmp),
+        BinaryOp::LessThan => format!("-({} < 0)", cmp),
+        BinaryOp::LessEqual => format!("-({} <= 0)", cmp),
+        BinaryOp::GreaterThan => format!("-({} > 0)", cmp),
+        BinaryOp::GreaterEqual => format!("-({} >= 0)", cmp),
         _ => {
             return Err(CodeGenError::unsupported(format!(
                 "operator {} on strings",

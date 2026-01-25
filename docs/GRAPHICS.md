@@ -266,6 +266,43 @@ The inline runtime embeds all graphics stub functions directly in the generated 
 - Quick testing without graphics dependencies
 - Text-only programs
 - Systems without SDL2
+- Headless/CI environments
+
+#### Stub Behavior and Limitations
+
+The inline runtime stubs are designed to prevent infinite loops in programs with game loops:
+
+```basic
+SCREEN 13
+DO
+    ' Game logic here
+    _DISPLAY
+LOOP WHILE _SCREENEXISTS
+```
+
+**Frame Limiting:** To prevent the above loop from running forever, the stubs track frame count:
+- `_DISPLAY` increments a frame counter
+- After 1000 frames (default), `_SCREENEXISTS` returns FALSE and `qb_gfx_poll_events` returns 0
+- This causes game loops to exit gracefully
+
+**Configuring the limit:** Set the `QB64FRESH_MAX_FRAMES` environment variable:
+```bash
+# Allow 5000 frames before signaling window close
+export QB64FRESH_MAX_FRAMES=5000
+./my_program
+```
+
+**Warning messages:** The first graphics call prints:
+```
+Warning: Graphics functions require external runtime. Use --runtime external
+         Programs with game loops will exit after 1000 frames in stub mode.
+```
+
+When the frame limit is reached:
+```
+Note: Stub graphics reached 1000 frames, signaling window close.
+      Set QB64FRESH_MAX_FRAMES environment variable to change limit.
+```
 
 ### External Runtime
 
@@ -582,4 +619,4 @@ The following BASIC graphics statements are fully supported:
 
 ---
 
-*Last updated: 2026-01-24*
+*Last updated: 2026-01-24 (session-050: Added stub frame limiting documentation)*

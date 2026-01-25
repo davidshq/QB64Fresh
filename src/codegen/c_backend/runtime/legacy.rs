@@ -486,6 +486,12 @@ pub(super) fn emit_legacy_functions(output: &mut String) {
     // STRIG event handling - uses event ID-based dispatch instead of computed goto
     // The generated code calls qb_strig_check_event() at loop iterations and
     // dispatches to the appropriate GOSUB label via a switch statement
+    //
+    // Event dispatch infrastructure - these variables are referenced by generated code
+    // but actual dispatch happens via switch statements in each procedure
+    writeln!(output, "static uint32_t _qb_strig_event_id = 0;").unwrap();
+    writeln!(output).unwrap();
+
     writeln!(
         output,
         "void qb_on_strig(int32_t button_num, uint32_t event_id) {{"
@@ -704,11 +710,7 @@ pub(super) fn emit_legacy_functions(output: &mut String) {
     writeln!(output).unwrap();
 
     // VGA palette state variables (matching QB64pe)
-    writeln!(
-        output,
-        "static uint32_t _qb_palette[256];  // 256-color palette (ARGB format)"
-    )
-    .unwrap();
+    // Note: _qb_palette[256] is forward-declared in mod.rs for cross-module access
     writeln!(
         output,
         "static int _qb_h3c7_read_index = 0;  // Palette read index (port 0x3C7)"

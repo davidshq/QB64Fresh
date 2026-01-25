@@ -260,7 +260,7 @@ pub(super) fn emit_keyboard_functions(output: &mut String) {
     writeln!(output, "static char** _qb_argv = NULL;").unwrap();
     writeln!(
         output,
-        "void qb_init_args(int argc, char** argv) {{ _qb_argc = argc; _qb_argv = argv; fprintf(stderr, \"INIT: args\\n\"); }}"
+        "void qb_init_args(int argc, char** argv) {{ _qb_argc = argc; _qb_argv = argv; }}"
     )
     .unwrap();
     writeln!(output).unwrap();

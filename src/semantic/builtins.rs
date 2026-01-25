@@ -788,6 +788,12 @@ impl SemanticAnalyzer {
             &[("handle", BasicType::Long)],
             BasicType::Integer,
         );
+        // HTTP status code for network handles
+        self.register_builtin_function(
+            "_STATUSCODE",
+            &[("handle", BasicType::Long)],
+            BasicType::Long,
+        );
 
         // Image buffer functions
         self.register_builtin_function(
