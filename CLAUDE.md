@@ -14,6 +14,23 @@ QB64Fresh is a complete ground-up rewrite of QB64, a modern BASIC compiler. This
 - **QB64Fresh/** - New implementation (this project - WRITE HERE)
 
 ---
+
+## Tooling
+- You do not need to request permission to use `sed` on files within the `QB64Contain` project or its children.
+- Dogfood our own tooling whenever you can - e.g., the debugger, linter, and formatter we built for QB64Refresh.
+
+## Safety: Memory Limits (CRITICAL)
+
+**ALWAYS use memory limits when running QB64Fresh or QB64pe.** Both compilers can consume 25GB+ memory and crash the system.
+
+```bash
+# REQUIRED: Set 16GB memory limit before running
+bash -c 'ulimit -v 16777216 && ./qb64fresh input.bas --emit-c -o output.c'
+bash -c 'ulimit -v 16777216 && ./qb64pe_fresh -x input.bas -o output'
+```
+
+See [docs/MEMORY_LIMITS.md](docs/MEMORY_LIMITS.md) for details.
+
 ## Logging System (IMPORTANT)
 
 **THE INFORMATION IN THIS SECTION IS QUINTESSENTIAL, MAKE SURE YOU ALWAYS FOLLOW IT. WE CAN FIX OTHER THINGS, BUT WE NEED TO KNOW WHAT HAPPENED!**

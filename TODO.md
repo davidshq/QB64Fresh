@@ -1,17 +1,31 @@
 # QB64Fresh TODO
 
-*Last updated: 2026-01-23 (Session 044)*
+*Last updated: 2026-01-25*
 
-A prioritized roadmap for QB64Fresh development. For completed features, see [TODO-completed.md](TODO-completed.md).
+A prioritized roadmap for QB64Fresh development. For completed features, see [TODO-completed.md](docs/archive/TODO-completed.md).
 
 ---
-- All Phase 1 items have been completed - see TODO-completed.md.
-- All Phase 2 items have been completed - see TODO-completed.md.
-- All Phase 4 items have been implemented - see TODO-completed.md.
-- Phase 5:
-  - All C Library Integration items completed - see TODO-completed.md.
-- Phase 7:
-  - All metacommands have been implemented - see TODO-completed.md.
+
+## Priority 0: Bootstrap Completion (BLOCKING)
+
+**Current Status:** QB64pe compiles, `-h` works, but compilation crashes.
+
+- [ ] **Fix memory exhaustion during compilation** *(Critical - blocks bootstrap)*
+  - Bootstrapped QB64pe uses 25GB+ memory when compiling programs
+  - Crashes with segfault when memory limited to 16GB
+  - See [BOOTSTRAP_PLAN.md](BOOTSTRAP_PLAN.md) for details
+
+- [ ] **Diagnose root cause**
+  - Add memory tracking to generated C code
+  - Create minimal test case that reproduces the crash
+  - Compare with original QB64pe behavior
+
+**IMPORTANT:** Always use `ulimit -v 16777216` when running QB64pe. See [docs/MEMORY_LIMITS.md](docs/MEMORY_LIMITS.md).
+
+---
+- All Phase 1, 2, 4 items have been completed — see [TODO-completed.md](docs/archive/TODO-completed.md).
+- Phase 5: All C Library Integration items completed — see [TODO-completed.md](docs/archive/TODO-completed.md).
+- Phase 7: All metacommands have been implemented — see [TODO-completed.md](docs/archive/TODO-completed.md).
 ---
 
 ## Phase 3: Graphics System - Remaining Items
@@ -32,22 +46,12 @@ A prioritized roadmap for QB64Fresh development. For completed features, see [TO
 - [ ] Joystick/gamepad support *(Medium - 2-3 sessions, SDL2 has gamepad API)*
 - [ ] Touch input support *(Medium - 2-3 sessions)*
 
-### Multi-threading (QB64 Extension)
-- [ ] `_THREAD` support *(Large - 4-6 sessions, complex runtime changes)*
-- [ ] Thread synchronization primitives *(Medium - 2-3 sessions, after _THREAD)*
-
 ---
 
 ## Phase 6: Tooling & Ecosystem
 
 ### Debugging (`tools/debug`)
-Debugger infrastructure has been scaffolded as a workspace member (44 tests passing):
-- [x] Debug symbol extraction from AST (`symbols.rs`) - types, variables, scopes, procedures
-- [x] Value representation types (`values.rs`) - scalars, arrays, UDTs, display formatting
-- [x] Call stack frame structures (`frames.rs`) - stack frames, frame navigation, variable groups
-- [x] Debug Adapter Protocol types (`dap.rs`) - full DAP message types for IDE integration
-- [x] Multi-file source management (`sources.rs`) - $INCLUDE handling, line mapping
-- [x] Watch expression parsing (`watch.rs`) - variables, array indices, UDT member access
+Debugger infrastructure has been scaffolded as a workspace member (44 tests passing). Core components (symbols, values, frames, dap, sources, watch) — see [TODO-completed.md](docs/archive/TODO-completed.md).
 
 **Still needs runtime integration:**
 - [ ] Runtime state capture *(requires debug info in generated C)*
@@ -61,7 +65,6 @@ Debugger infrastructure has been scaffolded as a workspace member (44 tests pass
 - [ ] Inline small functions *(Medium - 2-3 sessions)*
 
 ### Documentation
-- [x] Language reference documentation *(Large - 4-6 sessions)* - **COMPLETED 2026-01-23**
 - [ ] Tutorial/getting started guide *(Medium - 2-3 sessions)*
 
 ### Testing (See TESTING_INFRASTRUCTURE_PLAN.md for details)
@@ -90,17 +93,7 @@ If raw OpenGL is needed, users can use `DECLARE LIBRARY` to call OpenGL function
 These can be worked on independently of the compiler/runtime:
 
 - [ ] Debugger support (DAP) *(Large - requires runtime integration, see Phase 6)*
-- [x] Formatter integration (qb64fresh-fmt)
-- [x] Linter integration (qb64fresh-lint)
-- [x] Format on save
-- [x] Lint on save / lint on type
-- [x] Build error integration (Problems panel)
-- [x] Settings validation on startup
-- [x] Code actions (quick fixes from linter suggestions)
-- [x] Workspace symbol search (Ctrl+T)
-- [x] Document symbols outline (Ctrl+Shift+O)
-- [x] Rename symbol
-- [x] Snippet expansion improvements
+- Formatter, linter, format/lint on save, build errors, settings, code actions, symbols, rename, snippets — see [TODO-completed.md](docs/archive/TODO-completed.md)
 
 ---
 
@@ -110,22 +103,6 @@ Potential future work for a VB-style RAD visual designer.
 
 ---
 
-## Known Issues / Technical Debt
-
-### Low Priority
-
-- [ ] Unicode support: UCASE$/LCASE$ now UTF-8 safe, added char counting helpers. Full Unicode support still needed *(Large - 4-6 sessions)*
-- [x] Windows-specific path handling in file I/O (fixed type mismatch in declarations)
-
----
-
-## Notes
-
-**Dependencies Integrated:**
-- SDL2 crate for graphics (feature: `graphics-sdl2`)
-- rodio crate for audio (feature: `audio-rodio`)
-- Runtime library provides file I/O, graphics, and audio
-
 **Design Decisions Made:**
 - Graphics backend: Trait-based abstraction with SDL2 as default, mock for testing
 - Sound backend: Trait-based abstraction with rodio as default, mock for testing
@@ -133,22 +110,3 @@ Potential future work for a VB-style RAD visual designer.
 
 **Design Decisions Needed:**
 - Memory model for `_MEM` operations (integration with cmem for VARPTR compatibility)
-
----
-
-## Code Quality Summary
-
-**Overall Health:** Excellent
-- **Test Coverage:** 81.63% (850+ tests, including 31 LSP tests)
-- **Clippy Warnings:** 0
-- **Security Issues:** 0
-
-**File Size Concerns:** (monitor for growth)
-| File | Lines | Status |
-|------|-------|--------|
-| runtime.rs | 4,141 | Large - C code generator, hard to split |
-| stmt.rs (codegen) | 3,690 | Large - File I/O extracted |
-| statements.rs (parser) | 3,865 | Large - Already split from main parser |
-
-**Stub Functions:** Many graphics/audio/input functions are stubs returning safe defaults.
-This is intentional for compatibility. See runtime.rs for implementation guidance.

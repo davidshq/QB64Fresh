@@ -271,7 +271,7 @@ impl super::StmtEmitter {
         let loop_base = self.next_label("for_base");
         writeln!(
             output,
-            "{}uint32_t {} = qbs_tmp_base_get();",
+            "{}uint64_t {} = qbs_tmp_base_get();",
             indent, loop_base
         )
         .unwrap();
@@ -331,7 +331,7 @@ impl super::StmtEmitter {
         let loop_base = self.next_label("while_base");
         writeln!(
             output,
-            "{}uint32_t {} = qbs_tmp_base_get();",
+            "{}uint64_t {} = qbs_tmp_base_get();",
             indent, loop_base
         )
         .unwrap();
@@ -392,7 +392,7 @@ impl super::StmtEmitter {
         let loop_base = self.next_label("do_base");
         writeln!(
             output,
-            "{}uint32_t {} = qbs_tmp_base_get();",
+            "{}uint64_t {} = qbs_tmp_base_get();",
             indent, loop_base
         )
         .unwrap();

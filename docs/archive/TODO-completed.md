@@ -437,7 +437,7 @@
 
 ---
 
-*Last updated: 2026-01-21 (Session 043)*
+*Last updated: 2026-01-25 (Session 054)*
 
 ---
 
@@ -999,3 +999,41 @@ The following items were discovered to already be implemented during a TODO audi
       (supporting classic BASIC naming like `player.move`). The semantic analyzer now detects
       dotted names where the first part is a UDT variable and handles them as field assignments.
       Code generation properly uses strncpy for fixed-length string field assignments.
+
+---
+
+## Phase 6: Tooling & Ecosystem ✅ (Session 054 / 2026-01-25)
+
+### Debugging (`tools/debug`) — Infrastructure
+- [x] Debug symbol extraction from AST (`symbols.rs`) — types, variables, scopes, procedures
+- [x] Value representation types (`values.rs`) — scalars, arrays, UDTs, display formatting
+- [x] Call stack frame structures (`frames.rs`) — stack frames, frame navigation, variable groups
+- [x] Debug Adapter Protocol types (`dap.rs`) — full DAP message types for IDE integration
+- [x] Multi-file source management (`sources.rs`) — $INCLUDE handling, line mapping
+- [x] Watch expression parsing (`watch.rs`) — variables, array indices, UDT member access
+
+### Documentation
+- [x] Language reference documentation *(Large - 4-6 sessions)* — **COMPLETED 2026-01-23**
+
+---
+
+## Phase 8: VSCode Extension ✅ (Session 054 / 2026-01-25)
+
+- [x] Formatter integration (qb64fresh-fmt)
+- [x] Linter integration (qb64fresh-lint)
+- [x] Format on save
+- [x] Lint on save / lint on type
+- [x] Build error integration (Problems panel)
+- [x] Settings validation on startup
+- [x] Code actions (quick fixes from linter suggestions)
+- [x] Workspace symbol search (Ctrl+T)
+- [x] Document symbols outline (Ctrl+Shift+O)
+- [x] Rename symbol
+- [x] Snippet expansion improvements
+
+---
+
+## Known Issues Resolved ✅ (Session 054 / 2026-01-25)
+
+- [x] Windows-specific path handling in file I/O (fixed type mismatch in declarations)
+- [x] **Unicode / QB64pe parity** — UCASE$/LCASE$ match QB64pe (ASCII a-z/A-Z only; other bytes preserved). We also have: _MAPUNICODE, _UCHARPOS, _UFONTHEIGHT, _ULINESPACING, _UPRINTWIDTH, _UPRINTSTRING, UTF-8 char-count helpers, _STRLEN. Full Unicode (e.g. ß→SS) is beyond QB64pe; parity achieved.

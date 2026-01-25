@@ -125,6 +125,10 @@ pub(super) fn declare_scalar_var(
 /// Arrays in C are declared as pointers initialized to NULL.
 /// They will be allocated with malloc/realloc at runtime.
 ///
+/// The `is_global` parameter determines how the size tracking variable is declared:
+/// - Global arrays: `size_t name_sz__ = 0;` (shared across all functions)
+/// - Local arrays: `static size_t name_sz__ = 0;` (persists across function calls)
+///
 /// Returns `true` if the variable was newly declared, `false` if it already existed.
 ///
 /// # Generated declarations
@@ -138,6 +142,7 @@ pub(super) fn declare_array_var(
     element_type: &BasicType,
     declared_vars: &mut HashSet<String>,
     decls: &mut Vec<String>,
+    is_global: bool,
 ) -> bool {
     let c_name = c_identifier(name);
     if declared_vars.contains(&c_name) {
@@ -156,6 +161,14 @@ pub(super) fn declare_array_var(
     };
 
     decls.push(decl);
+    // Emit a size tracking variable for REDIM _PRESERVE support.
+    // - For global arrays: must be global so all functions see the same size
+    // - For local arrays: must be static so size persists across function calls
+    if is_global {
+        decls.push(format!("size_t {}_sz__ = 0;", c_name));
+    } else {
+        decls.push(format!("static size_t {}_sz__ = 0;", c_name));
+    }
     declared_vars.insert(c_name);
     true
 }

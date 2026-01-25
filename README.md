@@ -18,7 +18,7 @@ A modern, ground-up rewrite of QB64 — a QuickBASIC compatible compiler that pr
 | LSP Server | ✅ Complete (~2,200 lines) |
 | **Test Suite** | **1,500+ tests** (850+ unit, 10 golden, 19 fuzz) |
 | **QB4.5 Compatibility** | **99.1%** (114/115 test files) |
-| **QB64pe Bootstrap** | ✅ Compiles 59K-line compiler |
+| **QB64pe Bootstrap** | ✅ Compiles & runs (see below) |
 
 ## Quick Start
 
@@ -43,11 +43,14 @@ QB64Fresh can compile **QB64pe itself** — a 59,000-line BASIC compiler — int
 | Metric | Value |
 |--------|-------|
 | Source | 39 files, ~59K lines |
-| Generated C | 83,705 lines |
-| Executable | 2.1 MB |
-| Compile time | ~800ms |
+| Generated C | ~115K lines |
+| Executable | ~2.4 MB |
+| Parse + Codegen | ~800ms |
+| Status | ✅ `-h` works, ❌ compilation has memory issue |
 
-This demonstrates real-world compatibility with large, complex BASIC codebases. See [BOOTSTRAP_ACHIEVEMENT.md](docs/BOOTSTRAP_ACHIEVEMENT.md) for technical details.
+The bootstrapped QB64pe runs and displays help, but crashes when compiling programs due to a memory issue under investigation. See [BOOTSTRAP_PLAN.md](BOOTSTRAP_PLAN.md) for current status.
+
+**IMPORTANT:** Always use memory limits when running either compiler. See [docs/MEMORY_LIMITS.md](docs/MEMORY_LIMITS.md).
 
 ## Goals
 

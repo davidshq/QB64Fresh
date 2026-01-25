@@ -29,7 +29,7 @@
 //! PRINT "After include"
 //! "#;
 //!
-//! match preprocess(source, base_path) {
+//! match preprocess(source, base_path, None) {
 //!     Ok(processed) => println!("Processed source:\n{}", processed),
 //!     Err(e) => eprintln!("Preprocessor error: {}", e),
 //! }
@@ -298,6 +298,10 @@ fn is_line_continuation(line: &str) -> bool {
 ///
 /// * `source` - The source code to preprocess
 /// * `base_path` - The directory containing the source file (for resolving relative paths)
+/// * `source_path` - When provided, the actual path of the source file. Used for
+///   `PreprocessContext` and for `FileNotFound.from_file` in error messages so
+///   users see the real file (e.g. `myapp.bas`) instead of `main.bas`. Pass `None`
+///   for backward compatibility; then `base_path.join("main.bas")` is used.
 ///
 /// # Returns
 ///
@@ -309,13 +313,23 @@ fn is_line_continuation(line: &str) -> bool {
 /// use std::path::Path;
 /// use qb64fresh::preprocessor::preprocess;
 ///
-/// let result = preprocess("$INCLUDE: 'header.bi'", Path::new("."));
+/// // With known source file (e.g. from CLI):
+/// let result = preprocess("$INCLUDE: 'header.bi'", Path::new("."), Some(Path::new("myapp.bas")));
+///
+/// // Without source path (backward compatible):
+/// let result = preprocess("$INCLUDE: 'header.bi'", Path::new("."), None);
 /// ```
-pub fn preprocess(source: &str, base_path: &Path) -> Result<String, PreprocessorError> {
+pub fn preprocess(
+    source: &str,
+    base_path: &Path,
+    source_path: Option<&Path>,
+) -> Result<String, PreprocessorError> {
     // First, join continued lines (lines ending with ` _`)
     let joined = join_continued_lines(source);
 
-    let initial_file = base_path.join("main.bas");
+    let initial_file = source_path
+        .map(|p| p.canonicalize().unwrap_or_else(|_| p.to_path_buf()))
+        .unwrap_or_else(|| base_path.join("main.bas"));
     let mut context = PreprocessContext::new(initial_file);
     preprocess_internal(&joined, base_path, &mut context)
 }
@@ -528,7 +542,7 @@ mod tests {
     #[test]
     fn test_preprocess_no_includes() {
         let source = "PRINT \"Hello\"\nx = 42\n";
-        let result = preprocess(source, Path::new(".")).unwrap();
+        let result = preprocess(source, Path::new("."), None).unwrap();
         assert_eq!(result, "PRINT \"Hello\"\nx = 42\n");
     }
 
@@ -545,7 +559,7 @@ mod tests {
 
         // Main source with include
         let source = "PRINT \"Start\"\n$INCLUDE: 'header.bi'\nPRINT \"End\"\n";
-        let result = preprocess(source, temp_path).unwrap();
+        let result = preprocess(source, temp_path, None).unwrap();
 
         // Check that the include was expanded
         assert!(result.contains("CONST VERSION = 1"));
@@ -573,7 +587,7 @@ mod tests {
 
         // Main source
         let source = "$INCLUDE: 'level1.bi'\nPRINT LEVEL1 + LEVEL2\n";
-        let result = preprocess(source, temp_path).unwrap();
+        let result = preprocess(source, temp_path, None).unwrap();
 
         assert!(result.contains("CONST LEVEL1 = 1"));
         assert!(result.contains("CONST LEVEL2 = 2"));
@@ -597,7 +611,7 @@ mod tests {
 
         // Try to process - should detect circular include
         let source = "$INCLUDE: 'file_a.bi'\n";
-        let result = preprocess(source, temp_path);
+        let result = preprocess(source, temp_path, None);
 
         assert!(result.is_err());
         assert!(matches!(
@@ -608,11 +622,39 @@ mod tests {
 
     #[test]
     fn test_preprocess_file_not_found() {
-        let result = preprocess("$INCLUDE: 'nonexistent.bi'\n", Path::new("."));
+        let result = preprocess("$INCLUDE: 'nonexistent.bi'\n", Path::new("."), None);
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
             PreprocessorError::FileNotFound { .. }
         ));
+    }
+
+    #[test]
+    fn test_preprocess_file_not_found_reports_actual_source_path() {
+        // When source_path is Some(real_path), FileNotFound.from_file should be that path,
+        // not "main.bas". (Regression test for preprocess() initial file fix.)
+        let temp_dir = TempDir::new().unwrap();
+        let entry_path = temp_dir.path().join("myapp.bas");
+        std::fs::write(&entry_path, "$INCLUDE: 'nonexistent.bi'\n").unwrap();
+
+        let base = entry_path.parent().unwrap();
+        let result = preprocess(
+            "$INCLUDE: 'nonexistent.bi'\n",
+            base,
+            Some(entry_path.as_path()),
+        );
+
+        let err = result.unwrap_err();
+        match &err {
+            PreprocessorError::FileNotFound { from_file, .. } => {
+                assert!(
+                    from_file.ends_with("myapp.bas"),
+                    "from_file should be the actual source path, got: {}",
+                    from_file.display()
+                );
+            }
+            _ => panic!("expected FileNotFound, got {:?}", err),
+        }
     }
 }

@@ -1,6 +1,6 @@
 # QB64pe Bootstrap: Remaining Work
 
-*Updated: 2026-01-23*
+*Updated: 2026-01-25*
 
 This document tracks what remains to complete the QB64pe bootstrap project. For full history, see [BOOTSTRAP_PLAN_FULL.md](../archive/BOOTSTRAP_PLAN_FULL.md).
 
@@ -8,56 +8,80 @@ This document tracks what remains to complete the QB64pe bootstrap project. For 
 
 ## Current Status
 
-**Phases A-E Complete:**
-- ✅ Analysis complete (gap identification)
-- ✅ Implementation complete (992 → 0 semantic errors)
-- ✅ Code generation complete (0 GCC errors, ~86K lines of C)
-- ✅ Linking complete (2.1MB executable builds and runs)
-- ✅ Validation & documentation complete
-
-**What Works:**
-- QB64pe executable builds without errors
-- Links successfully (~1.9MB executable)
-- 40+ runtime function stubs implemented
+**Achieved:**
+- ✅ QB64Fresh parses QB64pe source (100K+ lines)
+- ✅ Semantic analysis complete (0 errors)
+- ✅ Code generation produces ~115K lines of valid C
+- ✅ GCC compiles the C code (warnings only)
+- ✅ Executable runs basic commands (`qb64pe_fresh -h` works!)
 
 **Current Blocker:**
-- Executable hangs on startup (graphics stub functions cause blocking)
-- IDE subsystem initializes even in -c mode, expects working graphics
+- ❌ Memory exhaustion when compiling BASIC programs
+- The bootstrapped QB64pe crashes (or uses 25GB+ memory) during compilation
+
+---
+
+## Bug: Memory Exhaustion During Compilation
+
+### Symptoms
+- `qb64pe_fresh -x test.bas -o test` consumes excessive memory
+- With `ulimit -v 16777216`, crashes with segfault
+- Without memory limit, can consume 25GB+ and freeze the system
+
+### Investigation Needed
+1. **Where is memory allocated?** - Add profiling or debug output
+2. **Is it a leak?** - Strings/arrays not being freed?
+3. **Is it a loop?** - Some compilation loop running endlessly?
+4. **Is it data growth?** - Symbol table or other structure growing exponentially?
+
+### Hypotheses
+1. **String temp pool not cleaning up** - `qbs_cleanup()` called thousands of times
+2. **Array reallocation spiral** - Some array keeps growing
+3. **Hash table issue** - QB64pe uses hash tables extensively
+4. **INI file system** - Known to be O(n*m), could be worse
 
 ---
 
 ## Remaining Work
 
-### Runtime Implementations Needed
+### Priority 1: Fix Memory Issue
+- [ ] Add memory tracking debug output to generated C
+- [ ] Create minimal test case that reproduces the crash
+- [ ] Compare memory behavior with original QB64pe
+- [ ] Identify and fix the root cause
 
-**For QB64pe to actually compile programs:**
+### Priority 2: Validate Compilation
+- [ ] Bootstrap compiles `PRINT "Hello"`
+- [ ] Bootstrap compiles program with arrays
+- [ ] Bootstrap compiles program with file I/O
 
-2. ⬜ **Graphics initialization** (BLOCKING)
-   - QB64pe hangs on startup because graphics stubs return 0/null
-   - IDE subsystem initializes even in compiler-only mode (-c)
-   - Need real SDL2 initialization OR bypass IDE init for -c mode
-   - Stub functions currently cause infinite loops waiting for graphics
-
-**Nice to have (warnings only):**
-- Clean up `char*` vs `qb_string*` type warnings (~100+ occurrences)
-- Implement remaining `_KEY_*` constants
+### Priority 3: Full Bootstrap
+- [ ] Bootstrap compiles QB64pe itself
+- [ ] Behavior matches original QB64pe
 
 ---
 
 ## Success Criteria
 
-### Milestone 5: Full Validation (PENDING)
-- [ ] QB64Fresh-compiled QB64pe compiles a simple "Hello World" BASIC program
-- [ ] Behavior matches original QB64pe for core compiler functionality
-- [ ] Process is documented and reproducible
+| Milestone | Status |
+|-----------|--------|
+| Parse QB64pe | ✅ |
+| Generate C code | ✅ |
+| GCC compiles | ✅ |
+| Run `-h` | ✅ |
+| Compile simple program | ❌ Blocked by memory issue |
+| Self-hosting bootstrap | ❌ |
 
 ---
 
-## Notes
+## Safety: Always Use Memory Limits
 
-- The QB64pe IDE component requires graphics support (SDL2)
-- Compiler-only mode (`-c`) still initializes the IDE subsystem
-- Real runtime implementations needed for QB64pe to compile BASIC programs
+**CRITICAL:** See [MEMORY_LIMITS.md](../MEMORY_LIMITS.md) for required ulimit settings.
+
+```bash
+# Always run QB64pe (fresh or original) with memory limits
+bash -c 'ulimit -v 16777216 && ./qb64pe_fresh -x program.bas -o program'
+```
 
 ---
 
