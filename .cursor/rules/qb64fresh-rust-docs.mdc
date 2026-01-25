@@ -1,0 +1,25 @@
+---
+description: Rust doc comments and sections for QB64Fresh
+globs: "**/*.rs"
+alwaysApply: false
+---
+
+# Rust Documentation
+
+Use `///` for items, `//!` for modules. First line = brief summary.
+
+**Sections:** `# Arguments`, `# Returns` (when relevant), `# Example` / `# Examples`, `# Panics`, `# Errors` (for `Result`), `# Safety` (for `unsafe`).
+
+**Error variants:** Document what causes each, how to fix, and an example if useful.
+
+```rust
+// ✅ GOOD
+/// Returns the variable name including any type suffix (e.g., "count%").
+fn name(&self) -> &str
+
+// ❌ BAD
+/// Returns the name.
+fn name(&self) -> &str
+```
+
+Use rustdoc link syntax `` [`Type::method`] `` for related items. Document the "why" when non-obvious. Run `cargo doc --no-deps` and `cargo test --doc` to verify.

@@ -1,0 +1,21 @@
+---
+description: QB64Fresh project context, directory layout, and pipeline
+alwaysApply: true
+---
+
+# QB64Fresh Core
+
+**Project:** Rust compiler for QB64 BASIC. C intermediate, LSP-based IDE. NOT a fork—fresh implementation informed by QB64pe.
+
+**Directory context:**
+- **QB64pe/** — READ ONLY. Use for analysis and reference only.
+- **QB64Fresh/** — WRITE HERE. This is the implementation.
+
+**Pipeline:**
+```
+Source → Lexer → Parser → AST → Semantic → Typed IR → CodeGen → C
+```
+
+**Binaries:** `qb64fresh` (CLI), `qb64fresh-lsp` (LSP server).
+
+**Reference:** `QB64pe/source/`, `QB64pe/internal/c/libqb*`, `QB64pe/tests/qbasic_testcases/`.

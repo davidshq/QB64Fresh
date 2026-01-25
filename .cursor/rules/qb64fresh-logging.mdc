@@ -1,0 +1,18 @@
+---
+description: AgenticLogs and session/pre-commit checklist for QB64Fresh
+alwaysApply: true
+---
+
+# Logging (Mandatory)
+
+**Session start:**
+1. Add todo: "Update AgenticLogs (in_progress)"
+2. `ls AgenticLogs/` → choose next session number
+3. Create `AgenticLogs/YYYY-MM-DD_session-NNN_brief.md` early
+4. If a problem takes 3+ attempts → create `AgenticLogs/IndividualProblems/YYYY-MM-DD_problem-name.md` (see `_TEMPLATE.md`)
+
+**Pre-commit:** Verify AgenticLogs updated (session log, decisions, IndividualProblems links if needed). If not → update before committing.
+
+**Completed TODOs:** Move `[x]` from `TODO.md` → `TODO-completed.md`; from `TESTING_INFRASTRUCTURE_PLAN.md` → `docs/ThingsToDo/TESTING-COMPLETED.md`.
+
+**Sanitize:** Relative paths only, no sensitive system info.
