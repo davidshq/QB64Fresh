@@ -227,6 +227,29 @@ impl<'a> TypeChecker<'a> {
             );
         }
 
+        // Check if it's a zero-arg external function (DECLARE LIBRARY)
+        // External functions are stored as scalars with SymbolKind::ExternalFunction
+        if let Some(symbol) = self.symbols.lookup_scalar(name)
+            && let SymbolKind::ExternalFunction {
+                c_name,
+                params,
+                return_type,
+            } = &symbol.kind
+            && params.is_empty()
+        {
+            // Generate external function call, not a variable reference
+            return TypedExpr::new(
+                TypedExprKind::ExternalFunctionCall {
+                    name: name.to_string(),
+                    c_name: c_name.clone(),
+                    args: vec![],
+                    params: vec![],
+                },
+                return_type.clone(),
+                span,
+            );
+        }
+
         // Implicit variable declaration (BASIC allows undeclared variables)
         let basic_type =
             type_from_suffix(name).unwrap_or_else(|| self.symbols.default_type_for(name));

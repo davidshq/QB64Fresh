@@ -461,12 +461,18 @@ pub(super) fn emit_expr(expr: &TypedExpr) -> Result<String, CodeGenError> {
                                     | TypedExprKind::FieldAccess { .. }
                             );
 
-                        if is_lvalue {
+                        // Check if argument type matches parameter type
+                        // In BASIC, passing a LONG to a function expecting INTEGER% creates
+                        // an implicit temporary. The function gets a pointer to the temp.
+                        let param_type = params.get(i).map(|p| &p.basic_type);
+                        let types_match =
+                            param_type.map(|pt| pt == &arg.basic_type).unwrap_or(true);
+
+                        if is_lvalue && types_match {
                             args_codes.push(format!("&({})", arg_code));
                         } else {
-                            // Non-lvalue expression - use C compound literal to create addressable temp
+                            // Non-lvalue expression OR type mismatch - use C compound literal
                             // Format: &(type){expr} creates a temporary that can be addressed
-                            let param_type = params.get(i).map(|p| &p.basic_type);
                             let c_ty = param_type
                                 .map(c_type)
                                 .unwrap_or_else(|| "int32_t".to_string());
@@ -475,6 +481,7 @@ pub(super) fn emit_expr(expr: &TypedExpr) -> Result<String, CodeGenError> {
                                 args_codes
                                     .push(format!("&(qb_string*){{qb_str_from_c({})}}", arg_code));
                             } else {
+                                // Cast value to parameter type to handle type mismatches
                                 args_codes.push(format!("&({}){{{}}}", c_ty, arg_code));
                             }
                         }

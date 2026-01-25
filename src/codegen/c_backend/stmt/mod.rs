@@ -662,9 +662,31 @@ impl StmtEmitter {
                                     | TypedExprKind::FieldAccess { .. }
                             );
 
-                        if is_lvalue {
+                        // Check if argument type matches parameter type
+                        // In BASIC, passing a LONG to a function expecting INTEGER% creates
+                        // an implicit temporary. The function gets a pointer to the temp, not
+                        // to the original variable.
+                        let param_type = params.get(i).map(|p| &p.basic_type);
+                        let types_match =
+                            param_type.map(|pt| pt == &arg.basic_type).unwrap_or(true);
+
+                        if is_lvalue && types_match {
                             // Variable/array/field can be addressed directly
                             args_codes.push(format!("&({})", arg_code));
+                        } else if is_lvalue && !types_match {
+                            // Lvalue but types don't match - need temporary with correct type
+                            // This handles cases like passing LONG to INTEGER% parameter
+                            let c_ty = param_type
+                                .map(c_type)
+                                .unwrap_or_else(|| "int32_t".to_string());
+                            let temp_name = format!("_tmp_arg_{}", temp_counter);
+                            temp_counter += 1;
+                            // Cast the value to parameter type
+                            temp_decls.push(format!(
+                                "{} {} = ({})({});",
+                                c_ty, temp_name, c_ty, arg_code
+                            ));
+                            args_codes.push(format!("&{}", temp_name));
                         } else {
                             // Non-lvalue expression - need a temporary variable
                             let param_type = params.get(i).map(|p| &p.basic_type);
@@ -2132,6 +2154,7 @@ impl StmtEmitter {
                     indent, addr_code
                 )
                 .unwrap();
+                writeln!(output, "{}fflush(stderr);", indent).unwrap();
             }
 
             // ==================== Mouse Input Statements ====================

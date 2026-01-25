@@ -214,6 +214,9 @@ pub(super) fn emit_string_functions(output: &mut String) {
 /// Generates `qb_string_compare` which performs lexicographic comparison
 /// of two strings, treating NULL as empty string (BASIC semantics).
 ///
+/// Uses memcmp instead of strcmp to properly handle binary strings
+/// (like those created by MKL$) that may contain embedded null bytes.
+///
 /// Returns: negative if a < b, zero if a == b, positive if a > b
 pub(super) fn emit_string_comparison(output: &mut String) {
     writeln!(
@@ -222,6 +225,9 @@ pub(super) fn emit_string_comparison(output: &mut String) {
     )
     .unwrap();
     // Treat NULL as empty string (BASIC semantics)
+    // Use memcmp with actual lengths to handle binary strings with embedded nulls
+    writeln!(output, "    size_t a_len = (a && a->data) ? a->len : 0;").unwrap();
+    writeln!(output, "    size_t b_len = (b && b->data) ? b->len : 0;").unwrap();
     writeln!(
         output,
         "    const char* a_data = (a && a->data) ? a->data : \"\";"
@@ -232,7 +238,20 @@ pub(super) fn emit_string_comparison(output: &mut String) {
         "    const char* b_data = (b && b->data) ? b->data : \"\";"
     )
     .unwrap();
-    writeln!(output, "    return strcmp(a_data, b_data);").unwrap();
+    // Compare using the shorter length first
+    writeln!(
+        output,
+        "    size_t min_len = (a_len < b_len) ? a_len : b_len;"
+    )
+    .unwrap();
+    writeln!(output, "    int cmp = memcmp(a_data, b_data, min_len);").unwrap();
+    // If equal for the common prefix, longer string is greater
+    writeln!(output, "    if (cmp == 0) {{").unwrap();
+    writeln!(output, "        if (a_len < b_len) return -1;").unwrap();
+    writeln!(output, "        if (a_len > b_len) return 1;").unwrap();
+    writeln!(output, "        return 0;").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    return cmp;").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 }

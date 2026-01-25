@@ -40,6 +40,7 @@ pub(super) fn emit_audio_functions(output: &mut String) {
     writeln!(output, "static void _qb_audio_warn(void) {{").unwrap();
     writeln!(output, "    if (!_qb_audio_warned) {{").unwrap();
     writeln!(output, "        fprintf(stderr, \"Warning: Audio functions require external runtime. Use --runtime external\\n\");").unwrap();
+    writeln!(output, "        fflush(stderr);").unwrap();
     writeln!(output, "        _qb_audio_warned = 1;").unwrap();
     writeln!(output, "    }}").unwrap();
     writeln!(output, "}}").unwrap();

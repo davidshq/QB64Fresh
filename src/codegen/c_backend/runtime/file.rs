@@ -102,6 +102,7 @@ pub(super) fn emit_file_io_functions(output: &mut String) {
     writeln!(output).unwrap();
 
     // qb_file_open - Open a file
+    // Handles path normalization and creating files for "r+b" mode if they don't exist
     writeln!(
         output,
         "void qb_file_open(int32_t fnum, const char* filename, const char* mode) {{"
@@ -112,20 +113,36 @@ pub(super) fn emit_file_io_functions(output: &mut String) {
     writeln!(output, "#ifdef _WIN32").unwrap();
     writeln!(output, "    _qb_files[fnum] = fopen(filename, mode);").unwrap();
     writeln!(output, "#else").unwrap();
-    writeln!(output, "    _qb_files[fnum] = fopen(filename, mode);").unwrap();
-    writeln!(output, "    if (!_qb_files[fnum]) {{").unwrap();
+    // On non-Windows: normalize path first, then try to open
     writeln!(
         output,
-        "        char* normalized = _qb_normalize_path(filename);"
+        "    char* normalized = _qb_normalize_path(filename);"
     )
     .unwrap();
     writeln!(
         output,
-        "        if (normalized) {{ _qb_files[fnum] = fopen(normalized, mode); }}"
+        "    const char* path_to_use = normalized ? normalized : filename;"
     )
     .unwrap();
-    writeln!(output, "        free(normalized);").unwrap();
+    writeln!(output, "    _qb_files[fnum] = fopen(path_to_use, mode);").unwrap();
+    // If open failed and mode is "r+b" or "r+", create the file first
+    writeln!(
+        output,
+        "    if (!_qb_files[fnum] && mode[0] == 'r' && mode[1] == '+') {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "        FILE* tmp = fopen(path_to_use, \"w\"); if (tmp) fclose(tmp);"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "        _qb_files[fnum] = fopen(path_to_use, mode);"
+    )
+    .unwrap();
     writeln!(output, "    }}").unwrap();
+    writeln!(output, "    if (normalized) free(normalized);").unwrap();
     writeln!(output, "#endif").unwrap();
     writeln!(
         output,
