@@ -47,29 +47,101 @@ pub(super) fn emit_temp_string_pool(output: &mut String) {
     writeln!(output, "static qb_string* _qbs_tmp_pool[QBS_TMP_MAX];").unwrap();
     writeln!(output, "static uint32_t _qbs_tmp_next = 0;").unwrap();
     writeln!(output).unwrap();
+    writeln!(output, "/* Overflow tracking for when pool is full */").unwrap();
+    writeln!(output, "#define QBS_TMP_OVERFLOW_MAX 16384").unwrap();
+    writeln!(
+        output,
+        "static qb_string* _qbs_tmp_overflow[QBS_TMP_OVERFLOW_MAX];"
+    )
+    .unwrap();
+    writeln!(output, "static uint32_t _qbs_tmp_overflow_count = 0;").unwrap();
+    writeln!(output).unwrap();
 
-    // Mark current position
-    writeln!(output, "uint32_t qbs_tmp_base_get(void) {{").unwrap();
-    writeln!(output, "    return _qbs_tmp_next;").unwrap();
+    // Mark current position (returns packed: main pool base in lower 32 bits, overflow base in upper 32 bits)
+    // This allows scoped cleanup of both main pool and overflow strings
+    writeln!(output, "uint64_t qbs_tmp_base_get(void) {{").unwrap();
+    writeln!(output, "    uint64_t main_base = (uint64_t)_qbs_tmp_next;").unwrap();
+    writeln!(
+        output,
+        "    uint64_t overflow_base = (uint64_t)_qbs_tmp_overflow_count;"
+    )
+    .unwrap();
+    writeln!(output, "    return main_base | (overflow_base << 32);").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
     // Register a temporary string - strings start with refcount 1
     // When assigned to a variable, retain() increments to 2
     // When cleanup runs, release() decrements back to 1 (variable still has it)
+    // If the main pool is full, track in overflow list to prevent leaks
     writeln!(output, "qb_string* qbs_tmp_register(qb_string* s) {{").unwrap();
     writeln!(output, "    if (!s || s == &_qbs_empty) return s;").unwrap();
     writeln!(output, "    if (_qbs_tmp_next < QBS_TMP_MAX) {{").unwrap();
     writeln!(output, "        _qbs_tmp_pool[_qbs_tmp_next++] = s;").unwrap();
+    writeln!(output, "    }} else {{").unwrap();
+    writeln!(
+        output,
+        "        /* Pool full - track in overflow to prevent leak */"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "        if (_qbs_tmp_overflow_count < QBS_TMP_OVERFLOW_MAX) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "            _qbs_tmp_overflow[_qbs_tmp_overflow_count++] = s;"
+    )
+    .unwrap();
+    writeln!(output, "        }} else {{").unwrap();
+    writeln!(
+        output,
+        "            /* Overflow list also full - extremely rare edge case */"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "            /* Don't track this string to preserve scoping correctness */"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "            /* Overwriting any index would break nested scope cleanup */"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "            /* The string will leak, but this is safer than undefined behavior */"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "            /* TODO: Consider adding debug logging/warning when this occurs */"
+    )
+    .unwrap();
+    writeln!(output, "        }}").unwrap();
     writeln!(output, "    }}").unwrap();
     writeln!(output, "    return s;").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
     // Cleanup - release all temps since mark (only frees if refcount reaches 0)
-    writeln!(output, "void qbs_cleanup(uint32_t base, int dummy) {{").unwrap();
+    // Also cleans up overflow strings that were registered since the mark
+    // base is packed: lower 32 bits = main pool base, upper 32 bits = overflow base
+    writeln!(output, "void qbs_cleanup(uint64_t base, int dummy) {{").unwrap();
     writeln!(output, "    (void)dummy;").unwrap();
-    writeln!(output, "    while (_qbs_tmp_next > base) {{").unwrap();
+    writeln!(
+        output,
+        "    uint32_t main_base = (uint32_t)(base & 0xFFFFFFFF);"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    uint32_t overflow_base = (uint32_t)(base >> 32);"
+    )
+    .unwrap();
+    writeln!(output, "    while (_qbs_tmp_next > main_base) {{").unwrap();
     writeln!(output, "        _qbs_tmp_next--;").unwrap();
     writeln!(
         output,
@@ -77,6 +149,39 @@ pub(super) fn emit_temp_string_pool(output: &mut String) {
     )
     .unwrap();
     writeln!(output, "        _qbs_tmp_pool[_qbs_tmp_next] = NULL;").unwrap();
+    writeln!(
+        output,
+        "        if (s && s != &_qbs_empty && s->refcount > 0) {{"
+    )
+    .unwrap();
+    writeln!(output, "            s->refcount--;").unwrap();
+    writeln!(output, "            if (s->refcount == 0) {{").unwrap();
+    writeln!(output, "                free(s->data);").unwrap();
+    writeln!(output, "                free(s);").unwrap();
+    writeln!(output, "            }}").unwrap();
+    writeln!(output, "        }}").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(
+        output,
+        "    /* Clean up overflow strings registered since mark */"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    while (_qbs_tmp_overflow_count > overflow_base) {{"
+    )
+    .unwrap();
+    writeln!(output, "        _qbs_tmp_overflow_count--;").unwrap();
+    writeln!(
+        output,
+        "        qb_string* s = _qbs_tmp_overflow[_qbs_tmp_overflow_count];"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "        _qbs_tmp_overflow[_qbs_tmp_overflow_count] = NULL;"
+    )
+    .unwrap();
     writeln!(
         output,
         "        if (s && s != &_qbs_empty && s->refcount > 0) {{"
@@ -132,7 +237,7 @@ pub(super) fn emit_string_functions(output: &mut String) {
     writeln!(output, "    memset(str->data, ' ', len);").unwrap();
     writeln!(output, "    str->data[len] = '\\0';").unwrap();
     writeln!(output, "    str->refcount = 1;").unwrap();
-    writeln!(output, "    return str;").unwrap();
+    writeln!(output, "    return qbs_tmp_register(str);").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
@@ -292,7 +397,7 @@ pub(super) fn emit_string_manipulation(output: &mut String) {
     writeln!(output, "    memcpy(result->data, s->data, len);").unwrap();
     writeln!(output, "    result->data[len] = '\\0';").unwrap();
     writeln!(output, "    result->refcount = 1;").unwrap();
-    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "    return qbs_tmp_register(result);").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
@@ -312,7 +417,7 @@ pub(super) fn emit_string_manipulation(output: &mut String) {
     writeln!(output, "    memcpy(result->data, s->data + start, len);").unwrap();
     writeln!(output, "    result->data[len] = '\\0';").unwrap();
     writeln!(output, "    result->refcount = 1;").unwrap();
-    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "    return qbs_tmp_register(result);").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
@@ -340,7 +445,7 @@ pub(super) fn emit_string_manipulation(output: &mut String) {
     writeln!(output, "    memcpy(result->data, s->data + idx, len);").unwrap();
     writeln!(output, "    result->data[len] = '\\0';").unwrap();
     writeln!(output, "    result->refcount = 1;").unwrap();
-    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "    return qbs_tmp_register(result);").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
@@ -360,7 +465,7 @@ pub(super) fn emit_string_manipulation(output: &mut String) {
     writeln!(output, "    memcpy(result->data, s->data + idx, len);").unwrap();
     writeln!(output, "    result->data[len] = '\\0';").unwrap();
     writeln!(output, "    result->refcount = 1;").unwrap();
-    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "    return qbs_tmp_register(result);").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
@@ -480,7 +585,7 @@ pub(super) fn emit_string_manipulation(output: &mut String) {
     writeln!(output, "    }}").unwrap();
     writeln!(output, "    result->data[s->len] = '\\0';").unwrap();
     writeln!(output, "    result->refcount = 1;").unwrap();
-    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "    return qbs_tmp_register(result);").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
@@ -511,7 +616,7 @@ pub(super) fn emit_string_manipulation(output: &mut String) {
     writeln!(output, "    }}").unwrap();
     writeln!(output, "    result->data[s->len] = '\\0';").unwrap();
     writeln!(output, "    result->refcount = 1;").unwrap();
-    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "    return qbs_tmp_register(result);").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
@@ -551,7 +656,7 @@ pub(super) fn emit_string_manipulation(output: &mut String) {
     writeln!(output, "    memset(result->data, ' ', result->len);").unwrap();
     writeln!(output, "    result->data[result->len] = '\\0';").unwrap();
     writeln!(output, "    result->refcount = 1;").unwrap();
-    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "    return qbs_tmp_register(result);").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
@@ -573,7 +678,7 @@ pub(super) fn emit_string_manipulation(output: &mut String) {
     writeln!(output, "    memset(result->data, c->data[0], result->len);").unwrap();
     writeln!(output, "    result->data[result->len] = '\\0';").unwrap();
     writeln!(output, "    result->refcount = 1;").unwrap();
-    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "    return qbs_tmp_register(result);").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
@@ -595,7 +700,7 @@ pub(super) fn emit_string_manipulation(output: &mut String) {
     .unwrap();
     writeln!(output, "    result->data[result->len] = '\\0';").unwrap();
     writeln!(output, "    result->refcount = 1;").unwrap();
-    writeln!(output, "    return result;").unwrap();
+    writeln!(output, "    return qbs_tmp_register(result);").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 

@@ -437,7 +437,7 @@ impl CodeGenerator for CBackend {
 
         // Save temp pool base for main program AFTER string constant initialization
         // Strings created before this point (globals) won't be cleaned up
-        writeln!(output, "    uint32_t _qbs_main_base = qbs_tmp_base_get();").unwrap();
+        writeln!(output, "    uint64_t _qbs_main_base = qbs_tmp_base_get();").unwrap();
         writeln!(output).unwrap();
 
         // Collect main-level statements (excluding SUB/FUNCTION definitions)

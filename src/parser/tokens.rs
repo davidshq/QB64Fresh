@@ -38,10 +38,14 @@ impl<'a> Parser<'a> {
     }
 
     /// Consumes and returns the current token.
+    ///
+    /// Returns `None` when at EOF (i.e. when [`is_at_end()`](Self::is_at_end) is true).
+    /// Does not increment `current` at EOF, so repeated calls at EOF keep returning `None`.
     pub(super) fn advance(&mut self) -> Option<&crate::lexer::Token> {
-        if !self.is_at_end() {
-            self.current += 1;
+        if self.is_at_end() {
+            return None;
         }
+        self.current += 1;
         self.tokens.get(self.current - 1)
     }
 

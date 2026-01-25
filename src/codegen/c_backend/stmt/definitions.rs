@@ -248,7 +248,7 @@ impl super::StmtEmitter {
         self.current_proc = Some(c_name.clone());
 
         // Save temp pool base for this procedure - cleanup after each statement
-        writeln!(output, "    uint32_t _qbs_proc_base = qbs_tmp_base_get();").unwrap();
+        writeln!(output, "    uint64_t _qbs_proc_base = qbs_tmp_base_get();").unwrap();
         writeln!(output).unwrap();
 
         self.indent += 1;
@@ -260,6 +260,11 @@ impl super::StmtEmitter {
         self.indent -= 1;
 
         self.current_proc = None;
+
+        // Write back STRING byref parameters to caller's variables
+        // Only strings need writeback - they use reference counting and local copies
+        // Numeric parameters often have constants passed, which can't be written to
+        emit_string_writebacks(params, output);
 
         // Emit STRIG dispatch label (required because loops emit goto _qb_strig_dispatch)
         // This is a no-op stub - actual dispatch happens in main() only
@@ -371,7 +376,7 @@ impl super::StmtEmitter {
         self.current_func_ret_var = Some(ret_var.clone());
 
         // Save temp pool base for this function - cleanup after each statement
-        writeln!(output, "    uint32_t _qbs_proc_base = qbs_tmp_base_get();").unwrap();
+        writeln!(output, "    uint64_t _qbs_proc_base = qbs_tmp_base_get();").unwrap();
         writeln!(output).unwrap();
 
         self.indent += 1;
@@ -384,6 +389,11 @@ impl super::StmtEmitter {
 
         self.current_proc = None;
         self.current_func_ret_var = None;
+
+        // Write back STRING byref parameters to caller's variables
+        // Only strings need writeback - they use reference counting and local copies
+        // Numeric parameters often have constants passed, which can't be written to
+        emit_string_writebacks(params, output);
 
         // Emit STRIG dispatch label (required because loops emit goto _qb_strig_dispatch)
         // This is a no-op stub - actual dispatch happens in main() only
@@ -648,9 +658,9 @@ impl super::StmtEmitter {
 
         if preserve {
             // REDIM _PRESERVE: Keep existing values, zero only new elements
-            // We track the old byte size with a static variable
+            // The size tracking variable is global (declared alongside the array)
+            // to support REDIM from multiple functions sharing the same array.
             writeln!(output, "{}{{", indent).unwrap();
-            writeln!(output, "{}    static size_t {} = 0;", indent, size_var).unwrap();
             writeln!(
                 output,
                 "{}    size_t new_sz__ = sizeof({}) * ({});",
@@ -787,6 +797,9 @@ fn emit_byref_copies(params: &[TypedParameter], output: &mut String) {
                     // Array remains as pointer: int32_t* arr = arr_ref;
                     writeln!(output, "    {}* {} = {}_ref;", c_ty, c_name, c_name).unwrap();
                 }
+                // Emit size tracking variable for REDIM _PRESERVE support
+                // Must be static so it persists across function calls
+                writeln!(output, "    static size_t {}_sz__ = 0;", c_name).unwrap();
             } else if let BasicType::FixedString(n) = p.basic_type {
                 // Fixed-length strings need special handling - use a pointer alias
                 // instead of copying (arrays can't be assigned directly in C)
@@ -799,6 +812,33 @@ fn emit_byref_copies(params: &[TypedParameter], output: &mut String) {
                 // Create local copy: int32_t t1 = *t1_ref;
                 writeln!(output, "    {} {} = *{}_ref;", c_ty, c_name, c_name).unwrap();
             }
+        }
+    }
+}
+
+/// Emits writebacks for STRING byref parameters at function exit.
+///
+/// In BASIC, parameters are passed by reference by default, meaning the caller
+/// expects to see any modifications made within the function. For STRING parameters,
+/// this is critical because the function may assign a new string value.
+///
+/// We ONLY write back STRING parameters, not numeric ones, because:
+/// 1. Numeric parameters often have constants or literals passed by reference
+/// 2. Writing to constant addresses causes segfaults (read-only memory)
+/// 3. String parameters are the ones that need writeback for proper semantics
+///
+/// # Arguments
+///
+/// * `params` - The parameter list
+/// * `output` - Output buffer to write to
+fn emit_string_writebacks(params: &[TypedParameter], output: &mut String) {
+    for p in params {
+        // Only process non-BYVAL STRING parameters
+        if !p.by_val && p.basic_type == BasicType::String && !p.is_array {
+            let c_name = c_identifier(&p.name);
+            // Write back the local string pointer to the caller's variable
+            // *name_str_ref = name_str;
+            writeln!(output, "    *{}_ref = {};", c_name, c_name).unwrap();
         }
     }
 }

@@ -199,7 +199,7 @@ fn collect_dims(
                     declared_vars.insert(c_name);
                 } else {
                     // No global exists: create local array declaration
-                    declare_array_var(&var.name, &var.element_type, declared_vars, locals);
+                    declare_array_var(&var.name, &var.element_type, declared_vars, locals, false);
                 }
             }
         }

@@ -104,18 +104,43 @@ src/
 │       ├── definitions.rs  # Definition handling
 │       └── const_eval.rs   # Constant expression evaluation
 │
-├── codegen/              # Phase 4: Code Generation (~14,241 lines) ✓
+├── codegen/              # Phase 4: Code Generation (~19,800 lines) ✓
 │   ├── mod.rs            # CodeGenerator trait, GeneratedOutput
 │   ├── error.rs          # CodeGenError types
-│   └── c_backend/        # C Code Generator Submodule
-│       ├── mod.rs        # Backend entry point
+│   └── c_backend/        # C Code Generator Submodule (~19,800 lines)
+│       ├── mod.rs        # Backend entry point (~631 lines)
 │       ├── expr.rs       # Expression code generation
-│       ├── stmt.rs       # Statement code generation
 │       ├── types.rs      # Type mapping (BASIC → C)
-│       ├── runtime.rs    # Inline C runtime library (~4,504 lines)
 │       ├── analysis.rs   # DATA/label collection pre-pass
 │       ├── const_fold.rs # Constant folding optimization
-│       └── file_io.rs    # File I/O code generation
+│       ├── file_io.rs    # File I/O code generation
+│       ├── implicit_vars.rs # Implicit variable handling
+│       ├── stmt/         # Statement code generation (~5,195 lines)
+│       │   ├── mod.rs    # Core StmtEmitter and dispatcher
+│       │   ├── assignments.rs # Assignment statements
+│       │   ├── control_flow.rs # IF, FOR, WHILE, DO, SELECT CASE
+│       │   ├── data.rs   # DATA/READ/RESTORE handling
+│       │   ├── def_fn.rs # DEF FN single-line and multi-line functions
+│       │   ├── definitions.rs # DIM, REDIM, SUB/FUNCTION, DECLARE LIBRARY
+│       │   ├── error_jump.rs # Error handling (ON ERROR) and computed jumps
+│       │   └── io.rs     # PRINT and INPUT helpers
+│       └── runtime/      # Inline C runtime library (~8,748 lines)
+│           ├── mod.rs   # Runtime module root
+│           ├── types.rs  # String type definition and type size helpers
+│           ├── strings.rs # Core string operations (LEFT$, MID$, etc.)
+│           ├── io.rs    # PRINT and INPUT functions
+│           ├── math.rs  # Mathematical functions and type conversions
+│           ├── file.rs  # File I/O operations (OPEN, CLOSE, GET, PUT)
+│           ├── keyboard.rs # Keyboard input functions (INKEY$, _KEYHIT, etc.)
+│           ├── memory.rs # Memory functions (PEEK, POKE, VARPTR)
+│           ├── timing.rs # Timer and timing functions (TIMER, SLEEP, DATE$, TIME$)
+│           ├── arrays.rs # Array operations (LBOUND, UBOUND, REDIM)
+│           ├── audio.rs # Audio functions (_SNDPLAY, BEEP, SOUND)
+│           ├── graphics.rs # Graphics stubs (SCREEN, LINE, CIRCLE, etc.)
+│           ├── legacy.rs # Legacy DOS functions (DEF SEG, OUT, INP)
+│           ├── system.rs # System stubs (filesystem, shell, console)
+│           ├── error.rs # Error handling functions
+│           └── debug.rs  # Debug runtime support (breakpoints, stepping, IPC)
 │
 ├── header_parser/        # C Header Parser (optional feature)
 │   ├── mod.rs            # Module root
@@ -133,23 +158,25 @@ tools/                    # Development Tools
 └── lint/                 # Code linter
     └── src/              # Linter implementation
 
-runtime/                  # Runtime Library (workspace member) (~11,166 lines) ✓
+runtime/                  # Runtime Library (workspace member) (~9,026 lines) ✓
 ├── src/
 │   ├── lib.rs            # Crate root, init/shutdown
-│   ├── string.rs         # Reference-counted dynamic strings (~1,572 lines)
-│   ├── io.rs             # PRINT, INPUT, console operations (~1,378 lines)
-│   ├── math.rs           # Mathematical functions (~641 lines)
-│   ├── graphics_ffi.rs   # C FFI layer for graphics (~1,597 lines)
-│   ├── audio_ffi.rs      # C FFI layer for audio (~439 lines)
-│   ├── dialogs.rs        # Native file dialogs (~348 lines)
-│   ├── joystick.rs       # Joystick input support (~306 lines)
-│   ├── graphics/         # Graphics Backend System (~3,902 lines)
+│   ├── string.rs         # Reference-counted dynamic strings
+│   ├── io.rs             # PRINT, INPUT, console operations
+│   ├── math.rs           # Mathematical functions
+│   ├── graphics_ffi.rs   # C FFI layer for graphics
+│   ├── font_ffi.rs       # Font rendering FFI layer
+│   ├── font_manager.rs   # Font management and caching
+│   ├── audio_ffi.rs      # C FFI layer for audio
+│   ├── dialogs.rs        # Native file dialogs
+│   ├── joystick.rs       # Joystick input support
+│   ├── graphics/         # Graphics Backend System
 │   │   ├── mod.rs        # GraphicsBackend trait definition
 │   │   ├── sdl2.rs       # SDL2 implementation (primary)
 │   │   ├── font.rs       # Font rendering
 │   │   ├── mock.rs       # Mock backend for testing
 │   │   └── error.rs      # Graphics error types
-│   └── audio/            # Audio Backend System (~1,291 lines)
+│   └── audio/            # Audio Backend System
 │       ├── mod.rs        # AudioBackend trait definition
 │       ├── rodio_backend.rs  # Rodio implementation (primary)
 │       ├── mock.rs       # Mock backend for testing
@@ -278,17 +305,45 @@ pub trait CodeGenerator {
 }
 ```
 
-**C Backend (implemented, ~11,728 lines across 8 files):**
+**C Backend (implemented, ~19,800 lines across multiple modules):**
 - Proven approach (QB64pe uses C++)
-- Refactored into specialized submodules:
-  - `expr.rs` - Expression generation with type coercion (~1,079 lines)
-  - `stmt.rs` - Statement generation (control flow, I/O, procedures) (~3,690 lines)
-  - `types.rs` - BASIC to C type mapping
-  - `runtime.rs` - Inline C runtime (~4,141 lines)
-  - `analysis.rs` - Pre-pass for DATA statements and labels
-  - `const_fold.rs` - Constant folding optimization (~855 lines)
-  - `file_io.rs` - File I/O code generation (~569 lines)
+- Refactored into specialized submodules for maintainability:
+  - **Core modules:**
+    - `mod.rs` - Backend entry point and coordination (~631 lines)
+    - `expr.rs` - Expression generation with type coercion
+    - `types.rs` - BASIC to C type mapping
+    - `analysis.rs` - Pre-pass for DATA statements and labels
+    - `const_fold.rs` - Constant folding optimization
+    - `file_io.rs` - File I/O code generation
+    - `implicit_vars.rs` - Implicit variable handling
+  - **Statement generation (`stmt/` subdirectory, ~5,195 lines):**
+    - `mod.rs` - Core `StmtEmitter` struct and main dispatcher
+    - `assignments.rs` - Assignment statement helpers
+    - `control_flow.rs` - IF, FOR, WHILE, DO, SELECT CASE
+    - `data.rs` - DATA/READ/RESTORE handling
+    - `def_fn.rs` - DEF FN single-line and multi-line functions
+    - `definitions.rs` - DIM, REDIM, SUB/FUNCTION definitions, DECLARE LIBRARY
+    - `error_jump.rs` - Error handling (ON ERROR) and computed jumps
+    - `io.rs` - PRINT and INPUT helpers
+  - **Runtime library (`runtime/` subdirectory, ~8,748 lines):**
+    - `mod.rs` - Runtime module root
+    - `types.rs` - String type definition and type size helpers
+    - `strings.rs` - Core string operations (LEFT$, MID$, etc.)
+    - `io.rs` - PRINT and INPUT functions
+    - `math.rs` - Mathematical functions and type conversions
+    - `file.rs` - File I/O operations (OPEN, CLOSE, GET, PUT)
+    - `keyboard.rs` - Keyboard input functions (INKEY$, _KEYHIT, etc.)
+    - `memory.rs` - Memory functions (PEEK, POKE, VARPTR)
+    - `timing.rs` - Timer and timing functions (TIMER, SLEEP, DATE$, TIME$)
+    - `arrays.rs` - Array operations (LBOUND, UBOUND, REDIM)
+    - `audio.rs` - Audio functions (_SNDPLAY, BEEP, SOUND)
+    - `graphics.rs` - Graphics stubs (SCREEN, LINE, CIRCLE, etc.)
+    - `legacy.rs` - Legacy DOS functions (DEF SEG, OUT, INP)
+    - `system.rs` - System stubs (filesystem, shell, console)
+    - `error.rs` - Error handling functions
+    - `debug.rs` - Debug runtime support (breakpoints, stepping, IPC)
 - Two runtime modes: `inline` (self-contained) and `external` (library-linked)
+- Debug mode support: breakpoints, stepping, debugger integration
 - Handles all statements: assignments, control flow, procedures
 - Type conversions, string operations, built-in functions
 - Portable across platforms
@@ -409,8 +464,20 @@ This section describes how to extend QB64Fresh with new features. For developmen
    - `parser/system.rs` - System/OS operations
 4. Add typed IR node to `src/semantic/typed_ir.rs`
 5. Add type checking to `src/semantic/checker/`
-6. Add code generation to `src/codegen/c_backend/stmt.rs` or `expr.rs`
-7. Update runtime library if new runtime functions are needed
+6. Add code generation to appropriate module:
+   - `src/codegen/c_backend/expr.rs` - For new expression forms
+   - `src/codegen/c_backend/stmt/` - For new statements:
+     - `assignments.rs` - Assignment variants
+     - `control_flow.rs` - Control structures
+     - `io.rs` - I/O statements
+     - `definitions.rs` - Declaration statements
+     - `data.rs` - DATA/READ/RESTORE
+     - `error_jump.rs` - Error handling
+     - `def_fn.rs` - DEF FN functions
+     - `mod.rs` - Core statement dispatcher
+7. Update runtime library if new runtime functions are needed:
+   - `src/codegen/c_backend/runtime/` - For inline runtime functions
+   - `runtime/src/` - For external runtime library functions
 
 ### Adding a New Code Generation Backend
 
@@ -541,13 +608,13 @@ dialogs = ["rfd"]  # Native file dialogs
 | AST | ~2,651 | ✓ Complete |
 | Parser | ~11,450 | ✓ Complete |
 | Semantic Analysis | ~15,800 | ✓ Complete |
-| Code Generation | ~14,750 | ✓ Complete |
+| Code Generation | ~19,800 | ✓ Complete (refactored into submodules) |
 | LSP | ~2,200 | ✓ Complete |
-| Runtime Library | ~11,700 | ✓ Complete (Rust + inline C) |
+| Runtime Library | ~9,026 | ✓ Complete (Rust + inline C) |
 | Formatter (fmt) | ~1,500 | ✓ Complete |
 | Linter (lint) | ~1,200 | ✓ Complete |
 | **Test Suite** | **1,500+** | Unit, integration, golden, fuzz |
 
 ---
 
-*Last updated: 2026-01-23*
+*Last updated: 2026-01-25*

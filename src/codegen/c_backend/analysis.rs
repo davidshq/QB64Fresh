@@ -228,6 +228,7 @@ pub(super) fn collect_globals(
                             &var.basic_type,
                             &mut declared_vars,
                             &mut globals,
+                            true, // is_global
                         );
                     }
                 }
@@ -291,7 +292,7 @@ pub(super) fn collect_globals(
             } if *shared => {
                 for var in variables {
                     // REDIM SHARED creates a global array pointer
-                    declare_array_var(&var.name, &var.element_type, declared_vars, globals);
+                    declare_array_var(&var.name, &var.element_type, declared_vars, globals, true);
                 }
             }
             TypedStatementKind::SubDefinition { body, .. }

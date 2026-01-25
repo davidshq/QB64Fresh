@@ -99,7 +99,7 @@ fn main() {
         raw_source
     } else {
         let base_path = args.input.parent().unwrap_or(std::path::Path::new("."));
-        match preprocess(&raw_source, base_path) {
+        match preprocess(&raw_source, base_path, Some(args.input.as_path())) {
             Ok(s) => {
                 if args.verbose && s.len() != raw_source.len() {
                     println!(

@@ -2,6 +2,10 @@
 
 This document details semantic and behavioral differences between QB64Fresh and QB64pe discovered during the bootstrap project (compiling QB64pe with QB64Fresh).
 
+**See also:**
+- [ARCHITECTURE.md](ARCHITECTURE.md) - QB64Fresh architecture
+- [QB64pe_ARCHITECTURE.md](QB64pe_ARCHITECTURE.md) - QB64pe architecture
+
 ---
 
 ## Overview
@@ -15,6 +19,78 @@ QB64Fresh aims for high compatibility with QB64pe, but architectural differences
 | Graphics | ~90% |
 | File I/O | 99%+ |
 | Error handling | ~95% |
+
+---
+
+## Architectural Differences
+
+These differences stem from fundamental architectural choices and may affect behavior in edge cases.
+
+### Compilation Pipeline
+
+| Aspect | QB64pe | QB64Fresh |
+|--------|--------|-----------|
+| **Implementation Language** | QB64 (self-hosted) | Rust |
+| **Intermediate Representation** | None (direct C++ emission) | Full AST → Typed IR |
+| **Code Generation Target** | C++ | C |
+| **Parser Strategy** | Line-by-line, GOTO-heavy | Recursive descent, Pratt parsing |
+| **Passes** | Single-pass with recompile loops | Two-pass semantic analysis |
+| **Error Recovery** | Limited (stops early) | Multiple errors collected |
+
+**Behavioral Impact:**
+- **Forward References:** QB64pe uses recompile loops to resolve forward references. QB64Fresh's two-pass approach handles these upfront, potentially catching errors earlier.
+- **Error Messages:** QB64Fresh can report multiple errors per compilation, while QB64pe typically stops at the first error.
+- **Compilation Speed:** QB64Fresh is significantly faster (~800ms vs 5-10 seconds for 59K lines) due to Rust's efficiency and better algorithms.
+
+### Symbol Table Management
+
+| Aspect | QB64pe | QB64Fresh |
+|--------|--------|-----------|
+| **Storage** | Hash table (`HashFind`, `HashAdd`) | Rust HashMap with scope management |
+| **Dual Namespace** | Implicit (context-based) | Explicit (`lookup_scalar` vs `lookup_array`) |
+| **Scope Handling** | Global state with `subfunc$` | Structured scope tree |
+
+**Behavioral Impact:**
+- **Symbol Resolution:** QB64Fresh's explicit dual namespace may give clearer error messages for ambiguous references.
+- **Scope Errors:** QB64Fresh may catch scope violations that QB64pe's single-pass approach misses.
+
+### Type System
+
+| Aspect | QB64pe | QB64Fresh |
+|--------|--------|-----------|
+| **Type Inference** | Single-pass, context-dependent | Two-pass, explicit type checking |
+| **DEFTYPE Processing** | Single-pass (may miss some cases) | Two-pass (processes before procedures) |
+| **Type Suffix Normalization** | Preserves original suffix | Normalizes to canonical names |
+
+**Behavioral Impact:**
+- **DEFTYPE Scope:** QB64Fresh correctly handles DEFTYPE affecting procedure parameters declared later in the file (QB64pe may miss this).
+- **Type Errors:** QB64Fresh may catch type mismatches earlier due to two-pass analysis.
+
+### Code Generation
+
+| Aspect | QB64pe | QB64Fresh |
+|--------|--------|-----------|
+| **Output Language** | C++ | C |
+| **Runtime Library** | C++ (~31K lines) | Rust (~9K lines) with C FFI |
+| **String Implementation** | `qbs*` (copy-on-write) | Reference-counted Rust strings |
+| **Identifier Mangling** | QB64pe conventions | C-safe mangling (different conventions) |
+
+**Behavioral Impact:**
+- **Generated Code:** Different C/C++ code structure, but semantically equivalent.
+- **String Operations:** Both use reference counting, but implementation details differ (may affect edge cases with string sharing).
+- **Memory Management:** QB64Fresh benefits from Rust's memory safety; QB64pe uses manual C++ management.
+
+### Error Handling
+
+| Aspect | QB64pe | QB64Fresh |
+|--------|--------|-----------|
+| **Error Collection** | Stops at first error (limited recovery) | Collects multiple errors |
+| **Error Codes** | QB64pe-specific `ERR` values | May differ for some errors |
+| **Cross-Function GOTO** | Supported | Not supported (scope restriction) |
+
+**Behavioral Impact:**
+- **Error Reporting:** QB64Fresh can show all errors at once, making debugging easier.
+- **GOTO Restrictions:** QB64Fresh enforces proper scope boundaries (generally considered better practice).
 
 ---
 
@@ -270,17 +346,56 @@ Comparable for most operations. Differences may exist in:
 
 ---
 
+## IDE and Tooling
+
+| Aspect | QB64pe | QB64Fresh |
+|--------|--------|-----------|
+| **IDE** | Built-in (~970K lines QB64 code) | LSP-based (external editors) |
+| **Editor Integration** | Self-contained IDE | VSCode extension, LSP support |
+| **Debugging** | Built-in debugger | DAP-based debugger (tools/debug) |
+| **Code Formatting** | Built-in formatter | Separate `qb64fresh-fmt` tool |
+| **Linting** | Limited | Separate `qb64fresh-lint` tool |
+
+**Behavioral Impact:**
+- **Development Workflow:** QB64pe provides all-in-one IDE; QB64Fresh uses modern editor integrations.
+- **Tooling:** QB64Fresh tools are separate binaries, allowing independent updates and use in CI/CD.
+
+## Build System
+
+| Aspect | QB64pe | QB64Fresh |
+|--------|--------|-----------|
+| **Bootstrap** | Self-hosted (compiles itself) | Rust toolchain (standard Cargo) |
+| **Build Time** | 5-10 seconds (59K lines) | ~800ms (59K lines) |
+| **Memory Usage** | Can consume 25GB+ on large programs | More efficient (Rust memory management) |
+| **Incremental Compilation** | Not supported | Not yet (future enhancement) |
+
+**Behavioral Impact:**
+- **Compilation Speed:** QB64Fresh is significantly faster, improving developer experience.
+- **Memory Requirements:** QB64Fresh is more memory-efficient, reducing system requirements.
+
 ## Summary
 
 For most BASIC programs, QB64Fresh and QB64pe produce identical results. Key areas to watch:
 
+### Behavioral Differences
 1. **Random number sequences** - Use explicit seeds for reproducibility
 2. **Platform-specific metacommands** - May be parsed but not functional
 3. **Error codes** - `ERR` values may differ for edge cases
 4. **Graphics edge cases** - Anti-aliasing, specific screen modes
+5. **Error reporting** - QB64Fresh shows multiple errors; QB64pe stops at first
+6. **GOTO scope** - QB64Fresh restricts cross-function GOTO (better practice)
 
-When porting code:
+### Architectural Advantages of QB64Fresh
+1. **Faster compilation** - ~10x faster for large programs
+2. **Better error messages** - Multiple errors reported, clearer diagnostics
+3. **Memory safety** - Rust's ownership system prevents many bugs
+4. **Modular design** - Easier to maintain and extend
+5. **Modern tooling** - LSP support, separate tools, CI/CD friendly
+
+### When Porting Code
 - Test numeric-intensive code for precision differences
 - Verify graphics output visually
 - Check file I/O with binary files
 - Ensure error handling works as expected
+- Review GOTO usage (cross-function GOTO not supported)
+- Use explicit seeds for RND/RANDOMIZE for reproducibility

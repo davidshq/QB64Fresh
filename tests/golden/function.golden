@@ -17,6 +17,9 @@
 #include <windows.h>
 #else
 #include <sys/time.h>
+#ifdef __GLIBC__
+#include <malloc.h>  /* For malloc_trim */
+#endif
 #endif
 
 /* QB64 built-in constants */
@@ -25,7 +28,7 @@
 #define _EQUAL (0)
 #define _GREATER (1)
 #define _LESS (-1)
-#define _STR_EMPTY qb_string_new("")
+#define _STR_EMPTY (&_qbs_empty)
 #define _STR_CRLF qb_string_new("\r\n")
 #define _STR_LF qb_string_new("\n")
 #define _STR_CR qb_string_new("\r")
@@ -233,14 +236,85 @@ double dummy_dbl = 0.0;
 long double dummy_dbl_dbl = 0.0L;
 intptr_t dummy_int_lng = 0;
 
+/* Static Empty String */
+static char _qbs_empty_data[1] = {'\0'};
+static qb_string _qbs_empty = {_qbs_empty_data, 0, 1, 999999};
+
+/* Temporary String Pool */
+#define QBS_TMP_MAX 16384
+static qb_string* _qbs_tmp_pool[QBS_TMP_MAX];
+static uint32_t _qbs_tmp_next = 0;
+
+/* Overflow tracking for when pool is full */
+#define QBS_TMP_OVERFLOW_MAX 16384
+static qb_string* _qbs_tmp_overflow[QBS_TMP_OVERFLOW_MAX];
+static uint32_t _qbs_tmp_overflow_count = 0;
+
+uint64_t qbs_tmp_base_get(void) {
+    uint64_t main_base = (uint64_t)_qbs_tmp_next;
+    uint64_t overflow_base = (uint64_t)_qbs_tmp_overflow_count;
+    return main_base | (overflow_base << 32);
+}
+
+qb_string* qbs_tmp_register(qb_string* s) {
+    if (!s || s == &_qbs_empty) return s;
+    if (_qbs_tmp_next < QBS_TMP_MAX) {
+        _qbs_tmp_pool[_qbs_tmp_next++] = s;
+    } else {
+        /* Pool full - track in overflow to prevent leak */
+        if (_qbs_tmp_overflow_count < QBS_TMP_OVERFLOW_MAX) {
+            _qbs_tmp_overflow[_qbs_tmp_overflow_count++] = s;
+        } else {
+            /* Overflow list also full - extremely rare edge case */
+            /* Don't track this string to preserve scoping correctness */
+            /* Overwriting any index would break nested scope cleanup */
+            /* The string will leak, but this is safer than undefined behavior */
+            /* TODO: Consider adding debug logging/warning when this occurs */
+        }
+    }
+    return s;
+}
+
+void qbs_cleanup(uint64_t base, int dummy) {
+    (void)dummy;
+    uint32_t main_base = (uint32_t)(base & 0xFFFFFFFF);
+    uint32_t overflow_base = (uint32_t)(base >> 32);
+    while (_qbs_tmp_next > main_base) {
+        _qbs_tmp_next--;
+        qb_string* s = _qbs_tmp_pool[_qbs_tmp_next];
+        _qbs_tmp_pool[_qbs_tmp_next] = NULL;
+        if (s && s != &_qbs_empty && s->refcount > 0) {
+            s->refcount--;
+            if (s->refcount == 0) {
+                free(s->data);
+                free(s);
+            }
+        }
+    }
+    /* Clean up overflow strings registered since mark */
+    while (_qbs_tmp_overflow_count > overflow_base) {
+        _qbs_tmp_overflow_count--;
+        qb_string* s = _qbs_tmp_overflow[_qbs_tmp_overflow_count];
+        _qbs_tmp_overflow[_qbs_tmp_overflow_count] = NULL;
+        if (s && s != &_qbs_empty && s->refcount > 0) {
+            s->refcount--;
+            if (s->refcount == 0) {
+                free(s->data);
+                free(s);
+            }
+        }
+    }
+}
+
 qb_string* qb_string_new(const char* s) {
+    if (!s || s[0] == '\0') return &_qbs_empty;
     qb_string* str = malloc(sizeof(qb_string));
     str->len = strlen(s);
     str->capacity = str->len + 1;
     str->data = malloc(str->capacity);
     memcpy(str->data, s, str->len + 1);
     str->refcount = 1;
-    return str;
+    return qbs_tmp_register(str);
 }
 
 qb_string* qb_string_new_len(size_t len) {
@@ -251,20 +325,20 @@ qb_string* qb_string_new_len(size_t len) {
     memset(str->data, ' ', len);
     str->data[len] = '\0';
     str->refcount = 1;
-    return str;
+    return qbs_tmp_register(str);
 }
 
 void qb_string_free(qb_string* s) {
-    if (s) { free(s->data); free(s); }
+    if (s && s != &_qbs_empty) { free(s->data); free(s); }
 }
 
 qb_string* qb_string_retain(qb_string* s) {
-    if (s) s->refcount++;
+    if (s && s != &_qbs_empty) s->refcount++;
     return s;
 }
 
 void qb_string_release(qb_string* s) {
-    if (s) {
+    if (s && s != &_qbs_empty) {
         s->refcount--;
         if (s->refcount <= 0) {
             free(s->data);
@@ -276,7 +350,7 @@ void qb_string_release(qb_string* s) {
 qb_string* qb_string_concat(qb_string* a, qb_string* b) {
     int a_valid = a && a->data && a->len < 0x10000000;
     int b_valid = b && b->data && b->len < 0x10000000;
-    if (!a_valid && !b_valid) return qb_string_new("");
+    if (!a_valid && !b_valid) return &_qbs_empty;
     if (!a_valid) return qb_string_new(b->data);
     if (!b_valid) return qb_string_new(a->data);
     qb_string* result = malloc(sizeof(qb_string));
@@ -286,7 +360,7 @@ qb_string* qb_string_concat(qb_string* a, qb_string* b) {
     result->refcount = 1;
     memcpy(result->data, a->data, a->len);
     memcpy(result->data + a->len, b->data, b->len + 1);
-    return result;
+    return qbs_tmp_register(result);
 }
 
 const char* qb_string_data(qb_string* s) {
@@ -755,9 +829,18 @@ void qb_input_float(const char* prompt, double* var) {
 }
 
 int qb_string_compare(qb_string* a, qb_string* b) {
+    size_t a_len = (a && a->data) ? a->len : 0;
+    size_t b_len = (b && b->data) ? b->len : 0;
     const char* a_data = (a && a->data) ? a->data : "";
     const char* b_data = (b && b->data) ? b->data : "";
-    return strcmp(a_data, b_data);
+    size_t min_len = (a_len < b_len) ? a_len : b_len;
+    int cmp = memcmp(a_data, b_data, min_len);
+    if (cmp == 0) {
+        if (a_len < b_len) return -1;
+        if (a_len > b_len) return 1;
+        return 0;
+    }
+    return cmp;
 }
 
 int32_t qb_len_str(qb_string* s) {
@@ -931,7 +1014,7 @@ int64_t qb_stricmp(qb_string* a, qb_string* b) {
 #endif
 
 qb_string* qb_left(qb_string* s, int32_t n) {
-    if (!s || n <= 0) return qb_string_new("");
+    if (!s || n <= 0) return &_qbs_empty;
     size_t len = (size_t)n < s->len ? (size_t)n : s->len;
     qb_string* result = malloc(sizeof(qb_string));
     result->len = len;
@@ -939,11 +1022,12 @@ qb_string* qb_left(qb_string* s, int32_t n) {
     result->data = malloc(result->capacity);
     memcpy(result->data, s->data, len);
     result->data[len] = '\0';
-    return result;
+    result->refcount = 1;
+    return qbs_tmp_register(result);
 }
 
 qb_string* qb_right(qb_string* s, int32_t n) {
-    if (!s || n <= 0) return qb_string_new("");
+    if (!s || n <= 0) return &_qbs_empty;
     size_t len = (size_t)n < s->len ? (size_t)n : s->len;
     size_t start = s->len - len;
     qb_string* result = malloc(sizeof(qb_string));
@@ -952,11 +1036,12 @@ qb_string* qb_right(qb_string* s, int32_t n) {
     result->data = malloc(result->capacity);
     memcpy(result->data, s->data + start, len);
     result->data[len] = '\0';
-    return result;
+    result->refcount = 1;
+    return qbs_tmp_register(result);
 }
 
 qb_string* qb_mid(qb_string* s, int32_t start, int32_t n) {
-    if (!s || start < 1 || n <= 0 || (size_t)start > s->len) return qb_string_new("");
+    if (!s || start < 1 || n <= 0 || (size_t)start > s->len) return &_qbs_empty;
     size_t idx = (size_t)(start - 1);
     size_t len = (idx + (size_t)n > s->len) ? s->len - idx : (size_t)n;
     qb_string* result = malloc(sizeof(qb_string));
@@ -965,11 +1050,12 @@ qb_string* qb_mid(qb_string* s, int32_t start, int32_t n) {
     result->data = malloc(result->capacity);
     memcpy(result->data, s->data + idx, len);
     result->data[len] = '\0';
-    return result;
+    result->refcount = 1;
+    return qbs_tmp_register(result);
 }
 
 qb_string* qb_mid2(qb_string* s, int32_t start) {
-    if (!s || start < 1 || (size_t)start > s->len) return qb_string_new("");
+    if (!s || start < 1 || (size_t)start > s->len) return &_qbs_empty;
     size_t idx = (size_t)(start - 1);
     size_t len = s->len - idx;
     qb_string* result = malloc(sizeof(qb_string));
@@ -979,7 +1065,7 @@ qb_string* qb_mid2(qb_string* s, int32_t start) {
     memcpy(result->data, s->data + idx, len);
     result->data[len] = '\0';
     result->refcount = 1;
-    return result;
+    return qbs_tmp_register(result);
 }
 
 void qb_mid_assign(qb_string** target, int32_t start, int32_t length, qb_string* value) {
@@ -1019,7 +1105,7 @@ double qb_val(qb_string* s) {
 }
 
 qb_string* qb_ucase(qb_string* s) {
-    if (!s) return qb_string_new("");
+    if (!s) return &_qbs_empty;
     qb_string* result = malloc(sizeof(qb_string));
     result->len = s->len;
     result->capacity = s->len + 1;
@@ -1034,11 +1120,12 @@ qb_string* qb_ucase(qb_string* s) {
         }
     }
     result->data[s->len] = '\0';
-    return result;
+    result->refcount = 1;
+    return qbs_tmp_register(result);
 }
 
 qb_string* qb_lcase(qb_string* s) {
-    if (!s) return qb_string_new("");
+    if (!s) return &_qbs_empty;
     qb_string* result = malloc(sizeof(qb_string));
     result->len = s->len;
     result->capacity = s->len + 1;
@@ -1053,47 +1140,50 @@ qb_string* qb_lcase(qb_string* s) {
         }
     }
     result->data[s->len] = '\0';
-    return result;
+    result->refcount = 1;
+    return qbs_tmp_register(result);
 }
 
 qb_string* qb_ltrim(qb_string* s) {
-    if (!s) return qb_string_new("");
+    if (!s) return &_qbs_empty;
     size_t start = 0;
     while (start < s->len && s->data[start] == ' ') start++;
     return qb_right(s, (int32_t)(s->len - start));
 }
 
 qb_string* qb_rtrim(qb_string* s) {
-    if (!s) return qb_string_new("");
+    if (!s) return &_qbs_empty;
     size_t end = s->len;
     while (end > 0 && s->data[end - 1] == ' ') end--;
     return qb_left(s, (int32_t)end);
 }
 
 qb_string* qb_space(int32_t n) {
-    if (n <= 0) return qb_string_new("");
+    if (n <= 0) return &_qbs_empty;
     qb_string* result = malloc(sizeof(qb_string));
     result->len = (size_t)n;
     result->capacity = result->len + 1;
     result->data = malloc(result->capacity);
     memset(result->data, ' ', result->len);
     result->data[result->len] = '\0';
-    return result;
+    result->refcount = 1;
+    return qbs_tmp_register(result);
 }
 
 qb_string* qb_string_fill(int32_t n, qb_string* c) {
-    if (n <= 0 || !c || c->len == 0) return qb_string_new("");
+    if (n <= 0 || !c || c->len == 0) return &_qbs_empty;
     qb_string* result = malloc(sizeof(qb_string));
     result->len = (size_t)n;
     result->capacity = result->len + 1;
     result->data = malloc(result->capacity);
     memset(result->data, c->data[0], result->len);
     result->data[result->len] = '\0';
-    return result;
+    result->refcount = 1;
+    return qbs_tmp_register(result);
 }
 
 qb_string* qb_string_fill_code(int32_t n, int32_t code) {
-    if (n <= 0) return qb_string_new("");
+    if (n <= 0) return &_qbs_empty;
     qb_string* result = malloc(sizeof(qb_string));
     result->len = (size_t)n;
     result->capacity = result->len + 1;
@@ -1101,7 +1191,7 @@ qb_string* qb_string_fill_code(int32_t n, int32_t code) {
     memset(result->data, (unsigned char)code, result->len);
     result->data[result->len] = '\0';
     result->refcount = 1;
-    return result;
+    return qbs_tmp_register(result);
 }
 
 // UTF-8 helper functions
@@ -1230,12 +1320,14 @@ void qb_file_open(int32_t fnum, const char* filename, const char* mode) {
 #ifdef _WIN32
     _qb_files[fnum] = fopen(filename, mode);
 #else
-    _qb_files[fnum] = fopen(filename, mode);
-    if (!_qb_files[fnum]) {
-        char* normalized = _qb_normalize_path(filename);
-        if (normalized) { _qb_files[fnum] = fopen(normalized, mode); }
-        free(normalized);
+    char* normalized = _qb_normalize_path(filename);
+    const char* path_to_use = normalized ? normalized : filename;
+    _qb_files[fnum] = fopen(path_to_use, mode);
+    if (!_qb_files[fnum] && mode[0] == 'r' && mode[1] == '+') {
+        FILE* tmp = fopen(path_to_use, "w"); if (tmp) fclose(tmp);
+        _qb_files[fnum] = fopen(path_to_use, mode);
     }
+    if (normalized) free(normalized);
 #endif
     _qb_file_reclen[fnum] = 128; /* default record length */
 }
@@ -1530,7 +1622,7 @@ qb_string* qb_inkey(void) {
         char buf[2] = {(char)ch, 0};
         return qb_string_new(buf);
     }
-    return qb_string_new("");
+    return &_qbs_empty; /* No allocation for empty */
 }
 #else
 #include <termios.h>
@@ -1544,7 +1636,7 @@ qb_string* qb_inkey(void) {
     tcsetattr(STDIN_FILENO, TCSANOW, &newt);
     fd_set fds; struct timeval tv = {0, 0};
     FD_ZERO(&fds); FD_SET(STDIN_FILENO, &fds);
-    qb_string* result = qb_string_new("");
+    qb_string* result = &_qbs_empty; /* No allocation for empty */
     if (select(STDIN_FILENO + 1, &fds, NULL, NULL, &tv) > 0) {
         char buf[4] = {0};
         int n = read(STDIN_FILENO, buf, sizeof(buf)-1);
@@ -1556,7 +1648,7 @@ qb_string* qb_inkey(void) {
 #endif
 
 qb_string* qb_input_chars(int32_t n) {
-    if (n <= 0) return qb_string_new("");
+    if (n <= 0) return &_qbs_empty;
     char* buf = malloc((size_t)n + 1);
     for (int32_t i = 0; i < n; i++) buf[i] = (char)getchar();
     buf[n] = '\0';
@@ -1567,7 +1659,7 @@ qb_string* qb_input_chars(int32_t n) {
 
 qb_string* qb_input_chars_file(int32_t n, int32_t fnum) {
     if (n <= 0 || fnum < 1 || fnum >= QB_MAX_FILES || !_qb_files[fnum])
-        return qb_string_new("");
+        return &_qbs_empty;
     char* buf = malloc((size_t)n + 1);
     size_t read = fread(buf, 1, (size_t)n, _qb_files[fnum]);
     buf[read] = '\0';
@@ -1669,9 +1761,9 @@ int64_t qb_scrolllock(void) { return 0; }
 /* Environment Functions */
 
 qb_string* qb_environ(qb_string* var) {
-    if (!var || !var->data) return qb_string_new("");
+    if (!var || !var->data) return &_qbs_empty;
     const char* val = getenv(var->data);
-    return val ? qb_string_new(val) : qb_string_new("");
+    return val ? qb_string_new(val) : &_qbs_empty;
 }
 
 static int _qb_argc = 0;
@@ -1679,7 +1771,7 @@ static char** _qb_argv = NULL;
 void qb_init_args(int argc, char** argv) { _qb_argc = argc; _qb_argv = argv; }
 
 qb_string* qb_command(void) {
-    if (_qb_argc <= 1 || !_qb_argv) return qb_string_new("");
+    if (_qb_argc <= 1 || !_qb_argv) return &_qbs_empty;
     size_t len = 0;
     for (int i = 1; i < _qb_argc; i++) len += strlen(_qb_argv[i]) + 1;
     char* buf = malloc(len + 1);
@@ -1694,7 +1786,7 @@ qb_string* qb_command(void) {
 }
 
 qb_string* qb_command_n(int64_t n) {
-    if (n < 0 || n >= _qb_argc || !_qb_argv) return qb_string_new("");
+    if (n < 0 || n >= _qb_argc || !_qb_argv) return &_qbs_empty;
     if (n == 0) return qb_command(); // Return all args
     return qb_string_new(_qb_argv[n]);
 }
@@ -1706,7 +1798,7 @@ qb_string* qb_command_n(int64_t n) {
 qb_string* qb_cwd(void) {
     char buf[4096];
     if (getcwd(buf, sizeof(buf))) return qb_string_new(buf);
-    return qb_string_new("");
+    return &_qbs_empty;
 }
 
 qb_string* qb_os(void) {
@@ -1747,11 +1839,11 @@ int32_t qb_instrrev(qb_string* source, qb_string* search) {
 }
 
 qb_string* qb_trim(qb_string* s) {
-    if (!s || s->len == 0) return qb_string_new("");
+    if (!s || s->len == 0) return &_qbs_empty;
     int32_t start = 0, end = s->len - 1;
     while (start <= end && (s->data[start] == ' ' || s->data[start] == '\t')) start++;
     while (end >= start && (s->data[end] == ' ' || s->data[end] == '\t')) end--;
-    if (start > end) return qb_string_new("");
+    if (start > end) return &_qbs_empty;
     int32_t newlen = end - start + 1;
     qb_string* result = (qb_string*)malloc(sizeof(qb_string));
     result->data = (char*)malloc(newlen + 1);
@@ -2340,6 +2432,7 @@ static int _qb_audio_warned = 0;
 static void _qb_audio_warn(void) {
     if (!_qb_audio_warned) {
         fprintf(stderr, "Warning: Audio functions require external runtime. Use --runtime external\n");
+        fflush(stderr);
         _qb_audio_warned = 1;
     }
 }
@@ -2467,6 +2560,7 @@ static void _qb_gfx_warn(void) {
     if (!_qb_gfx_warned) {
         fprintf(stderr, "Warning: Graphics functions require external runtime. Use --runtime external\n");
         fprintf(stderr, "         Programs with game loops will exit after %d frames in stub mode.\n", _qb_gfx_max_frames);
+        fflush(stderr);
         _qb_gfx_warned = 1;
     }
 }
@@ -2514,6 +2608,7 @@ int qb_gfx_poll_events(void) {
         if (_qb_gfx_frame_count == _qb_gfx_max_frames) {
             fprintf(stderr, "Note: Stub graphics reached %d frames, signaling window close.\n", _qb_gfx_max_frames);
             fprintf(stderr, "      Set QB64FRESH_MAX_FRAMES environment variable to change limit.\n");
+            fflush(stderr);
             _qb_gfx_frame_count++; /* Only print once */
         }
         return 0; /* Signal window closed */
@@ -2821,6 +2916,7 @@ int64_t qb_screenexists(void) {
         if (_qb_gfx_frame_count == _qb_gfx_max_frames) {
             fprintf(stderr, "Note: Stub graphics reached %d frames, _SCREENEXISTS returning FALSE.\n", _qb_gfx_max_frames);
             fprintf(stderr, "      Set QB64FRESH_MAX_FRAMES environment variable to change limit.\n");
+            fflush(stderr);
             _qb_gfx_frame_count++; /* Only print once */
         }
         return 0; /* Window closed */
@@ -3060,18 +3156,21 @@ qb_string* qb_inputbox(qb_string* prompt, qb_string* title) {
 qb_string* qb_openfiledialog(qb_string* title, qb_string* filter) {
     (void)title; (void)filter;
     fprintf(stderr, "Note: _OPENFILEDIALOG$ requires external runtime for GUI support\n");
+    fflush(stderr);
     return qb_string_new("");
 }
 
 qb_string* qb_savefiledialog(qb_string* title, qb_string* filter) {
     (void)title; (void)filter;
     fprintf(stderr, "Note: _SAVEFILEDIALOG$ requires external runtime for GUI support\n");
+    fflush(stderr);
     return qb_string_new("");
 }
 
 qb_string* qb_selectfolderdialog(qb_string* title) {
     (void)title;
     fprintf(stderr, "Note: _SELECTFOLDERDIALOG$ requires external runtime for GUI support\n");
+    fflush(stderr);
     return qb_string_new("");
 }
 
@@ -3348,6 +3447,7 @@ void qb_on_com(int32_t port_num, void* target) {
     if (!_qb_warned_on_com) {
         _qb_warned_on_com = 1;
         fprintf(stderr, "QB64Fresh: ON COM is not implemented (serial port event trapping)\n");
+        fflush(stderr);
     }
 }
 
@@ -3356,6 +3456,7 @@ void qb_com_control(int32_t port_num, int mode) {
     if (!_qb_warned_on_com) {
         _qb_warned_on_com = 1;
         fprintf(stderr, "QB64Fresh: ON COM is not implemented (serial port event trapping)\n");
+        fflush(stderr);
     }
 }
 
@@ -3364,6 +3465,7 @@ void qb_on_pen(void* target) {
     if (!_qb_warned_on_pen) {
         _qb_warned_on_pen = 1;
         fprintf(stderr, "QB64Fresh: ON PEN is not implemented (light pen event trapping)\n");
+        fflush(stderr);
     }
 }
 
@@ -3372,6 +3474,7 @@ void qb_pen_control(int mode) {
     if (!_qb_warned_on_pen) {
         _qb_warned_on_pen = 1;
         fprintf(stderr, "QB64Fresh: ON PEN is not implemented (light pen event trapping)\n");
+        fflush(stderr);
     }
 }
 
@@ -3380,6 +3483,7 @@ void qb_on_uevent(void* target) {
     if (!_qb_warned_on_uevent) {
         _qb_warned_on_uevent = 1;
         fprintf(stderr, "QB64Fresh: ON UEVENT is not implemented (user event trapping)\n");
+        fflush(stderr);
     }
 }
 
@@ -3388,6 +3492,7 @@ void qb_uevent_control(int mode) {
     if (!_qb_warned_on_uevent) {
         _qb_warned_on_uevent = 1;
         fprintf(stderr, "QB64Fresh: ON UEVENT is not implemented (user event trapping)\n");
+        fflush(stderr);
     }
 }
 
@@ -3395,6 +3500,7 @@ void qb_uevent_trigger(void) {
     if (!_qb_warned_on_uevent) {
         _qb_warned_on_uevent = 1;
         fprintf(stderr, "QB64Fresh: UEVENT is not implemented (user event trapping)\n");
+        fflush(stderr);
     }
 }
 
@@ -3403,6 +3509,7 @@ void qb_on_signal(int32_t signal_num, void* target) {
     if (!_qb_warned_on_signal) {
         _qb_warned_on_signal = 1;
         fprintf(stderr, "QB64Fresh: ON SIGNAL is not implemented (BASIC signal trapping)\n");
+        fflush(stderr);
     }
 }
 
@@ -3411,6 +3518,7 @@ void qb_signal_control(int32_t signal_num, int mode) {
     if (!_qb_warned_on_signal) {
         _qb_warned_on_signal = 1;
         fprintf(stderr, "QB64Fresh: ON SIGNAL is not implemented (BASIC signal trapping)\n");
+        fflush(stderr);
     }
 }
 
@@ -3578,6 +3686,7 @@ int qb_pen(int64_t n) {
     if (!_qb_warned_pen) {
         _qb_warned_pen = 1;
         fprintf(stderr, "QB64Fresh: PEN() is not supported on modern systems (light pens are obsolete hardware)\n");
+        fflush(stderr);
     }
     return 0; // Light pen not present
 }
@@ -3590,6 +3699,7 @@ int qb_erdev(void) {
     if (!_qb_warned_erdev) {
         _qb_warned_erdev = 1;
         fprintf(stderr, "QB64Fresh: ERDEV/ERDEV$ are not supported (DOS device error functions)\n");
+        fflush(stderr);
     }
     return 0; // No device error
 }
@@ -3598,6 +3708,7 @@ qb_string* qb_erdev_str(void) {
     if (!_qb_warned_erdev) {
         _qb_warned_erdev = 1;
         fprintf(stderr, "QB64Fresh: ERDEV/ERDEV$ are not supported (DOS device error functions)\n");
+        fflush(stderr);
     }
     return qb_string_new(""); // No device error
 }
@@ -3607,6 +3718,7 @@ void qb_ioctl(int32_t file_num, qb_string* control_string) {
     if (!_qb_warned_ioctl) {
         _qb_warned_ioctl = 1;
         fprintf(stderr, "QB64Fresh: IOCTL/IOCTL$ are not supported (DOS device control functions)\n");
+        fflush(stderr);
     }
 }
 
@@ -3615,6 +3727,7 @@ qb_string* qb_ioctl_str(int64_t file_num) {
     if (!_qb_warned_ioctl) {
         _qb_warned_ioctl = 1;
         fprintf(stderr, "QB64Fresh: IOCTL/IOCTL$ are not supported (DOS device control functions)\n");
+        fflush(stderr);
     }
     return qb_string_new(""); // Empty status string
 }
@@ -3674,6 +3787,7 @@ static void _qb_call_int(int32_t int_num, int16_t* regs) {
     if (!_qb_warned_interrupt) {
         _qb_warned_interrupt = 1;
         fprintf(stderr, "QB64Fresh: INTERRUPT/INTERRUPTX only supports INT 0x33 (mouse). Other interrupts (0x%02X) are ignored.\n", int_num);
+        fflush(stderr);
     }
 }
 
@@ -3708,7 +3822,10 @@ float qb_square(int32_t* num_ref) {
     float Square = 0.0;
     int32_t num = *num_ref;
 
+    uint64_t _qbs_proc_base = qbs_tmp_base_get();
+
     Square = (float)((num * num));
+    qbs_cleanup(_qbs_proc_base, 0);
     goto _qb_strig_dispatch_end;
 _qb_strig_dispatch:
 _qb_strig_dispatch_end:
@@ -3721,10 +3838,16 @@ int main(int argc, char** argv) {
     _qb_init_palette();
     static uint32_t _qb_strig_event_id = 0;
 
+    uint64_t _qbs_main_base = qbs_tmp_base_get();
+
+    qbs_cleanup(_qbs_main_base, 0);
     x = 5LL;
+    qbs_cleanup(_qbs_main_base, 0);
     qb_print_float(qb_square(&(x)));
     qb_print_newline();
+    qbs_cleanup(_qbs_main_base, 0);
     exit(0);
+    qbs_cleanup(_qbs_main_base, 0);
 
     /* STRIG Event Dispatch */
     goto _qb_strig_dispatch_end;
