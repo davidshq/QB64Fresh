@@ -1,0 +1,21 @@
+---
+description: Borrow checker and error-handling patterns for QB64Fresh Rust
+globs: "**/*.rs"
+alwaysApply: false
+---
+
+# Rust Patterns
+
+**Borrow checker + `self.errors`:** Do not use `.ok_or_else(|| { self.errors.push(...) })`—the closure borrows `self`. Use `match` and return `Err(())`, or clone needed values before pushing.
+
+```rust
+// ✅ DO
+let token = match self.peek() {
+    Some(t) => t,
+    None => { self.errors.push(ParseError::eof("expression")); return Err(()); }
+};
+```
+
+**`Range<T>`:** Not `Copy`; use `.clone()` when converting `token.span` to `Span`.
+
+**Before depending on types:** Read the real type definitions. Avoid assuming (e.g. `Token<'a>` when `Token` owns data).

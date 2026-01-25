@@ -1,0 +1,19 @@
+---
+description: How to run and test QB64Fresh (compiler stages, QB45, $ in shell)
+globs: "**/*.rs, tests/**"
+alwaysApply: false
+---
+
+# Testing
+
+**Stages:**
+```bash
+cargo run --bin qb64fresh -- file.bas --tokens    # Lexer
+cargo run --bin qb64fresh -- file.bas --ast       # Parser
+cargo run --bin qb64fresh -- file.bas --typed-ir  # Semantic
+cargo run --bin qb64fresh -- file.bas --emit-c    # C output
+```
+
+**`$` in BASIC:** Use a file or heredoc, not `echo '...'`, so the shell does not expand `$`.
+
+**QB45 compat:** `QB64pe/tests/qbasic_testcases/` (prefer `qb45com/`; skip `open_gl/` for `_GL*`).
