@@ -107,6 +107,9 @@ pub(in crate::codegen) fn emit_header_with_debug(
     writeln!(output, "#include <windows.h>").unwrap();
     writeln!(output, "#else").unwrap();
     writeln!(output, "#include <sys/time.h>").unwrap();
+    writeln!(output, "#ifdef __GLIBC__").unwrap();
+    writeln!(output, "#include <malloc.h>  /* For malloc_trim */").unwrap();
+    writeln!(output, "#endif").unwrap();
     writeln!(output, "#endif").unwrap();
     writeln!(output).unwrap();
 
@@ -119,7 +122,7 @@ pub(in crate::codegen) fn emit_header_with_debug(
     writeln!(output, "#define _GREATER (1)").unwrap();
     writeln!(output, "#define _LESS (-1)").unwrap();
     // String constants (initialized after qb_string type is defined)
-    writeln!(output, "#define _STR_EMPTY qb_string_new(\"\")").unwrap();
+    writeln!(output, "#define _STR_EMPTY (&_qbs_empty)").unwrap();
     writeln!(output, "#define _STR_CRLF qb_string_new(\"\\r\\n\")").unwrap();
     writeln!(output, "#define _STR_LF qb_string_new(\"\\n\")").unwrap();
     writeln!(output, "#define _STR_CR qb_string_new(\"\\r\")").unwrap();
@@ -428,6 +431,7 @@ fn emit_runtime_declarations(output: &mut String) {
 
     types::emit_string_type(output);
     types::emit_type_size_dummies(output);
+    strings::emit_temp_string_pool(output);
     strings::emit_string_functions(output);
     system::emit_stub_declarations(output);
     io::emit_print_functions(output);

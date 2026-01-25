@@ -267,6 +267,14 @@ impl super::StmtEmitter {
         // rather than declaring a new variable in the for statement (which would
         // create a shadowing local that loses its value after the loop).
         writeln!(output, "{}{} = {};", indent, c_var, start_code).unwrap();
+        // Save temp pool base - only clean temps created within this loop
+        let loop_base = self.next_label("for_base");
+        writeln!(
+            output,
+            "{}uint32_t {} = qbs_tmp_base_get();",
+            indent, loop_base
+        )
+        .unwrap();
         writeln!(
             output,
             "{}for (; ({} > 0) ? ({} <= {}) : ({} >= {}); {} += {}) {{",
@@ -278,9 +286,13 @@ impl super::StmtEmitter {
         // STRIG event check at loop iteration
         let inner_indent = "    ".repeat(self.indent);
         self.emit_strig_check(&inner_indent, output);
+        // Clean up temporary strings from previous iteration (scoped to this loop only)
+        writeln!(output, "{}qbs_cleanup({}, 0);", inner_indent, loop_base).unwrap();
         for stmt in body {
             self.emit_stmt(stmt, output)?;
         }
+        // Clean up strings created during this iteration
+        writeln!(output, "{}qbs_cleanup({}, 0);", inner_indent, loop_base).unwrap();
         self.indent -= 1;
 
         writeln!(output, "{}}}", indent).unwrap();
@@ -315,15 +327,27 @@ impl super::StmtEmitter {
             loop_type: ExitType::While,
         });
 
+        // Save temp pool base - only clean temps created within this loop
+        let loop_base = self.next_label("while_base");
+        writeln!(
+            output,
+            "{}uint32_t {} = qbs_tmp_base_get();",
+            indent, loop_base
+        )
+        .unwrap();
         writeln!(output, "{}while ({}) {{", indent, cond_code).unwrap();
 
         self.indent += 1;
         // STRIG event check at loop iteration
         let inner_indent = "    ".repeat(self.indent);
         self.emit_strig_check(&inner_indent, output);
+        // Clean up temporary strings from previous iteration (scoped to this loop only)
+        writeln!(output, "{}qbs_cleanup({}, 0);", inner_indent, loop_base).unwrap();
         for stmt in body {
             self.emit_stmt(stmt, output)?;
         }
+        // Clean up strings created during this iteration before checking condition again
+        writeln!(output, "{}qbs_cleanup({}, 0);", inner_indent, loop_base).unwrap();
         self.indent -= 1;
 
         writeln!(output, "{}}}", indent).unwrap();
@@ -364,6 +388,15 @@ impl super::StmtEmitter {
             loop_type: ExitType::Do,
         });
 
+        // Save temp pool base - only clean temps created within this loop
+        let loop_base = self.next_label("do_base");
+        writeln!(
+            output,
+            "{}uint32_t {} = qbs_tmp_base_get();",
+            indent, loop_base
+        )
+        .unwrap();
+
         match (pre_condition, post_condition) {
             (Some(pre), None) => {
                 let cond = self.emit_do_condition(pre)?;
@@ -386,9 +419,13 @@ impl super::StmtEmitter {
         // STRIG event check at loop iteration
         let inner_indent = "    ".repeat(self.indent);
         self.emit_strig_check(&inner_indent, output);
+        // Clean up temporary strings from previous iteration (scoped to this loop only)
+        writeln!(output, "{}qbs_cleanup({}, 0);", inner_indent, loop_base).unwrap();
         for stmt in body {
             self.emit_stmt(stmt, output)?;
         }
+        // Clean up strings created during this iteration
+        writeln!(output, "{}qbs_cleanup({}, 0);", inner_indent, loop_base).unwrap();
         self.indent -= 1;
 
         if let Some(post) = post_condition {

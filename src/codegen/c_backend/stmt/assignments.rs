@@ -39,10 +39,19 @@ impl super::StmtEmitter {
         if let BasicType::FixedString(len) = target_type {
             // For fixed-length strings, we need to copy the string content
             // The value is a qb_string*, we need to copy its data into the char array
+            // Note: Don't free _tmp here - it will be cleaned up by qbs_cleanup at statement end
             writeln!(
                 output,
-                "{}{{ qb_string* _tmp = {}; strncpy({}, _tmp ? _tmp->data : \"\", {}); {}[{}] = '\\0'; qb_string_free(_tmp); }}",
+                "{}{{ qb_string* _tmp = {}; strncpy({}, _tmp ? _tmp->data : \"\", {}); {}[{}] = '\\0'; }}",
                 indent, value_code, c_name, len, c_name, len
+            ).unwrap();
+        } else if *target_type == BasicType::String {
+            // For dynamic strings: release old, retain new
+            // This ensures proper refcount management for temp string cleanup
+            writeln!(
+                output,
+                "{}{{ qb_string* _new = {}; if ({} != _new) {{ qb_string_release({}); {} = qb_string_retain(_new); }} }}",
+                indent, value_code, c_name, c_name, c_name
             ).unwrap();
         } else if value.basic_type != *target_type {
             let c_ty = c_type(target_type);
@@ -105,10 +114,19 @@ impl super::StmtEmitter {
         if let BasicType::FixedString(len) = element_type {
             // For fixed-length strings, we need to copy the string content
             // The value is a qb_string*, we need to copy its data into the char array
+            // Note: Don't free _tmp here - it will be cleaned up by qbs_cleanup at statement end
             writeln!(
                 output,
-                "{}{{ qb_string* _tmp = {}; strncpy({}[{}], _tmp ? _tmp->data : \"\", {}); {}[{}][{}] = '\\0'; qb_string_free(_tmp); }}",
+                "{}{{ qb_string* _tmp = {}; strncpy({}[{}], _tmp ? _tmp->data : \"\", {}); {}[{}][{}] = '\\0'; }}",
                 indent, value_code, c_name, index_expr, len, c_name, index_expr, len
+            ).unwrap();
+        } else if *element_type == BasicType::String {
+            // For dynamic string arrays: release old, retain new
+            // This ensures proper refcount management for temp string cleanup
+            writeln!(
+                output,
+                "{}{{ qb_string* _new = {}; if ({}[{}] != _new) {{ qb_string_release({}[{}]); {}[{}] = qb_string_retain(_new); }} }}",
+                indent, value_code, c_name, index_expr, c_name, index_expr, c_name, index_expr
             ).unwrap();
         } else if value.basic_type != *element_type {
             let c_ty = c_type(element_type);
@@ -184,8 +202,15 @@ impl super::StmtEmitter {
             // The value is a qb_string*, we need to copy its data into the char array
             writeln!(
                 output,
-                "{}{{ qb_string* _tmp = {}; strncpy({}[{}]{}, _tmp ? _tmp->data : \"\", {}); {}[{}]{}[{}] = '\\0'; qb_string_free(_tmp); }}",
+                "{}{{ qb_string* _tmp = {}; strncpy({}[{}]{}, _tmp ? _tmp->data : \"\", {}); {}[{}]{}[{}] = '\\0'; }}",
                 indent, value_code, c_name, index_expr, field_chain, len, c_name, index_expr, field_chain, len
+            ).unwrap();
+        } else if *field_type == BasicType::String {
+            // For dynamic string UDT fields in arrays: release old, retain new
+            writeln!(
+                output,
+                "{}{{ qb_string* _new = {}; if ({}[{}]{} != _new) {{ qb_string_release({}[{}]{}); {}[{}]{} = qb_string_retain(_new); }} }}",
+                indent, value_code, c_name, index_expr, field_chain, c_name, index_expr, field_chain, c_name, index_expr, field_chain
             ).unwrap();
         } else {
             writeln!(
@@ -224,8 +249,15 @@ impl super::StmtEmitter {
             // The value is a qb_string*, we need to copy its data into the char array
             writeln!(
                 output,
-                "{}{{ qb_string* _tmp = {}; strncpy({}{}, _tmp ? _tmp->data : \"\", {}); {}{}[{}] = '\\0'; qb_string_free(_tmp); }}",
+                "{}{{ qb_string* _tmp = {}; strncpy({}{}, _tmp ? _tmp->data : \"\", {}); {}{}[{}] = '\\0'; }}",
                 indent, value_code, c_name, field_chain, len, c_name, field_chain, len
+            ).unwrap();
+        } else if *field_type == BasicType::String {
+            // For dynamic string UDT fields: release old, retain new
+            writeln!(
+                output,
+                "{}{{ qb_string* _new = {}; if ({}{} != _new) {{ qb_string_release({}{}); {}{} = qb_string_retain(_new); }} }}",
+                indent, value_code, c_name, field_chain, c_name, field_chain, c_name, field_chain
             ).unwrap();
         } else {
             writeln!(

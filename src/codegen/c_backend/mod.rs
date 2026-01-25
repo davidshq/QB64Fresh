@@ -297,6 +297,16 @@ impl CodeGenerator for CBackend {
             }
         }
 
+        // Collect names of global CONST values - these shouldn't be redeclared as local variables
+        let mut global_const_names: HashSet<String> = HashSet::new();
+        for stmt in &program.statements {
+            if let TypedStatementKind::Const { definitions } = &stmt.kind {
+                for (name, _, _) in definitions {
+                    global_const_names.insert(c_identifier(name));
+                }
+            }
+        }
+
         // Build sets of global variable names for use by SUB/FUNCTION implicit local detection
         // Global declarations look like "type name = init;" or "const type name = init;"
         // Arrays are identified by: pointer types (type*, type**) or static arrays (name[N])
@@ -366,6 +376,7 @@ impl CodeGenerator for CBackend {
         emitter.global_var_names = global_var_names.clone();
         emitter.global_array_names = global_array_names.clone();
         emitter.shared_global_names = shared_global_names.clone();
+        emitter.global_const_names = global_const_names.clone();
 
         // SUB/FUNCTION definitions (emit before main)
         for stmt in &program.statements {
@@ -415,6 +426,7 @@ impl CodeGenerator for CBackend {
         }
 
         // Initialize string constants (can't be done at global scope in C)
+        // These are NOT cleaned up as they need to persist for the program lifetime
         if !string_const_inits.is_empty() {
             writeln!(output, "    /* Initialize string constants */").unwrap();
             for init in &string_const_inits {
@@ -422,6 +434,11 @@ impl CodeGenerator for CBackend {
             }
             writeln!(output).unwrap();
         }
+
+        // Save temp pool base for main program AFTER string constant initialization
+        // Strings created before this point (globals) won't be cleaned up
+        writeln!(output, "    uint32_t _qbs_main_base = qbs_tmp_base_get();").unwrap();
+        writeln!(output).unwrap();
 
         // Collect main-level statements (excluding SUB/FUNCTION definitions)
         let main_stmts: Vec<&TypedStatement> = program
@@ -444,6 +461,7 @@ impl CodeGenerator for CBackend {
         // (for cross-function sharing) instead of creating shadowing locals
         // Pass empty always_exclude: main has no return variable
         // Pass shared_global_names: DIM SHARED vars shouldn't be re-declared
+        // Pass global_const_names: CONST values must never be shadowed by locals
         let implicit_locals = collect_implicit_locals(
             &main_stmts_owned,
             &[],
@@ -451,6 +469,7 @@ impl CodeGenerator for CBackend {
             &HashSet::new(),
             &global_array_names,
             &shared_global_names,
+            &global_const_names,
             true,
         );
 
@@ -466,6 +485,7 @@ impl CodeGenerator for CBackend {
         emitter.indent = 1;
 
         // Emit main program statements (excluding SUB/FUNCTION definitions)
+        // Each statement cleans up its temp strings to prevent memory growth
         for stmt in &program.statements {
             match &stmt.kind {
                 TypedStatementKind::SubDefinition { .. }
@@ -474,6 +494,8 @@ impl CodeGenerator for CBackend {
                 }
                 _ => {
                     emitter.emit_stmt(stmt, &mut output)?;
+                    // Clean up temp strings after each statement
+                    writeln!(output, "    qbs_cleanup(_qbs_main_base, 0);").unwrap();
                 }
             }
         }
