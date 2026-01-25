@@ -69,6 +69,9 @@
 #define _KEY_LAPPLE (100310)
 #define _KEY_RAPPLE (100309)
 
+/* Console constants */
+#define _CONSOLE (-1)
+
 /* ASCII constants */
 #define _ASC_NUL (0)
 #define _ASC_SOH (1)
@@ -207,6 +210,12 @@
 
 /* QB64Fresh Runtime Library */
 
+/* Forward declarations for cross-module dependencies */
+static void _qb_gfx_warn(void);
+static int _qb_gfx_frame_count;
+static void _qb_gfx_init_max_frames(void);
+static uint32_t _qb_palette[256];
+
 typedef struct qb_string {
     char* data;
     size_t len;
@@ -342,8 +351,15 @@ qb_string* qb_fullpath(qb_string* path) {
     if (_fullpath(resolved, path->data, sizeof(resolved)))
         return qb_string_new(resolved);
 #else
-    if (realpath(path->data, resolved))
-        return qb_string_new(resolved);
+    char* normalized = strdup(path->data);
+    if (normalized) {
+        _qb_normalize_path_inplace(normalized);
+        if (realpath(normalized, resolved)) {
+            free(normalized);
+            return qb_string_new(resolved);
+        }
+        free(normalized);
+    }
 #endif
     return qb_string_new(path->data ? path->data : "");
 }
@@ -481,6 +497,7 @@ static int32_t _qb_unicode_map[256] = {
     /* 0xF0-0xFF */ 0x2261, 0x00B1, 0x2265, 0x2264, 0x2320, 0x2321, 0x00F7, 0x2248,
                     0x00B0, 0x2219, 0x00B7, 0x221A, 0x207F, 0x00B2, 0x25A0, 0x00A0
 };
+#define _MAPUNICODE _qb_unicode_map
 
 void qb_mapunicode(int32_t unicode_code, int32_t ascii_pos) {
     if (ascii_pos >= 0 && ascii_pos < 256) {
@@ -514,6 +531,16 @@ int32_t qb_net_openhost(qb_string* port) { (void)port; return 0; }
 int32_t qb_net_openconnection(int32_t host) { (void)host; return 0; }
 int32_t qb_net_openclient(qb_string* addr) { (void)addr; return 0; }
 int32_t qb_net_connected(int32_t handle) { (void)handle; return 0; }
+int64_t qb__statuscode(int64_t handle) { (void)handle; return 200; }
+static int64_t _STATUSCODE[256] = {[0 ... 255] = 200};
+
+size_t qb_net_get(int64_t handle, uint8_t* data, size_t size) { (void)handle; (void)data; (void)size; return 0; }
+size_t qb_net_put(int64_t handle, const uint8_t* data, size_t size) { (void)handle; (void)data; (void)size; return 0; }
+size_t qb_net_get_string(int64_t handle, qb_string* s) { (void)handle; (void)s; return 0; }
+size_t qb_net_put_string(int64_t handle, const qb_string* s) { (void)handle; (void)s; return 0; }
+int32_t qb_net_eof(int64_t handle) { (void)handle; return -1; }
+int64_t qb_net_lof(int64_t handle) { (void)handle; return 0; }
+void qb_net_close(int64_t handle) { (void)handle; }
 
 int32_t qb_totaldroppedfiles(void) { return 0; }
 qb_string* qb_droppedfile_str(int32_t index) { (void)index; return qb_string_new(""); }
@@ -541,9 +568,15 @@ int32_t qb_backgroundcolor(void) { return 0; }
 int32_t qb_backgroundcolor1(int32_t handle) { (void)handle; return 0; }
 int32_t qb_screen(int32_t row, int32_t col) { (void)row; (void)col; return 32; }
 int32_t qb_screen3(int32_t row, int32_t col, int32_t attr) { (void)row; (void)col; (void)attr; return attr ? 7 : 32; }
-void qb_gfx_screen(int32_t mode, int32_t colorSwitch, int32_t activePage, int32_t visiblePage) { (void)mode; (void)colorSwitch; (void)activePage; (void)visiblePage; }
+void qb_gfx_screen(int32_t mode, int32_t colorSwitch, int32_t activePage, int32_t visiblePage) {
+    _qb_gfx_warn();
+    _qb_gfx_init_max_frames();
+    _qb_gfx_frame_count = 0; /* Reset frame counter on SCREEN */
+    (void)mode; (void)colorSwitch; (void)activePage; (void)visiblePage;
+}
 void qb_gfx_resize(int32_t flag) { (void)flag; }
-void qb_palettecolor(int32_t attr, int32_t col, int32_t handle) { (void)attr; (void)col; (void)handle; }
+int32_t qb_palettecolor(int32_t attr, int32_t col, int32_t handle) { (void)attr; (void)col; (void)handle; return _qb_palette[attr & 255]; }
+int32_t qb_palettecolor_get(int32_t attr, int32_t handle) { (void)handle; return _qb_palette[attr & 255]; }
 int32_t qb_resize(void) { return 0; }
 int32_t qb_resizewidth(void) { return 80; }
 int32_t qb_resizeheight(void) { return 25; }
@@ -1163,6 +1196,15 @@ qb_string* qb_iif_str(int64_t cond, qb_string* true_val, qb_string* false_val) {
 static FILE* _qb_files[QB_MAX_FILES];
 static int32_t _qb_file_reclen[QB_MAX_FILES];
 
+/* Network I/O Functions (extern - from Rust runtime) */
+extern size_t qb_net_get(int64_t handle, uint8_t* data, size_t size);
+extern size_t qb_net_put(int64_t handle, const uint8_t* data, size_t size);
+extern size_t qb_net_get_string(int64_t handle, qb_string* s);
+extern size_t qb_net_put_string(int64_t handle, const qb_string* s);
+extern int32_t qb_net_eof(int64_t handle);
+extern int64_t qb_net_lof(int64_t handle);
+extern void qb_net_close(int64_t handle);
+
 static void _qb_file_set(int32_t fnum, FILE* f) {
     if (fnum < 1 || fnum >= QB_MAX_FILES) return;
     if (_qb_files[fnum]) fclose(_qb_files[fnum]);
@@ -1203,6 +1245,10 @@ void qb_file_set_reclen(int32_t fnum, int32_t len) {
 }
 
 void qb_file_close(int32_t fnum) {
+    if (fnum < 0) {
+        qb_net_close((int64_t)fnum);
+        return;
+    }
     if (fnum >= 1 && fnum < QB_MAX_FILES && _qb_files[fnum]) {
         fclose(_qb_files[fnum]);
         _qb_files[fnum] = NULL;
@@ -1304,34 +1350,56 @@ void qb_file_seek_record(int32_t fnum, int64_t rec) {
 }
 
 void qb_file_get(int32_t fnum, void* data, size_t size) {
+    if (fnum < 0) {
+        qb_net_get((int64_t)fnum, (uint8_t*)data, size);
+        return;
+    }
     if (fnum >= 1 && fnum < QB_MAX_FILES && _qb_files[fnum])
         fread(data, 1, size, _qb_files[fnum]);
 }
 
 void qb_file_get_string(int32_t fnum, qb_string* s) {
+    if (fnum < 0) {
+        qb_net_get_string((int64_t)fnum, s);
+        return;
+    }
     if (fnum < 1 || fnum >= QB_MAX_FILES || !_qb_files[fnum]) return;
     if (!s || !s->data || s->len == 0) return;
     fread(s->data, 1, s->len, _qb_files[fnum]);
 }
 
 void qb_file_put_string(int32_t fnum, qb_string* s) {
+    if (fnum < 0) {
+        qb_net_put_string((int64_t)fnum, s);
+        return;
+    }
     if (fnum < 1 || fnum >= QB_MAX_FILES || !_qb_files[fnum]) return;
     if (!s || !s->data || s->len == 0) return;
     fwrite(s->data, 1, s->len, _qb_files[fnum]);
 }
 
 void qb_file_put(int32_t fnum, const void* data, size_t size) {
+    if (fnum < 0) {
+        qb_net_put((int64_t)fnum, (const uint8_t*)data, size);
+        return;
+    }
     if (fnum >= 1 && fnum < QB_MAX_FILES && _qb_files[fnum])
         fwrite(data, 1, size, _qb_files[fnum]);
 }
 
 int32_t qb_eof(int32_t fnum) {
+    if (fnum < 0) {
+        return qb_net_eof((int64_t)fnum);
+    }
     if (fnum >= 1 && fnum < QB_MAX_FILES && _qb_files[fnum])
         return feof(_qb_files[fnum]) ? -1 : 0;
     return -1;
 }
 
 int64_t qb_lof(int32_t fnum) {
+    if (fnum < 0) {
+        return qb_net_lof((int64_t)fnum);
+    }
     if (fnum < 1 || fnum >= QB_MAX_FILES || !_qb_files[fnum]) return 0;
     long pos = ftell(_qb_files[fnum]);
     fseek(_qb_files[fnum], 0, SEEK_END);
@@ -1404,6 +1472,8 @@ static int32_t _qb_erl = 0;           /* Error line number */
 static void* _qb_error_handler = NULL; /* Error handler label */
 static int _qb_error_resume_next = 0;  /* ON ERROR RESUME NEXT flag */
 static void* _qb_error_line = NULL;    /* Line that caused error */
+static int32_t _INCLERRORLINE = 0;     /* Error line in include file */
+static qb_string* _INCLERRORFILE_str = NULL; /* Include file with error */
 
 void qb_error(int32_t code) {
     _qb_err = code;
@@ -1606,7 +1676,7 @@ qb_string* qb_environ(qb_string* var) {
 
 static int _qb_argc = 0;
 static char** _qb_argv = NULL;
-void qb_init_args(int argc, char** argv) { _qb_argc = argc; _qb_argv = argv; fprintf(stderr, "INIT: args\n"); }
+void qb_init_args(int argc, char** argv) { _qb_argc = argc; _qb_argv = argv; }
 
 qb_string* qb_command(void) {
     if (_qb_argc <= 1 || !_qb_argv) return qb_string_new("");
@@ -2390,17 +2460,38 @@ double qb_sndrawlen(void) {
 /* For full graphics support, use --runtime external and link with libqb64fresh_rt */
 
 static int _qb_gfx_warned = 0;
+static int _qb_gfx_frame_count = 0;
+static int _qb_gfx_max_frames = 1000; /* Prevent infinite loops in stub mode */
+
 static void _qb_gfx_warn(void) {
     if (!_qb_gfx_warned) {
         fprintf(stderr, "Warning: Graphics functions require external runtime. Use --runtime external\n");
+        fprintf(stderr, "         Programs with game loops will exit after %d frames in stub mode.\n", _qb_gfx_max_frames);
         _qb_gfx_warned = 1;
     }
 }
 
-int qb_gfx_init(int32_t mode) { _qb_gfx_warn(); (void)mode; return 0; }
+static void _qb_gfx_init_max_frames(void) {
+    static int initialized = 0;
+    if (!initialized) {
+        const char* env = getenv("QB64FRESH_MAX_FRAMES");
+        if (env) _qb_gfx_max_frames = atoi(env);
+        if (_qb_gfx_max_frames <= 0) _qb_gfx_max_frames = 1000;
+        initialized = 1;
+    }
+}
+
+int qb_gfx_init(int32_t mode) {
+    _qb_gfx_warn();
+    _qb_gfx_init_max_frames();
+    _qb_gfx_frame_count = 0; /* Reset frame counter on new SCREEN */
+    (void)mode;
+    return 0; /* Success - stub mode accepts any screen mode */
+}
+
 int qb_gfx_shutdown(void) { return 0; }
 
-int qb_gfx_cls(void) { return 0; }
+int qb_gfx_cls(void) { _qb_gfx_frame_count++; return 0; }
 int qb_gfx_color(uint32_t fg, uint32_t bg) { (void)fg; (void)bg; return 0; }
 int qb_gfx_locate(int32_t row, int32_t col) { (void)row; (void)col; return 0; }
 
@@ -2411,8 +2502,25 @@ int qb_gfx_box(int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color, i
 int qb_gfx_circle(int32_t x, int32_t y, int32_t radius, uint32_t color, int filled) { (void)x; (void)y; (void)radius; (void)color; (void)filled; return 0; }
 int qb_gfx_paint(int32_t x, int32_t y, uint32_t color, uint32_t boundary) { (void)x; (void)y; (void)color; (void)boundary; return 0; }
 
-int qb_gfx_display(void) { return 0; }
-int qb_gfx_poll_events(void) { return 1; }
+int qb_gfx_display(void) {
+    _qb_gfx_init_max_frames();
+    _qb_gfx_frame_count++;
+    return 0;
+}
+
+int qb_gfx_poll_events(void) {
+    _qb_gfx_init_max_frames();
+    if (_qb_gfx_frame_count >= _qb_gfx_max_frames) {
+        if (_qb_gfx_frame_count == _qb_gfx_max_frames) {
+            fprintf(stderr, "Note: Stub graphics reached %d frames, signaling window close.\n", _qb_gfx_max_frames);
+            fprintf(stderr, "      Set QB64FRESH_MAX_FRAMES environment variable to change limit.\n");
+            _qb_gfx_frame_count++; /* Only print once */
+        }
+        return 0; /* Signal window closed */
+    }
+    return 1; /* Window still open */
+}
+
 uint32_t qb_gfx_width(void) { return 80; }
 uint32_t qb_gfx_height(void) { return 25; }
 
@@ -2646,6 +2754,43 @@ int64_t qb_printwidth(qb_string* text) {
     return (int64_t)text->len * qb_fontwidth();
 }
 
+/* Unicode Font Functions */
+/* For full Unicode rendering, use --runtime external with FreeType */
+
+#define QB_FONT_DONTBLEND   8   /* No anti-aliasing */
+#define QB_FONT_MONOSPACE   16  /* Force monospace */
+#define QB_FONT_UNICODE     32  /* UTF-8 mode */
+#define QB_FONT_AUTOMONO    64  /* Auto-detect mono */
+
+void qb_uprintstring(int64_t x, int64_t y, qb_string* text) {
+    if (text == NULL || text->data == NULL) return;
+    /* Inline mode: render using built-in 8x8 font (ASCII only) */
+    qb_gfx_printstring((int32_t)x, (int32_t)y, text->data);
+}
+
+int64_t qb_uprintwidth(qb_string* text) {
+    /* In inline mode, use byte-based width (8 pixels/char) */
+    return qb_printwidth(text);
+}
+
+int64_t qb_ucharpos(qb_string* text, int64_t pos) {
+    (void)text;
+    /* In inline mode, assume 8 pixels per character */
+    if (pos < 1) return -1;
+    return (pos - 1) * qb_fontwidth();
+}
+
+int64_t qb_ufontheight(int64_t handle) {
+    (void)handle;
+    /* Returns current font height (16 for built-in font) */
+    return qb_fontheight();
+}
+
+int64_t qb_ulinespacing(void) {
+    /* Returns current font height as line spacing */
+    return qb_fontheight();
+}
+
 /* Desktop/Window Functions */
 #ifdef _WIN32
 int64_t qb_desktopwidth(void) { return GetSystemMetrics(SM_CXSCREEN); }
@@ -2669,6 +2814,19 @@ int64_t qb_windowhandle(void) {
 }
 
 int64_t qb_windowhasfocus(void) { return -1; }
+
+int64_t qb_screenexists(void) {
+    _qb_gfx_init_max_frames();
+    if (_qb_gfx_frame_count >= _qb_gfx_max_frames) {
+        if (_qb_gfx_frame_count == _qb_gfx_max_frames) {
+            fprintf(stderr, "Note: Stub graphics reached %d frames, _SCREENEXISTS returning FALSE.\n", _qb_gfx_max_frames);
+            fprintf(stderr, "      Set QB64FRESH_MAX_FRAMES environment variable to change limit.\n");
+            _qb_gfx_frame_count++; /* Only print once */
+        }
+        return 0; /* Window closed */
+    }
+    return -1; /* Window exists (QB64 uses -1 for TRUE) */
+}
 
 /* Window Control Functions */
 static int _qb_screen_visible = 1;
@@ -3160,12 +3318,24 @@ void qb_timer_control(int mode) {
     (void)mode;
 }
 
-void qb_on_strig(int32_t button_num, void* target) {
-    (void)button_num; (void)target;
+static uint32_t _qb_strig_event_id = 0;
+
+void qb_on_strig(int32_t button_num, uint32_t event_id) {
+    (void)button_num; (void)event_id;
+    /* Stub - full implementation in Rust runtime */
 }
 
 void qb_strig_control(int32_t button_num, int mode) {
     (void)button_num; (void)mode;
+    /* Stub - full implementation in Rust runtime */
+}
+
+uint32_t qb_strig_check_event(void) {
+    return 0; /* No events in stub implementation */
+}
+
+void qb_strig_event_done(void) {
+    /* Stub - full implementation in Rust runtime */
 }
 
 static int _qb_warned_on_com = 0;
@@ -3258,6 +3428,11 @@ int qb_strig(int64_t n) {
     return 0; // Not pressed (stub)
 }
 
+int qb_strig2(int64_t n, int64_t controller) {
+    (void)n; (void)controller;
+    return 0; // Not pressed (stub)
+}
+
 /* QB4.5 Memory Functions (stubs) */
 
 int32_t qb_fre(int64_t n) {
@@ -3273,7 +3448,6 @@ void qb_free(void) {
 
 /* QB4.5 Port I/O Functions - VGA Palette Emulation */
 
-static uint32_t _qb_palette[256];  // 256-color palette (ARGB format)
 static int _qb_h3c7_read_index = 0;  // Palette read index (port 0x3C7)
 static int _qb_h3c8_write_index = 0; // Palette write index (port 0x3C8)
 static int _qb_h3c9_read_next = 0;   // Which RGB component to read next (0=R,1=G,2=B)
@@ -3532,6 +3706,7 @@ int main(int argc, char** argv) {
     qb_init_args(argc, argv);
     qb_init_startdir();
     _qb_init_palette();
+    static uint32_t _qb_strig_event_id = 0;
 
     a = 10LL;
     b = 3LL;
@@ -3550,6 +3725,12 @@ int main(int argc, char** argv) {
     qb_print_float(256LL);
     qb_print_newline();
     exit(0);
+
+    /* STRIG Event Dispatch */
+    goto _qb_strig_dispatch_end;
+_qb_strig_dispatch:
+    goto *_gosub_stack[--_gosub_sp];
+_qb_strig_dispatch_end:
 
     return 0;
 }

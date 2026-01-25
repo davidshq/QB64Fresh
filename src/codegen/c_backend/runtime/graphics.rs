@@ -23,27 +23,72 @@ pub(super) fn emit_graphics_stubs(output: &mut String) {
     .unwrap();
     writeln!(output).unwrap();
 
-    // Warning flag
+    // Warning flag and frame counter for preventing infinite loops
     writeln!(output, "static int _qb_gfx_warned = 0;").unwrap();
+    writeln!(output, "static int _qb_gfx_frame_count = 0;").unwrap();
+    writeln!(
+        output,
+        "static int _qb_gfx_max_frames = 1000; /* Prevent infinite loops in stub mode */"
+    )
+    .unwrap();
+    writeln!(output).unwrap();
     writeln!(output, "static void _qb_gfx_warn(void) {{").unwrap();
     writeln!(output, "    if (!_qb_gfx_warned) {{").unwrap();
     writeln!(output, "        fprintf(stderr, \"Warning: Graphics functions require external runtime. Use --runtime external\\n\");").unwrap();
+    writeln!(output, "        fprintf(stderr, \"         Programs with game loops will exit after %d frames in stub mode.\\n\", _qb_gfx_max_frames);").unwrap();
     writeln!(output, "        _qb_gfx_warned = 1;").unwrap();
     writeln!(output, "    }}").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
-    // Initialization
+    // Environment variable to control max frames (for testing)
+    writeln!(output, "static void _qb_gfx_init_max_frames(void) {{").unwrap();
+    writeln!(output, "    static int initialized = 0;").unwrap();
+    writeln!(output, "    if (!initialized) {{").unwrap();
     writeln!(
         output,
-        "int qb_gfx_init(int32_t mode) {{ _qb_gfx_warn(); (void)mode; return 0; }}"
+        "        const char* env = getenv(\"QB64FRESH_MAX_FRAMES\");"
     )
     .unwrap();
+    writeln!(output, "        if (env) _qb_gfx_max_frames = atoi(env);").unwrap();
+    writeln!(
+        output,
+        "        if (_qb_gfx_max_frames <= 0) _qb_gfx_max_frames = 1000;"
+    )
+    .unwrap();
+    writeln!(output, "        initialized = 1;").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // Initialization - SCREEN statement
+    writeln!(output, "int qb_gfx_init(int32_t mode) {{").unwrap();
+    writeln!(output, "    _qb_gfx_warn();").unwrap();
+    writeln!(output, "    _qb_gfx_init_max_frames();").unwrap();
+    writeln!(
+        output,
+        "    _qb_gfx_frame_count = 0; /* Reset frame counter on new SCREEN */"
+    )
+    .unwrap();
+    writeln!(output, "    (void)mode;").unwrap();
+    writeln!(
+        output,
+        "    return 0; /* Success - stub mode accepts any screen mode */"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
     writeln!(output, "int qb_gfx_shutdown(void) {{ return 0; }}").unwrap();
     writeln!(output).unwrap();
 
     // Basic graphics operations
-    writeln!(output, "int qb_gfx_cls(void) {{ return 0; }}").unwrap();
+    // CLS increments frame counter to help with termination in stub mode
+    writeln!(
+        output,
+        "int qb_gfx_cls(void) {{ _qb_gfx_frame_count++; return 0; }}"
+    )
+    .unwrap();
     writeln!(
         output,
         "int qb_gfx_color(uint32_t fg, uint32_t bg) {{ (void)fg; (void)bg; return 0; }}"
@@ -70,8 +115,41 @@ pub(super) fn emit_graphics_stubs(output: &mut String) {
     writeln!(output).unwrap();
 
     // Display
-    writeln!(output, "int qb_gfx_display(void) {{ return 0; }}").unwrap();
-    writeln!(output, "int qb_gfx_poll_events(void) {{ return 1; }}").unwrap();
+    writeln!(output, "int qb_gfx_display(void) {{").unwrap();
+    writeln!(output, "    _qb_gfx_init_max_frames();").unwrap();
+    writeln!(output, "    _qb_gfx_frame_count++;").unwrap();
+    writeln!(output, "    return 0;").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    // poll_events returns 1 (window open) until max frames reached, then 0 (window closed)
+    // This prevents infinite loops in game loops when using stub mode
+    writeln!(output, "int qb_gfx_poll_events(void) {{").unwrap();
+    writeln!(output, "    _qb_gfx_init_max_frames();").unwrap();
+    writeln!(
+        output,
+        "    if (_qb_gfx_frame_count >= _qb_gfx_max_frames) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "        if (_qb_gfx_frame_count == _qb_gfx_max_frames) {{"
+    )
+    .unwrap();
+    writeln!(output, "            fprintf(stderr, \"Note: Stub graphics reached %d frames, signaling window close.\\n\", _qb_gfx_max_frames);").unwrap();
+    writeln!(output, "            fprintf(stderr, \"      Set QB64FRESH_MAX_FRAMES environment variable to change limit.\\n\");").unwrap();
+    writeln!(
+        output,
+        "            _qb_gfx_frame_count++; /* Only print once */"
+    )
+    .unwrap();
+    writeln!(output, "        }}").unwrap();
+    writeln!(output, "        return 0; /* Signal window closed */").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(output, "    return 1; /* Window still open */").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
     writeln!(output, "uint32_t qb_gfx_width(void) {{ return 80; }}").unwrap();
     writeln!(output, "uint32_t qb_gfx_height(void) {{ return 25; }}").unwrap();
     writeln!(output).unwrap();
@@ -758,6 +836,38 @@ pub(super) fn emit_graphics_stubs(output: &mut String) {
     writeln!(output).unwrap();
 
     writeln!(output, "int64_t qb_windowhasfocus(void) {{ return -1; }}").unwrap();
+    writeln!(output).unwrap();
+
+    // _SCREENEXISTS - returns -1 (true) if window exists, 0 (false) if closed
+    // In stub mode, this respects the frame limit to prevent infinite loops
+    writeln!(output, "int64_t qb_screenexists(void) {{").unwrap();
+    writeln!(output, "    _qb_gfx_init_max_frames();").unwrap();
+    writeln!(
+        output,
+        "    if (_qb_gfx_frame_count >= _qb_gfx_max_frames) {{"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "        if (_qb_gfx_frame_count == _qb_gfx_max_frames) {{"
+    )
+    .unwrap();
+    writeln!(output, "            fprintf(stderr, \"Note: Stub graphics reached %d frames, _SCREENEXISTS returning FALSE.\\n\", _qb_gfx_max_frames);").unwrap();
+    writeln!(output, "            fprintf(stderr, \"      Set QB64FRESH_MAX_FRAMES environment variable to change limit.\\n\");").unwrap();
+    writeln!(
+        output,
+        "            _qb_gfx_frame_count++; /* Only print once */"
+    )
+    .unwrap();
+    writeln!(output, "        }}").unwrap();
+    writeln!(output, "        return 0; /* Window closed */").unwrap();
+    writeln!(output, "    }}").unwrap();
+    writeln!(
+        output,
+        "    return -1; /* Window exists (QB64 uses -1 for TRUE) */"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
     // Window control functions

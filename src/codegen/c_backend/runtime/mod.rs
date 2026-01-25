@@ -219,6 +219,11 @@ fn emit_keyboard_constants(output: &mut String) {
     writeln!(output, "#define _KEY_LAPPLE (100310)").unwrap();
     writeln!(output, "#define _KEY_RAPPLE (100309)").unwrap();
     writeln!(output).unwrap();
+
+    // Console destination constant
+    writeln!(output, "/* Console constants */").unwrap();
+    writeln!(output, "#define _CONSOLE (-1)").unwrap();
+    writeln!(output).unwrap();
 }
 
 /// Emits ASCII value constants.
@@ -290,6 +295,33 @@ fn emit_ascii_constants(output: &mut String) {
     writeln!(output, "#define _ASC_RIGHTCURLYBRACKET (125)").unwrap();
     writeln!(output, "#define _ASC_TILDE (126)").unwrap();
     writeln!(output, "#define _ASC_DEL (127)").unwrap();
+    writeln!(output).unwrap();
+}
+
+/// Emits forward declarations for cross-module dependencies.
+///
+/// Some runtime functions reference variables or helper functions that are
+/// defined in other modules. This function emits forward declarations to
+/// ensure proper compilation order:
+/// - `_qb_gfx_warn` - defined in graphics.rs, used by memory.rs
+/// - `_qb_palette` - defined in legacy.rs, used by system.rs
+fn emit_forward_declarations(output: &mut String) {
+    writeln!(
+        output,
+        "/* Forward declarations for cross-module dependencies */"
+    )
+    .unwrap();
+
+    // Graphics warning function (defined in graphics.rs, used by memory.rs and system.rs)
+    writeln!(output, "static void _qb_gfx_warn(void);").unwrap();
+
+    // Graphics frame counter and init function (defined in graphics.rs, used by system.rs)
+    writeln!(output, "static int _qb_gfx_frame_count;").unwrap();
+    writeln!(output, "static void _qb_gfx_init_max_frames(void);").unwrap();
+
+    // Palette array (defined in legacy.rs, used by system.rs)
+    writeln!(output, "static uint32_t _qb_palette[256];").unwrap();
+
     writeln!(output).unwrap();
 }
 
@@ -389,6 +421,10 @@ fn emit_chr_constants(output: &mut String) {
 fn emit_runtime_declarations(output: &mut String) {
     writeln!(output, "/* QB64Fresh Runtime Library */").unwrap();
     writeln!(output).unwrap();
+
+    // Forward declarations for cross-module dependencies
+    // These are defined later in graphics.rs and legacy.rs but used earlier
+    emit_forward_declarations(output);
 
     types::emit_string_type(output);
     types::emit_type_size_dummies(output);

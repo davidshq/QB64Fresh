@@ -672,7 +672,7 @@ Code generation supports two modes via `--runtime` flag:
 ```bash
 cargo run --bin qb64fresh -- program.bas --emit-c
 ```
-Embeds all runtime functions directly in generated C. Graphics calls become no-ops.
+Embeds all runtime functions directly in generated C. Graphics calls become no-ops with frame limiting to prevent infinite loops in game loops (default 1000 frames, configurable via `QB64FRESH_MAX_FRAMES` env var). See `docs/GRAPHICS.md` for details.
 
 **External Runtime:**
 ```bash

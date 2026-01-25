@@ -144,8 +144,16 @@ pub(super) fn emit_stub_declarations(output: &mut String) {
     .unwrap();
     writeln!(output, "        return qb_string_new(resolved);").unwrap();
     writeln!(output, "#else").unwrap();
-    writeln!(output, "    if (realpath(path->data, resolved))").unwrap();
-    writeln!(output, "        return qb_string_new(resolved);").unwrap();
+    // Normalize backslashes to forward slashes before calling realpath
+    writeln!(output, "    char* normalized = strdup(path->data);").unwrap();
+    writeln!(output, "    if (normalized) {{").unwrap();
+    writeln!(output, "        _qb_normalize_path_inplace(normalized);").unwrap();
+    writeln!(output, "        if (realpath(normalized, resolved)) {{").unwrap();
+    writeln!(output, "            free(normalized);").unwrap();
+    writeln!(output, "            return qb_string_new(resolved);").unwrap();
+    writeln!(output, "        }}").unwrap();
+    writeln!(output, "        free(normalized);").unwrap();
+    writeln!(output, "    }}").unwrap();
     writeln!(output, "#endif").unwrap();
     writeln!(
         output,
@@ -506,6 +514,8 @@ pub(super) fn emit_stub_declarations(output: &mut String) {
     )
     .unwrap();
     writeln!(output, "}};").unwrap();
+    // Alias for direct array access (QB64PE uses _MAPUNICODE as an array)
+    writeln!(output, "#define _MAPUNICODE _qb_unicode_map").unwrap();
     writeln!(output).unwrap();
 
     // _MAPUNICODE unicode_codepoint, ascii_position - Set mapping
@@ -597,6 +607,56 @@ pub(super) fn emit_stub_declarations(output: &mut String) {
         "int32_t qb_net_connected(int32_t handle) {{ (void)handle; return 0; }}"
     )
     .unwrap();
+    // _STATUSCODE - HTTP status code for network handles (stub returns 200 OK)
+    writeln!(
+        output,
+        "int64_t qb__statuscode(int64_t handle) {{ (void)handle; return 200; }}"
+    )
+    .unwrap();
+    // Workaround array for legacy code that uses _STATUSCODE[handle] syntax
+    // (from before _STATUSCODE was registered as a function)
+    writeln!(
+        output,
+        "static int64_t _STATUSCODE[256] = {{[0 ... 255] = 200}};"
+    )
+    .unwrap();
+    writeln!(output).unwrap();
+    // Network I/O stubs (used by file.rs for network file handles)
+    writeln!(
+        output,
+        "size_t qb_net_get(int64_t handle, uint8_t* data, size_t size) {{ (void)handle; (void)data; (void)size; return 0; }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "size_t qb_net_put(int64_t handle, const uint8_t* data, size_t size) {{ (void)handle; (void)data; (void)size; return 0; }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "size_t qb_net_get_string(int64_t handle, qb_string* s) {{ (void)handle; (void)s; return 0; }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "size_t qb_net_put_string(int64_t handle, const qb_string* s) {{ (void)handle; (void)s; return 0; }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "int32_t qb_net_eof(int64_t handle) {{ (void)handle; return -1; }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "int64_t qb_net_lof(int64_t handle) {{ (void)handle; return 0; }}"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "void qb_net_close(int64_t handle) {{ (void)handle; }}"
+    )
+    .unwrap();
     writeln!(output).unwrap();
 
     // Drag and drop functions (stubs)
@@ -667,7 +727,21 @@ pub(super) fn emit_stub_declarations(output: &mut String) {
     writeln!(output, "int32_t qb_screen3(int32_t row, int32_t col, int32_t attr) {{ (void)row; (void)col; (void)attr; return attr ? 7 : 32; }}").unwrap();
 
     // qb_gfx_screen - SCREEN statement for changing screen modes (4 args)
-    writeln!(output, "void qb_gfx_screen(int32_t mode, int32_t colorSwitch, int32_t activePage, int32_t visiblePage) {{ (void)mode; (void)colorSwitch; (void)activePage; (void)visiblePage; }}").unwrap();
+    // Must initialize frame counter to prevent infinite loops in stub mode
+    writeln!(output, "void qb_gfx_screen(int32_t mode, int32_t colorSwitch, int32_t activePage, int32_t visiblePage) {{").unwrap();
+    writeln!(output, "    _qb_gfx_warn();").unwrap();
+    writeln!(output, "    _qb_gfx_init_max_frames();").unwrap();
+    writeln!(
+        output,
+        "    _qb_gfx_frame_count = 0; /* Reset frame counter on SCREEN */"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "    (void)mode; (void)colorSwitch; (void)activePage; (void)visiblePage;"
+    )
+    .unwrap();
+    writeln!(output, "}}").unwrap();
 
     // qb_gfx_resize - resize control (1 arg)
     writeln!(output, "void qb_gfx_resize(int32_t flag) {{ (void)flag; }}").unwrap();

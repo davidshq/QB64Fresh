@@ -279,17 +279,335 @@ pub extern "C" fn qb_color_reset() {
 // Keyboard Functions
 // ============================================================================
 
+#[cfg(unix)]
+mod keyboard {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Mutex;
+
+    /// Tracks whether we've set up raw mode for the terminal
+    static RAW_MODE_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+    /// Stores the original termios settings so we can restore them
+    static ORIGINAL_TERMIOS: Mutex<Option<libc::termios>> = Mutex::new(None);
+
+    /// Buffer for multi-byte key sequences (like arrow keys)
+    static KEY_BUFFER: Mutex<Vec<u8>> = Mutex::new(Vec::new());
+
+    /// Enable raw mode for non-blocking keyboard input.
+    ///
+    /// This disables canonical mode (line buffering), echo, and enables
+    /// non-blocking reads.
+    pub fn enable_raw_mode() {
+        if RAW_MODE_ACTIVE.load(Ordering::SeqCst) {
+            return;
+        }
+
+        unsafe {
+            let mut termios: libc::termios = std::mem::zeroed();
+
+            // Get current terminal attributes
+            if libc::tcgetattr(libc::STDIN_FILENO, &mut termios) != 0 {
+                return;
+            }
+
+            // Store original settings for restoration
+            {
+                let mut orig = ORIGINAL_TERMIOS.lock().unwrap();
+                *orig = Some(termios);
+            }
+
+            // Disable canonical mode (line buffering) and echo
+            termios.c_lflag &= !(libc::ICANON | libc::ECHO);
+
+            // Set minimum characters and timeout for non-blocking read
+            // VMIN=0, VTIME=0 means read returns immediately with whatever is available
+            termios.c_cc[libc::VMIN] = 0;
+            termios.c_cc[libc::VTIME] = 0;
+
+            // Apply new settings
+            if libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &termios) == 0 {
+                RAW_MODE_ACTIVE.store(true, Ordering::SeqCst);
+
+                // Register cleanup on program exit
+                extern "C" fn cleanup() {
+                    super::keyboard::disable_raw_mode();
+                }
+                libc::atexit(cleanup);
+            }
+        }
+    }
+
+    /// Disable raw mode and restore original terminal settings.
+    pub fn disable_raw_mode() {
+        if !RAW_MODE_ACTIVE.load(Ordering::SeqCst) {
+            return;
+        }
+
+        let orig = ORIGINAL_TERMIOS.lock().unwrap();
+        if let Some(termios) = *orig {
+            unsafe {
+                libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &termios);
+            }
+            RAW_MODE_ACTIVE.store(false, Ordering::SeqCst);
+        }
+    }
+
+    /// Check if input is available on stdin without blocking.
+    ///
+    /// Uses poll() with a timeout of 0 to check immediately.
+    pub fn input_available() -> bool {
+        // First check our buffer
+        {
+            let buffer = KEY_BUFFER.lock().unwrap();
+            if !buffer.is_empty() {
+                return true;
+            }
+        }
+
+        unsafe {
+            let mut pfd = libc::pollfd {
+                fd: libc::STDIN_FILENO,
+                events: libc::POLLIN,
+                revents: 0,
+            };
+
+            // Poll with 0 timeout = immediate return
+            let result = libc::poll(&mut pfd, 1, 0);
+            result > 0 && (pfd.revents & libc::POLLIN) != 0
+        }
+    }
+
+    /// Read a key from stdin (non-blocking).
+    ///
+    /// Returns None if no key is available. Returns Some(bytes) where bytes
+    /// contains the key code(s). Multi-byte sequences (like escape sequences
+    /// for arrow keys) are returned as a single result.
+    pub fn read_key() -> Option<Vec<u8>> {
+        // Ensure raw mode is active
+        enable_raw_mode();
+
+        // Check if we have buffered data
+        {
+            let mut buffer = KEY_BUFFER.lock().unwrap();
+            if !buffer.is_empty() {
+                let result = buffer.clone();
+                buffer.clear();
+                return Some(result);
+            }
+        }
+
+        // Check if input is available
+        if !input_available() {
+            return None;
+        }
+
+        // Read available bytes
+        let mut buf = [0u8; 16];
+        let n = unsafe { libc::read(libc::STDIN_FILENO, buf.as_mut_ptr() as *mut _, buf.len()) };
+
+        if n <= 0 {
+            return None;
+        }
+
+        let bytes = buf[..n as usize].to_vec();
+
+        // Check for escape sequences (arrow keys, function keys, etc.)
+        if bytes.len() == 1 && bytes[0] == 27 {
+            // Got ESC - might be start of escape sequence, wait briefly for more
+            std::thread::sleep(std::time::Duration::from_millis(1));
+
+            if input_available() {
+                // Read the rest of the sequence
+                let n2 = unsafe {
+                    libc::read(libc::STDIN_FILENO, buf.as_mut_ptr() as *mut _, buf.len())
+                };
+                if n2 > 0 {
+                    let mut full_seq = bytes;
+                    full_seq.extend_from_slice(&buf[..n2 as usize]);
+                    return Some(full_seq);
+                }
+            }
+        }
+
+        Some(bytes)
+    }
+
+    /// Convert a key sequence to QB64-compatible INKEY$ result.
+    ///
+    /// For regular ASCII keys, returns the character.
+    /// For special keys (arrows, function keys), returns the two-byte
+    /// sequence that QB64 uses: CHR$(0) + scan code, or CHR$(255) + code.
+    pub fn key_to_inkey_string(key: &[u8]) -> Vec<u8> {
+        match key {
+            // Arrow keys - ESC [ A/B/C/D
+            [27, 91, 65] => vec![0, 72], // Up arrow: CHR$(0) + CHR$(72)
+            [27, 91, 66] => vec![0, 80], // Down arrow: CHR$(0) + CHR$(80)
+            [27, 91, 67] => vec![0, 77], // Right arrow: CHR$(0) + CHR$(77)
+            [27, 91, 68] => vec![0, 75], // Left arrow: CHR$(0) + CHR$(75)
+
+            // Home/End/Insert/Delete/PageUp/PageDown
+            [27, 91, 72] => vec![0, 71],      // Home: CHR$(0) + CHR$(71)
+            [27, 91, 70] => vec![0, 79],      // End: CHR$(0) + CHR$(79)
+            [27, 91, 50, 126] => vec![0, 82], // Insert: CHR$(0) + CHR$(82)
+            [27, 91, 51, 126] => vec![0, 83], // Delete: CHR$(0) + CHR$(83)
+            [27, 91, 53, 126] => vec![0, 73], // Page Up: CHR$(0) + CHR$(73)
+            [27, 91, 54, 126] => vec![0, 81], // Page Down: CHR$(0) + CHR$(81)
+
+            // Function keys F1-F4 (common escape sequences)
+            [27, 79, 80] => vec![0, 59], // F1: CHR$(0) + CHR$(59)
+            [27, 79, 81] => vec![0, 60], // F2: CHR$(0) + CHR$(60)
+            [27, 79, 82] => vec![0, 61], // F3: CHR$(0) + CHR$(61)
+            [27, 79, 83] => vec![0, 62], // F4: CHR$(0) + CHR$(62)
+
+            // Function keys F5-F12 (CSI sequences)
+            [27, 91, 49, 53, 126] => vec![0, 63],  // F5
+            [27, 91, 49, 55, 126] => vec![0, 64],  // F6
+            [27, 91, 49, 56, 126] => vec![0, 65],  // F7
+            [27, 91, 49, 57, 126] => vec![0, 66],  // F8
+            [27, 91, 50, 48, 126] => vec![0, 67],  // F9
+            [27, 91, 50, 49, 126] => vec![0, 68],  // F10
+            [27, 91, 50, 51, 126] => vec![0, 133], // F11
+            [27, 91, 50, 52, 126] => vec![0, 134], // F12
+
+            // Single ESC key
+            [27] => vec![27],
+
+            // Backspace (often sent as DEL=127 or BS=8)
+            [127] => vec![8], // Convert DEL to backspace
+            [8] => vec![8],   // Keep backspace as-is
+
+            // Enter key
+            [10] | [13] => vec![13], // Convert LF to CR for consistency
+
+            // Regular single-byte characters
+            [c] if *c < 128 => vec![*c],
+
+            // Multi-byte UTF-8 or other sequences - return as-is
+            _ => key.to_vec(),
+        }
+    }
+}
+
+#[cfg(windows)]
+mod keyboard {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Mutex;
+
+    static KEY_BUFFER: Mutex<Vec<u8>> = Mutex::new(Vec::new());
+
+    pub fn enable_raw_mode() {
+        // Windows console handles this differently - TODO
+    }
+
+    pub fn disable_raw_mode() {
+        // TODO
+    }
+
+    pub fn input_available() -> bool {
+        // On Windows, use _kbhit() or similar
+        // For now, return false
+        false
+    }
+
+    pub fn read_key() -> Option<Vec<u8>> {
+        // TODO: Implement Windows keyboard reading
+        None
+    }
+
+    pub fn key_to_inkey_string(key: &[u8]) -> Vec<u8> {
+        key.to_vec()
+    }
+}
+
 /// Check if a key has been pressed (INKEY$).
 ///
 /// Returns an empty string if no key is pressed, otherwise returns the key.
+/// For special keys (arrows, function keys), returns a two-byte sequence
+/// compatible with QBasic/QB64 conventions.
+///
+/// # Key Codes
+///
+/// - Regular ASCII characters: returned as-is
+/// - Arrow keys: CHR$(0) + scan code
+///   - Up: CHR$(0) + CHR$(72)
+///   - Down: CHR$(0) + CHR$(80)
+///   - Left: CHR$(0) + CHR$(75)
+///   - Right: CHR$(0) + CHR$(77)
+/// - Function keys: CHR$(0) + scan code (F1=59, F2=60, etc.)
 ///
 /// # Safety
 /// - The returned string must be released with `qb_string_release`
 #[no_mangle]
 pub extern "C" fn qb_inkey() -> *mut QbString {
-    // For now, return empty string (non-blocking keyboard input is complex)
-    // A full implementation would use platform-specific APIs
+    if let Some(key) = keyboard::read_key() {
+        let inkey_bytes = keyboard::key_to_inkey_string(&key);
+        if !inkey_bytes.is_empty() {
+            return unsafe { qb_string_from_bytes(inkey_bytes.as_ptr(), inkey_bytes.len()) };
+        }
+    }
+
     crate::string::qb_string_empty()
+}
+
+/// Get a key code for _KEYHIT function.
+///
+/// Returns 0 if no key is pressed, otherwise returns the key code.
+/// For special keys, returns negative codes.
+///
+/// # Safety
+/// This function is safe to call from C.
+#[no_mangle]
+pub extern "C" fn qb_keyhit() -> i64 {
+    if let Some(key) = keyboard::read_key() {
+        let inkey_bytes = keyboard::key_to_inkey_string(&key);
+        match inkey_bytes.len() {
+            1 => inkey_bytes[0] as i64,
+            2 if inkey_bytes[0] == 0 => {
+                // Extended key: return as negative
+                -(inkey_bytes[1] as i64 * 256)
+            }
+            _ => inkey_bytes.first().copied().unwrap_or(0) as i64,
+        }
+    } else {
+        0
+    }
+}
+
+/// Check if a specific key is currently pressed (_KEYDOWN).
+///
+/// # Arguments
+/// - `keycode`: The key code to check
+///
+/// # Returns
+/// - -1 (true) if the key is pressed
+/// - 0 (false) if not pressed
+///
+/// Note: This is a simplified implementation that doesn't track continuous
+/// key state. A full implementation would need SDL2 or similar for true
+/// key state tracking.
+#[no_mangle]
+pub extern "C" fn qb_keydown(_keycode: i64) -> i32 {
+    // This would require real-time key state tracking (SDL2 or X11/Windows APIs)
+    // For now, return 0 (not pressed)
+    0
+}
+
+/// Clear the keyboard buffer (_KEYCLEAR).
+#[no_mangle]
+pub extern "C" fn qb_keyclear() {
+    // Clear any buffered input
+    keyboard::enable_raw_mode();
+    while keyboard::input_available() {
+        let _ = keyboard::read_key();
+    }
+}
+
+/// Disable raw terminal mode (call at program end).
+///
+/// This restores normal terminal behavior (line buffering, echo).
+#[no_mangle]
+pub extern "C" fn qb_keyboard_shutdown() {
+    keyboard::disable_raw_mode();
 }
 
 // ============================================================================

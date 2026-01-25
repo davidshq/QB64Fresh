@@ -51,6 +51,17 @@ pub(super) fn emit_error_handling(output: &mut String) {
         "static void* _qb_error_line = NULL;    /* Line that caused error */"
     )
     .unwrap();
+    // Include file error tracking (for $INCLUDE files)
+    writeln!(
+        output,
+        "static int32_t _INCLERRORLINE = 0;     /* Error line in include file */"
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "static qb_string* _INCLERRORFILE_str = NULL; /* Include file with error */"
+    )
+    .unwrap();
     writeln!(output).unwrap();
 
     // qb_error - Simulate an error
