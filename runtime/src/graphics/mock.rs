@@ -26,6 +26,10 @@ pub struct MockBackend {
     last_gfx_x: i32,
     /// Last referenced graphics point Y (for STEP support)
     last_gfx_y: i32,
+    /// Active page for drawing operations (0-based)
+    active_page: i32,
+    /// Visual page for display (0-based)
+    visual_page: i32,
 }
 
 /// Recorded graphics operation.
@@ -44,6 +48,12 @@ pub enum MockOperation {
     Paint(i32, i32, u32, Option<u32>),
     Display,
     PollEvents,
+    /// Set the active page for drawing operations
+    SetActivePage(i32),
+    /// Set the visual page for display
+    SetVisualPage(i32),
+    /// Copy one page to another (src, dst)
+    PCopy(i32, i32),
 }
 
 impl MockBackend {
@@ -60,6 +70,8 @@ impl MockBackend {
             operations: Vec::new(),
             last_gfx_x: 0,
             last_gfx_y: 0,
+            active_page: 0,
+            visual_page: 0,
         }
     }
 
@@ -334,6 +346,40 @@ impl GraphicsBackend for MockBackend {
     fn get_screen_size(&self) -> (u32, u32) {
         (self.width, self.height)
     }
+
+    // ========================================================================
+    // Page Operations (for double-buffering and animation)
+    // ========================================================================
+
+    fn pcopy(&mut self, src: i32, dst: i32) -> Result<(), GraphicsError> {
+        if !self.initialized {
+            return Err(GraphicsError::not_initialized());
+        }
+        self.operations.push(MockOperation::PCopy(src, dst));
+        Ok(())
+    }
+
+    fn set_active_page(&mut self, page: i32) -> Result<(), GraphicsError> {
+        if !self.initialized {
+            return Err(GraphicsError::not_initialized());
+        }
+        self.active_page = page;
+        self.operations.push(MockOperation::SetActivePage(page));
+        Ok(())
+    }
+
+    fn set_visual_page(&mut self, page: i32) -> Result<(), GraphicsError> {
+        if !self.initialized {
+            return Err(GraphicsError::not_initialized());
+        }
+        self.visual_page = page;
+        self.operations.push(MockOperation::SetVisualPage(page));
+        Ok(())
+    }
+
+    fn get_pages(&self) -> (i32, i32) {
+        (self.active_page, self.visual_page)
+    }
 }
 
 #[cfg(test)]
@@ -466,5 +512,71 @@ mod tests {
 
         backend.shutdown().unwrap();
         assert!(!backend.is_initialized());
+    }
+
+    // ========================================================================
+    // Page Operation Tests
+    // ========================================================================
+
+    #[test]
+    fn test_page_defaults() {
+        let backend = MockBackend::new();
+        // Default pages are both 0
+        assert_eq!(backend.get_pages(), (0, 0));
+    }
+
+    #[test]
+    fn test_set_active_page() {
+        let mut backend = MockBackend::new();
+        backend.initialize(640, 480).unwrap();
+
+        backend.set_active_page(1).unwrap();
+        assert_eq!(backend.get_pages(), (1, 0)); // active=1, visual=0
+
+        backend.set_active_page(2).unwrap();
+        assert_eq!(backend.get_pages(), (2, 0));
+
+        // Verify operation was recorded
+        assert!(backend.has_operation(&MockOperation::SetActivePage(1)));
+        assert!(backend.has_operation(&MockOperation::SetActivePage(2)));
+    }
+
+    #[test]
+    fn test_set_visual_page() {
+        let mut backend = MockBackend::new();
+        backend.initialize(640, 480).unwrap();
+
+        backend.set_visual_page(1).unwrap();
+        assert_eq!(backend.get_pages(), (0, 1)); // active=0, visual=1
+
+        backend.set_visual_page(0).unwrap();
+        assert_eq!(backend.get_pages(), (0, 0));
+
+        // Verify operation was recorded
+        assert!(backend.has_operation(&MockOperation::SetVisualPage(1)));
+    }
+
+    #[test]
+    fn test_pcopy() {
+        let mut backend = MockBackend::new();
+        backend.initialize(640, 480).unwrap();
+
+        backend.pcopy(0, 1).unwrap();
+        backend.pcopy(1, 0).unwrap();
+
+        // Verify operations were recorded
+        assert!(backend.has_operation(&MockOperation::PCopy(0, 1)));
+        assert!(backend.has_operation(&MockOperation::PCopy(1, 0)));
+        assert_eq!(backend.operation_count(&MockOperation::PCopy(0, 0)), 2);
+    }
+
+    #[test]
+    fn test_page_operations_require_initialization() {
+        let mut backend = MockBackend::new();
+
+        // All page operations should fail when not initialized
+        assert!(backend.set_active_page(1).is_err());
+        assert!(backend.set_visual_page(1).is_err());
+        assert!(backend.pcopy(0, 1).is_err());
     }
 }
