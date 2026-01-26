@@ -21,11 +21,7 @@ See [docs/MEMORY_LIMITS.md](docs/MEMORY_LIMITS.md).
 
 ## Remaining Work (aligned with [TODO.md](TODO.md))
 
-### Graphics System (Phase 3)
-- [ ] Hardware acceleration option *(Large — GPU backend work)*
-
 ### Advanced Features (Phase 5)
-- [ ] Network stream I/O (PUT/GET with network handles)
 - [ ] Touch input support
 
 ### Tooling (Phase 6)
@@ -38,6 +34,8 @@ See [docs/MEMORY_LIMITS.md](docs/MEMORY_LIMITS.md).
 
 ## Recently Completed (moved from plan)
 
+- **Hardware acceleration** — Persistent SDL2 streaming textures with dirty flag optimization; O(1) page switches
+- **Network stream I/O** — PUT #/GET # dispatch to qb_net_* when handle < 0; EOF/LOF for network handles
 - **Alpha blending** — _BLEND, _DONTBLEND, _CLEARCOLOR in SDL2 runtime
 - **Multiple screen pages** — SCREEN active/visual page, PCOPY; 4 pages in `runtime/src/graphics/sdl2.rs`
 - **Joystick/gamepad** — STICK, STRIG, _DEVICES, _AXIS, _BUTTON, ON STRIG, STRIG ON/OFF/STOP in `runtime/src/joystick.rs` (SDL2)
