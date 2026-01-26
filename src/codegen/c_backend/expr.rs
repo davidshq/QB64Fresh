@@ -141,7 +141,10 @@ pub(super) fn emit_expr(expr: &TypedExpr, no_shell: bool) -> Result<String, Code
                     args.iter().map(|e| emit_expr(e, no_shell)).collect();
                 let args_vec = args_code?;
                 // Reorder: BASIC (start, source, search) -> C (source, search, start)
-                return Ok(format!("qb_instrrev3({}, {}, {})", args_vec[1], args_vec[2], args_vec[0]));
+                return Ok(format!(
+                    "qb_instrrev3({}, {}, {})",
+                    args_vec[1], args_vec[2], args_vec[0]
+                ));
             }
 
             // Special case: LBOUND with 2 arguments (array, dimension) uses qb_lbound2
@@ -293,10 +296,16 @@ pub(super) fn emit_expr(expr: &TypedExpr, no_shell: bool) -> Result<String, Code
                     args.iter().map(|e| emit_expr(e, no_shell)).collect();
                 let args_vec = args_code?;
                 if !args[1].basic_type.is_string() {
-                    return Ok(format!("qb_string_fill_code({}, {})", args_vec[0], args_vec[1]));
+                    return Ok(format!(
+                        "qb_string_fill_code({}, {})",
+                        args_vec[0], args_vec[1]
+                    ));
                 } else {
                     // For string argument, use qb_string_fill_str which extracts first char
-                    return Ok(format!("qb_string_fill_str({}, {})", args_vec[0], args_vec[1]));
+                    return Ok(format!(
+                        "qb_string_fill_str({}, {})",
+                        args_vec[0], args_vec[1]
+                    ));
                 }
             }
 
@@ -336,12 +345,21 @@ pub(super) fn emit_expr(expr: &TypedExpr, no_shell: bool) -> Result<String, Code
                 let args_vec = args_code?;
                 return match args_vec.len() {
                     0 => Ok("qb_selectfolderdialog(NULL, NULL)".to_string()), // No args - use NULL for both
-                    1 => Ok(format!("qb_selectfolderdialog(qb_string_data({}), NULL)", args_vec[0])), // 1 arg - convert to const char* and pass NULL for initial_dir
+                    1 => Ok(format!(
+                        "qb_selectfolderdialog(qb_string_data({}), NULL)",
+                        args_vec[0]
+                    )), // 1 arg - convert to const char* and pass NULL for initial_dir
                     2 => {
                         // 2 args - convert both to const char*
-                        Ok(format!("qb_selectfolderdialog(qb_string_data({}), qb_string_data({}))", args_vec[0], args_vec[1]))
-                    },
-                    _ => Ok(format!("qb_selectfolderdialog(qb_string_data({}), NULL)", args_vec[0])), // Default to first arg
+                        Ok(format!(
+                            "qb_selectfolderdialog(qb_string_data({}), qb_string_data({}))",
+                            args_vec[0], args_vec[1]
+                        ))
+                    }
+                    _ => Ok(format!(
+                        "qb_selectfolderdialog(qb_string_data({}), NULL)",
+                        args_vec[0]
+                    )), // Default to first arg
                 };
             }
 

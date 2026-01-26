@@ -33,7 +33,6 @@ mod io;
 pub(in crate::codegen::c_backend) use definitions::emit_params;
 
 use std::collections::HashMap;
-use std::fmt::Write;
 
 use crate::ast::{
     AllowFullScreenMode, EventControlMode, ExitType, FullScreenMode, ImageScaleMode, PrintSeparator,
@@ -43,6 +42,7 @@ use crate::semantic::typed_ir::{
     TypedExprKind, TypedInputTarget, TypedStatement, TypedStatementKind,
 };
 use crate::semantic::types::BasicType;
+use crate::writeln_code;
 
 use super::expr::{emit_expr, emit_string_data_access, escape_string};
 use super::types::{c_identifier, c_type, default_init};
@@ -102,6 +102,7 @@ pub(super) struct StmtEmitter {
 
 impl StmtEmitter {
     /// Creates a new statement emitter.
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self::with_runtime_mode(super::RuntimeMode::Inline)
     }
@@ -176,9 +177,13 @@ impl StmtEmitter {
     ///
     /// This calls `qb_dbg_line(line, file)` before executing the actual statement,
     /// allowing the debugger to check breakpoints and step mode.
-    fn emit_debug_line(&self, stmt: &TypedStatement, output: &mut String) {
+    fn emit_debug_line(
+        &self,
+        stmt: &TypedStatement,
+        output: &mut String,
+    ) -> Result<(), CodeGenError> {
         if !self.debug_enabled {
-            return;
+            return Ok(());
         }
 
         // Extract line number from span
@@ -193,7 +198,7 @@ impl StmtEmitter {
 
         // For now, use byte offset as line (the runtime can compute actual line number)
         // TODO: Store actual line numbers during parsing
-        writeln!(
+        writeln_code!(
             output,
             "{}qb_dbg_line({}, {});",
             indent,
@@ -203,8 +208,8 @@ impl StmtEmitter {
             } else {
                 format!("\"{}\"", file.replace('\\', "\\\\").replace('"', "\\\""))
             }
-        )
-        .unwrap();
+        )?;
+        Ok(())
     }
 
     /// Emits a statement.
@@ -218,7 +223,7 @@ impl StmtEmitter {
         // Emit debug line hook for executable statements
         // (skip labels, data, declarations that don't execute)
         if self.debug_enabled && Self::is_executable_statement(&stmt.kind) {
-            self.emit_debug_line(stmt, output);
+            self.emit_debug_line(stmt, output)?;
         }
 
         match &stmt.kind {
@@ -281,10 +286,13 @@ impl StmtEmitter {
                 let target_code = emit_expr(target, self.no_shell)?;
                 let start_code = emit_expr(start, self.no_shell)?;
                 let value_code = emit_expr(value, self.no_shell)?;
-                
+
                 // Check if target is a fixed-length string (char array)
                 // Fixed-length strings need manual character copying, not qb_mid_assign
-                if matches!(target.basic_type, crate::semantic::types::BasicType::FixedString(_)) {
+                if matches!(
+                    target.basic_type,
+                    crate::semantic::types::BasicType::FixedString(_)
+                ) {
                     // For fixed-length strings, manually copy characters
                     let len_code = if let Some(len_expr) = length {
                         emit_expr(len_expr, self.no_shell)?
@@ -296,30 +304,43 @@ impl StmtEmitter {
                         super::RuntimeMode::External => "qb_string_data(_mid_val)",
                         super::RuntimeMode::Inline => "_mid_val->data",
                     };
-                    writeln!(
+                    writeln_code!(
                         output,
                         "{} {{ qb_string* _mid_val = {}; if (_mid_val) {{ int32_t _mid_start = {} - 1; int32_t _mid_len = {}; int32_t _mid_copy_len = _mid_len < (int32_t)strlen({}) ? _mid_len : (int32_t)strlen({}); if (_mid_start >= 0 && _mid_start < (int32_t)strlen({})) {{ strncpy({} + _mid_start, {}, _mid_copy_len); }} }} }}",
-                        indent, value_code, start_code, len_code, target_code, target_code, target_code, target_code, data_access
-                    ).unwrap();
+                        indent,
+                        value_code,
+                        start_code,
+                        len_code,
+                        target_code,
+                        target_code,
+                        target_code,
+                        target_code,
+                        data_access
+                    )?;
                 } else {
                     // For dynamic strings (QbString*), use qb_mid_assign
                     // We need to pass its address to qb_mid_assign
                     if let Some(len_expr) = length {
                         let len_code = emit_expr(len_expr, self.no_shell)?;
-                        writeln!(
+                        writeln_code!(
                             output,
                             "{}qb_mid_assign(&({}), {}, {}, {});",
-                            indent, target_code, start_code, len_code, value_code
-                        )
-                        .unwrap();
+                            indent,
+                            target_code,
+                            start_code,
+                            len_code,
+                            value_code
+                        )?;
                     } else {
                         // No length specified - use -1 to indicate "rest of string"
-                        writeln!(
+                        writeln_code!(
                             output,
                             "{}qb_mid_assign(&({}), {}, -1, {});",
-                            indent, target_code, start_code, value_code
-                        )
-                        .unwrap();
+                            indent,
+                            target_code,
+                            start_code,
+                            value_code
+                        )?;
                     }
                 }
             }
@@ -334,12 +355,14 @@ impl StmtEmitter {
                 let target_code = emit_expr(target, self.no_shell)?;
                 let position_code = emit_expr(position, self.no_shell)?;
                 let value_code = emit_expr(value, self.no_shell)?;
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_asc_assign(&({}), {}, {});",
-                    indent, target_code, position_code, value_code
-                )
-                .unwrap();
+                    indent,
+                    target_code,
+                    position_code,
+                    value_code
+                )?;
             }
 
             TypedStatementKind::Print { items, newline } => {
@@ -347,7 +370,7 @@ impl StmtEmitter {
                     self.emit_print_item(item, output)?;
                 }
                 if *newline {
-                    writeln!(output, "{}qb_print_newline();", indent).unwrap();
+                    writeln_code!(output, "{}qb_print_newline();", indent)?;
                 }
             }
 
@@ -361,66 +384,73 @@ impl StmtEmitter {
                 // We use a runtime function that handles format string parsing
                 if values.is_empty() {
                     // Just print the format string as-is if no values
-                    writeln!(
+                    writeln_code!(
                         output,
                         "{}qb_print_using({}, NULL, 0);",
-                        indent, format_code
-                    )
-                    .unwrap();
+                        indent,
+                        format_code
+                    )?;
                 } else {
                     // Build array of values
-                    writeln!(output, "{}{{", indent).unwrap();
-                    writeln!(output, "{}    QbPrintValue _pv[{}];", indent, values.len()).unwrap();
+                    writeln_code!(output, "{}{{", indent)?;
+                    writeln_code!(output, "{}    QbPrintValue _pv[{}];", indent, values.len())?;
                     for (i, value) in values.iter().enumerate() {
                         let value_code = emit_expr(value, self.no_shell)?;
                         match &value.basic_type {
                             BasicType::String => {
-                                writeln!(
+                                writeln_code!(
                                     output,
                                     "{}    _pv[{}].type = QB_TYPE_STRING; _pv[{}].str_val = {};",
-                                    indent, i, i, value_code
-                                )
-                                .unwrap();
+                                    indent,
+                                    i,
+                                    i,
+                                    value_code
+                                )?;
                             }
                             BasicType::Integer | BasicType::Long => {
-                                writeln!(
+                                writeln_code!(
                                     output,
                                     "{}    _pv[{}].type = QB_TYPE_INT; _pv[{}].int_val = (int64_t){};",
-                                    indent, i, i, value_code
-                                )
-                                .unwrap();
+                                    indent,
+                                    i,
+                                    i,
+                                    value_code
+                                )?;
                             }
                             BasicType::Single | BasicType::Double => {
-                                writeln!(
+                                writeln_code!(
                                     output,
                                     "{}    _pv[{}].type = QB_TYPE_DOUBLE; _pv[{}].dbl_val = (double){};",
-                                    indent, i, i, value_code
-                                )
-                                .unwrap();
+                                    indent,
+                                    i,
+                                    i,
+                                    value_code
+                                )?;
                             }
                             _ => {
                                 // For other types, try to convert to double
-                                writeln!(
+                                writeln_code!(
                                     output,
                                     "{}    _pv[{}].type = QB_TYPE_DOUBLE; _pv[{}].dbl_val = (double){};",
-                                    indent, i, i, value_code
-                                )
-                                .unwrap();
+                                    indent,
+                                    i,
+                                    i,
+                                    value_code
+                                )?;
                             }
                         }
                     }
-                    writeln!(
+                    writeln_code!(
                         output,
                         "{}    qb_print_using({}, _pv, {});",
                         indent,
                         format_code,
                         values.len()
-                    )
-                    .unwrap();
-                    writeln!(output, "{}}}", indent).unwrap();
+                    )?;
+                    writeln_code!(output, "{}}}", indent)?;
                 }
                 if *newline {
-                    writeln!(output, "{}qb_print_newline();", indent).unwrap();
+                    writeln_code!(output, "{}qb_print_newline();", indent)?;
                 }
             }
 
@@ -479,12 +509,13 @@ impl StmtEmitter {
                     Some(p) => format!("\"{}\"", escape_string(p)),
                     None => "NULL".to_string(),
                 };
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_input_string({}, &{});",
-                    indent, prompt_arg, target_code
-                )
-                .unwrap();
+                    indent,
+                    prompt_arg,
+                    target_code
+                )?;
             }
 
             TypedStatementKind::If {
@@ -544,31 +575,30 @@ impl StmtEmitter {
 
             TypedStatementKind::Goto { target } => {
                 let c_label = self.proc_label(target);
-                writeln!(output, "{}goto {};", indent, c_label).unwrap();
+                writeln_code!(output, "{}goto {};", indent, c_label)?;
             }
 
             TypedStatementKind::Gosub { target } => {
                 let c_label = self.proc_label(target);
                 let return_label = self.next_label("gosub_ret");
                 // Push return address onto stack and jump to subroutine
-                writeln!(
+                writeln_code!(
                     output,
                     "{}_gosub_stack[_gosub_sp++] = &&{};",
-                    indent, return_label
-                )
-                .unwrap();
-                writeln!(output, "{}goto {};", indent, c_label).unwrap();
-                writeln!(output, "{}{}:;", indent, return_label).unwrap();
+                    indent,
+                    return_label
+                )?;
+                writeln_code!(output, "{}goto {};", indent, c_label)?;
+                writeln_code!(output, "{}{}:;", indent, return_label)?;
             }
 
             TypedStatementKind::Return => {
                 // RETURN from GOSUB - pop return address from stack and jump
-                writeln!(
+                writeln_code!(
                     output,
                     "{}if (_gosub_sp > 0) goto *_gosub_stack[--_gosub_sp];",
                     indent
-                )
-                .unwrap();
+                )?;
             }
 
             TypedStatementKind::Exit { exit_type } => {
@@ -578,33 +608,33 @@ impl StmtEmitter {
             TypedStatementKind::End { exit_code } => {
                 if let Some(code) = exit_code {
                     let code_expr = emit_expr(code, self.no_shell)?;
-                    writeln!(output, "{}exit((int){});", indent, code_expr).unwrap();
+                    writeln_code!(output, "{}exit((int){});", indent, code_expr)?;
                 } else {
-                    writeln!(output, "{}exit(0);", indent).unwrap();
+                    writeln_code!(output, "{}exit(0);", indent)?;
                 }
             }
 
             TypedStatementKind::Stop => {
-                writeln!(output, "{}/* STOP */", indent).unwrap();
-                writeln!(output, "{}exit(1);", indent).unwrap();
+                writeln_code!(output, "{}/* STOP */", indent)?;
+                writeln_code!(output, "{}exit(1);", indent)?;
             }
 
             TypedStatementKind::System { exit_code } => {
                 if let Some(code) = exit_code {
                     let code_expr = emit_expr(code, self.no_shell)?;
-                    writeln!(output, "{}exit((int){});", indent, code_expr).unwrap();
+                    writeln_code!(output, "{}exit((int){});", indent, code_expr)?;
                 } else {
-                    writeln!(output, "{}exit(0);", indent).unwrap();
+                    writeln_code!(output, "{}exit(0);", indent)?;
                 }
             }
 
             TypedStatementKind::Sleep { seconds } => {
                 if let Some(secs) = seconds {
                     let secs_code = emit_expr(secs, self.no_shell)?;
-                    writeln!(output, "{}qb_sleep((int){});", indent, secs_code).unwrap();
+                    writeln_code!(output, "{}qb_sleep((int){});", indent, secs_code)?;
                 } else {
                     // No argument - wait for keypress
-                    writeln!(output, "{}qb_sleep_keypress();", indent).unwrap();
+                    writeln_code!(output, "{}qb_sleep_keypress();", indent)?;
                 }
             }
 
@@ -617,61 +647,63 @@ impl StmtEmitter {
                 let and_code = emit_expr(and_mask, self.no_shell)?;
                 if let Some(xor) = xor_mask {
                     let xor_code = emit_expr(xor, self.no_shell)?;
-                    writeln!(
+                    writeln_code!(
                         output,
                         "{}qb_wait((int){}, (int){}, (int){});",
-                        indent, port_code, and_code, xor_code
-                    )
-                    .unwrap();
+                        indent,
+                        port_code,
+                        and_code,
+                        xor_code
+                    )?;
                 } else {
-                    writeln!(
+                    writeln_code!(
                         output,
                         "{}qb_wait((int){}, (int){}, 0);",
-                        indent, port_code, and_code
-                    )
-                    .unwrap();
+                        indent,
+                        port_code,
+                        and_code
+                    )?;
                 }
             }
 
             TypedStatementKind::Delay { seconds } => {
                 let secs_code = emit_expr(seconds, self.no_shell)?;
-                writeln!(output, "{}qb_delay({});", indent, secs_code).unwrap();
+                writeln_code!(output, "{}qb_delay({});", indent, secs_code)?;
             }
 
             TypedStatementKind::Limit { fps } => {
                 let fps_code = emit_expr(fps, self.no_shell)?;
-                writeln!(output, "{}qb_limit((int){});", indent, fps_code).unwrap();
+                writeln_code!(output, "{}qb_limit((int){});", indent, fps_code)?;
                 // STRIG event check after _LIMIT (common in game loops)
                 let return_label = self.next_label("strig_ret");
-                writeln!(output, "{}/* STRIG event check */", indent).unwrap();
-                writeln!(
+                writeln_code!(output, "{}/* STRIG event check */", indent)?;
+                writeln_code!(
                     output,
                     "{}_qb_strig_event_id = qb_strig_check_event();",
                     indent
-                )
-                .unwrap();
-                writeln!(output, "{}if (_qb_strig_event_id) {{", indent).unwrap();
-                writeln!(
+                )?;
+                writeln_code!(output, "{}if (_qb_strig_event_id) {{", indent)?;
+                writeln_code!(
                     output,
                     "{}    _gosub_stack[_gosub_sp++] = &&{};",
-                    indent, return_label
-                )
-                .unwrap();
-                writeln!(output, "{}    goto _qb_strig_dispatch;", indent).unwrap();
-                writeln!(output, "{}}}", indent).unwrap();
-                writeln!(output, "{}{}:;", indent, return_label).unwrap();
-                writeln!(output, "{}qb_strig_event_done();", indent).unwrap();
+                    indent,
+                    return_label
+                )?;
+                writeln_code!(output, "{}    goto _qb_strig_dispatch;", indent)?;
+                writeln_code!(output, "{}}}", indent)?;
+                writeln_code!(output, "{}{}:;", indent, return_label)?;
+                writeln_code!(output, "{}qb_strig_event_done();", indent)?;
             }
 
             TypedStatementKind::Erase { arrays } => {
                 for array_name in arrays {
                     let c_name = c_identifier(array_name).to_lowercase();
-                    writeln!(output, "{}qb_array_erase(&arr_{});", indent, c_name).unwrap();
+                    writeln_code!(output, "{}qb_array_erase(&arr_{});", indent, c_name)?;
                 }
             }
 
             TypedStatementKind::KeyClear => {
-                writeln!(output, "{}qb_keyclear();", indent).unwrap();
+                writeln_code!(output, "{}qb_keyclear();", indent)?;
             }
 
             TypedStatementKind::Call { name, args, params } => {
@@ -773,8 +805,7 @@ impl StmtEmitter {
                             2 => {
                                 // Add implicit 0 for handle
                                 let full_args = format!("{}, 0", args_str);
-                                writeln!(output, "{}qb_palettecolor({});", indent, full_args)
-                                    .unwrap();
+                                writeln_code!(output, "{}qb_palettecolor({});", indent, full_args)?;
                                 return Ok(());
                             }
                             _ => "qb_palettecolor".to_string(),
@@ -835,14 +866,14 @@ impl StmtEmitter {
 
                 // If we have temp declarations, wrap in a block
                 if temp_decls.is_empty() {
-                    writeln!(output, "{}{}({});", indent, c_name, args_str).unwrap();
+                    writeln_code!(output, "{}{}({});", indent, c_name, args_str)?;
                 } else {
-                    writeln!(output, "{}{{ ", indent).unwrap();
+                    writeln_code!(output, "{}{{ ", indent)?;
                     for decl in temp_decls {
-                        writeln!(output, "{}    {}", indent, decl).unwrap();
+                        writeln_code!(output, "{}    {}", indent, decl)?;
                     }
-                    writeln!(output, "{}    {}({});", indent, c_name, args_str).unwrap();
-                    writeln!(output, "{}}}", indent).unwrap();
+                    writeln_code!(output, "{}    {}({});", indent, c_name, args_str)?;
+                    writeln_code!(output, "{}}}", indent)?;
                 }
             }
 
@@ -888,15 +919,14 @@ impl StmtEmitter {
                 for (name, value, _basic_type) in definitions {
                     let c_name = c_identifier(name);
                     let value_code = emit_expr(value, self.no_shell)?;
-                    writeln!(
+                    writeln_code!(
                         output,
                         "{}const {} {} = {};",
                         indent,
                         c_type(&value.basic_type),
                         c_name,
                         value_code
-                    )
-                    .unwrap();
+                    )?;
                 }
             }
 
@@ -926,10 +956,10 @@ impl StmtEmitter {
                 // for compatibility with PEEK/POKE/BLOAD/BSAVE.
                 if let Some(seg_expr) = segment {
                     let seg_code = emit_expr(seg_expr, self.no_shell)?;
-                    writeln!(output, "{}qb_def_seg((int32_t){});", indent, seg_code).unwrap();
+                    writeln_code!(output, "{}qb_def_seg((int32_t){});", indent, seg_code)?;
                 } else {
                     // DEF SEG without argument resets to default segment
-                    writeln!(output, "{}qb_def_seg(-1);", indent).unwrap();
+                    writeln_code!(output, "{}qb_def_seg(-1);", indent)?;
                 }
             }
 
@@ -937,12 +967,13 @@ impl StmtEmitter {
                 // POKE writes a byte to memory within the current segment.
                 let addr_code = emit_expr(address, self.no_shell)?;
                 let val_code = emit_expr(value, self.no_shell)?;
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_poke((int32_t){}, (uint8_t){});",
-                    indent, addr_code, val_code
-                )
-                .unwrap();
+                    indent,
+                    addr_code,
+                    val_code
+                )?;
             }
 
             TypedStatementKind::MemPutTyped {
@@ -958,11 +989,10 @@ impl StmtEmitter {
                 let offset_code = emit_expr(offset, self.no_shell)?;
                 let value_code = emit_expr(value, self.no_shell)?;
                 let c_ty = c_type(value_type);
-                writeln!(
+                writeln_code!(
                     output,
                     "{indent}*(({c_ty}*)((char*)({mem_code}).offset + ({offset_code}))) = ({c_ty})({value_code});"
-                )
-                .unwrap();
+                )?;
             }
 
             TypedStatementKind::Label { name } => {
@@ -970,21 +1000,21 @@ impl StmtEmitter {
                 // Skip duplicate labels (can occur from ambiguous parsing of
                 // "SubName: AnotherSub" patterns that look like labels)
                 if self.emitted_labels.insert(c_label.clone()) {
-                    writeln!(output, "{}:", c_label).unwrap();
+                    writeln_code!(output, "{}:", c_label)?;
                 }
             }
 
             TypedStatementKind::Comment(text) => {
-                writeln!(output, "{}/* {} */", indent, text).unwrap();
+                writeln_code!(output, "{}/* {} */", indent, text)?;
             }
 
             TypedStatementKind::Expression(expr) => {
                 let expr_code = emit_expr(expr, self.no_shell)?;
-                writeln!(output, "{}{};", indent, expr_code).unwrap();
+                writeln_code!(output, "{}{};", indent, expr_code)?;
             }
 
             TypedStatementKind::IncludeDirective { path } => {
-                writeln!(output, "{}/* $INCLUDE: '{}' */", indent, path).unwrap();
+                writeln_code!(output, "{}/* $INCLUDE: '{}' */", indent, path)?;
             }
 
             TypedStatementKind::ConditionalBlock {
@@ -995,23 +1025,23 @@ impl StmtEmitter {
             } => {
                 // Unevaluated conditional block - emit all branches as comments
                 // (This case should be rare now that conditions are evaluated)
-                writeln!(output, "{}/* $IF {} */", indent, condition).unwrap();
+                writeln_code!(output, "{}/* $IF {} */", indent, condition)?;
                 for s in then_branch {
                     self.emit_stmt(s, output)?;
                 }
                 for (elseif_cond, elseif_body) in elseif_branches {
-                    writeln!(output, "{}/* $ELSEIF {} */", indent, elseif_cond).unwrap();
+                    writeln_code!(output, "{}/* $ELSEIF {} */", indent, elseif_cond)?;
                     for s in elseif_body {
                         self.emit_stmt(s, output)?;
                     }
                 }
                 if let Some(else_body) = else_branch {
-                    writeln!(output, "{}/* $ELSE */", indent).unwrap();
+                    writeln_code!(output, "{}/* $ELSE */", indent)?;
                     for s in else_body {
                         self.emit_stmt(s, output)?;
                     }
                 }
-                writeln!(output, "{}/* $END IF */", indent).unwrap();
+                writeln_code!(output, "{}/* $END IF */", indent)?;
             }
 
             TypedStatementKind::ConditionalBlockResolved {
@@ -1020,12 +1050,12 @@ impl StmtEmitter {
             } => {
                 // Evaluated conditional block - only emit the selected branch
                 if !statements.is_empty() {
-                    writeln!(
+                    writeln_code!(
                         output,
                         "{}/* Conditional compilation: {} */",
-                        indent, original_condition
-                    )
-                    .unwrap();
+                        indent,
+                        original_condition
+                    )?;
                     for s in statements {
                         self.emit_stmt(s, output)?;
                     }
@@ -1036,38 +1066,38 @@ impl StmtEmitter {
 
             TypedStatementKind::MetaCommand { command, args } => {
                 let args_str = args.as_deref().unwrap_or("");
-                writeln!(output, "{}/* ${} {} */", indent, command, args_str).unwrap();
+                writeln_code!(output, "{}/* ${} {} */", indent, command, args_str)?;
             }
 
             TypedStatementKind::MetaLet { name, value } => {
                 // Compile-time variable assignment - generates a comment
-                writeln!(output, "{}/* $LET {} = {} */", indent, name, value).unwrap();
+                writeln_code!(output, "{}/* $LET {} = {} */", indent, name, value)?;
             }
 
             TypedStatementKind::MetaChecking { enabled } => {
                 // Compile-time bounds checking directive - generates a comment
                 let state = if *enabled { "ON" } else { "OFF" };
-                writeln!(output, "{}/* $CHECKING:{} */", indent, state).unwrap();
+                writeln_code!(output, "{}/* $CHECKING:{} */", indent, state)?;
             }
 
             TypedStatementKind::MetaConsole { only } => {
                 // Console mode directive - affects program initialization
                 // For now, generate a comment; actual console setup is runtime-dependent
                 if *only {
-                    writeln!(output, "{}/* $CONSOLE:ONLY - console-only mode */", indent).unwrap();
+                    writeln_code!(output, "{}/* $CONSOLE:ONLY - console-only mode */", indent)?;
                 } else {
-                    writeln!(output, "{}/* $CONSOLE - enable console window */", indent).unwrap();
+                    writeln_code!(output, "{}/* $CONSOLE - enable console window */", indent)?;
                 }
             }
 
             TypedStatementKind::MetaScreenHide => {
                 // Hide graphics window on startup
-                writeln!(output, "{}/* $SCREENHIDE */", indent).unwrap();
+                writeln_code!(output, "{}/* $SCREENHIDE */", indent)?;
             }
 
             TypedStatementKind::MetaScreenShow => {
                 // Show graphics window on startup (default)
-                writeln!(output, "{}/* $SCREENSHOW */", indent).unwrap();
+                writeln_code!(output, "{}/* $SCREENSHOW */", indent)?;
             }
 
             TypedStatementKind::Swap { left, right } => {
@@ -1078,31 +1108,33 @@ impl StmtEmitter {
                 // Fixed-length strings need special handling (C arrays can't be assigned directly)
                 if let BasicType::FixedString(n) = &left.basic_type {
                     // For fixed-length strings, use strcpy for the swap
-                    writeln!(output, "{}{{ char {}[{}];", indent, temp_var, n + 1).unwrap();
-                    writeln!(output, "{}    strcpy({}, {});", indent, temp_var, left_code).unwrap();
-                    writeln!(
+                    writeln_code!(output, "{}{{ char {}[{}];", indent, temp_var, n + 1)?;
+                    writeln_code!(output, "{}    strcpy({}, {});", indent, temp_var, left_code)?;
+                    writeln_code!(
                         output,
                         "{}    strcpy({}, {});",
-                        indent, left_code, right_code
-                    )
-                    .unwrap();
-                    writeln!(
+                        indent,
+                        left_code,
+                        right_code
+                    )?;
+                    writeln_code!(
                         output,
                         "{}    strcpy({}, {}); }}",
-                        indent, right_code, temp_var
-                    )
-                    .unwrap();
+                        indent,
+                        right_code,
+                        temp_var
+                    )?;
                 } else {
                     let c_ty = c_type(&left.basic_type);
-                    writeln!(output, "{}{} {} = {};", indent, c_ty, temp_var, left_code).unwrap();
-                    writeln!(output, "{}{} = {};", indent, left_code, right_code).unwrap();
-                    writeln!(output, "{}{} = {};", indent, right_code, temp_var).unwrap();
+                    writeln_code!(output, "{}{} {} = {};", indent, c_ty, temp_var, left_code)?;
+                    writeln_code!(output, "{}{} = {};", indent, left_code, right_code)?;
+                    writeln_code!(output, "{}{} = {};", indent, right_code, temp_var)?;
                 }
             }
 
             TypedStatementKind::Continue { continue_type } => {
                 let _ = continue_type;
-                writeln!(output, "{}continue;", indent).unwrap();
+                writeln_code!(output, "{}continue;", indent)?;
             }
 
             TypedStatementKind::TypeDefinition { .. } => {
@@ -1127,11 +1159,11 @@ impl StmtEmitter {
                     // RANDOMIZE expr - seed with specific value
                     // TIMER is just a function call in the expression, no special handling needed
                     let seed_code = emit_expr(seed_expr, self.no_shell)?;
-                    writeln!(output, "{}qb_randomize((double)({}));", indent, seed_code).unwrap();
+                    writeln_code!(output, "{}qb_randomize((double)({}));", indent, seed_code)?;
                 } else {
                     // RANDOMIZE without arguments - for compatibility, use timer
                     // (in original BASIC, this would prompt the user)
-                    writeln!(output, "{}qb_randomize_timer();", indent).unwrap();
+                    writeln_code!(output, "{}qb_randomize_timer();", indent)?;
                 }
             }
 
@@ -1266,24 +1298,22 @@ impl StmtEmitter {
                 // COMMON is handled at program level, emit a comment here
                 let _ = shared;
                 let _ = variables;
-                writeln!(
+                writeln_code!(
                     output,
                     "{}/* COMMON statement - handled at program level */",
                     indent
-                )
-                .unwrap();
+                )?;
             }
 
             TypedStatementKind::SharedStmt { variables } => {
                 // SHARED inside SUB/FUNCTION declares access to module-level shared vars
                 // In C, these are already global, so just emit a comment
                 let _ = variables;
-                writeln!(
+                writeln_code!(
                     output,
                     "{}/* SHARED statement - variables accessed from module level */",
                     indent
-                )
-                .unwrap();
+                )?;
             }
 
             TypedStatementKind::StaticStmt { variables } => {
@@ -1301,8 +1331,7 @@ impl StmtEmitter {
                             BasicType::String => "NULL".to_string(),
                             _ => default_init(&var.basic_type),
                         };
-                        writeln!(output, "{}static {} {} = {};", indent, c_ty, c_name, init)
-                            .unwrap();
+                        writeln_code!(output, "{}static {} {} = {};", indent, c_ty, c_name, init)?;
                     } else {
                         // Static array
                         let sizes: Vec<String> = var
@@ -1311,12 +1340,14 @@ impl StmtEmitter {
                             .map(|d| format!("{}", d.upper - d.lower + 1))
                             .collect();
                         let array_dims = sizes.join("][");
-                        writeln!(
+                        writeln_code!(
                             output,
                             "{}static {} {}[{}] = {{0}};",
-                            indent, c_ty, c_name, array_dims
-                        )
-                        .unwrap();
+                            indent,
+                            c_ty,
+                            c_name,
+                            array_dims
+                        )?;
                     }
                 }
             }
@@ -1370,20 +1401,23 @@ impl StmtEmitter {
                     .map(|e| emit_expr(e, self.no_shell))
                     .transpose()?
                     .unwrap_or_else(|| "-1".to_string());
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_gfx_screen((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){});",
-                    indent, mode_code, color_code, apage_code, vpage_code
-                )
-                .unwrap();
+                    indent,
+                    mode_code,
+                    color_code,
+                    apage_code,
+                    vpage_code
+                )?;
             }
 
             TypedStatementKind::Cls { mode } => {
                 if let Some(mode_expr) = mode {
                     let mode_code = emit_expr(mode_expr, self.no_shell)?;
-                    writeln!(output, "{}qb_gfx_cls_mode((int32_t){});", indent, mode_code).unwrap();
+                    writeln_code!(output, "{}qb_gfx_cls_mode((int32_t){});", indent, mode_code)?;
                 } else {
-                    writeln!(output, "{}qb_gfx_cls();", indent).unwrap();
+                    writeln_code!(output, "{}qb_gfx_cls();", indent)?;
                 }
             }
 
@@ -1409,12 +1443,13 @@ impl StmtEmitter {
                     .as_ref()
                     .map(|e| emit_expr(e, self.no_shell))
                     .transpose()?;
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_gfx_color((int32_t){}, (int32_t){});",
-                    indent, fg_code, bg_code
-                )
-                .unwrap();
+                    indent,
+                    fg_code,
+                    bg_code
+                )?;
             }
 
             TypedStatementKind::Locate { row, col } => {
@@ -1429,12 +1464,13 @@ impl StmtEmitter {
                     .map(|e| emit_expr(e, self.no_shell))
                     .transpose()?
                     .unwrap_or("-1".to_string());
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_gfx_locate((int32_t){}, (int32_t){});",
-                    indent, row_code, col_code
-                )
-                .unwrap();
+                    indent,
+                    row_code,
+                    col_code
+                )?;
             }
 
             TypedStatementKind::Pset { step, x, y, color } => {
@@ -1443,20 +1479,25 @@ impl StmtEmitter {
                 let step_int = if *step { 1 } else { 0 };
                 if let Some(c) = color {
                     let c_code = emit_expr(c, self.no_shell)?;
-                    writeln!(
+                    writeln_code!(
                         output,
                         "{}qb_gfx_pset_step((int32_t){}, (int32_t){}, (uint32_t){}, {});",
-                        indent, x_code, y_code, c_code, step_int
-                    )
-                    .unwrap();
+                        indent,
+                        x_code,
+                        y_code,
+                        c_code,
+                        step_int
+                    )?;
                 } else {
                     // Use current foreground color (pass -1 to signal "use current")
-                    writeln!(
+                    writeln_code!(
                         output,
                         "{}qb_gfx_pset_step((int32_t){}, (int32_t){}, 0xFFFFFFFF, {});",
-                        indent, x_code, y_code, step_int
-                    )
-                    .unwrap();
+                        indent,
+                        x_code,
+                        y_code,
+                        step_int
+                    )?;
                 }
             }
 
@@ -1465,12 +1506,14 @@ impl StmtEmitter {
                 let y_code = emit_expr(y, self.no_shell)?;
                 let step_int = if *step { 1 } else { 0 };
                 // PRESET plots in background color - pass 0 (black) by default
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_gfx_pset_step((int32_t){}, (int32_t){}, 0xFF000000, {});",
-                    indent, x_code, y_code, step_int
-                )
-                .unwrap();
+                    indent,
+                    x_code,
+                    y_code,
+                    step_int
+                )?;
             }
 
             TypedStatementKind::Line {
@@ -1510,18 +1553,45 @@ impl StmtEmitter {
                 match box_style {
                     None => {
                         // Plain line: qb_gfx_line_step(x1, y1, x2, y2, color, step1, step2)
-                        writeln!(output, "{}qb_gfx_line_step((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (uint32_t){}, 0, {});",
-                                 indent, x1_code, y1_code, x2_code, y2_code, color_code, step2_flag).unwrap();
+                        writeln_code!(
+                            output,
+                            "{}qb_gfx_line_step((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (uint32_t){}, 0, {});",
+                            indent,
+                            x1_code,
+                            y1_code,
+                            x2_code,
+                            y2_code,
+                            color_code,
+                            step2_flag
+                        )?;
                     }
                     Some(false) => {
                         // Box (outline): qb_gfx_box_step(x1, y1, x2, y2, color, filled, step1, step2)
-                        writeln!(output, "{}qb_gfx_box_step((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (uint32_t){}, 0, 0, {});",
-                                 indent, x1_code, y1_code, x2_code, y2_code, color_code, step2_flag).unwrap();
+                        writeln_code!(
+                            output,
+                            "{}qb_gfx_box_step((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (uint32_t){}, 0, 0, {});",
+                            indent,
+                            x1_code,
+                            y1_code,
+                            x2_code,
+                            y2_code,
+                            color_code,
+                            step2_flag
+                        )?;
                     }
                     Some(true) => {
                         // Filled box: qb_gfx_box_step(x1, y1, x2, y2, color, filled, step1, step2)
-                        writeln!(output, "{}qb_gfx_box_step((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (uint32_t){}, 1, 0, {});",
-                                 indent, x1_code, y1_code, x2_code, y2_code, color_code, step2_flag).unwrap();
+                        writeln_code!(
+                            output,
+                            "{}qb_gfx_box_step((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (uint32_t){}, 1, 0, {});",
+                            indent,
+                            x1_code,
+                            y1_code,
+                            x2_code,
+                            y2_code,
+                            color_code,
+                            step2_flag
+                        )?;
                     }
                 }
             }
@@ -1544,12 +1614,17 @@ impl StmtEmitter {
                 };
                 let filled_int = if *filled { 1 } else { 0 };
                 let step_int = if *step { 1 } else { 0 };
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_gfx_circle_step((int32_t){}, (int32_t){}, (int32_t){}, (uint32_t){}, {}, {});",
-                    indent, x_code, y_code, r_code, color_code, filled_int, step_int
-                )
-                .unwrap();
+                    indent,
+                    x_code,
+                    y_code,
+                    r_code,
+                    color_code,
+                    filled_int,
+                    step_int
+                )?;
             }
 
             TypedStatementKind::Paint {
@@ -1572,26 +1647,29 @@ impl StmtEmitter {
                     color_code.clone() // Default border = fill color
                 };
                 let step_int = if *step { 1 } else { 0 };
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_gfx_paint_step((int32_t){}, (int32_t){}, (uint32_t){}, (uint32_t){}, {});",
-                    indent, x_code, y_code, color_code, border_code, step_int
-                )
-                .unwrap();
+                    indent,
+                    x_code,
+                    y_code,
+                    color_code,
+                    border_code,
+                    step_int
+                )?;
             }
 
             TypedStatementKind::GfxDisplay => {
-                writeln!(output, "{}qb_gfx_display();", indent).unwrap();
+                writeln_code!(output, "{}qb_gfx_display();", indent)?;
             }
 
             TypedStatementKind::ControlChr { enabled } => {
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_controlchr({});",
                     indent,
                     if *enabled { "1" } else { "0" }
-                )
-                .unwrap();
+                )?;
             }
 
             TypedStatementKind::MapUnicode {
@@ -1600,22 +1678,22 @@ impl StmtEmitter {
             } => {
                 let unicode_code = emit_expr(unicode_value, self.no_shell)?;
                 let char_code = emit_expr(char_position, self.no_shell)?;
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_mapunicode((int32_t){}, (int32_t){});",
-                    indent, unicode_code, char_code
-                )
-                .unwrap();
+                    indent,
+                    unicode_code,
+                    char_code
+                )?;
             }
 
             TypedStatementKind::GfxResize { enabled } => {
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_gfx_resize({});",
                     indent,
                     if *enabled { "1" } else { "0" }
-                )
-                .unwrap();
+                )?;
             }
 
             TypedStatementKind::Palette { attribute, color } => {
@@ -1623,16 +1701,17 @@ impl StmtEmitter {
                     (Some(attr), Some(col)) => {
                         let attr_code = emit_expr(attr, self.no_shell)?;
                         let col_code = emit_expr(col, self.no_shell)?;
-                        writeln!(
+                        writeln_code!(
                             output,
                             "{}qb_gfx_palette((int32_t){}, (uint32_t){});",
-                            indent, attr_code, col_code
-                        )
-                        .unwrap();
+                            indent,
+                            attr_code,
+                            col_code
+                        )?;
                     }
                     _ => {
                         // PALETTE without arguments - reset all palette entries
-                        writeln!(output, "{}qb_gfx_palette_reset();", indent).unwrap();
+                        writeln_code!(output, "{}qb_gfx_palette_reset();", indent)?;
                     }
                 }
             }
@@ -1640,12 +1719,13 @@ impl StmtEmitter {
             TypedStatementKind::Pcopy { source, dest } => {
                 let src_code = emit_expr(source, self.no_shell)?;
                 let dst_code = emit_expr(dest, self.no_shell)?;
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_gfx_pcopy((int32_t){}, (int32_t){});",
-                    indent, src_code, dst_code
-                )
-                .unwrap();
+                    indent,
+                    src_code,
+                    dst_code
+                )?;
             }
 
             // ==================== Additional Graphics Statements ====================
@@ -1653,19 +1733,20 @@ impl StmtEmitter {
                 let cols_code = emit_expr(columns, self.no_shell)?;
                 if let Some(r) = rows {
                     let rows_code = emit_expr(r, self.no_shell)?;
-                    writeln!(
+                    writeln_code!(
                         output,
                         "{}qb_gfx_set_width((uint32_t){}, (uint32_t){});",
-                        indent, cols_code, rows_code
-                    )
-                    .unwrap();
+                        indent,
+                        cols_code,
+                        rows_code
+                    )?;
                 } else {
-                    writeln!(
+                    writeln_code!(
                         output,
                         "{}qb_gfx_set_width((uint32_t){}, 0);",
-                        indent, cols_code
-                    )
-                    .unwrap();
+                        indent,
+                        cols_code
+                    )?;
                 }
             }
 
@@ -1691,11 +1772,21 @@ impl StmtEmitter {
                         .map(|e| emit_expr(e, self.no_shell))
                         .transpose()?
                         .unwrap_or_else(|| "-1".to_string());
-                    writeln!(output, "{}qb_gfx_view({}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){});",
-                             indent, screen_int, x1, y1, x2, y2, fill, border).unwrap();
+                    writeln_code!(
+                        output,
+                        "{}qb_gfx_view({}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){});",
+                        indent,
+                        screen_int,
+                        x1,
+                        y1,
+                        x2,
+                        y2,
+                        fill,
+                        border
+                    )?;
                 } else {
                     // Reset viewport
-                    writeln!(output, "{}qb_gfx_view_reset();", indent).unwrap();
+                    writeln_code!(output, "{}qb_gfx_view_reset();", indent)?;
                 }
             }
 
@@ -1703,15 +1794,16 @@ impl StmtEmitter {
                 if let (Some(t), Some(b)) = (top, bottom) {
                     let top_code = emit_expr(t, self.no_shell)?;
                     let bottom_code = emit_expr(b, self.no_shell)?;
-                    writeln!(
+                    writeln_code!(
                         output,
                         "{}qb_view_print((int32_t){}, (int32_t){});",
-                        indent, top_code, bottom_code
-                    )
-                    .unwrap();
+                        indent,
+                        top_code,
+                        bottom_code
+                    )?;
                 } else {
                     // Reset text viewport
-                    writeln!(output, "{}qb_view_print_reset();", indent).unwrap();
+                    writeln_code!(output, "{}qb_view_print_reset();", indent)?;
                 }
             }
 
@@ -1722,21 +1814,25 @@ impl StmtEmitter {
                     let y1 = emit_expr(&c.y1, self.no_shell)?;
                     let x2 = emit_expr(&c.x2, self.no_shell)?;
                     let y2 = emit_expr(&c.y2, self.no_shell)?;
-                    writeln!(
+                    writeln_code!(
                         output,
                         "{}qb_gfx_window({}, (double){}, (double){}, (double){}, (double){});",
-                        indent, screen_int, x1, y1, x2, y2
-                    )
-                    .unwrap();
+                        indent,
+                        screen_int,
+                        x1,
+                        y1,
+                        x2,
+                        y2
+                    )?;
                 } else {
                     // Reset window coordinates
-                    writeln!(output, "{}qb_gfx_window_reset();", indent).unwrap();
+                    writeln_code!(output, "{}qb_gfx_window_reset();", indent)?;
                 }
             }
 
             TypedStatementKind::DrawCmd { commands } => {
                 let cmd_code = emit_expr(commands, self.no_shell)?;
-                writeln!(output, "{}qb_gfx_draw({});", indent, cmd_code).unwrap();
+                writeln_code!(output, "{}qb_gfx_draw({});", indent, cmd_code)?;
             }
 
             TypedStatementKind::GraphicsGet {
@@ -1775,12 +1871,17 @@ impl StmtEmitter {
                     (true, false) => "qb_gfx_get_step1",
                     (true, true) => "qb_gfx_get_step_both",
                 };
-                writeln!(
+                writeln_code!(
                     output,
                     "{}{}((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, {});",
-                    indent, func_name, x1_code, y1_code, x2_code, y2_code, arr_ptr
-                )
-                .unwrap();
+                    indent,
+                    func_name,
+                    x1_code,
+                    y1_code,
+                    x2_code,
+                    y2_code,
+                    arr_ptr
+                )?;
             }
 
             TypedStatementKind::GraphicsPut {
@@ -1830,26 +1931,36 @@ impl StmtEmitter {
                 let clip_flag = if *clip { "1" } else { "0" };
 
                 if *step {
-                    writeln!(
+                    writeln_code!(
                         output,
                         "{}qb_gfx_put_step((int32_t){}, (int32_t){}, {}, {}, {}, (int32_t){});",
-                        indent, x_code, y_code, arr_ptr, action_code, clip_flag, trans_code
-                    )
-                    .unwrap();
+                        indent,
+                        x_code,
+                        y_code,
+                        arr_ptr,
+                        action_code,
+                        clip_flag,
+                        trans_code
+                    )?;
                 } else {
-                    writeln!(
+                    writeln_code!(
                         output,
                         "{}qb_gfx_put((int32_t){}, (int32_t){}, {}, {}, {}, (int32_t){});",
-                        indent, x_code, y_code, arr_ptr, action_code, clip_flag, trans_code
-                    )
-                    .unwrap();
+                        indent,
+                        x_code,
+                        y_code,
+                        arr_ptr,
+                        action_code,
+                        clip_flag,
+                        trans_code
+                    )?;
                 }
             }
 
             // ==================== QB64 Graphics Extensions ====================
             TypedStatementKind::FreeImage { handle } => {
                 let h_code = emit_expr(handle, self.no_shell)?;
-                writeln!(output, "{}qb_gfx_freeimage((int32_t){});", indent, h_code).unwrap();
+                writeln_code!(output, "{}qb_gfx_freeimage((int32_t){});", indent, h_code)?;
             }
 
             TypedStatementKind::PutImage {
@@ -1887,55 +1998,83 @@ impl StmtEmitter {
                     let sy1 = emit_expr(&sc.y1, self.no_shell)?;
                     let sx2 = emit_expr(&sc.x2, self.no_shell)?;
                     let sy2 = emit_expr(&sc.y2, self.no_shell)?;
-                    writeln!(output, "{}qb_gfx_putimage_full((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, {});",
-                             indent, dx1, dy1, dx2, dy2, src_handle, dst_handle, sx1, sy1, sx2, sy2, scale_code).unwrap();
+                    writeln_code!(
+                        output,
+                        "{}qb_gfx_putimage_full((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, {});",
+                        indent,
+                        dx1,
+                        dy1,
+                        dx2,
+                        dy2,
+                        src_handle,
+                        dst_handle,
+                        sx1,
+                        sy1,
+                        sx2,
+                        sy2,
+                        scale_code
+                    )?;
                 } else if let Some(dc) = dest_coords {
                     let dx1 = emit_expr(&dc.x1, self.no_shell)?;
                     let dy1 = emit_expr(&dc.y1, self.no_shell)?;
                     let dx2 = emit_expr(&dc.x2, self.no_shell)?;
                     let dy2 = emit_expr(&dc.y2, self.no_shell)?;
-                    writeln!(output, "{}qb_gfx_putimage((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, {});",
-                             indent, dx1, dy1, dx2, dy2, src_handle, dst_handle, scale_code).unwrap();
+                    writeln_code!(
+                        output,
+                        "{}qb_gfx_putimage((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, {});",
+                        indent,
+                        dx1,
+                        dy1,
+                        dx2,
+                        dy2,
+                        src_handle,
+                        dst_handle,
+                        scale_code
+                    )?;
                 } else {
-                    writeln!(
+                    writeln_code!(
                         output,
                         "{}qb_gfx_putimage_simple((int32_t){}, (int32_t){}, {});",
-                        indent, src_handle, dst_handle, scale_code
-                    )
-                    .unwrap();
+                        indent,
+                        src_handle,
+                        dst_handle,
+                        scale_code
+                    )?;
                 }
             }
 
             TypedStatementKind::SourceImg { handle } => {
                 let h_code = emit_expr(handle, self.no_shell)?;
-                writeln!(output, "{}qb_gfx_source((int32_t){});", indent, h_code).unwrap();
+                writeln_code!(output, "{}qb_gfx_source((int32_t){});", indent, h_code)?;
             }
 
             TypedStatementKind::DestImg { handle } => {
                 let h_code = emit_expr(handle, self.no_shell)?;
-                writeln!(output, "{}qb_gfx_dest((int32_t){});", indent, h_code).unwrap();
+                writeln_code!(output, "{}qb_gfx_dest((int32_t){});", indent, h_code)?;
             }
 
             TypedStatementKind::PrintStringStmt { x, y, text } => {
                 let x_code = emit_expr(x, self.no_shell)?;
                 let y_code = emit_expr(y, self.no_shell)?;
                 let text_code = emit_expr(text, self.no_shell)?;
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_gfx_printstring((int32_t){}, (int32_t){}, {});",
-                    indent, x_code, y_code, text_code
-                )
-                .unwrap();
+                    indent,
+                    x_code,
+                    y_code,
+                    text_code
+                )?;
             }
 
             TypedStatementKind::AutoDisplay { enabled } => {
                 let enable_int = if *enabled { 1 } else { 0 };
-                writeln!(output, "{}qb_gfx_autodisplay({});", indent, enable_int).unwrap();
+                writeln_code!(output, "{}qb_gfx_autodisplay({});", indent, enable_int)?;
             }
 
             // ==================== Audio Statements ====================
             TypedStatementKind::Beep => {
-                writeln!(output, "{}qb_beep();", indent).unwrap();
+                writeln_code!(output, "{}qb_beep();", indent)?;
             }
 
             TypedStatementKind::SoundStmt {
@@ -1944,53 +2083,55 @@ impl StmtEmitter {
             } => {
                 let freq_code = emit_expr(frequency, self.no_shell)?;
                 let dur_code = emit_expr(duration, self.no_shell)?;
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_sound((double){}, (double){});",
-                    indent, freq_code, dur_code
-                )
-                .unwrap();
+                    indent,
+                    freq_code,
+                    dur_code
+                )?;
             }
 
             TypedStatementKind::PlayStmt { commands } => {
                 let cmd_code = emit_expr(commands, self.no_shell)?;
-                writeln!(output, "{}qb_play({});", indent, cmd_code).unwrap();
+                writeln_code!(output, "{}qb_play({});", indent, cmd_code)?;
             }
 
             TypedStatementKind::SndClose { handle } => {
                 let h_code = emit_expr(handle, self.no_shell)?;
-                writeln!(output, "{}qb_sndclose((int32_t){});", indent, h_code).unwrap();
+                writeln_code!(output, "{}qb_sndclose((int32_t){});", indent, h_code)?;
             }
 
             TypedStatementKind::SndPlay { handle } => {
                 let h_code = emit_expr(handle, self.no_shell)?;
-                writeln!(output, "{}qb_sndplay((int32_t){});", indent, h_code).unwrap();
+                writeln_code!(output, "{}qb_sndplay((int32_t){});", indent, h_code)?;
             }
 
             TypedStatementKind::SndStop { handle } => {
                 let h_code = emit_expr(handle, self.no_shell)?;
-                writeln!(output, "{}qb_sndstop((int32_t){});", indent, h_code).unwrap();
+                writeln_code!(output, "{}qb_sndstop((int32_t){});", indent, h_code)?;
             }
 
             TypedStatementKind::SndPause { handle } => {
                 let h_code = emit_expr(handle, self.no_shell)?;
-                writeln!(output, "{}qb_sndpause((int32_t){});", indent, h_code).unwrap();
+                writeln_code!(output, "{}qb_sndpause((int32_t){});", indent, h_code)?;
             }
 
             TypedStatementKind::SndLoop { handle } => {
                 let h_code = emit_expr(handle, self.no_shell)?;
-                writeln!(output, "{}qb_sndloop((int32_t){});", indent, h_code).unwrap();
+                writeln_code!(output, "{}qb_sndloop((int32_t){});", indent, h_code)?;
             }
 
             TypedStatementKind::SndVol { handle, volume } => {
                 let h_code = emit_expr(handle, self.no_shell)?;
                 let vol_code = emit_expr(volume, self.no_shell)?;
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_sndvol((int32_t){}, (double){});",
-                    indent, h_code, vol_code
-                )
-                .unwrap();
+                    indent,
+                    h_code,
+                    vol_code
+                )?;
             }
 
             TypedStatementKind::SndBal {
@@ -2017,26 +2158,31 @@ impl StmtEmitter {
                     Some(e) => emit_expr(e, self.no_shell)?,
                     None => "0".to_string(),
                 };
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_sndbal((int32_t){}, (double){}, (double){}, (double){}, (int32_t){});",
-                    indent, h_code, x_code, y_code, z_code, ch_code
-                )
-                .unwrap();
+                    indent,
+                    h_code,
+                    x_code,
+                    y_code,
+                    z_code,
+                    ch_code
+                )?;
             }
 
             TypedStatementKind::SndRaw { left, right } => {
                 let left_code = emit_expr(left, self.no_shell)?;
                 if let Some(r) = right {
                     let right_code = emit_expr(r, self.no_shell)?;
-                    writeln!(
+                    writeln_code!(
                         output,
                         "{}qb_sndraw_stereo((double){}, (double){});",
-                        indent, left_code, right_code
-                    )
-                    .unwrap();
+                        indent,
+                        left_code,
+                        right_code
+                    )?;
                 } else {
-                    writeln!(output, "{}qb_sndraw((double){});", indent, left_code).unwrap();
+                    writeln_code!(output, "{}qb_sndraw((double){});", indent, left_code)?;
                 }
             }
 
@@ -2068,13 +2214,18 @@ impl StmtEmitter {
                     .map(|e| emit_expr(e, self.no_shell))
                     .transpose()?
                     .unwrap_or_else(|| "0.0".to_string());
-                let filename_access = emit_string_data_access(filename, &filename_code, self.runtime_mode);
-                writeln!(
+                let filename_access =
+                    emit_string_data_access(filename, &filename_code, self.runtime_mode);
+                writeln_code!(
                     output,
                     "{}qb_sndplayfile({}, (double){}, (double){}, (double){}, (double){});",
-                    indent, filename_access, volume_code, x_code, y_code, z_code
-                )
-                .unwrap();
+                    indent,
+                    filename_access,
+                    volume_code,
+                    x_code,
+                    y_code,
+                    z_code
+                )?;
             }
 
             TypedStatementKind::SndPlayCopy { handle, volume } => {
@@ -2084,30 +2235,33 @@ impl StmtEmitter {
                     .map(|e| emit_expr(e, self.no_shell))
                     .transpose()?
                     .unwrap_or_else(|| "1.0".to_string());
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_sndplaycopy((int32_t){}, (double){});",
-                    indent, handle_code, volume_code
-                )
-                .unwrap();
+                    indent,
+                    handle_code,
+                    volume_code
+                )?;
             }
 
             TypedStatementKind::SndSetPos { handle, position } => {
                 let handle_code = emit_expr(handle, self.no_shell)?;
                 let position_code = emit_expr(position, self.no_shell)?;
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_sndsetpos((int32_t){}, (double){});",
-                    indent, handle_code, position_code
-                )
-                .unwrap();
+                    indent,
+                    handle_code,
+                    position_code
+                )?;
             }
 
             // ==================== System Integration Statements ====================
             TypedStatementKind::Kill { filename } => {
                 let filename_code = emit_expr(filename, self.no_shell)?;
-                let filename_access = emit_string_data_access(filename, &filename_code, self.runtime_mode);
-                writeln!(output, "{}qb_file_kill({});", indent, filename_access).unwrap();
+                let filename_access =
+                    emit_string_data_access(filename, &filename_code, self.runtime_mode);
+                writeln_code!(output, "{}qb_file_kill({});", indent, filename_access)?;
             }
 
             TypedStatementKind::Rename { old_name, new_name } => {
@@ -2115,41 +2269,36 @@ impl StmtEmitter {
                 let new_code = emit_expr(new_name, self.no_shell)?;
                 let old_access = emit_string_data_access(old_name, &old_code, self.runtime_mode);
                 let new_access = emit_string_data_access(new_name, &new_code, self.runtime_mode);
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_file_rename({}, {});",
-                    indent, old_access, new_access
-                )
-                .unwrap();
+                    indent,
+                    old_access,
+                    new_access
+                )?;
             }
 
             TypedStatementKind::Mkdir { path } => {
                 let path_code = emit_expr(path, self.no_shell)?;
                 let path_access = emit_string_data_access(path, &path_code, self.runtime_mode);
-                writeln!(output, "{}qb_mkdir({});", indent, path_access).unwrap();
+                writeln_code!(output, "{}qb_mkdir({});", indent, path_access)?;
             }
 
             TypedStatementKind::Rmdir { path } => {
                 let path_code = emit_expr(path, self.no_shell)?;
                 let path_access = emit_string_data_access(path, &path_code, self.runtime_mode);
-                writeln!(output, "{}qb_rmdir({});", indent, path_access).unwrap();
+                writeln_code!(output, "{}qb_rmdir({});", indent, path_access)?;
             }
 
             TypedStatementKind::Chdir { path } => {
                 let path_code = emit_expr(path, self.no_shell)?;
                 let path_access = emit_string_data_access(path, &path_code, self.runtime_mode);
-                writeln!(output, "{}qb_chdir({});", indent, path_access).unwrap();
+                writeln_code!(output, "{}qb_chdir({});", indent, path_access)?;
             }
 
             TypedStatementKind::Environ { env_string } => {
                 let env_string_code = emit_expr(env_string, self.no_shell)?;
-                writeln!(
-                    output,
-                    "{}qb_sub_environ({});",
-                    indent,
-                    env_string_code
-                )
-                .unwrap();
+                writeln_code!(output, "{}qb_sub_environ({});", indent, env_string_code)?;
             }
 
             TypedStatementKind::ShellCmd { command } => {
@@ -2160,9 +2309,9 @@ impl StmtEmitter {
                 }
                 if let Some(cmd) = command {
                     let cmd_code = emit_expr(cmd, self.no_shell)?;
-                    writeln!(output, "{}qb_shell({});", indent, cmd_code).unwrap();
+                    writeln_code!(output, "{}qb_shell({});", indent, cmd_code)?;
                 } else {
-                    writeln!(output, "{}qb_shell(NULL);", indent).unwrap();
+                    writeln_code!(output, "{}qb_shell(NULL);", indent)?;
                 }
             }
 
@@ -2173,22 +2322,24 @@ impl StmtEmitter {
                     );
                 }
                 let cmd_code = emit_expr(command, self.no_shell)?;
-                writeln!(output, "{}qb_shell_hide({});", indent, cmd_code).unwrap();
+                writeln_code!(output, "{}qb_shell_hide({});", indent, cmd_code)?;
             }
 
             TypedStatementKind::Bload { filename, address } => {
                 let filename_code = emit_expr(filename, self.no_shell)?;
-                let filename_access = emit_string_data_access(filename, &filename_code, self.runtime_mode);
+                let filename_access =
+                    emit_string_data_access(filename, &filename_code, self.runtime_mode);
                 if let Some(addr) = address {
                     let addr_code = emit_expr(addr, self.no_shell)?;
-                    writeln!(
+                    writeln_code!(
                         output,
                         "{}qb_bload({}, (void*)(intptr_t){});",
-                        indent, filename_access, addr_code
-                    )
-                    .unwrap();
+                        indent,
+                        filename_access,
+                        addr_code
+                    )?;
                 } else {
-                    writeln!(output, "{}qb_bload({}, NULL);", indent, filename_access).unwrap();
+                    writeln_code!(output, "{}qb_bload({}, NULL);", indent, filename_access)?;
                 }
             }
 
@@ -2198,65 +2349,69 @@ impl StmtEmitter {
                 length,
             } => {
                 let filename_code = emit_expr(filename, self.no_shell)?;
-                let filename_access = emit_string_data_access(filename, &filename_code, self.runtime_mode);
+                let filename_access =
+                    emit_string_data_access(filename, &filename_code, self.runtime_mode);
                 let addr_code = emit_expr(address, self.no_shell)?;
                 let len_code = emit_expr(length, self.no_shell)?;
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_bsave({}, (void*)(intptr_t){}, (size_t){});",
-                    indent, filename_access, addr_code, len_code
-                )
-                .unwrap();
+                    indent,
+                    filename_access,
+                    addr_code,
+                    len_code
+                )?;
             }
 
             TypedStatementKind::Setmem { bytes } => {
                 // SETMEM is a no-op in modern systems - just evaluate the expression
                 let bytes_code = emit_expr(bytes, self.no_shell)?;
-                writeln!(
+                writeln_code!(
                     output,
                     "{}(void){}; /* SETMEM: no-op in flat memory model */",
-                    indent, bytes_code
-                )
-                .unwrap();
+                    indent,
+                    bytes_code
+                )?;
             }
 
             TypedStatementKind::CallAbsolute { args: _, address } => {
                 // CALL ABSOLUTE is a legacy statement that cannot be safely implemented
                 let addr_code = emit_expr(address, self.no_shell)?;
-                writeln!(
+                writeln_code!(
                     output,
                     "{}fprintf(stderr, \"Warning: CALL ABSOLUTE at address %ld not supported in flat memory model\\n\", (long){});",
-                    indent, addr_code
-                )
-                .unwrap();
-                writeln!(output, "{}fflush(stderr);", indent).unwrap();
+                    indent,
+                    addr_code
+                )?;
+                writeln_code!(output, "{}fflush(stderr);", indent)?;
             }
 
             // ==================== Mouse Input Statements ====================
             TypedStatementKind::MouseHide => {
-                writeln!(output, "{}qb_mouse_hide();", indent).unwrap();
+                writeln_code!(output, "{}qb_mouse_hide();", indent)?;
             }
 
             TypedStatementKind::MouseShow => {
-                writeln!(output, "{}qb_mouse_show();", indent).unwrap();
+                writeln_code!(output, "{}qb_mouse_show();", indent)?;
             }
 
             TypedStatementKind::MouseMoveStmt { x, y } => {
                 let x_code = emit_expr(x, self.no_shell)?;
                 let y_code = emit_expr(y, self.no_shell)?;
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_mouse_move((int32_t){}, (int32_t){});",
-                    indent, x_code, y_code
-                )
-                .unwrap();
+                    indent,
+                    x_code,
+                    y_code
+                )?;
             }
 
             // ==================== Clipboard Statement ====================
             TypedStatementKind::ClipboardSet { text } => {
                 let text_code = emit_expr(text, self.no_shell)?;
                 let text_access = emit_string_data_access(text, &text_code, self.runtime_mode);
-                writeln!(output, "{}qb_clipboard_set({});", indent, text_access).unwrap();
+                writeln_code!(output, "{}qb_clipboard_set({});", indent, text_access)?;
             }
 
             // ==================== C Library Integration ====================
@@ -2272,35 +2427,34 @@ impl StmtEmitter {
                 // The actual function calls are handled in expression codegen
                 // when the external function is called.
                 if *is_dynamic {
-                    writeln!(
+                    writeln_code!(
                         output,
                         "{}// DECLARE DYNAMIC LIBRARY (runtime loading not yet implemented)",
                         indent
-                    )
-                    .unwrap();
+                    )?;
                     if let Some(lib) = library_name {
-                        writeln!(output, "{}// Library: {}", indent, lib).unwrap();
+                        writeln_code!(output, "{}// Library: {}", indent, lib)?;
                     }
                 } else {
-                    writeln!(output, "{}// DECLARE LIBRARY - extern declarations", indent).unwrap();
+                    writeln_code!(output, "{}// DECLARE LIBRARY - extern declarations", indent)?;
                     if let Some(lib) = library_name {
-                        writeln!(output, "{}// Library: {}", indent, lib).unwrap();
+                        writeln_code!(output, "{}// Library: {}", indent, lib)?;
                     }
                 }
 
                 // Emit extern declarations for each function
                 for decl in declarations {
-                    self.emit_extern_declaration(&indent, decl, output);
+                    self.emit_extern_declaration(&indent, decl, output)?;
                 }
             }
 
             // Forward declarations - no code generated, just comments for documentation
             TypedStatementKind::DeclareSub { name } => {
-                writeln!(output, "{}/* DECLARE SUB {} */", indent, name).unwrap();
+                writeln_code!(output, "{}/* DECLARE SUB {} */", indent, name)?;
             }
 
             TypedStatementKind::DeclareFunction { name } => {
-                writeln!(output, "{}/* DECLARE FUNCTION {} */", indent, name).unwrap();
+                writeln_code!(output, "{}/* DECLARE FUNCTION {} */", indent, name)?;
             }
 
             // ==================== Phase 7: Additional Statements ====================
@@ -2308,87 +2462,89 @@ impl StmtEmitter {
                 // RUN restarts the program or runs another - stub implementation
                 if let Some(t) = target {
                     let target_code = emit_expr(t, self.no_shell)?;
-                    writeln!(output, "{}qb_run({});", indent, target_code).unwrap();
+                    writeln_code!(output, "{}qb_run({});", indent, target_code)?;
                 } else {
-                    writeln!(output, "{}qb_run(NULL);", indent).unwrap();
+                    writeln_code!(output, "{}qb_run(NULL);", indent)?;
                 }
             }
 
             TypedStatementKind::Chain { filename } => {
                 let filename_code = emit_expr(filename, self.no_shell)?;
-                writeln!(output, "{}qb_chain({});", indent, filename_code).unwrap();
+                writeln_code!(output, "{}qb_chain({});", indent, filename_code)?;
             }
 
             TypedStatementKind::Tron => {
-                writeln!(output, "{}qb_trace_on = 1;", indent).unwrap();
+                writeln_code!(output, "{}qb_trace_on = 1;", indent)?;
             }
 
             TypedStatementKind::Troff => {
-                writeln!(output, "{}qb_trace_on = 0;", indent).unwrap();
+                writeln_code!(output, "{}qb_trace_on = 0;", indent)?;
             }
 
             TypedStatementKind::Lprint { values, newline } => {
                 // Print to printer (LPT1) - similar to PRINT but to a different stream
                 for item in values {
                     let expr_code = emit_expr(&item.expr, self.no_shell)?;
-                    writeln!(output, "{}qb_lprint({});", indent, expr_code).unwrap();
+                    writeln_code!(output, "{}qb_lprint({});", indent, expr_code)?;
                     if item.separator == Some(PrintSeparator::Comma) {
-                        writeln!(output, "{}qb_lprint_tab();", indent).unwrap();
+                        writeln_code!(output, "{}qb_lprint_tab();", indent)?;
                     }
                 }
                 if *newline {
-                    writeln!(output, "{}qb_lprint_newline();", indent).unwrap();
+                    writeln_code!(output, "{}qb_lprint_newline();", indent)?;
                 }
             }
 
             TypedStatementKind::FilesStmt { filespec } => {
                 if let Some(spec) = filespec {
                     let spec_code = emit_expr(spec, self.no_shell)?;
-                    writeln!(output, "{}qb_files({});", indent, spec_code).unwrap();
+                    writeln_code!(output, "{}qb_files({});", indent, spec_code)?;
                 } else {
-                    writeln!(output, "{}qb_files(NULL);", indent).unwrap();
+                    writeln_code!(output, "{}qb_files(NULL);", indent)?;
                 }
             }
 
             TypedStatementKind::FieldStmt { file_num, fields } => {
                 let file_num_code = emit_expr(file_num, self.no_shell)?;
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_field_start((int32_t)({}));",
-                    indent, file_num_code
-                )
-                .unwrap();
+                    indent,
+                    file_num_code
+                )?;
                 for field in fields {
                     let width_code = emit_expr(&field.width, self.no_shell)?;
-                    writeln!(
+                    writeln_code!(
                         output,
                         "{}qb_field_add((int32_t)({}), &{});",
-                        indent, width_code, field.variable
-                    )
-                    .unwrap();
+                        indent,
+                        width_code,
+                        field.variable
+                    )?;
                 }
             }
 
             TypedStatementKind::Lset { variable, value } => {
                 let value_code = emit_expr(value, self.no_shell)?;
                 let c_var = c_identifier(variable);
-                writeln!(output, "{}qb_lset(&{}, {});", indent, c_var, value_code).unwrap();
+                writeln_code!(output, "{}qb_lset(&{}, {});", indent, c_var, value_code)?;
             }
 
             TypedStatementKind::Rset { variable, value } => {
                 let value_code = emit_expr(value, self.no_shell)?;
                 let c_var = c_identifier(variable);
-                writeln!(output, "{}qb_rset(&{}, {});", indent, c_var, value_code).unwrap();
+                writeln_code!(output, "{}qb_rset(&{}, {});", indent, c_var, value_code)?;
             }
 
             TypedStatementKind::OnKey { key_num, target } => {
                 let key_code = emit_expr(key_num, self.no_shell)?;
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_on_key((int32_t)({}), &&{});",
-                    indent, key_code, target
-                )
-                .unwrap();
+                    indent,
+                    key_code,
+                    target
+                )?;
             }
 
             TypedStatementKind::KeyControl { key_num, mode } => {
@@ -2398,22 +2554,24 @@ impl StmtEmitter {
                     EventControlMode::Off => "0",
                     EventControlMode::Stop => "2",
                 };
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_key_control((int32_t)({}), {});",
-                    indent, key_code, mode_code
-                )
-                .unwrap();
+                    indent,
+                    key_code,
+                    mode_code
+                )?;
             }
 
             TypedStatementKind::OnTimer { interval, target } => {
                 let interval_code = emit_expr(interval, self.no_shell)?;
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_on_timer({}, &&{});",
-                    indent, interval_code, target
-                )
-                .unwrap();
+                    indent,
+                    interval_code,
+                    target
+                )?;
             }
 
             TypedStatementKind::TimerControl { mode } => {
@@ -2422,7 +2580,7 @@ impl StmtEmitter {
                     EventControlMode::Off => "0",
                     EventControlMode::Stop => "2",
                 };
-                writeln!(output, "{}qb_timer_control({});", indent, mode_code).unwrap();
+                writeln_code!(output, "{}qb_timer_control({});", indent, mode_code)?;
             }
 
             TypedStatementKind::StrigControl { button_num, mode } => {
@@ -2432,12 +2590,13 @@ impl StmtEmitter {
                     EventControlMode::Off => "0",
                     EventControlMode::Stop => "2",
                 };
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_strig_control((int32_t)({}), {});",
-                    indent, btn_code, mode_code
-                )
-                .unwrap();
+                    indent,
+                    btn_code,
+                    mode_code
+                )?;
             }
 
             TypedStatementKind::OnStrig { button_num, target } => {
@@ -2447,22 +2606,24 @@ impl StmtEmitter {
                 self.strig_handlers.push((event_id, target.clone()));
 
                 let btn_code = emit_expr(button_num, self.no_shell)?;
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_on_strig((int32_t)({}), {});",
-                    indent, btn_code, event_id
-                )
-                .unwrap();
+                    indent,
+                    btn_code,
+                    event_id
+                )?;
             }
 
             TypedStatementKind::OnCom { port_num, target } => {
                 let port_code = emit_expr(port_num, self.no_shell)?;
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_on_com((int32_t)({}), &&{});",
-                    indent, port_code, target
-                )
-                .unwrap();
+                    indent,
+                    port_code,
+                    target
+                )?;
             }
 
             TypedStatementKind::ComControl { port_num, mode } => {
@@ -2472,16 +2633,17 @@ impl StmtEmitter {
                     EventControlMode::Off => "0",
                     EventControlMode::Stop => "2",
                 };
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_com_control((int32_t)({}), {});",
-                    indent, port_code, mode_code
-                )
-                .unwrap();
+                    indent,
+                    port_code,
+                    mode_code
+                )?;
             }
 
             TypedStatementKind::OnPen { target } => {
-                writeln!(output, "{}qb_on_pen(&&{});", indent, target).unwrap();
+                writeln_code!(output, "{}qb_on_pen(&&{});", indent, target)?;
             }
 
             TypedStatementKind::PenControl { mode } => {
@@ -2490,11 +2652,11 @@ impl StmtEmitter {
                     EventControlMode::Off => "0",
                     EventControlMode::Stop => "2",
                 };
-                writeln!(output, "{}qb_pen_control({});", indent, mode_code).unwrap();
+                writeln_code!(output, "{}qb_pen_control({});", indent, mode_code)?;
             }
 
             TypedStatementKind::OnUevent { target } => {
-                writeln!(output, "{}qb_on_uevent(&&{});", indent, target).unwrap();
+                writeln_code!(output, "{}qb_on_uevent(&&{});", indent, target)?;
             }
 
             TypedStatementKind::UeventControl { mode } => {
@@ -2503,21 +2665,22 @@ impl StmtEmitter {
                     EventControlMode::Off => "0",
                     EventControlMode::Stop => "2",
                 };
-                writeln!(output, "{}qb_uevent_control({});", indent, mode_code).unwrap();
+                writeln_code!(output, "{}qb_uevent_control({});", indent, mode_code)?;
             }
 
             TypedStatementKind::UeventTrigger => {
-                writeln!(output, "{}qb_uevent_trigger();", indent).unwrap();
+                writeln_code!(output, "{}qb_uevent_trigger();", indent)?;
             }
 
             TypedStatementKind::OnSignal { signal_num, target } => {
                 let signal_code = emit_expr(signal_num, self.no_shell)?;
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_on_signal((int32_t)({}), &&{});",
-                    indent, signal_code, target
-                )
-                .unwrap();
+                    indent,
+                    signal_code,
+                    target
+                )?;
             }
 
             TypedStatementKind::SignalControl { signal_num, mode } => {
@@ -2527,23 +2690,25 @@ impl StmtEmitter {
                     EventControlMode::Off => "0",
                     EventControlMode::Stop => "2",
                 };
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_signal_control((int32_t)({}), {});",
-                    indent, signal_code, mode_code
-                )
-                .unwrap();
+                    indent,
+                    signal_code,
+                    mode_code
+                )?;
             }
 
             TypedStatementKind::OutPort { port, value } => {
                 let port_code = emit_expr(port, self.no_shell)?;
                 let value_code = emit_expr(value, self.no_shell)?;
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_out((int32_t)({}), (int32_t)({}));",
-                    indent, port_code, value_code
-                )
-                .unwrap();
+                    indent,
+                    port_code,
+                    value_code
+                )?;
             }
 
             TypedStatementKind::InterruptStmt {
@@ -2552,12 +2717,14 @@ impl StmtEmitter {
                 out_regs,
             } => {
                 let int_code = emit_expr(int_num, self.no_shell)?;
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_interrupt((int32_t)({}), &{}, &{});",
-                    indent, int_code, in_regs, out_regs
-                )
-                .unwrap();
+                    indent,
+                    int_code,
+                    in_regs,
+                    out_regs
+                )?;
             }
 
             TypedStatementKind::InterruptXStmt {
@@ -2566,12 +2733,14 @@ impl StmtEmitter {
                 out_regs,
             } => {
                 let int_code = emit_expr(int_num, self.no_shell)?;
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_interruptx((int32_t)({}), &{}, &{});",
-                    indent, int_code, in_regs, out_regs
-                )
-                .unwrap();
+                    indent,
+                    int_code,
+                    in_regs,
+                    out_regs
+                )?;
             }
 
             TypedStatementKind::IoctlStmt {
@@ -2580,40 +2749,41 @@ impl StmtEmitter {
             } => {
                 let file_code = emit_expr(file_num, self.no_shell)?;
                 let string_code = emit_expr(control_string, self.no_shell)?;
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_ioctl((int32_t)({}), {});",
-                    indent, file_code, string_code
-                )
-                .unwrap();
+                    indent,
+                    file_code,
+                    string_code
+                )?;
             }
 
             TypedStatementKind::FreeStmt => {
-                writeln!(output, "{}qb_free();", indent).unwrap();
+                writeln_code!(output, "{}qb_free();", indent)?;
             }
 
             TypedStatementKind::ClearStmt { stack_size } => {
                 if let Some(size) = stack_size {
                     let size_code = emit_expr(size, self.no_shell)?;
-                    writeln!(output, "{}qb_clear((int32_t)({}));", indent, size_code).unwrap();
+                    writeln_code!(output, "{}qb_clear((int32_t)({}));", indent, size_code)?;
                 } else {
-                    writeln!(output, "{}qb_clear(0);", indent).unwrap();
+                    writeln_code!(output, "{}qb_clear(0);", indent)?;
                 }
             }
 
             TypedStatementKind::ResetStmt => {
-                writeln!(output, "{}qb_reset();", indent).unwrap();
+                writeln_code!(output, "{}qb_reset();", indent)?;
             }
 
             // Window/Desktop statements (QB64)
             TypedStatementKind::TitleStmt { title } => {
                 let title_code = emit_expr(title, self.no_shell)?;
-                writeln!(output, "{}qb_title({});", indent, title_code).unwrap();
+                writeln_code!(output, "{}qb_title({});", indent, title_code)?;
             }
 
             TypedStatementKind::ScreenMoveStmt { x, y, center } => {
                 if *center {
-                    writeln!(output, "{}qb_screenmove_center();", indent).unwrap();
+                    writeln_code!(output, "{}qb_screenmove_center();", indent)?;
                 } else {
                     let x_code = match x {
                         Some(e) => emit_expr(e, self.no_shell)?,
@@ -2623,12 +2793,13 @@ impl StmtEmitter {
                         Some(e) => emit_expr(e, self.no_shell)?,
                         None => "0".to_string(),
                     };
-                    writeln!(
+                    writeln_code!(
                         output,
                         "{}qb_screenmove((int32_t)({}), (int32_t)({}));",
-                        indent, x_code, y_code
-                    )
-                    .unwrap();
+                        indent,
+                        x_code,
+                        y_code
+                    )?;
                 }
             }
 
@@ -2638,7 +2809,7 @@ impl StmtEmitter {
                     FullScreenMode::SquarePixels => "1",
                     FullScreenMode::Off => "2",
                 };
-                writeln!(output, "{}qb_fullscreen({});", indent, mode_code).unwrap();
+                writeln_code!(output, "{}qb_fullscreen({});", indent, mode_code)?;
             }
 
             TypedStatementKind::AllowFullScreenStmt { mode } => {
@@ -2648,140 +2819,139 @@ impl StmtEmitter {
                     AllowFullScreenMode::All => "2",
                     AllowFullScreenMode::Off => "3",
                 };
-                writeln!(output, "{}qb_allowfullscreen({});", indent, mode_code).unwrap();
+                writeln_code!(output, "{}qb_allowfullscreen({});", indent, mode_code)?;
             }
 
             TypedStatementKind::ScreenIconStmt => {
-                writeln!(output, "{}qb_screenicon();", indent).unwrap();
+                writeln_code!(output, "{}qb_screenicon();", indent)?;
             }
 
             TypedStatementKind::IconStmt { handle } => {
                 if let Some(h) = handle {
                     let handle_code = emit_expr(h, self.no_shell)?;
-                    writeln!(output, "{}qb_icon((int32_t)({}));", indent, handle_code).unwrap();
+                    writeln_code!(output, "{}qb_icon((int32_t)({}));", indent, handle_code)?;
                 } else {
-                    writeln!(output, "{}qb_icon(0);", indent).unwrap();
+                    writeln_code!(output, "{}qb_icon(0);", indent)?;
                 }
             }
 
             TypedStatementKind::ScreenHideStmt => {
-                writeln!(output, "{}qb_screenhide();", indent).unwrap();
+                writeln_code!(output, "{}qb_screenhide();", indent)?;
             }
 
             TypedStatementKind::ScreenShowStmt => {
-                writeln!(output, "{}qb_screenshow();", indent).unwrap();
+                writeln_code!(output, "{}qb_screenshow();", indent)?;
             }
 
             TypedStatementKind::ConsoleTitleStmt { title } => {
                 let title_code = emit_expr(title, self.no_shell)?;
-                writeln!(output, "{}qb_consoletitle({});", indent, title_code).unwrap();
+                writeln_code!(output, "{}qb_consoletitle({});", indent, title_code)?;
             }
 
             TypedStatementKind::ConsoleStmt { visible } => {
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_console({});",
                     indent,
                     if *visible { "1" } else { "0" }
-                )
-                .unwrap();
+                )?;
             }
 
             TypedStatementKind::AssertStmt { condition, message } => {
                 let cond_code = emit_expr(condition, self.no_shell)?;
                 if let Some(msg) = message {
                     let msg_code = emit_expr(msg, self.no_shell)?;
-                    writeln!(output, "{}qb_assert({}, {});", indent, cond_code, msg_code).unwrap();
+                    writeln_code!(output, "{}qb_assert({}, {});", indent, cond_code, msg_code)?;
                 } else {
-                    writeln!(output, "{}qb_assert({}, NULL);", indent, cond_code).unwrap();
+                    writeln_code!(output, "{}qb_assert({}, NULL);", indent, cond_code)?;
                 }
             }
 
             TypedStatementKind::MetaAsserts => {
-                writeln!(output, "{}/* $ASSERTS */", indent).unwrap();
+                writeln_code!(output, "{}/* $ASSERTS */", indent)?;
             }
 
             TypedStatementKind::MetaNoPrefix => {
-                writeln!(output, "{}/* $NOPREFIX */", indent).unwrap();
+                writeln_code!(output, "{}/* $NOPREFIX */", indent)?;
             }
 
             TypedStatementKind::MetaColor { depth } => {
                 if let Some(d) = depth {
-                    writeln!(output, "{}/* $COLOR:{} */", indent, d).unwrap();
+                    writeln_code!(output, "{}/* $COLOR:{} */", indent, d)?;
                 } else {
-                    writeln!(output, "{}/* $COLOR:0 */", indent).unwrap();
+                    writeln_code!(output, "{}/* $COLOR:0 */", indent)?;
                 }
             }
 
             TypedStatementKind::MetaResize { enabled } => {
                 if *enabled {
-                    writeln!(output, "{}/* $RESIZE:ON */", indent).unwrap();
+                    writeln_code!(output, "{}/* $RESIZE:ON */", indent)?;
                 } else {
-                    writeln!(output, "{}/* $RESIZE:OFF */", indent).unwrap();
+                    writeln_code!(output, "{}/* $RESIZE:OFF */", indent)?;
                 }
             }
 
             TypedStatementKind::MetaResizeStretch => {
-                writeln!(output, "{}/* $RESIZE:STRETCH */", indent).unwrap();
+                writeln_code!(output, "{}/* $RESIZE:STRETCH */", indent)?;
             }
 
             TypedStatementKind::MetaResizeSmooth => {
-                writeln!(output, "{}/* $RESIZE:SMOOTH */", indent).unwrap();
+                writeln_code!(output, "{}/* $RESIZE:SMOOTH */", indent)?;
             }
 
             TypedStatementKind::MetaStatic => {
-                writeln!(output, "{}/* $STATIC */", indent).unwrap();
+                writeln_code!(output, "{}/* $STATIC */", indent)?;
             }
 
             TypedStatementKind::MetaDynamic => {
-                writeln!(output, "{}/* $DYNAMIC */", indent).unwrap();
+                writeln_code!(output, "{}/* $DYNAMIC */", indent)?;
             }
 
             TypedStatementKind::MetaDebug => {
-                writeln!(output, "{}/* $DEBUG */", indent).unwrap();
+                writeln_code!(output, "{}/* $DEBUG */", indent)?;
             }
 
             TypedStatementKind::MetaIncludeOnce => {
-                writeln!(output, "{}/* $INCLUDEONCE */", indent).unwrap();
+                writeln_code!(output, "{}/* $INCLUDEONCE */", indent)?;
             }
 
             TypedStatementKind::MetaExeIcon { filename } => {
-                writeln!(output, "{}/* $EXEICON:'{}' */", indent, filename).unwrap();
+                writeln_code!(output, "{}/* $EXEICON:'{}' */", indent, filename)?;
             }
 
             TypedStatementKind::MetaVersionInfo { key, value } => {
-                writeln!(output, "{}/* $VERSIONINFO:{}={} */", indent, key, value).unwrap();
+                writeln_code!(output, "{}/* $VERSIONINFO:{}={} */", indent, key, value)?;
             }
 
             TypedStatementKind::MetaErrorDirective { message } => {
                 // $ERROR should ideally stop compilation, but we'll emit a warning comment
-                writeln!(output, "{}#error \"{}\"", indent, message).unwrap();
+                writeln_code!(output, "{}#error \"{}\"", indent, message)?;
             }
 
             TypedStatementKind::MetaEmbed { filename } => {
                 // $EMBED embeds a file into the executable - emit as comment
                 // Runtime function _EMBEDDED$ can retrieve embedded content
-                writeln!(output, "{}/* $EMBED:'{}' */", indent, filename).unwrap();
+                writeln_code!(output, "{}/* $EMBED:'{}' */", indent, filename)?;
             }
 
             TypedStatementKind::MetaMidiSoundFont { filename } => {
                 // $MIDISOUNDFONT sets the MIDI soundfont file for playback
-                writeln!(output, "{}/* $MIDISOUNDFONT:'{}' */", indent, filename).unwrap();
+                writeln_code!(output, "{}/* $MIDISOUNDFONT:'{}' */", indent, filename)?;
             }
 
             TypedStatementKind::MetaUnstable { feature } => {
                 // $UNSTABLE enables an experimental feature
-                writeln!(output, "{}/* $UNSTABLE:{} */", indent, feature).unwrap();
+                writeln_code!(output, "{}/* $UNSTABLE:{} */", indent, feature)?;
             }
 
             TypedStatementKind::MetaFormat => {
                 // $FORMAT is a no-op for code formatting (IDE support only)
-                writeln!(output, "{}/* $FORMAT */", indent).unwrap();
+                writeln_code!(output, "{}/* $FORMAT */", indent)?;
             }
 
             TypedStatementKind::MetaUseLibrary { library } => {
                 // $USELIBRARY includes an external library
-                writeln!(output, "{}/* $USELIBRARY:'{}' */", indent, library).unwrap();
+                writeln_code!(output, "{}/* $USELIBRARY:'{}' */", indent, library)?;
             }
         }
 

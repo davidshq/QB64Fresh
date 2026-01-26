@@ -12,12 +12,13 @@
 //! information needed for the C output's structure.
 
 use std::collections::HashMap;
-use std::fmt::Write;
 
+use crate::codegen::error::CodeGenError;
 use crate::semantic::typed_ir::{
     TypedDataValue, TypedParameter, TypedProgram, TypedStatement, TypedStatementKind,
 };
 use crate::semantic::types::BasicType;
+use crate::writeln_code;
 
 use super::expr::{c_function_name, escape_string};
 use super::types::{
@@ -59,7 +60,9 @@ impl DataPoolInfo {
 /// are processed at any point in the program).
 ///
 /// Returns a vector of C typedef strings in definition order.
-pub(super) fn collect_type_definitions(program: &TypedProgram) -> Vec<String> {
+pub(super) fn collect_type_definitions(
+    program: &TypedProgram,
+) -> Result<Vec<String>, CodeGenError> {
     use std::collections::HashSet;
 
     let mut type_defs = Vec::new();
@@ -70,7 +73,7 @@ pub(super) fn collect_type_definitions(program: &TypedProgram) -> Vec<String> {
         stmt: &TypedStatement,
         type_defs: &mut Vec<String>,
         defined_types: &mut HashSet<String>,
-    ) {
+    ) -> Result<(), CodeGenError> {
         match &stmt.kind {
             TypedStatementKind::TypeDefinition {
                 name,
@@ -86,25 +89,25 @@ pub(super) fn collect_type_definitions(program: &TypedProgram) -> Vec<String> {
 
                     // CUSTOMTYPE modifier indicates C-compatible (packed) memory layout
                     if *custom_type {
-                        writeln!(def, "#pragma pack(push, 1)").unwrap();
+                        writeln_code!(&mut def, "#pragma pack(push, 1)")?;
                     }
 
-                    writeln!(def, "typedef struct {} {{", c_name).unwrap();
+                    writeln_code!(&mut def, "typedef struct {} {{", c_name)?;
 
                     for member in members {
                         let c_member_name = c_identifier(&member.name);
                         if let BasicType::FixedString(len) = &member.basic_type {
-                            writeln!(def, "    char {}[{}];", c_member_name, len + 1).unwrap();
+                            writeln_code!(&mut def, "    char {}[{}];", c_member_name, len + 1)?;
                         } else {
                             let c_member_type = c_type(&member.basic_type);
-                            writeln!(def, "    {} {};", c_member_type, c_member_name).unwrap();
+                            writeln_code!(&mut def, "    {} {};", c_member_type, c_member_name)?;
                         }
                     }
 
-                    writeln!(def, "}} {};", c_name).unwrap();
+                    writeln_code!(&mut def, "}} {};", c_name)?;
 
                     if *custom_type {
-                        writeln!(def, "#pragma pack(pop)").unwrap();
+                        writeln_code!(&mut def, "#pragma pack(pop)")?;
                     }
 
                     type_defs.push(def);
@@ -116,7 +119,7 @@ pub(super) fn collect_type_definitions(program: &TypedProgram) -> Vec<String> {
             TypedStatementKind::SubDefinition { body, .. }
             | TypedStatementKind::FunctionDefinition { body, .. } => {
                 for s in body {
-                    collect_from_stmt(s, type_defs, defined_types);
+                    collect_from_stmt(s, type_defs, defined_types)?;
                 }
             }
 
@@ -128,16 +131,16 @@ pub(super) fn collect_type_definitions(program: &TypedProgram) -> Vec<String> {
                 ..
             } => {
                 for s in then_branch {
-                    collect_from_stmt(s, type_defs, defined_types);
+                    collect_from_stmt(s, type_defs, defined_types)?;
                 }
                 for (_, branch_body) in elseif_branches {
                     for s in branch_body {
-                        collect_from_stmt(s, type_defs, defined_types);
+                        collect_from_stmt(s, type_defs, defined_types)?;
                     }
                 }
                 if let Some(else_stmts) = else_branch {
                     for s in else_stmts {
-                        collect_from_stmt(s, type_defs, defined_types);
+                        collect_from_stmt(s, type_defs, defined_types)?;
                     }
                 }
             }
@@ -146,28 +149,29 @@ pub(super) fn collect_type_definitions(program: &TypedProgram) -> Vec<String> {
             | TypedStatementKind::While { body, .. }
             | TypedStatementKind::DoLoop { body, .. } => {
                 for s in body {
-                    collect_from_stmt(s, type_defs, defined_types);
+                    collect_from_stmt(s, type_defs, defined_types)?;
                 }
             }
 
             TypedStatementKind::SelectCase { cases, .. } => {
                 for case in cases {
                     for s in &case.body {
-                        collect_from_stmt(s, type_defs, defined_types);
+                        collect_from_stmt(s, type_defs, defined_types)?;
                     }
                 }
             }
 
             _ => {}
         }
+        Ok(())
     }
 
     // Collect from all top-level statements
     for stmt in &program.statements {
-        collect_from_stmt(stmt, &mut type_defs, &mut defined_types);
+        collect_from_stmt(stmt, &mut type_defs, &mut defined_types)?;
     }
 
-    type_defs
+    Ok(type_defs)
 }
 
 /// Collects global variables and procedure forward declarations from the program.

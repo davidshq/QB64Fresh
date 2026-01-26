@@ -11,8 +11,6 @@
 //! All methods modify `StmtEmitter` state (indent level, loop_stack) as needed
 //! for proper code generation and EXIT statement handling.
 
-use std::fmt::Write;
-
 use crate::ast::ExitType;
 use crate::codegen::error::CodeGenError;
 use crate::semantic::typed_ir::{
@@ -20,6 +18,7 @@ use crate::semantic::typed_ir::{
     TypedStatement,
 };
 use crate::semantic::types::BasicType;
+use crate::writeln_code;
 
 use super::super::expr::emit_expr;
 use super::super::types::{c_identifier, c_type};
@@ -35,27 +34,27 @@ impl super::StmtEmitter {
     /// The check uses a global `_qb_strig_event_id` variable to pass the event ID
     /// to the dispatch switch, and calls `qb_strig_event_done()` after the handler
     /// returns to allow new events to fire.
-    fn emit_strig_check(&mut self, indent: &str, output: &mut String) {
+    fn emit_strig_check(&mut self, indent: &str, output: &mut String) -> Result<(), CodeGenError> {
         let return_label = self.next_label("strig_ret");
 
-        writeln!(output, "{}/* STRIG event check */", indent).unwrap();
-        writeln!(
+        writeln_code!(output, "{}/* STRIG event check */", indent)?;
+        writeln_code!(
             output,
             "{}_qb_strig_event_id = qb_strig_check_event();",
             indent
-        )
-        .unwrap();
-        writeln!(output, "{}if (_qb_strig_event_id) {{", indent).unwrap();
-        writeln!(
+        )?;
+        writeln_code!(output, "{}if (_qb_strig_event_id) {{", indent)?;
+        writeln_code!(
             output,
             "{}    _gosub_stack[_gosub_sp++] = &&{};",
-            indent, return_label
-        )
-        .unwrap();
-        writeln!(output, "{}    goto _qb_strig_dispatch;", indent).unwrap();
-        writeln!(output, "{}}}", indent).unwrap();
-        writeln!(output, "{}{}:;", indent, return_label).unwrap();
-        writeln!(output, "{}qb_strig_event_done();", indent).unwrap();
+            indent,
+            return_label
+        )?;
+        writeln_code!(output, "{}    goto _qb_strig_dispatch;", indent)?;
+        writeln_code!(output, "{}}}", indent)?;
+        writeln_code!(output, "{}{}:;", indent, return_label)?;
+        writeln_code!(output, "{}qb_strig_event_done();", indent)?;
+        Ok(())
     }
 
     /// Emits an IF/ELSEIF/ELSE statement.
@@ -81,7 +80,7 @@ impl super::StmtEmitter {
         output: &mut String,
     ) -> Result<(), CodeGenError> {
         let cond_code = emit_expr(condition, self.no_shell)?;
-        writeln!(output, "{}if ({}) {{", indent, cond_code).unwrap();
+        writeln_code!(output, "{}if ({}) {{", indent, cond_code)?;
 
         self.indent += 1;
         for stmt in then_branch {
@@ -91,7 +90,7 @@ impl super::StmtEmitter {
 
         for (elseif_cond, elseif_body) in elseif_branches {
             let elseif_code = emit_expr(elseif_cond, self.no_shell)?;
-            writeln!(output, "{}}} else if ({}) {{", indent, elseif_code).unwrap();
+            writeln_code!(output, "{}}} else if ({}) {{", indent, elseif_code)?;
 
             self.indent += 1;
             for stmt in elseif_body {
@@ -101,7 +100,7 @@ impl super::StmtEmitter {
         }
 
         if let Some(else_body) = else_branch {
-            writeln!(output, "{}}} else {{", indent).unwrap();
+            writeln_code!(output, "{}}} else {{", indent)?;
 
             self.indent += 1;
             for stmt in else_body {
@@ -110,7 +109,7 @@ impl super::StmtEmitter {
             self.indent -= 1;
         }
 
-        writeln!(output, "{}}}", indent).unwrap();
+        writeln_code!(output, "{}}}", indent)?;
         Ok(())
     }
 
@@ -143,38 +142,38 @@ impl super::StmtEmitter {
         let test_code = emit_expr(test_expr, self.no_shell)?;
         let c_ty = c_type(&test_expr.basic_type);
 
-        writeln!(output, "{}{} {} = {};", indent, c_ty, test_var, test_code).unwrap();
+        writeln_code!(output, "{}{} {} = {};", indent, c_ty, test_var, test_code)?;
 
         if is_everycase {
             // SELECT EVERYCASE: evaluate ALL cases and execute ALL matching ones
             // Also track if any case matched for CASE ELSE
             let matched_var = self.next_label("matched");
-            writeln!(output, "{}int {} = 0;", indent, matched_var).unwrap();
+            writeln_code!(output, "{}int {} = 0;", indent, matched_var)?;
 
             for case in cases {
                 let condition =
                     self.emit_case_condition(&test_var, &case.matches, &test_expr.basic_type)?;
-                writeln!(output, "{}if ({}) {{", indent, condition).unwrap();
-                writeln!(output, "{}    {} = 1;", indent, matched_var).unwrap();
+                writeln_code!(output, "{}if ({}) {{", indent, condition)?;
+                writeln_code!(output, "{}    {} = 1;", indent, matched_var)?;
 
                 self.indent += 1;
                 for stmt in &case.body {
                     self.emit_stmt(stmt, output)?;
                 }
                 self.indent -= 1;
-                writeln!(output, "{}}}", indent).unwrap();
+                writeln_code!(output, "{}}}", indent)?;
             }
 
             // CASE ELSE: only execute if no cases matched
             if let Some(else_body) = case_else {
-                writeln!(output, "{}if (!{}) {{", indent, matched_var).unwrap();
+                writeln_code!(output, "{}if (!{}) {{", indent, matched_var)?;
 
                 self.indent += 1;
                 for stmt in else_body {
                     self.emit_stmt(stmt, output)?;
                 }
                 self.indent -= 1;
-                writeln!(output, "{}}}", indent).unwrap();
+                writeln_code!(output, "{}}}", indent)?;
             }
         } else {
             // Standard SELECT CASE: execute first matching case only
@@ -184,10 +183,10 @@ impl super::StmtEmitter {
                     self.emit_case_condition(&test_var, &case.matches, &test_expr.basic_type)?;
 
                 if first {
-                    writeln!(output, "{}if ({}) {{", indent, condition).unwrap();
+                    writeln_code!(output, "{}if ({}) {{", indent, condition)?;
                     first = false;
                 } else {
-                    writeln!(output, "{}}} else if ({}) {{", indent, condition).unwrap();
+                    writeln_code!(output, "{}}} else if ({}) {{", indent, condition)?;
                 }
 
                 self.indent += 1;
@@ -198,7 +197,7 @@ impl super::StmtEmitter {
             }
 
             if let Some(else_body) = case_else {
-                writeln!(output, "{}}} else {{", indent).unwrap();
+                writeln_code!(output, "{}}} else {{", indent)?;
 
                 self.indent += 1;
                 for stmt in else_body {
@@ -208,7 +207,7 @@ impl super::StmtEmitter {
             }
 
             if !first {
-                writeln!(output, "{}}}", indent).unwrap();
+                writeln_code!(output, "{}}}", indent)?;
             }
         }
         Ok(())
@@ -259,46 +258,52 @@ impl super::StmtEmitter {
 
         let end_var = self.next_label("for_end_val");
         let step_var = self.next_label("for_step");
-        writeln!(output, "{}{} {} = {};", indent, c_ty, end_var, end_code).unwrap();
+        writeln_code!(output, "{}{} {} = {};", indent, c_ty, end_var, end_code)?;
         // Step must be signed to correctly detect direction (negative steps).
         // Using int64_t ensures any step value can be properly compared.
-        writeln!(output, "{}int64_t {} = {};", indent, step_var, step_code).unwrap();
+        writeln_code!(output, "{}int64_t {} = {};", indent, step_var, step_code)?;
 
         // In BASIC, the FOR loop variable retains its value after the loop ends.
         // We assign the start value before the loop and use the existing variable,
         // rather than declaring a new variable in the for statement (which would
         // create a shadowing local that loses its value after the loop).
-        writeln!(output, "{}{} = {};", indent, c_var, start_code).unwrap();
+        writeln_code!(output, "{}{} = {};", indent, c_var, start_code)?;
         // Save temp pool base - only clean temps created within this loop
         let loop_base = self.next_label("for_base");
-        writeln!(
+        writeln_code!(
             output,
             "{}uint64_t {} = qbs_tmp_base_get();",
-            indent, loop_base
-        )
-        .unwrap();
-        writeln!(
+            indent,
+            loop_base
+        )?;
+        writeln_code!(
             output,
             "{}for (; ({} > 0) ? ({} <= {}) : ({} >= {}); {} += {}) {{",
-            indent, step_var, c_var, end_var, c_var, end_var, c_var, step_var
-        )
-        .unwrap();
+            indent,
+            step_var,
+            c_var,
+            end_var,
+            c_var,
+            end_var,
+            c_var,
+            step_var
+        )?;
 
         self.indent += 1;
         // STRIG event check at loop iteration
         let inner_indent = "    ".repeat(self.indent);
-        self.emit_strig_check(&inner_indent, output);
+        self.emit_strig_check(&inner_indent, output)?;
         // Clean up temporary strings from previous iteration (scoped to this loop only)
-        writeln!(output, "{}qbs_cleanup({}, 0);", inner_indent, loop_base).unwrap();
+        writeln_code!(output, "{}qbs_cleanup({}, 0);", inner_indent, loop_base)?;
         for stmt in body {
             self.emit_stmt(stmt, output)?;
         }
         // Clean up strings created during this iteration
-        writeln!(output, "{}qbs_cleanup({}, 0);", inner_indent, loop_base).unwrap();
+        writeln_code!(output, "{}qbs_cleanup({}, 0);", inner_indent, loop_base)?;
         self.indent -= 1;
 
-        writeln!(output, "{}}}", indent).unwrap();
-        writeln!(output, "{}{}:;", indent, break_label).unwrap();
+        writeln_code!(output, "{}}}", indent)?;
+        writeln_code!(output, "{}{}:;", indent, break_label)?;
 
         self.loop_stack.pop();
         Ok(())
@@ -331,29 +336,29 @@ impl super::StmtEmitter {
 
         // Save temp pool base - only clean temps created within this loop
         let loop_base = self.next_label("while_base");
-        writeln!(
+        writeln_code!(
             output,
             "{}uint64_t {} = qbs_tmp_base_get();",
-            indent, loop_base
-        )
-        .unwrap();
-        writeln!(output, "{}while ({}) {{", indent, cond_code).unwrap();
+            indent,
+            loop_base
+        )?;
+        writeln_code!(output, "{}while ({}) {{", indent, cond_code)?;
 
         self.indent += 1;
         // STRIG event check at loop iteration
         let inner_indent = "    ".repeat(self.indent);
-        self.emit_strig_check(&inner_indent, output);
+        self.emit_strig_check(&inner_indent, output)?;
         // Clean up temporary strings from previous iteration (scoped to this loop only)
-        writeln!(output, "{}qbs_cleanup({}, 0);", inner_indent, loop_base).unwrap();
+        writeln_code!(output, "{}qbs_cleanup({}, 0);", inner_indent, loop_base)?;
         for stmt in body {
             self.emit_stmt(stmt, output)?;
         }
         // Clean up strings created during this iteration before checking condition again
-        writeln!(output, "{}qbs_cleanup({}, 0);", inner_indent, loop_base).unwrap();
+        writeln_code!(output, "{}qbs_cleanup({}, 0);", inner_indent, loop_base)?;
         self.indent -= 1;
 
-        writeln!(output, "{}}}", indent).unwrap();
-        writeln!(output, "{}{}:;", indent, break_label).unwrap();
+        writeln_code!(output, "{}}}", indent)?;
+        writeln_code!(output, "{}{}:;", indent, break_label)?;
 
         self.loop_stack.pop();
         Ok(())
@@ -392,23 +397,23 @@ impl super::StmtEmitter {
 
         // Save temp pool base - only clean temps created within this loop
         let loop_base = self.next_label("do_base");
-        writeln!(
+        writeln_code!(
             output,
             "{}uint64_t {} = qbs_tmp_base_get();",
-            indent, loop_base
-        )
-        .unwrap();
+            indent,
+            loop_base
+        )?;
 
         match (pre_condition, post_condition) {
             (Some(pre), None) => {
                 let cond = self.emit_do_condition(pre)?;
-                writeln!(output, "{}while ({}) {{", indent, cond).unwrap();
+                writeln_code!(output, "{}while ({}) {{", indent, cond)?;
             }
             (None, Some(_post)) => {
-                writeln!(output, "{}do {{", indent).unwrap();
+                writeln_code!(output, "{}do {{", indent)?;
             }
             (None, None) => {
-                writeln!(output, "{}for (;;) {{", indent).unwrap();
+                writeln_code!(output, "{}for (;;) {{", indent)?;
             }
             (Some(_), Some(_)) => {
                 return Err(CodeGenError::internal(
@@ -420,24 +425,24 @@ impl super::StmtEmitter {
         self.indent += 1;
         // STRIG event check at loop iteration
         let inner_indent = "    ".repeat(self.indent);
-        self.emit_strig_check(&inner_indent, output);
+        self.emit_strig_check(&inner_indent, output)?;
         // Clean up temporary strings from previous iteration (scoped to this loop only)
-        writeln!(output, "{}qbs_cleanup({}, 0);", inner_indent, loop_base).unwrap();
+        writeln_code!(output, "{}qbs_cleanup({}, 0);", inner_indent, loop_base)?;
         for stmt in body {
             self.emit_stmt(stmt, output)?;
         }
         // Clean up strings created during this iteration
-        writeln!(output, "{}qbs_cleanup({}, 0);", inner_indent, loop_base).unwrap();
+        writeln_code!(output, "{}qbs_cleanup({}, 0);", inner_indent, loop_base)?;
         self.indent -= 1;
 
         if let Some(post) = post_condition {
             let cond = self.emit_do_condition(post)?;
-            writeln!(output, "{}}} while ({});", indent, cond).unwrap();
+            writeln_code!(output, "{}}} while ({});", indent, cond)?;
         } else {
-            writeln!(output, "{}}}", indent).unwrap();
+            writeln_code!(output, "{}}}", indent)?;
         }
 
-        writeln!(output, "{}{}:;", indent, break_label).unwrap();
+        writeln_code!(output, "{}{}:;", indent, break_label)?;
         self.loop_stack.pop();
         Ok(())
     }
@@ -467,21 +472,21 @@ impl super::StmtEmitter {
             .map(|ctx| ctx.break_label.clone());
 
         if let Some(label) = label {
-            writeln!(output, "{}goto {};", indent, label).unwrap();
+            writeln_code!(output, "{}goto {};", indent, label)?;
         } else if let Some(ret_var) = &self.current_func_ret_var {
             // EXIT FUNCTION - write back byref STRING parameters first
             for param_name in &self.current_func_byref_strings {
-                writeln!(output, "{}*{}_ref = {};", indent, param_name, param_name).unwrap();
+                writeln_code!(output, "{}*{}_ref = {};", indent, param_name, param_name)?;
             }
             // Then return the function's return variable
-            writeln!(output, "{}return {};", indent, ret_var).unwrap();
+            writeln_code!(output, "{}return {};", indent, ret_var)?;
         } else {
             // EXIT SUB - write back byref STRING parameters first
             for param_name in &self.current_func_byref_strings {
-                writeln!(output, "{}*{}_ref = {};", indent, param_name, param_name).unwrap();
+                writeln_code!(output, "{}*{}_ref = {};", indent, param_name, param_name)?;
             }
             // Then return
-            writeln!(output, "{}return;", indent).unwrap();
+            writeln_code!(output, "{}return;", indent)?;
         }
         Ok(())
     }

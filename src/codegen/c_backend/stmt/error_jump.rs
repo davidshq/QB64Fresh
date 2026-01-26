@@ -13,10 +13,9 @@
 //! branch tables, which are translated to C using goto labels, switch statements,
 //! and the GOSUB stack.
 
-use std::fmt::Write;
-
 use crate::codegen::error::CodeGenError;
 use crate::semantic::typed_ir::TypedExpr;
+use crate::writeln_code;
 
 use super::super::expr::emit_expr;
 
@@ -50,13 +49,13 @@ impl super::StmtEmitter {
         };
 
         if actual_target == "0" {
-            writeln!(output, "{}_qb_error_handler = NULL;", indent).unwrap();
-            writeln!(output, "{}_qb_error_resume_next = 0;", indent).unwrap();
+            writeln_code!(output, "{}_qb_error_handler = NULL;", indent)?;
+            writeln_code!(output, "{}_qb_error_resume_next = 0;", indent)?;
         } else if actual_target.eq_ignore_ascii_case("_LASTHANDLER") {
             // QB64 extension: restore the previous error handler
             // For now, just disable error handling (simpler behavior)
-            writeln!(output, "{}_qb_error_handler = NULL;", indent).unwrap();
-            writeln!(output, "{}_qb_error_resume_next = 0;", indent).unwrap();
+            writeln_code!(output, "{}_qb_error_handler = NULL;", indent)?;
+            writeln_code!(output, "{}_qb_error_resume_next = 0;", indent)?;
         } else if self.current_proc.is_some()
             && (is_new_handler
                 || actual_target.eq_ignore_ascii_case("qberror_test")
@@ -68,18 +67,18 @@ impl super::StmtEmitter {
             // _NEWHANDLER also indicates a scoped handler that may reference main code
             // C doesn't support cross-function goto, so we disable error handling here
             // In the future, this could use setjmp/longjmp or function pointer callbacks
-            writeln!(
+            writeln_code!(
                 output,
                 "{}/* Global error handler {} - disabled in subroutine context */",
-                indent, actual_target
-            )
-            .unwrap();
-            writeln!(output, "{}_qb_error_handler = NULL;", indent).unwrap();
-            writeln!(output, "{}_qb_error_resume_next = 0;", indent).unwrap();
+                indent,
+                actual_target
+            )?;
+            writeln_code!(output, "{}_qb_error_handler = NULL;", indent)?;
+            writeln_code!(output, "{}_qb_error_resume_next = 0;", indent)?;
         } else {
             let label = self.proc_label(actual_target);
-            writeln!(output, "{}_qb_error_handler = &&{};", indent, label).unwrap();
-            writeln!(output, "{}_qb_error_resume_next = 0;", indent).unwrap();
+            writeln_code!(output, "{}_qb_error_handler = &&{};", indent, label)?;
+            writeln_code!(output, "{}_qb_error_resume_next = 0;", indent)?;
         }
         Ok(())
     }
@@ -99,8 +98,8 @@ impl super::StmtEmitter {
         indent: &str,
         output: &mut String,
     ) -> Result<(), CodeGenError> {
-        writeln!(output, "{}_qb_error_resume_next = 1;", indent).unwrap();
-        writeln!(output, "{}_qb_error_handler = NULL;", indent).unwrap();
+        writeln_code!(output, "{}_qb_error_resume_next = 1;", indent)?;
+        writeln_code!(output, "{}_qb_error_handler = NULL;", indent)?;
         Ok(())
     }
 
@@ -125,22 +124,21 @@ impl super::StmtEmitter {
         match target {
             None => {
                 // RESUME - retry the statement (complex, use goto)
-                writeln!(
+                writeln_code!(
                     output,
                     "{}if (_qb_error_line) goto *_qb_error_line;",
                     indent
-                )
-                .unwrap();
+                )?;
             }
             Some(crate::ast::ResumeTarget::Next) => {
                 // RESUME NEXT - continue at next statement
-                writeln!(output, "{}_qb_err = 0;", indent).unwrap();
-                writeln!(output, "{}/* RESUME NEXT - continue execution */", indent).unwrap();
+                writeln_code!(output, "{}_qb_err = 0;", indent)?;
+                writeln_code!(output, "{}/* RESUME NEXT - continue execution */", indent)?;
             }
             Some(crate::ast::ResumeTarget::Label(label)) => {
                 let c_label = self.proc_label(label);
-                writeln!(output, "{}_qb_err = 0;", indent).unwrap();
-                writeln!(output, "{}goto {};", indent, c_label).unwrap();
+                writeln_code!(output, "{}_qb_err = 0;", indent)?;
+                writeln_code!(output, "{}goto {};", indent, c_label)?;
             }
         }
         Ok(())
@@ -163,7 +161,7 @@ impl super::StmtEmitter {
         output: &mut String,
     ) -> Result<(), CodeGenError> {
         let code_expr = emit_expr(code, self.no_shell)?;
-        writeln!(output, "{}qb_error({});", indent, code_expr).unwrap();
+        writeln_code!(output, "{}qb_error({});", indent, code_expr)?;
         Ok(())
     }
 
@@ -190,13 +188,13 @@ impl super::StmtEmitter {
     ) -> Result<(), CodeGenError> {
         let sel_code = emit_expr(selector, self.no_shell)?;
 
-        writeln!(output, "{}switch ((int32_t)({}) - 1) {{", indent, sel_code).unwrap();
+        writeln_code!(output, "{}switch ((int32_t)({}) - 1) {{", indent, sel_code)?;
         for (i, target) in targets.iter().enumerate() {
             let c_label = self.proc_label(target);
-            writeln!(output, "{}    case {}: goto {}; break;", indent, i, c_label).unwrap();
+            writeln_code!(output, "{}    case {}: goto {}; break;", indent, i, c_label)?;
         }
-        writeln!(output, "{}    default: break;", indent).unwrap();
-        writeln!(output, "{}}}", indent).unwrap();
+        writeln_code!(output, "{}    default: break;", indent)?;
+        writeln_code!(output, "{}}}", indent)?;
 
         Ok(())
     }
@@ -226,19 +224,21 @@ impl super::StmtEmitter {
         let sel_code = emit_expr(selector, self.no_shell)?;
         let return_label = self.next_label("on_gosub_ret");
 
-        writeln!(output, "{}switch ((int32_t)({}) - 1) {{", indent, sel_code).unwrap();
+        writeln_code!(output, "{}switch ((int32_t)({}) - 1) {{", indent, sel_code)?;
         for (i, target) in targets.iter().enumerate() {
             let c_label = self.proc_label(target);
-            writeln!(
+            writeln_code!(
                 output,
                 "{}    case {}: _gosub_stack[_gosub_sp++] = &&{}; goto {}; break;",
-                indent, i, return_label, c_label
-            )
-            .unwrap();
+                indent,
+                i,
+                return_label,
+                c_label
+            )?;
         }
-        writeln!(output, "{}    default: break;", indent).unwrap();
-        writeln!(output, "{}}}", indent).unwrap();
-        writeln!(output, "{}{}:;", indent, return_label).unwrap();
+        writeln_code!(output, "{}    default: break;", indent)?;
+        writeln_code!(output, "{}}}", indent)?;
+        writeln_code!(output, "{}{}:;", indent, return_label)?;
 
         Ok(())
     }

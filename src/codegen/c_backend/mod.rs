@@ -59,13 +59,15 @@ mod implicit_vars;
 mod runtime;
 mod stmt;
 mod types;
+mod write_helpers;
 
 use std::collections::HashSet;
-use std::fmt::Write;
 
 use crate::codegen::error::CodeGenError;
 use crate::codegen::{CodeGenerator, GeneratedOutput};
 use crate::semantic::typed_ir::{TypedProgram, TypedStatement, TypedStatementKind};
+use crate::write_code;
+use crate::writeln_code;
 
 use self::analysis::{collect_callback_wrappers, collect_data_values, collect_type_definitions};
 use self::implicit_vars::collect_implicit_locals;
@@ -163,8 +165,11 @@ impl CBackend {
     ///
     /// Generates a C function with the signature matching the BASIC procedure
     /// that can be passed to C library functions expecting callbacks.
-    fn emit_callback_wrapper(&self, output: &mut String, wrapper: &analysis::CallbackWrapperInfo) {
-        use std::fmt::Write;
+    fn emit_callback_wrapper(
+        &self,
+        output: &mut String,
+        wrapper: &analysis::CallbackWrapperInfo,
+    ) -> Result<(), CodeGenError> {
         use types::c_type;
 
         // Determine return type
@@ -201,21 +206,23 @@ impl CBackend {
         let args_str = call_args.join(", ");
 
         // Emit wrapper function
-        writeln!(
+        writeln_code!(
             output,
             "static {} {}({}) {{",
-            return_type_str, wrapper.wrapper_name, params_str
-        )
-        .unwrap();
+            return_type_str,
+            wrapper.wrapper_name,
+            params_str
+        )?;
 
         if wrapper.return_type.is_some() {
-            writeln!(output, "    return {}({});", wrapper.c_func_name, args_str).unwrap();
+            writeln_code!(output, "    return {}({});", wrapper.c_func_name, args_str)?;
         } else {
-            writeln!(output, "    {}({});", wrapper.c_func_name, args_str).unwrap();
+            writeln_code!(output, "    {}({});", wrapper.c_func_name, args_str)?;
         }
 
-        writeln!(output, "}}").unwrap();
-        writeln!(output).unwrap();
+        writeln_code!(output, "}}")?;
+        writeln_code!(output)?;
+        Ok(())
     }
 }
 
@@ -233,16 +240,16 @@ impl CodeGenerator for CBackend {
             self.runtime_mode,
             self.debug_enabled,
             self.source_file.as_deref(),
-        );
+        )?;
 
         // TYPE definitions (must come before global variables that use those types)
-        let type_defs = collect_type_definitions(program);
+        let type_defs = collect_type_definitions(program)?;
         if !type_defs.is_empty() {
-            writeln!(output, "/* User-Defined Types */").unwrap();
+            writeln_code!(&mut output, "/* User-Defined Types */")?;
             for def in type_defs {
-                write!(output, "{}", def).unwrap();
+                write_code!(&mut output, "{}", def)?;
             }
-            writeln!(output).unwrap();
+            writeln_code!(&mut output)?;
         }
 
         // Collect globals, forward declarations, and string constant initializations
@@ -251,20 +258,20 @@ impl CodeGenerator for CBackend {
 
         // Global variables
         if !globals.is_empty() {
-            writeln!(output, "/* Global Variables */").unwrap();
+            writeln_code!(&mut output, "/* Global Variables */")?;
             for decl in &globals {
-                writeln!(output, "{}", decl).unwrap();
+                writeln_code!(&mut output, "{}", decl)?;
             }
-            writeln!(output).unwrap();
+            writeln_code!(&mut output)?;
         }
 
         // Forward declarations
         if !forward_decls.is_empty() {
-            writeln!(output, "/* Forward Declarations */").unwrap();
+            writeln_code!(&mut output, "/* Forward Declarations */")?;
             for decl in forward_decls {
-                writeln!(output, "{}", decl).unwrap();
+                writeln_code!(&mut output, "{}", decl)?;
             }
-            writeln!(output).unwrap();
+            writeln_code!(&mut output)?;
         }
 
         // Collect and emit DATA pool
@@ -273,28 +280,30 @@ impl CodeGenerator for CBackend {
         emitter.data_label_indices = data_pool.label_indices;
 
         if !data_pool.values.is_empty() {
-            writeln!(output, "/* DATA Pool */").unwrap();
-            writeln!(output, "typedef struct {{ char type; union {{ double n; const char* s; }} v; }} _qb_data_item;").unwrap();
-            write!(output, "static _qb_data_item _qb_data[] = {{").unwrap();
+            writeln_code!(&mut output, "/* DATA Pool */")?;
+            writeln_code!(
+                &mut output,
+                "typedef struct {{ char type; union {{ double n; const char* s; }} v; }} _qb_data_item;"
+            )?;
+            write_code!(&mut output, "static _qb_data_item _qb_data[] = {{")?;
             for (i, (val, type_tag)) in data_pool.values.iter().enumerate() {
                 if i > 0 {
-                    write!(output, ",").unwrap();
+                    write_code!(&mut output, ",")?;
                 }
                 if *type_tag == "d" {
-                    write!(output, " {{'d', {{.n = {}}}}}", val).unwrap();
+                    write_code!(&mut output, " {{'d', {{.n = {}}}}}", val)?;
                 } else {
-                    write!(output, " {{'s', {{.s = {}}}}}", val).unwrap();
+                    write_code!(&mut output, " {{'s', {{.s = {}}}}}", val)?;
                 }
             }
-            writeln!(output, " }};").unwrap();
-            writeln!(output, "static int _qb_data_ptr = 0;").unwrap();
-            writeln!(
-                output,
+            writeln_code!(&mut output, " }};")?;
+            writeln_code!(&mut output, "static int _qb_data_ptr = 0;")?;
+            writeln_code!(
+                &mut output,
                 "static const int _qb_data_count = {};",
                 data_pool.values.len()
-            )
-            .unwrap();
-            writeln!(output).unwrap();
+            )?;
+            writeln_code!(&mut output)?;
         }
 
         // Collect names of DIM SHARED variables - these are accessible from all functions
@@ -405,79 +414,96 @@ impl CodeGenerator for CBackend {
         // Callback wrappers for _PROCPTR (emit after SUB/FUNCTION definitions)
         let callback_wrappers = collect_callback_wrappers(program);
         if !callback_wrappers.is_empty() {
-            writeln!(output, "/* Callback Wrappers for _PROCPTR */").unwrap();
+            writeln_code!(&mut output, "/* Callback Wrappers for _PROCPTR */")?;
             for wrapper in &callback_wrappers {
                 // Generate a wrapper function with the actual procedure signature
-                self.emit_callback_wrapper(&mut output, wrapper);
+                self.emit_callback_wrapper(&mut output, wrapper)?;
             }
         }
 
         // Main function
-        writeln!(output, "int main(int argc, char** argv) {{").unwrap();
+        writeln_code!(&mut output, "int main(int argc, char** argv) {{")?;
         // Initialize runtime library (external runtime only)
         if self.runtime_mode == RuntimeMode::External {
-            writeln!(output, "    /* Initialize runtime library */").unwrap();
-            writeln!(output, "    qb_runtime_init();").unwrap();
-            writeln!(output, "    /* Check for initialization errors */").unwrap();
-            writeln!(output, "    if (_qb_err != 0) {{").unwrap();
-            writeln!(output, "        fprintf(stderr, \"Error: Runtime initialization failed (error code %d)\\n\", _qb_err);").unwrap();
-            writeln!(output, "        if (_qb_erl > 0) {{").unwrap();
-            writeln!(output, "            fprintf(stderr, \"  At line %ld\\n\", (long)_qb_erl);").unwrap();
-            writeln!(output, "        }}").unwrap();
-            writeln!(output, "        if (_qb_err_msg && strlen(_qb_err_msg) > 0) {{").unwrap();
-            writeln!(output, "            fprintf(stderr, \"  %s\\n\", _qb_err_msg);").unwrap();
-            writeln!(output, "        }}").unwrap();
-            writeln!(output, "        fflush(stderr);").unwrap();
-            writeln!(output, "        return 1;").unwrap();
-            writeln!(output, "    }}").unwrap();
+            writeln_code!(&mut output, "    /* Initialize runtime library */")?;
+            writeln_code!(&mut output, "    qb_runtime_init();")?;
+            writeln_code!(&mut output, "    /* Check for initialization errors */")?;
+            writeln_code!(&mut output, "    if (_qb_err != 0) {{")?;
+            writeln_code!(
+                &mut output,
+                "        fprintf(stderr, \"Error: Runtime initialization failed (error code %d)\\n\", _qb_err);"
+            )?;
+            writeln_code!(&mut output, "        if (_qb_erl > 0) {{")?;
+            writeln_code!(
+                &mut output,
+                "            fprintf(stderr, \"  At line %ld\\n\", (long)_qb_erl);"
+            )?;
+            writeln_code!(&mut output, "        }}")?;
+            writeln_code!(
+                &mut output,
+                "        if (_qb_err_msg && strlen(_qb_err_msg) > 0) {{"
+            )?;
+            writeln_code!(
+                &mut output,
+                "            fprintf(stderr, \"  %s\\n\", _qb_err_msg);"
+            )?;
+            writeln_code!(&mut output, "        }}")?;
+            writeln_code!(&mut output, "        fflush(stderr);")?;
+            writeln_code!(&mut output, "        return 1;")?;
+            writeln_code!(&mut output, "    }}")?;
         }
         // Initialize command-line argument access for COMMAND$ and _COMMANDCOUNT
-        writeln!(output, "    /* Initialize command-line arguments */").unwrap();
-        writeln!(output, "    qb_init_args(argc, argv);").unwrap();
+        writeln_code!(&mut output, "    /* Initialize command-line arguments */")?;
+        writeln_code!(&mut output, "    qb_init_args(argc, argv);")?;
         // Initialize start directory for _STARTDIR$
-        writeln!(output, "    /* Initialize start directory */").unwrap();
-        writeln!(output, "    qb_init_startdir();").unwrap();
+        writeln_code!(&mut output, "    /* Initialize start directory */")?;
+        writeln_code!(&mut output, "    qb_init_startdir();")?;
         // Check for initialization errors
-        writeln!(output, "    if (_qb_err != 0) {{").unwrap();
-        writeln!(output, "        fprintf(stderr, \"Error: Failed to initialize start directory (error code %d)\\n\", _qb_err);").unwrap();
-        writeln!(output, "        fflush(stderr);").unwrap();
-        writeln!(output, "        return 1;").unwrap();
-        writeln!(output, "    }}").unwrap();
+        writeln_code!(&mut output, "    if (_qb_err != 0) {{")?;
+        writeln_code!(
+            &mut output,
+            "        fprintf(stderr, \"Error: Failed to initialize start directory (error code %d)\\n\", _qb_err);"
+        )?;
+        writeln_code!(&mut output, "        fflush(stderr);")?;
+        writeln_code!(&mut output, "        return 1;")?;
+        writeln_code!(&mut output, "    }}")?;
         // Initialize VGA palette for INP/OUT port emulation
-        writeln!(output, "    /* Initialize VGA palette */").unwrap();
-        writeln!(output, "    _qb_init_palette();").unwrap();
+        writeln_code!(&mut output, "    /* Initialize VGA palette */")?;
+        writeln_code!(&mut output, "    _qb_init_palette();")?;
         // STRIG event dispatch global (stores event ID for dispatch switch)
-        writeln!(output, "    static uint32_t _qb_strig_event_id = 0;").unwrap();
-        writeln!(output).unwrap();
+        writeln_code!(&mut output, "    static uint32_t _qb_strig_event_id = 0;")?;
+        writeln_code!(&mut output)?;
 
         // Debug initialization (if debug mode enabled)
         if self.debug_enabled {
-            writeln!(output, "    /* Initialize debugger connection */").unwrap();
-            writeln!(
-                output,
+            writeln_code!(&mut output, "    /* Initialize debugger connection */")?;
+            writeln_code!(
+                &mut output,
                 "    const char* _qb_dbg_pipe_env = getenv(\"QB64FRESH_DEBUG_PIPE\");"
-            )
-            .unwrap();
-            writeln!(output, "    if (_qb_dbg_pipe_env) {{").unwrap();
-            writeln!(output, "        qb_dbg_init(_qb_dbg_pipe_env);").unwrap();
-            writeln!(output, "    }}").unwrap();
-            writeln!(output).unwrap();
+            )?;
+            writeln_code!(&mut output, "    if (_qb_dbg_pipe_env) {{")?;
+            writeln_code!(&mut output, "        qb_dbg_init(_qb_dbg_pipe_env);")?;
+            writeln_code!(&mut output, "    }}")?;
+            writeln_code!(&mut output)?;
         }
 
         // Initialize string constants (can't be done at global scope in C)
         // These are NOT cleaned up as they need to persist for the program lifetime
         if !string_const_inits.is_empty() {
-            writeln!(output, "    /* Initialize string constants */").unwrap();
+            writeln_code!(&mut output, "    /* Initialize string constants */")?;
             for init in &string_const_inits {
-                writeln!(output, "    {};", init).unwrap();
+                writeln_code!(&mut output, "    {};", init)?;
             }
-            writeln!(output).unwrap();
+            writeln_code!(&mut output)?;
         }
 
         // Save temp pool base for main program AFTER string constant initialization
         // Strings created before this point (globals) won't be cleaned up
-        writeln!(output, "    uint64_t _qbs_main_base = qbs_tmp_base_get();").unwrap();
-        writeln!(output).unwrap();
+        writeln_code!(
+            &mut output,
+            "    uint64_t _qbs_main_base = qbs_tmp_base_get();"
+        )?;
+        writeln_code!(&mut output)?;
 
         // Collect main-level statements (excluding SUB/FUNCTION definitions)
         let main_stmts: Vec<&TypedStatement> = program
@@ -514,11 +540,11 @@ impl CodeGenerator for CBackend {
 
         // Emit implicit local declarations
         if !implicit_locals.is_empty() {
-            writeln!(output, "    /* Implicit local variables */").unwrap();
+            writeln_code!(&mut output, "    /* Implicit local variables */")?;
             for decl in &implicit_locals {
-                writeln!(output, "    {}", decl).unwrap();
+                writeln_code!(&mut output, "    {}", decl)?;
             }
-            writeln!(output).unwrap();
+            writeln_code!(&mut output)?;
         }
 
         emitter.indent = 1;
@@ -534,7 +560,7 @@ impl CodeGenerator for CBackend {
                 _ => {
                     emitter.emit_stmt(stmt, &mut output)?;
                     // Clean up temp strings after each statement
-                    writeln!(output, "    qbs_cleanup(_qbs_main_base, 0);").unwrap();
+                    writeln_code!(&mut output, "    qbs_cleanup(_qbs_main_base, 0);")?;
                 }
             }
         }
@@ -542,40 +568,46 @@ impl CodeGenerator for CBackend {
         // Generate STRIG event dispatch code
         // This is always generated because loop code references _qb_strig_dispatch
         // The dispatch uses _qb_strig_event_id which was set at the check point
-        writeln!(output).unwrap();
-        writeln!(output, "    /* STRIG Event Dispatch */").unwrap();
-        writeln!(output, "    goto _qb_strig_dispatch_end;").unwrap();
-        writeln!(output, "_qb_strig_dispatch:").unwrap();
+        writeln_code!(&mut output)?;
+        writeln_code!(&mut output, "    /* STRIG Event Dispatch */")?;
+        writeln_code!(&mut output, "    goto _qb_strig_dispatch_end;")?;
+        writeln_code!(&mut output, "_qb_strig_dispatch:")?;
         if emitter.strig_handlers.is_empty() {
             // No handlers registered - just return to caller
-            writeln!(output, "    goto *_gosub_stack[--_gosub_sp];").unwrap();
+            writeln_code!(&mut output, "    goto *_gosub_stack[--_gosub_sp];")?;
         } else {
-            writeln!(output, "    switch (_qb_strig_event_id) {{").unwrap();
+            writeln_code!(&mut output, "    switch (_qb_strig_event_id) {{")?;
             for (event_id, label) in &emitter.strig_handlers {
-                writeln!(output, "        case {}: goto {};", event_id, label).unwrap();
+                writeln_code!(&mut output, "        case {}: goto {};", event_id, label)?;
             }
-            writeln!(output, "        default: goto *_gosub_stack[--_gosub_sp];").unwrap();
-            writeln!(output, "    }}").unwrap();
+            writeln_code!(
+                &mut output,
+                "        default: goto *_gosub_stack[--_gosub_sp];"
+            )?;
+            writeln_code!(&mut output, "    }}")?;
         }
-        writeln!(output, "_qb_strig_dispatch_end:").unwrap();
+        writeln_code!(&mut output, "_qb_strig_dispatch_end:")?;
 
-        writeln!(output).unwrap();
+        writeln_code!(&mut output)?;
         // Debug shutdown before exit
         if self.debug_enabled {
-            writeln!(output, "    qb_dbg_shutdown();").unwrap();
+            writeln_code!(&mut output, "    qb_dbg_shutdown();")?;
         }
         // Shutdown runtime library (external runtime only)
         if self.runtime_mode == RuntimeMode::External {
-            writeln!(output, "    /* Shutdown runtime library */").unwrap();
-            writeln!(output, "    qb_runtime_shutdown();").unwrap();
+            writeln_code!(&mut output, "    /* Shutdown runtime library */")?;
+            writeln_code!(&mut output, "    qb_runtime_shutdown();")?;
             // Check for shutdown errors (non-fatal, but log them)
-            writeln!(output, "    if (_qb_err != 0) {{").unwrap();
-            writeln!(output, "        fprintf(stderr, \"Warning: Runtime shutdown reported error (code %d)\\n\", _qb_err);").unwrap();
-            writeln!(output, "        fflush(stderr);").unwrap();
-            writeln!(output, "    }}").unwrap();
+            writeln_code!(&mut output, "    if (_qb_err != 0) {{")?;
+            writeln_code!(
+                &mut output,
+                "        fprintf(stderr, \"Warning: Runtime shutdown reported error (code %d)\\n\", _qb_err);"
+            )?;
+            writeln_code!(&mut output, "        fflush(stderr);")?;
+            writeln_code!(&mut output, "    }}")?;
         }
-        writeln!(output, "    return 0;").unwrap();
-        writeln!(output, "}}").unwrap();
+        writeln_code!(&mut output, "    return 0;")?;
+        writeln_code!(&mut output, "}}")?;
 
         Ok(GeneratedOutput::c_code(output))
     }
@@ -595,17 +627,18 @@ mod tests {
     use crate::semantic::types::BasicType;
 
     #[test]
-    fn test_generate_empty_program() {
+    fn test_generate_empty_program() -> Result<(), CodeGenError> {
         let program = TypedProgram::new(vec![]);
         let backend = CBackend::new();
-        let result = backend.generate(&program).unwrap();
+        let result = backend.generate(&program)?;
 
         assert!(result.code.contains("int main("));
         assert!(result.code.contains("return 0;"));
+        Ok(())
     }
 
     #[test]
-    fn test_generate_print_statement() {
+    fn test_generate_print_statement() -> Result<(), CodeGenError> {
         let program = TypedProgram::new(vec![TypedStatement::new(
             TypedStatementKind::Print {
                 items: vec![TypedPrintItem {
@@ -618,14 +651,15 @@ mod tests {
         )]);
 
         let backend = CBackend::new();
-        let result = backend.generate(&program).unwrap();
+        let result = backend.generate(&program)?;
 
         assert!(result.code.contains("qb_print_string"));
         assert!(result.code.contains("qb_print_newline"));
+        Ok(())
     }
 
     #[test]
-    fn test_generate_assignment() {
+    fn test_generate_assignment() -> Result<(), CodeGenError> {
         let program = TypedProgram::new(vec![TypedStatement::new(
             TypedStatementKind::Assignment {
                 name: "x".to_string(),
@@ -636,13 +670,14 @@ mod tests {
         )]);
 
         let backend = CBackend::new();
-        let result = backend.generate(&program).unwrap();
+        let result = backend.generate(&program)?;
 
         assert!(result.code.contains("x = 42LL"));
+        Ok(())
     }
 
     #[test]
-    fn test_restore_with_label_codegen() {
+    fn test_restore_with_label_codegen() -> Result<(), CodeGenError> {
         let program = TypedProgram::new(vec![
             TypedStatement::new(
                 TypedStatementKind::Label {
@@ -668,12 +703,13 @@ mod tests {
         ]);
 
         let backend = CBackend::new();
-        let result = backend.generate(&program).unwrap();
+        let result = backend.generate(&program)?;
 
         assert!(
             result
                 .code
                 .contains("_qb_data_ptr = 0; /* RESTORE testLabel */")
         );
+        Ok(())
     }
 }

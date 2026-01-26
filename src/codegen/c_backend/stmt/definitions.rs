@@ -11,7 +11,6 @@
 //! the generation of C code for BASIC definition statements.
 
 use std::collections::HashSet;
-use std::fmt::Write;
 
 use crate::codegen::error::CodeGenError;
 use crate::semantic::typed_ir::{
@@ -19,6 +18,7 @@ use crate::semantic::typed_ir::{
     TypedStatement,
 };
 use crate::semantic::types::BasicType;
+use crate::writeln_code;
 
 use crate::codegen::c_backend::expr::{c_function_name, emit_expr};
 use crate::codegen::c_backend::implicit_vars::collect_implicit_locals;
@@ -43,7 +43,7 @@ impl super::StmtEmitter {
         indent: &str,
         decl: &TypedExternalDeclaration,
         output: &mut String,
-    ) {
+    ) -> Result<(), CodeGenError> {
         // For external functions returning STRING, use char*
         let return_type = if decl.return_type == BasicType::String {
             "char*".to_string()
@@ -160,20 +160,25 @@ impl super::StmtEmitter {
         ];
 
         if skip_system_functions.contains(&decl.c_name.as_str()) {
-            writeln!(
+            writeln_code!(
                 output,
                 "{}// extern {} {}({}); // already declared in system headers",
-                indent, return_type, decl.c_name, params_str
-            )
-            .unwrap();
+                indent,
+                return_type,
+                decl.c_name,
+                params_str
+            )?;
         } else {
-            writeln!(
+            writeln_code!(
                 output,
                 "{}extern {} {}({});",
-                indent, return_type, decl.c_name, params_str
-            )
-            .unwrap();
+                indent,
+                return_type,
+                decl.c_name,
+                params_str
+            )?;
         }
+        Ok(())
     }
 
     /// Emits a SUB definition.
@@ -203,22 +208,22 @@ impl super::StmtEmitter {
         let c_name = format!("qb_sub_{}", c_identifier(name).to_lowercase());
         let params_str = emit_params(params);
 
-        writeln!(output, "{}void {}({}) {{", indent, c_name, params_str).unwrap();
+        writeln_code!(output, "{}void {}({}) {{", indent, c_name, params_str)?;
 
         // Emit debug entry hook
         if self.debug_enabled {
             // Estimate line number from first statement's span if available
             let entry_line = body.first().map(|s| s.span.start).unwrap_or(0);
-            writeln!(
+            writeln_code!(
                 output,
                 "    qb_dbg_enter_proc(\"{}\", {});",
-                name, entry_line
-            )
-            .unwrap();
+                name,
+                entry_line
+            )?;
         }
 
         // Create local copies of byref parameters
-        emit_byref_copies(params, output);
+        emit_byref_copies(params, output)?;
 
         // Collect and emit implicit local variables
         // Use global_var_names to avoid re-declaring globals as locals
@@ -238,10 +243,10 @@ impl super::StmtEmitter {
             false,
         );
         for decl in &implicit_locals {
-            writeln!(output, "    {}", decl).unwrap();
+            writeln_code!(output, "    {}", decl)?;
         }
         if !implicit_locals.is_empty() || params.iter().any(|p| !p.by_val) {
-            writeln!(output).unwrap();
+            writeln_code!(output)?;
         }
 
         // Set current procedure name for unique label generation
@@ -254,14 +259,14 @@ impl super::StmtEmitter {
             .collect();
 
         // Save temp pool base for this procedure - cleanup after each statement
-        writeln!(output, "    uint64_t _qbs_proc_base = qbs_tmp_base_get();").unwrap();
-        writeln!(output).unwrap();
+        writeln_code!(output, "    uint64_t _qbs_proc_base = qbs_tmp_base_get();")?;
+        writeln_code!(output)?;
 
         self.indent += 1;
         for stmt in body {
             self.emit_stmt(stmt, output)?;
             // Clean up temp strings after each statement
-            writeln!(output, "    qbs_cleanup(_qbs_proc_base, 0);").unwrap();
+            writeln_code!(output, "    qbs_cleanup(_qbs_proc_base, 0);")?;
         }
         self.indent -= 1;
 
@@ -271,21 +276,21 @@ impl super::StmtEmitter {
         // Write back STRING byref parameters to caller's variables
         // Only strings need writeback - they use reference counting and local copies
         // Numeric parameters often have constants passed, which can't be written to
-        emit_string_writebacks(params, output);
+        emit_string_writebacks(params, output)?;
 
         // Emit STRIG dispatch label (required because loops emit goto _qb_strig_dispatch)
         // This is a no-op stub - actual dispatch happens in main() only
-        writeln!(output, "    goto _qb_strig_dispatch_end;").unwrap();
-        writeln!(output, "_qb_strig_dispatch:").unwrap();
-        writeln!(output, "_qb_strig_dispatch_end:").unwrap();
+        writeln_code!(output, "    goto _qb_strig_dispatch_end;")?;
+        writeln_code!(output, "_qb_strig_dispatch:")?;
+        writeln_code!(output, "_qb_strig_dispatch_end:")?;
 
         // Emit debug exit hook
         if self.debug_enabled {
-            writeln!(output, "    qb_dbg_exit_proc(\"{}\");", name).unwrap();
+            writeln_code!(output, "    qb_dbg_exit_proc(\"{}\");", name)?;
         }
 
-        writeln!(output, "{}}}", indent).unwrap();
-        writeln!(output).unwrap();
+        writeln_code!(output, "{}}}", indent)?;
+        writeln_code!(output)?;
         Ok(())
     }
 
@@ -321,36 +326,37 @@ impl super::StmtEmitter {
         let c_ret_type = c_type(return_type);
         let params_str = emit_params(params);
 
-        writeln!(
+        writeln_code!(
             output,
             "{}{} {}({}) {{",
-            indent, c_ret_type, c_name, params_str
-        )
-        .unwrap();
+            indent,
+            c_ret_type,
+            c_name,
+            params_str
+        )?;
 
         // Emit debug entry hook
         if self.debug_enabled {
             let entry_line = body.first().map(|s| s.span.start).unwrap_or(0);
-            writeln!(
+            writeln_code!(
                 output,
                 "    qb_dbg_enter_proc(\"{}\", {});",
-                name, entry_line
-            )
-            .unwrap();
+                name,
+                entry_line
+            )?;
         }
 
         let ret_var = c_identifier(name);
-        writeln!(
+        writeln_code!(
             output,
             "    {} {} = {};",
             c_ret_type,
             ret_var,
             default_init(return_type)
-        )
-        .unwrap();
+        )?;
 
         // Create local copies of byref parameters
-        emit_byref_copies(params, output);
+        emit_byref_copies(params, output)?;
 
         // Collect and emit implicit local variables
         // Pass is_main_program=false: FUNCTION creates locals even if globals with same name exist
@@ -371,10 +377,10 @@ impl super::StmtEmitter {
             false,
         );
         for decl in &implicit_locals {
-            writeln!(output, "    {}", decl).unwrap();
+            writeln_code!(output, "    {}", decl)?;
         }
         if !implicit_locals.is_empty() || params.iter().any(|p| !p.by_val) {
-            writeln!(output).unwrap();
+            writeln_code!(output)?;
         }
 
         // Set current procedure name for unique label generation
@@ -389,14 +395,14 @@ impl super::StmtEmitter {
             .collect();
 
         // Save temp pool base for this function - cleanup after each statement
-        writeln!(output, "    uint64_t _qbs_proc_base = qbs_tmp_base_get();").unwrap();
-        writeln!(output).unwrap();
+        writeln_code!(output, "    uint64_t _qbs_proc_base = qbs_tmp_base_get();")?;
+        writeln_code!(output)?;
 
         self.indent += 1;
         for stmt in body {
             self.emit_stmt(stmt, output)?;
             // Clean up temp strings after each statement
-            writeln!(output, "    qbs_cleanup(_qbs_proc_base, 0);").unwrap();
+            writeln_code!(output, "    qbs_cleanup(_qbs_proc_base, 0);")?;
         }
         self.indent -= 1;
 
@@ -407,22 +413,22 @@ impl super::StmtEmitter {
         // Write back STRING byref parameters to caller's variables
         // Only strings need writeback - they use reference counting and local copies
         // Numeric parameters often have constants passed, which can't be written to
-        emit_string_writebacks(params, output);
+        emit_string_writebacks(params, output)?;
 
         // Emit STRIG dispatch label (required because loops emit goto _qb_strig_dispatch)
         // This is a no-op stub - actual dispatch happens in main() only
-        writeln!(output, "    goto _qb_strig_dispatch_end;").unwrap();
-        writeln!(output, "_qb_strig_dispatch:").unwrap();
-        writeln!(output, "_qb_strig_dispatch_end:").unwrap();
+        writeln_code!(output, "    goto _qb_strig_dispatch_end;")?;
+        writeln_code!(output, "_qb_strig_dispatch:")?;
+        writeln_code!(output, "_qb_strig_dispatch_end:")?;
 
         // Emit debug exit hook
         if self.debug_enabled {
-            writeln!(output, "    qb_dbg_exit_proc(\"{}\");", name).unwrap();
+            writeln_code!(output, "    qb_dbg_exit_proc(\"{}\");", name)?;
         }
 
-        writeln!(output, "    return {};", ret_var).unwrap();
-        writeln!(output, "{}}}", indent).unwrap();
-        writeln!(output).unwrap();
+        writeln_code!(output, "    return {};", ret_var)?;
+        writeln_code!(output, "{}}}", indent)?;
+        writeln_code!(output)?;
         Ok(())
     }
 
@@ -456,11 +462,11 @@ impl super::StmtEmitter {
         if dimensions.is_empty() {
             // Handle fixed-length strings specially: char name[N] = "";
             if let BasicType::FixedString(len) = basic_type {
-                writeln!(output, "{}char {}[{}] = \"\";", indent, c_name, len + 1).unwrap();
+                writeln_code!(output, "{}char {}[{}] = \"\";", indent, c_name, len + 1)?;
             } else {
                 let c_ty = c_type(basic_type);
                 let init = default_init(basic_type);
-                writeln!(output, "{}{} {} = {};", indent, c_ty, c_name, init).unwrap();
+                writeln_code!(output, "{}{} {} = {};", indent, c_ty, c_name, init)?;
             }
         } else {
             // Determine if we should use an existing global:
@@ -477,17 +483,16 @@ impl super::StmtEmitter {
                 let size_expr = sizes.join(" * ");
                 // Array of char arrays: char (*name)[len+1] = calloc(...)
                 if use_global {
-                    writeln!(
+                    writeln_code!(
                         output,
                         "{}{} = calloc({}, sizeof(char[{}]));",
                         indent,
                         c_name,
                         size_expr,
                         len + 1
-                    )
-                    .unwrap();
+                    )?;
                 } else {
-                    writeln!(
+                    writeln_code!(
                         output,
                         "{}char (*{})[{}] = calloc({}, sizeof(char[{}]));",
                         indent,
@@ -495,8 +500,7 @@ impl super::StmtEmitter {
                         len + 1,
                         size_expr,
                         len + 1
-                    )
-                    .unwrap();
+                    )?;
                 }
             } else {
                 let c_ty = c_type(basic_type);
@@ -518,36 +522,46 @@ impl super::StmtEmitter {
                     // In main with existing global: allocate to global (don't create shadowing local)
                     // This is critical for arrays used by subroutines - they access the global
                     if *basic_type == BasicType::String {
-                        writeln!(
+                        writeln_code!(
                             output,
                             "{}{} = calloc({}, sizeof({}));",
-                            indent, c_name, size_expr, c_ty
-                        )
-                        .unwrap();
+                            indent,
+                            c_name,
+                            size_expr,
+                            c_ty
+                        )?;
                     } else {
-                        writeln!(
+                        writeln_code!(
                             output,
                             "{}{} = malloc(sizeof({}) * {});",
-                            indent, c_name, c_ty, size_expr
-                        )
-                        .unwrap();
+                            indent,
+                            c_name,
+                            c_ty,
+                            size_expr
+                        )?;
                     }
                 } else {
                     // In SUB/FUNCTION or no global exists: create local array
                     if *basic_type == BasicType::String {
-                        writeln!(
+                        writeln_code!(
                             output,
                             "{}{}* {} = calloc({}, sizeof({}));",
-                            indent, c_ty, c_name, size_expr, c_ty
-                        )
-                        .unwrap();
+                            indent,
+                            c_ty,
+                            c_name,
+                            size_expr,
+                            c_ty
+                        )?;
                     } else {
-                        writeln!(
+                        writeln_code!(
                             output,
                             "{}{}* {} = malloc(sizeof({}) * {});",
-                            indent, c_ty, c_name, c_ty, size_expr
-                        )
-                        .unwrap();
+                            indent,
+                            c_ty,
+                            c_name,
+                            c_ty,
+                            size_expr
+                        )?;
                     }
                 }
             }
@@ -555,17 +569,19 @@ impl super::StmtEmitter {
             // Register array bounds for UBOUND/LBOUND
             if dimensions.len() == 1 {
                 // Single dimension: use simple register function
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_array_register({}, {}, {});",
-                    indent, c_name, dimensions[0].lower, dimensions[0].upper
-                )
-                .unwrap();
+                    indent,
+                    c_name,
+                    dimensions[0].lower,
+                    dimensions[0].upper
+                )?;
             } else {
                 // Multi-dimensional: use qb_array_register_md
                 let lowers: Vec<String> = dimensions.iter().map(|d| d.lower.to_string()).collect();
                 let uppers: Vec<String> = dimensions.iter().map(|d| d.upper.to_string()).collect();
-                writeln!(
+                writeln_code!(
                     output,
                     "{}{{ int32_t _lb[] = {{{}}}; int32_t _ub[] = {{{}}}; qb_array_register_md({}, {}, _lb, _ub); }}",
                     indent,
@@ -573,8 +589,7 @@ impl super::StmtEmitter {
                     uppers.join(", "),
                     c_name,
                     dimensions.len()
-                )
-                .unwrap();
+                )?;
             }
         }
         Ok(())
@@ -611,7 +626,7 @@ impl super::StmtEmitter {
 
         // Calculate total size
         if dimensions.is_empty() {
-            writeln!(output, "{}/* REDIM {} - no dimensions */", indent, name).unwrap();
+            writeln_code!(output, "{}/* REDIM {} - no dimensions */", indent, name)?;
             return Ok(());
         }
 
@@ -676,51 +691,58 @@ impl super::StmtEmitter {
             // REDIM _PRESERVE: Keep existing values, zero only new elements
             // The size tracking variable is global (declared alongside the array)
             // to support REDIM from multiple functions sharing the same array.
-            writeln!(output, "{}{{", indent).unwrap();
-            writeln!(
+            writeln_code!(output, "{}{{", indent)?;
+            writeln_code!(
                 output,
                 "{}    size_t new_sz__ = sizeof({}) * ({});",
-                indent, c_elem_type, size_expr
-            )
-            .unwrap();
-            writeln!(
+                indent,
+                c_elem_type,
+                size_expr
+            )?;
+            writeln_code!(
                 output,
                 "{}    {} = realloc({}, new_sz__);",
-                indent, c_name, c_name
-            )
-            .unwrap();
+                indent,
+                c_name,
+                c_name
+            )?;
             // Zero only the new portion if array grew
-            writeln!(
+            writeln_code!(
                 output,
                 "{}    if (new_sz__ > {}) memset((char*){} + {}, 0, new_sz__ - {});",
-                indent, size_var, c_name, size_var, size_var
-            )
-            .unwrap();
-            writeln!(output, "{}    {} = new_sz__;", indent, size_var).unwrap();
+                indent,
+                size_var,
+                c_name,
+                size_var,
+                size_var
+            )?;
+            writeln_code!(output, "{}    {} = new_sz__;", indent, size_var)?;
             // Register new bounds
-            writeln!(output, "{}{}", indent, bounds_reg).unwrap();
-            writeln!(output, "{}}}", indent).unwrap();
+            writeln_code!(output, "{}{}", indent, bounds_reg)?;
+            writeln_code!(output, "{}}}", indent)?;
         } else {
             // Regular REDIM: Reallocate and zero entire array
-            writeln!(output, "{}{{", indent).unwrap();
-            writeln!(
+            writeln_code!(output, "{}{{", indent)?;
+            writeln_code!(
                 output,
                 "{}    size_t new_sz__ = sizeof({}) * ({});",
-                indent, c_elem_type, size_expr
-            )
-            .unwrap();
-            writeln!(
+                indent,
+                c_elem_type,
+                size_expr
+            )?;
+            writeln_code!(
                 output,
                 "{}    {} = realloc({}, new_sz__);",
-                indent, c_name, c_name
-            )
-            .unwrap();
-            writeln!(output, "{}    memset({}, 0, new_sz__);", indent, c_name).unwrap();
+                indent,
+                c_name,
+                c_name
+            )?;
+            writeln_code!(output, "{}    memset({}, 0, new_sz__);", indent, c_name)?;
             // Update size tracking variable
-            writeln!(output, "{}    {} = new_sz__;", indent, size_var).unwrap();
+            writeln_code!(output, "{}    {} = new_sz__;", indent, size_var)?;
             // Register new bounds
-            writeln!(output, "{}{}", indent, bounds_reg).unwrap();
-            writeln!(output, "{}}}", indent).unwrap();
+            writeln_code!(output, "{}{}", indent, bounds_reg)?;
+            writeln_code!(output, "{}}}", indent)?;
         }
 
         Ok(())
@@ -793,7 +815,7 @@ pub(in crate::codegen::c_backend) fn emit_params(params: &[TypedParameter]) -> S
 ///
 /// * `params` - The parameter list
 /// * `output` - Output buffer to write to
-fn emit_byref_copies(params: &[TypedParameter], output: &mut String) {
+fn emit_byref_copies(params: &[TypedParameter], output: &mut String) -> Result<(), CodeGenError> {
     for p in params {
         if !p.by_val {
             let c_name = c_identifier(&p.name);
@@ -802,36 +824,36 @@ fn emit_byref_copies(params: &[TypedParameter], output: &mut String) {
             if p.is_array {
                 // For arrays of fixed-length strings, use pointer to array type
                 if let BasicType::FixedString(n) = p.basic_type {
-                    writeln!(
+                    writeln_code!(
                         output,
                         "    char (*{})[{}] = {}_ref;",
                         c_name,
                         n + 1,
                         c_name
-                    )
-                    .unwrap();
+                    )?;
                 } else {
                     let c_ty = c_type(&p.basic_type);
                     // Array remains as pointer: int32_t* arr = arr_ref;
-                    writeln!(output, "    {}* {} = {}_ref;", c_ty, c_name, c_name).unwrap();
+                    writeln_code!(output, "    {}* {} = {}_ref;", c_ty, c_name, c_name)?;
                 }
                 // Emit size tracking variable for REDIM _PRESERVE support
                 // Must be static so it persists across function calls
-                writeln!(output, "    static size_t {}_sz__ = 0;", c_name).unwrap();
+                writeln_code!(output, "    static size_t {}_sz__ = 0;", c_name)?;
             } else if let BasicType::FixedString(n) = p.basic_type {
                 // Fixed-length strings need special handling - use a pointer alias
                 // instead of copying (arrays can't be assigned directly in C)
                 // Create pointer alias: char* name = (*name_ref);
                 // This allows direct access to the array contents
-                writeln!(output, "    char* {} = (*{}_ref);", c_name, c_name).unwrap();
+                writeln_code!(output, "    char* {} = (*{}_ref);", c_name, c_name)?;
                 let _ = n; // Silence unused warning
             } else {
                 let c_ty = c_type(&p.basic_type);
                 // Create local copy: int32_t t1 = *t1_ref;
-                writeln!(output, "    {} {} = *{}_ref;", c_ty, c_name, c_name).unwrap();
+                writeln_code!(output, "    {} {} = *{}_ref;", c_ty, c_name, c_name)?;
             }
         }
     }
+    Ok(())
 }
 
 /// Emits writebacks for STRING byref parameters at function exit.
@@ -849,14 +871,18 @@ fn emit_byref_copies(params: &[TypedParameter], output: &mut String) {
 ///
 /// * `params` - The parameter list
 /// * `output` - Output buffer to write to
-fn emit_string_writebacks(params: &[TypedParameter], output: &mut String) {
+fn emit_string_writebacks(
+    params: &[TypedParameter],
+    output: &mut String,
+) -> Result<(), CodeGenError> {
     for p in params {
         // Only process non-BYVAL STRING parameters
         if !p.by_val && p.basic_type == BasicType::String && !p.is_array {
             let c_name = c_identifier(&p.name);
             // Write back the local string pointer to the caller's variable
             // *name_str_ref = name_str;
-            writeln!(output, "    *{}_ref = {};", c_name, c_name).unwrap();
+            writeln_code!(output, "    *{}_ref = {};", c_name, c_name)?;
         }
     }
+    Ok(())
 }

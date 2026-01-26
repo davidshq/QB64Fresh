@@ -2,11 +2,13 @@
 //!
 //! This module provides PRINT, INPUT, and file I/O operations.
 
-use crate::string::{qb_string_data, qb_string_from_bytes, qb_string_len, qb_string_retain, QbString};
+use crate::string::{
+    qb_string_data, qb_string_from_bytes, qb_string_len, qb_string_retain, QbString,
+};
+use std::collections::HashMap;
+use std::fs::File;
 use std::io::{self, BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::os::raw::c_char;
-use std::fs::File;
-use std::collections::HashMap;
 use std::sync::Mutex;
 
 // ============================================================================
@@ -553,9 +555,7 @@ mod keyboard {
     }
 
     pub fn input_available() -> bool {
-        unsafe {
-            _kbhit() != 0
-        }
+        unsafe { _kbhit() != 0 }
     }
 
     pub fn read_key() -> Option<Vec<u8>> {
@@ -576,7 +576,7 @@ mod keyboard {
 
         unsafe {
             let ch = _getch();
-            
+
             // Handle extended keys (function keys, arrows, etc.)
             // Windows returns 0 or 224 for extended keys, followed by the scan code
             if ch == 0 || ch == 224 {
@@ -584,7 +584,7 @@ mod keyboard {
                 // Return as two-byte sequence: [0, scan_code]
                 return Some(vec![0, ext as u8]);
             }
-            
+
             // Regular character
             Some(vec![ch as u8])
         }
@@ -597,26 +597,26 @@ mod keyboard {
             [0, code] => {
                 // Map Windows scan codes to QB64 key codes
                 let qb_code = match *code {
-                    72 => 72,  // Up arrow
-                    80 => 80,  // Down arrow
-                    75 => 75,  // Left arrow
-                    77 => 77,  // Right arrow
-                    71 => 71,  // Home
-                    79 => 79,  // End
-                    82 => 82,  // Insert
-                    83 => 83,  // Delete
-                    73 => 73,  // Page Up
-                    81 => 81,  // Page Down
-                    59 => 59,  // F1
-                    60 => 60,  // F2
-                    61 => 61,  // F3
-                    62 => 62,  // F4
-                    63 => 63,  // F5
-                    64 => 64,  // F6
-                    65 => 65,  // F7
-                    66 => 66,  // F8
-                    67 => 67,  // F9
-                    68 => 68,  // F10
+                    72 => 72,   // Up arrow
+                    80 => 80,   // Down arrow
+                    75 => 75,   // Left arrow
+                    77 => 77,   // Right arrow
+                    71 => 71,   // Home
+                    79 => 79,   // End
+                    82 => 82,   // Insert
+                    83 => 83,   // Delete
+                    73 => 73,   // Page Up
+                    81 => 81,   // Page Down
+                    59 => 59,   // F1
+                    60 => 60,   // F2
+                    61 => 61,   // F3
+                    62 => 62,   // F4
+                    63 => 63,   // F5
+                    64 => 64,   // F6
+                    65 => 65,   // F7
+                    66 => 66,   // F8
+                    67 => 67,   // F9
+                    68 => 68,   // F10
                     _ => *code, // Use scan code as-is
                 };
                 vec![0, qb_code]
@@ -1602,9 +1602,11 @@ pub extern "C" fn qb_net_close(handle: i64) {
 pub extern "C" fn qb_date() -> *mut QbString {
     use std::time::SystemTime;
     let now = SystemTime::now();
-    let duration = now.duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
+    let duration = now
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
     let secs = duration.as_secs();
-    
+
     unsafe {
         let tm = libc::localtime(&(secs as i64));
         if tm.is_null() {
@@ -1629,9 +1631,11 @@ pub extern "C" fn qb_date() -> *mut QbString {
 pub extern "C" fn qb_time() -> *mut QbString {
     use std::time::SystemTime;
     let now = SystemTime::now();
-    let duration = now.duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
+    let duration = now
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
     let secs = duration.as_secs();
-    
+
     unsafe {
         let tm = libc::localtime(&(secs as i64));
         if tm.is_null() {
@@ -1656,9 +1660,11 @@ pub extern "C" fn qb_time() -> *mut QbString {
 pub extern "C" fn qb_date64() -> *mut QbString {
     use std::time::SystemTime;
     let now = SystemTime::now();
-    let duration = now.duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
+    let duration = now
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
     let secs = duration.as_secs();
-    
+
     unsafe {
         let tm = libc::localtime(&(secs as i64));
         if tm.is_null() {
@@ -1693,14 +1699,11 @@ pub extern "C" fn qb_cwd() -> *mut QbString {
     match std::env::current_dir() {
         Ok(path) => {
             let path_str = path.to_string_lossy();
-            unsafe {
-                crate::string::qb_string_new(path_str.as_ptr() as *const c_char)
-            }
+            unsafe { crate::string::qb_string_new(path_str.as_ptr() as *const c_char) }
         }
         Err(_) => crate::string::qb_string_empty(),
     }
 }
-
 
 /// _OS$ - Returns operating system string in QB64 format: [PLATFORM][BITS].
 ///
@@ -1730,9 +1733,7 @@ pub extern "C" fn qb_os() -> *mut QbString {
             "[LINUX][32BIT]"
         }
     };
-    unsafe {
-        crate::string::qb_string_new(os_str.as_ptr() as *const c_char)
-    }
+    unsafe { crate::string::qb_string_new(os_str.as_ptr() as *const c_char) }
 }
 
 // ============================================================================
@@ -1859,7 +1860,11 @@ pub unsafe extern "C" fn qb_file_open(fnum: i32, filename: *const c_char, mode: 
 /// - `filename` must be a valid QbString pointer or null
 /// - `mode` must be a valid null-terminated C string
 #[no_mangle]
-pub unsafe extern "C" fn qb_file_open_str(fnum: i32, filename: *const QbString, mode: *const c_char) {
+pub unsafe extern "C" fn qb_file_open_str(
+    fnum: i32,
+    filename: *const QbString,
+    mode: *const c_char,
+) {
     if filename.is_null() {
         return;
     }
@@ -2077,28 +2082,32 @@ pub unsafe extern "C" fn qb_file_input_string(fnum: i32, s: *mut *mut QbString) 
         return;
     }
     init_file_handles();
-        let mut handles = FILE_HANDLES.lock().unwrap();
-        if let Some(ref mut map) = *handles {
-            if let Some(ref mut handle) = map.get_mut(&fnum) {
-                if let Some(ref mut reader) = handle.reader {
-                    let mut buf = Vec::new();
-                    // Read until whitespace or newline
-                    loop {
-                        let mut byte = [0u8; 1];
-                        match Read::read_exact(reader, &mut byte) {
-                            Ok(_) => {
-                                if byte[0] == b' ' || byte[0] == b'\t' || byte[0] == b'\n' || byte[0] == b'\r' {
-                                    break;
-                                }
-                                buf.push(byte[0]);
+    let mut handles = FILE_HANDLES.lock().unwrap();
+    if let Some(ref mut map) = *handles {
+        if let Some(ref mut handle) = map.get_mut(&fnum) {
+            if let Some(ref mut reader) = handle.reader {
+                let mut buf = Vec::new();
+                // Read until whitespace or newline
+                loop {
+                    let mut byte = [0u8; 1];
+                    match Read::read_exact(reader, &mut byte) {
+                        Ok(_) => {
+                            if byte[0] == b' '
+                                || byte[0] == b'\t'
+                                || byte[0] == b'\n'
+                                || byte[0] == b'\r'
+                            {
+                                break;
                             }
-                            Err(_) => break,
+                            buf.push(byte[0]);
                         }
+                        Err(_) => break,
                     }
-                    *s = qb_string_from_bytes(buf.as_ptr(), buf.len());
                 }
+                *s = qb_string_from_bytes(buf.as_ptr(), buf.len());
             }
         }
+    }
 }
 
 /// INPUT # - Read integer from file.
@@ -2111,30 +2120,34 @@ pub unsafe extern "C" fn qb_file_input_int(fnum: i32, val: *mut i32) {
         return;
     }
     init_file_handles();
-        let mut handles = FILE_HANDLES.lock().unwrap();
-        if let Some(ref mut map) = *handles {
-            if let Some(ref mut handle) = map.get_mut(&fnum) {
-                if let Some(ref mut reader) = handle.reader {
-                    let mut buf = String::new();
-                    // Read until whitespace
-                    loop {
-                        let mut byte = [0u8; 1];
-                        match Read::read_exact(reader, &mut byte) {
-                            Ok(_) => {
-                                if byte[0] == b' ' || byte[0] == b'\t' || byte[0] == b'\n' || byte[0] == b'\r' {
-                                    break;
-                                }
-                                buf.push(byte[0] as char);
+    let mut handles = FILE_HANDLES.lock().unwrap();
+    if let Some(ref mut map) = *handles {
+        if let Some(ref mut handle) = map.get_mut(&fnum) {
+            if let Some(ref mut reader) = handle.reader {
+                let mut buf = String::new();
+                // Read until whitespace
+                loop {
+                    let mut byte = [0u8; 1];
+                    match Read::read_exact(reader, &mut byte) {
+                        Ok(_) => {
+                            if byte[0] == b' '
+                                || byte[0] == b'\t'
+                                || byte[0] == b'\n'
+                                || byte[0] == b'\r'
+                            {
+                                break;
                             }
-                            Err(_) => break,
+                            buf.push(byte[0] as char);
                         }
+                        Err(_) => break,
                     }
-                    if let Ok(n) = buf.parse::<i32>() {
-                        *val = n;
-                    }
+                }
+                if let Ok(n) = buf.parse::<i32>() {
+                    *val = n;
                 }
             }
         }
+    }
 }
 
 /// INPUT # - Read float from file.
@@ -2147,30 +2160,34 @@ pub unsafe extern "C" fn qb_file_input_float(fnum: i32, val: *mut f64) {
         return;
     }
     init_file_handles();
-        let mut handles = FILE_HANDLES.lock().unwrap();
-        if let Some(ref mut map) = *handles {
-            if let Some(ref mut handle) = map.get_mut(&fnum) {
-                if let Some(ref mut reader) = handle.reader {
-                    let mut buf = String::new();
-                    // Read until whitespace
-                    loop {
-                        let mut byte = [0u8; 1];
-                        match Read::read_exact(reader, &mut byte) {
-                            Ok(_) => {
-                                if byte[0] == b' ' || byte[0] == b'\t' || byte[0] == b'\n' || byte[0] == b'\r' {
-                                    break;
-                                }
-                                buf.push(byte[0] as char);
+    let mut handles = FILE_HANDLES.lock().unwrap();
+    if let Some(ref mut map) = *handles {
+        if let Some(ref mut handle) = map.get_mut(&fnum) {
+            if let Some(ref mut reader) = handle.reader {
+                let mut buf = String::new();
+                // Read until whitespace
+                loop {
+                    let mut byte = [0u8; 1];
+                    match Read::read_exact(reader, &mut byte) {
+                        Ok(_) => {
+                            if byte[0] == b' '
+                                || byte[0] == b'\t'
+                                || byte[0] == b'\n'
+                                || byte[0] == b'\r'
+                            {
+                                break;
                             }
-                            Err(_) => break,
+                            buf.push(byte[0] as char);
                         }
+                        Err(_) => break,
                     }
-                    if let Ok(n) = buf.parse::<f64>() {
-                        *val = n;
-                    }
+                }
+                if let Ok(n) = buf.parse::<f64>() {
+                    *val = n;
                 }
             }
         }
+    }
 }
 
 /// LINE INPUT # - Read a line from file.
@@ -2183,23 +2200,23 @@ pub unsafe extern "C" fn qb_file_line_input(fnum: i32, s: *mut *mut QbString) {
         return;
     }
     init_file_handles();
-        let mut handles = FILE_HANDLES.lock().unwrap();
-        if let Some(ref mut map) = *handles {
-            if let Some(ref mut handle) = map.get_mut(&fnum) {
-                if let Some(ref mut reader) = handle.reader {
-                    let mut buf = Vec::new();
-                    BufRead::read_until(reader, b'\n', &mut buf).ok();
-                    // Remove trailing newline if present
-                    if buf.last() == Some(&b'\n') {
-                        buf.pop();
-                    }
-                    if buf.last() == Some(&b'\r') {
-                        buf.pop();
-                    }
-                    *s = qb_string_from_bytes(buf.as_ptr(), buf.len());
+    let mut handles = FILE_HANDLES.lock().unwrap();
+    if let Some(ref mut map) = *handles {
+        if let Some(ref mut handle) = map.get_mut(&fnum) {
+            if let Some(ref mut reader) = handle.reader {
+                let mut buf = Vec::new();
+                BufRead::read_until(reader, b'\n', &mut buf).ok();
+                // Remove trailing newline if present
+                if buf.last() == Some(&b'\n') {
+                    buf.pop();
                 }
+                if buf.last() == Some(&b'\r') {
+                    buf.pop();
+                }
+                *s = qb_string_from_bytes(buf.as_ptr(), buf.len());
             }
         }
+    }
 }
 
 /// SEEK - Set file position.
