@@ -63,6 +63,47 @@ QbString* qb_str_int(int64_t n);
 QbString* qb_str_float(double n);
 double qb_val(const QbString* s);
 
+/* _TOSTR$, _IIF, _IIF$ (for --runtime external) */
+QbString* qb_tostr(double n);
+double qb_iif(int64_t cond, double true_val, double false_val);
+QbString* qb_iif_str(int64_t cond, QbString* true_val, QbString* false_val);
+
+/* String conversion: HEX$, OCT$, _BIN$, TRIM$, _INSTRREV */
+QbString* qb_hex(int64_t n);
+QbString* qb_oct(int64_t n);
+QbString* qb_bin(int64_t n);
+QbString* qb_trim(const QbString* s);
+int32_t qb_instrrev(const QbString* source, const QbString* search);
+int32_t qb_instrrev3(const QbString* s, const QbString* sub, int32_t start);
+
+/* ============================================================================
+ * Memory Operations (_MEMNEW, _MEMFREE, _MEMGET, _MEMPUT, _MEMCOPY, _MEMFILL,
+ *                    _MEM, _MEMEXISTS, _MEMELEMENT, _MEMIMAGE, _MEMSOUND, _OFFSET)
+ * ============================================================================
+ * Requires <stdint.h> (included at top) for intptr_t.
+ */
+typedef struct qb_mem {
+    void* offset;
+    intptr_t size;
+    intptr_t type;
+    intptr_t elementsize;
+    int32_t image;
+    int32_t sound;
+} qb_mem;
+
+qb_mem qb_memnew(intptr_t size);
+void qb_memfree(qb_mem* m);
+int64_t qb_memget(qb_mem m, intptr_t byteoffset);
+void qb_memput(qb_mem m, intptr_t byteoffset, int64_t value);
+void qb_memcopy(qb_mem src, intptr_t src_offset, intptr_t bytes, qb_mem dest, intptr_t dest_offset);
+void qb_memfill(qb_mem m, intptr_t byteoffset, intptr_t bytes, int32_t value);
+intptr_t qb_offset(void* ptr);
+qb_mem qb_mem_of(void* ptr, intptr_t size);
+int32_t qb_memexists(qb_mem m);
+qb_mem qb_memelement(qb_mem m, intptr_t index);
+qb_mem qb_memimage(int32_t handle);
+qb_mem qb_memsound(int32_t handle);
+
 /* ============================================================================
  * I/O Functions
  * ============================================================================ */
@@ -204,6 +245,29 @@ void qb_rset(QbString** var, QbString* value);
 int32_t qb_file_kill(const char* filename);
 int32_t qb_file_rename(const char* old_name, const char* new_name);
 int32_t qb_file_exists(const char* path);
+
+/* Directory operations (CHDIR, MKDIR, RMDIR, _DIREXISTS) */
+int32_t qb_chdir(const char* path);
+int32_t qb_mkdir(const char* path);
+int32_t qb_rmdir(const char* path);
+int32_t qb_dir_exists(const QbString* path);
+
+/* ============================================================================
+ * Networking (_OPENHOST, _OPENCONNECTION, _OPENCLIENT, _CONNECTED, _CLOSEHOST,
+ *             GET #/PUT #, EOF, LOF on network handles)
+ * ============================================================================ */
+
+int64_t qb_net_openhost(int64_t port);
+int64_t qb_net_openconnection(int64_t host_handle);
+int64_t qb_net_openclient(const char* connection_string);
+int32_t qb_net_connected(int64_t handle);
+void qb_net_close(int64_t handle);
+size_t qb_net_get(int64_t handle, uint8_t* data, size_t size);
+size_t qb_net_put(int64_t handle, const uint8_t* data, size_t size);
+size_t qb_net_get_string(int64_t handle, QbString** s);
+size_t qb_net_put_string(int64_t handle, const QbString* s);
+int32_t qb_net_eof(int64_t handle);
+int64_t qb_net_lof(int64_t handle);
 
 /* ============================================================================
  * Dialog Functions
@@ -430,6 +494,10 @@ void qb_maptriangle(double sx1, double sy1, double sx2, double sy2, double sx3, 
 void qb_maptriangle_ex(double sx1, double sy1, double sx2, double sy2, double sx3, double sy3,
                        double dx1, double dy1, double dx2, double dy2, double dx3, double dy3,
                        int32_t src_handle, int32_t dest_handle, int32_t smooth, int32_t seamless);
+
+/* OpenGL stubs (_GLRENDER, _GLCOMPAT) - no-op; raw _GL* excluded per ADR-0014 */
+void qb_glrender(int32_t mode);
+int32_t qb_glcompat(void);
 
 /* ============================================================================
  * Audio Functions

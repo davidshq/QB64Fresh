@@ -505,6 +505,132 @@ pub unsafe extern "C" fn qb_rtrim(s: *const QbString) -> *mut QbString {
     qb_string_from_bytes(src.as_ptr(), end)
 }
 
+/// HEX$ - Convert number to hexadecimal string.
+///
+/// Treats the value as unsigned for formatting (matches QB64 behavior).
+///
+/// # Safety
+/// - The returned string must be released with `qb_string_release`
+#[no_mangle]
+pub extern "C" fn qb_hex(n: i64) -> *mut QbString {
+    let s = format!("{:X}", n as u64);
+    unsafe { qb_string_from_bytes(s.as_ptr(), s.len()) }
+}
+
+/// OCT$ - Convert number to octal string.
+///
+/// Treats the value as unsigned for formatting (matches QB64 behavior).
+///
+/// # Safety
+/// - The returned string must be released with `qb_string_release`
+#[no_mangle]
+pub extern "C" fn qb_oct(n: i64) -> *mut QbString {
+    let s = format!("{:o}", n as u64);
+    unsafe { qb_string_from_bytes(s.as_ptr(), s.len()) }
+}
+
+/// _BIN$ - Convert number to binary string.
+///
+/// Treats the value as unsigned for formatting (matches QB64 behavior).
+///
+/// # Safety
+/// - The returned string must be released with `qb_string_release`
+#[no_mangle]
+pub extern "C" fn qb_bin(n: i64) -> *mut QbString {
+    let s = format!("{:b}", n as u64);
+    unsafe { qb_string_from_bytes(s.as_ptr(), s.len()) }
+}
+
+/// TRIM$ / _TRIM$ - Trim whitespace from both ends of a string.
+///
+/// # Safety
+/// - `s` must be a valid QbString pointer or null
+/// - The returned string must be released with `qb_string_release`
+#[no_mangle]
+pub unsafe extern "C" fn qb_trim(s: *const QbString) -> *mut QbString {
+    if s.is_null() {
+        return qb_string_empty();
+    }
+    let len = qb_string_len(s);
+    if len == 0 {
+        return qb_string_empty();
+    }
+    let src = slice::from_raw_parts(qb_string_data(s) as *const u8, len);
+    let start = src
+        .iter()
+        .position(|&c| c != b' ' && c != b'\t')
+        .unwrap_or(len);
+    let end = src
+        .iter()
+        .rposition(|&c| c != b' ' && c != b'\t')
+        .map_or(0, |p| p + 1);
+    if start >= end {
+        return qb_string_empty();
+    }
+    qb_string_from_bytes((qb_string_data(s) as *const u8).add(start), end - start)
+}
+
+/// _INSTRREV(source, search) - Find last occurrence of search in source.
+///
+/// Returns 1-based position, or 0 if not found.
+///
+/// # Safety
+/// - Both `source` and `search` must be valid QbString pointers or null
+#[no_mangle]
+pub unsafe extern "C" fn qb_instrrev(source: *const QbString, search: *const QbString) -> i32 {
+    if source.is_null() || search.is_null() {
+        return 0;
+    }
+    let s_len = qb_string_len(source);
+    let n_len = qb_string_len(search);
+    if n_len == 0 || n_len > s_len {
+        return 0;
+    }
+    let s_data = slice::from_raw_parts(qb_string_data(source) as *const u8, s_len);
+    let n_data = slice::from_raw_parts(qb_string_data(search) as *const u8, n_len);
+    for i in (0..=s_len - n_len).rev() {
+        if &s_data[i..i + n_len] == n_data {
+            return (i + 1) as i32;
+        }
+    }
+    0
+}
+
+/// _INSTRREV(s, sub, start) - Find last occurrence of sub in s from start.
+///
+/// `start` is 1-based; if &lt; 1 or &gt; len, search from end. Returns 1-based position or 0.
+///
+/// # Safety
+/// - Both `s` and `sub` must be valid QbString pointers or null
+#[no_mangle]
+pub unsafe extern "C" fn qb_instrrev3(s: *const QbString, sub: *const QbString, start: i32) -> i32 {
+    if s.is_null() || sub.is_null() {
+        return 0;
+    }
+    let s_len = qb_string_len(s);
+    let n_len = qb_string_len(sub);
+    if n_len == 0 {
+        return start;
+    }
+    if s_len < n_len {
+        return 0;
+    }
+    let search_start = if start < 1 || start as usize > s_len {
+        s_len
+    } else {
+        start as usize
+    };
+    let s_data = slice::from_raw_parts(qb_string_data(s) as *const u8, s_len);
+    let n_data = slice::from_raw_parts(qb_string_data(sub) as *const u8, n_len);
+    let from = search_start.saturating_sub(n_len);
+    for i in (0..=from).rev() {
+        if &s_data[i..i + n_len] == n_data {
+            return (i + 1) as i32;
+        }
+    }
+    0
+}
+
 /// Create a string of n spaces.
 ///
 /// # Safety
@@ -556,6 +682,25 @@ pub extern "C" fn qb_str_float(n: f64) -> *mut QbString {
     let s = if n >= 0.0 {
         format!(" {}", n)
     } else {
+        format!("{}", n)
+    };
+    unsafe { qb_string_from_bytes(s.as_ptr(), s.len()) }
+}
+
+/// _TOSTR$ - convert number to string without leading space.
+///
+/// Integer-valued doubles in the safe integer range are formatted without
+/// decimals; others use %.14g. Used by `--runtime external` when the generated
+/// C calls `qb_tostr` instead of an inline definition.
+///
+/// # Safety
+/// - The returned string must be released with `qb_string_release`
+#[no_mangle]
+pub extern "C" fn qb_tostr(n: f64) -> *mut QbString {
+    let s = if n.trunc() == n && n >= -9007199254740992.0 && n <= 9007199254740992.0 {
+        format!("{:.0}", n)
+    } else {
+        // %.14g-like: compact representation, avoid trailing zeros
         format!("{}", n)
     };
     unsafe { qb_string_from_bytes(s.as_ptr(), s.len()) }
