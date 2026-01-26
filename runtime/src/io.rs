@@ -201,6 +201,40 @@ pub unsafe extern "C" fn qb_line_input(prompt: *const c_char, var: *mut *mut QbS
 }
 
 // ============================================================================
+// _IIF / _IIF$ - inline conditionals (for --runtime external)
+// ============================================================================
+
+/// _IIF(cond, true_val, false_val) - inline conditional for numeric values.
+///
+/// Returns `true_val` if `cond` is non-zero, otherwise `false_val`.
+/// Used when generated C calls `qb_iif` instead of an inline definition.
+#[no_mangle]
+pub extern "C" fn qb_iif(cond: i64, true_val: f64, false_val: f64) -> f64 {
+    if cond != 0 {
+        true_val
+    } else {
+        false_val
+    }
+}
+
+/// _IIF$(cond, true_val, false_val) - inline conditional for string values.
+///
+/// Returns the `true_val` or `false_val` pointer; does not retain.
+/// Caller is responsible for the chosen string's lifetime.
+#[no_mangle]
+pub extern "C" fn qb_iif_str(
+    cond: i64,
+    true_val: *mut QbString,
+    false_val: *mut QbString,
+) -> *mut QbString {
+    if cond != 0 {
+        true_val
+    } else {
+        false_val
+    }
+}
+
+// ============================================================================
 // Console Functions
 // ============================================================================
 
@@ -1999,5 +2033,179 @@ mod tests {
             // After close, should not be connected
             assert_eq!(qb_net_connected(host_handle), 0);
         }
+    }
+
+    #[test]
+    fn test_network_put_get_binary() {
+        use std::io::{Read, Write};
+        use std::net::TcpStream;
+        use std::thread;
+        use std::time::Duration;
+
+        // Start server on a random port
+        let host_handle = qb_net_openhost(0);
+        if host_handle == 0 {
+            // Skip test if we can't open a server (e.g., CI environment)
+            return;
+        }
+
+        // Get the actual port from the listener
+        let port = {
+            let handles = NET_HANDLES.lock().unwrap();
+            if let Some(ref map) = *handles {
+                if let Some(NetHandle::Host(listener)) = map.get(&host_handle) {
+                    listener.local_addr().ok().map(|a| a.port())
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        };
+
+        let port = match port {
+            Some(p) => p,
+            None => {
+                qb_net_close(host_handle);
+                return;
+            }
+        };
+
+        // Spawn a client thread
+        let client_thread = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(50));
+            if let Ok(mut stream) = TcpStream::connect(format!("127.0.0.1:{}", port)) {
+                // Send test data
+                let data = [0x12u8, 0x34, 0x56, 0x78];
+                let _ = stream.write_all(&data);
+                let _ = stream.flush();
+                thread::sleep(Duration::from_millis(50));
+
+                // Read response
+                let mut response = [0u8; 4];
+                let _ = stream.read_exact(&mut response);
+                response
+            } else {
+                [0u8; 4]
+            }
+        });
+
+        // Accept connection
+        thread::sleep(Duration::from_millis(100));
+        let conn_handle = qb_net_openconnection(host_handle);
+        assert_ne!(conn_handle, 0, "Should have accepted connection");
+
+        // Wait for data and read with GET
+        thread::sleep(Duration::from_millis(100));
+        let mut recv_buf = [0u8; 4];
+        unsafe {
+            let bytes_read = qb_net_get(conn_handle, recv_buf.as_mut_ptr(), 4);
+            assert_eq!(bytes_read, 4, "Should read 4 bytes");
+        }
+        assert_eq!(recv_buf, [0x12, 0x34, 0x56, 0x78], "Data should match");
+
+        // Send response with PUT
+        let send_buf = [0xABu8, 0xCD, 0xEF, 0x01];
+        unsafe {
+            let bytes_written = qb_net_put(conn_handle, send_buf.as_ptr(), 4);
+            assert_eq!(bytes_written, 4, "Should write 4 bytes");
+        }
+
+        // Wait for client
+        let client_response = client_thread.join().unwrap();
+        assert_eq!(
+            client_response,
+            [0xAB, 0xCD, 0xEF, 0x01],
+            "Client should receive response"
+        );
+
+        // Cleanup
+        qb_net_close(conn_handle);
+        qb_net_close(host_handle);
+    }
+
+    #[test]
+    fn test_network_eof_and_lof() {
+        use std::io::Write;
+        use std::net::TcpStream;
+        use std::thread;
+        use std::time::Duration;
+
+        let host_handle = qb_net_openhost(0);
+        if host_handle == 0 {
+            return;
+        }
+
+        let port = {
+            let handles = NET_HANDLES.lock().unwrap();
+            if let Some(ref map) = *handles {
+                if let Some(NetHandle::Host(listener)) = map.get(&host_handle) {
+                    listener.local_addr().ok().map(|a| a.port())
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        };
+
+        let port = match port {
+            Some(p) => p,
+            None => {
+                qb_net_close(host_handle);
+                return;
+            }
+        };
+
+        // Spawn client that sends data then closes
+        let _client_thread = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(50));
+            if let Ok(mut stream) = TcpStream::connect(format!("127.0.0.1:{}", port)) {
+                let _ = stream.write_all(b"Hello");
+                let _ = stream.flush();
+                // Connection will close when thread exits
+            }
+        });
+
+        thread::sleep(Duration::from_millis(100));
+        let conn_handle = qb_net_openconnection(host_handle);
+        if conn_handle == 0 {
+            qb_net_close(host_handle);
+            return;
+        }
+
+        // Wait for data
+        thread::sleep(Duration::from_millis(100));
+
+        // Check LOF - should have buffered data
+        let lof = qb_net_lof(conn_handle);
+        assert!(lof >= 5, "LOF should be at least 5 bytes, got {}", lof);
+
+        // EOF should be false while data available
+        assert_eq!(qb_net_eof(conn_handle), 0, "EOF should be false with data");
+
+        // Read all data
+        let mut buf = [0u8; 10];
+        unsafe {
+            qb_net_get(conn_handle, buf.as_mut_ptr(), 5);
+        }
+        assert_eq!(&buf[..5], b"Hello");
+
+        // Wait for client to close
+        thread::sleep(Duration::from_millis(100));
+
+        // Now EOF should be true (after reading all + connection closed)
+        // Note: EOF detection may require another read attempt
+        unsafe {
+            qb_net_get(conn_handle, buf.as_mut_ptr(), 1);
+        }
+        assert_eq!(
+            qb_net_eof(conn_handle),
+            -1,
+            "EOF should be true after close"
+        );
+
+        qb_net_close(conn_handle);
+        qb_net_close(host_handle);
     }
 }

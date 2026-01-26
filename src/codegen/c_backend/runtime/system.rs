@@ -589,7 +589,7 @@ pub(super) fn emit_stub_declarations(output: &mut String) {
     // Network functions (stubs - no actual network support)
     writeln!(
         output,
-        "int32_t qb_net_openhost(qb_string* port) {{ (void)port; return 0; }}"
+        "int64_t qb_net_openhost(int64_t port) {{ (void)port; return 0; }}"
     )
     .unwrap();
     writeln!(
