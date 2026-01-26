@@ -416,13 +416,35 @@ impl CodeGenerator for CBackend {
         writeln!(output, "int main(int argc, char** argv) {{").unwrap();
         // Initialize runtime library (external runtime only)
         if self.runtime_mode == RuntimeMode::External {
+            writeln!(output, "    /* Initialize runtime library */").unwrap();
             writeln!(output, "    qb_runtime_init();").unwrap();
+            writeln!(output, "    /* Check for initialization errors */").unwrap();
+            writeln!(output, "    if (_qb_err != 0) {{").unwrap();
+            writeln!(output, "        fprintf(stderr, \"Error: Runtime initialization failed (error code %d)\\n\", _qb_err);").unwrap();
+            writeln!(output, "        if (_qb_erl > 0) {{").unwrap();
+            writeln!(output, "            fprintf(stderr, \"  At line %ld\\n\", (long)_qb_erl);").unwrap();
+            writeln!(output, "        }}").unwrap();
+            writeln!(output, "        if (_qb_err_msg && strlen(_qb_err_msg) > 0) {{").unwrap();
+            writeln!(output, "            fprintf(stderr, \"  %s\\n\", _qb_err_msg);").unwrap();
+            writeln!(output, "        }}").unwrap();
+            writeln!(output, "        fflush(stderr);").unwrap();
+            writeln!(output, "        return 1;").unwrap();
+            writeln!(output, "    }}").unwrap();
         }
         // Initialize command-line argument access for COMMAND$ and _COMMANDCOUNT
+        writeln!(output, "    /* Initialize command-line arguments */").unwrap();
         writeln!(output, "    qb_init_args(argc, argv);").unwrap();
         // Initialize start directory for _STARTDIR$
+        writeln!(output, "    /* Initialize start directory */").unwrap();
         writeln!(output, "    qb_init_startdir();").unwrap();
+        // Check for initialization errors
+        writeln!(output, "    if (_qb_err != 0) {{").unwrap();
+        writeln!(output, "        fprintf(stderr, \"Error: Failed to initialize start directory (error code %d)\\n\", _qb_err);").unwrap();
+        writeln!(output, "        fflush(stderr);").unwrap();
+        writeln!(output, "        return 1;").unwrap();
+        writeln!(output, "    }}").unwrap();
         // Initialize VGA palette for INP/OUT port emulation
+        writeln!(output, "    /* Initialize VGA palette */").unwrap();
         writeln!(output, "    _qb_init_palette();").unwrap();
         // STRIG event dispatch global (stores event ID for dispatch switch)
         writeln!(output, "    static uint32_t _qb_strig_event_id = 0;").unwrap();
@@ -544,7 +566,13 @@ impl CodeGenerator for CBackend {
         }
         // Shutdown runtime library (external runtime only)
         if self.runtime_mode == RuntimeMode::External {
+            writeln!(output, "    /* Shutdown runtime library */").unwrap();
             writeln!(output, "    qb_runtime_shutdown();").unwrap();
+            // Check for shutdown errors (non-fatal, but log them)
+            writeln!(output, "    if (_qb_err != 0) {{").unwrap();
+            writeln!(output, "        fprintf(stderr, \"Warning: Runtime shutdown reported error (code %d)\\n\", _qb_err);").unwrap();
+            writeln!(output, "        fflush(stderr);").unwrap();
+            writeln!(output, "    }}").unwrap();
         }
         writeln!(output, "    return 0;").unwrap();
         writeln!(output, "}}").unwrap();

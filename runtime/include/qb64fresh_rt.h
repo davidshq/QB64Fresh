@@ -259,11 +259,12 @@ int32_t qb_file_kill(const char* filename);
 int32_t qb_file_rename(const char* old_name, const char* new_name);
 int32_t qb_file_exists(const QbString* path);  /* _FILEEXISTS - accepts QbString* */
 
-/* Directory operations (CHDIR, MKDIR, RMDIR, _DIREXISTS) */
+/* Directory operations (CHDIR, MKDIR, RMDIR, _DIREXISTS, DIR$) */
 int32_t qb_chdir(const char* path);
 int32_t qb_mkdir(const char* path);
 int32_t qb_rmdir(const char* path);
 int32_t qb_dir_exists(const QbString* path);
+QbString* qb_dir(const QbString* spec);  /* DIR$ - directory listing function */
 
 /* Environment operations (ENVIRON statement) */
 void qb_sub_environ(QbString* env);

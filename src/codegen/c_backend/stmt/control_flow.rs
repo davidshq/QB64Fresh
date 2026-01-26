@@ -469,10 +469,18 @@ impl super::StmtEmitter {
         if let Some(label) = label {
             writeln!(output, "{}goto {};", indent, label).unwrap();
         } else if let Some(ret_var) = &self.current_func_ret_var {
-            // EXIT FUNCTION - return the function's return variable
+            // EXIT FUNCTION - write back byref STRING parameters first
+            for param_name in &self.current_func_byref_strings {
+                writeln!(output, "{}*{}_ref = {};", indent, param_name, param_name).unwrap();
+            }
+            // Then return the function's return variable
             writeln!(output, "{}return {};", indent, ret_var).unwrap();
         } else {
-            // EXIT SUB - just return
+            // EXIT SUB - write back byref STRING parameters first
+            for param_name in &self.current_func_byref_strings {
+                writeln!(output, "{}*{}_ref = {};", indent, param_name, param_name).unwrap();
+            }
+            // Then return
             writeln!(output, "{}return;", indent).unwrap();
         }
         Ok(())
