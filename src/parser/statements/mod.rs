@@ -205,6 +205,7 @@ impl<'a> Parser<'a> {
             TokenKind::Mkdir => self.parse_mkdir(),
             TokenKind::Rmdir => self.parse_rmdir(),
             TokenKind::Chdir => self.parse_chdir(),
+            TokenKind::Environ => self.parse_environ(),
             TokenKind::Shell => self.parse_shell(),
             TokenKind::ShellHide => self.parse_shellhide(),
             TokenKind::Bload => self.parse_bload(),

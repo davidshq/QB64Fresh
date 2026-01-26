@@ -2,7 +2,7 @@
 
 This document outlines the runtime implementation for QB64Fresh. It describes the **dual-runtime architecture**, the **actual layout** of both runtimes, and a **phase roadmap** toward QB64pe feature parity.
 
-*Last updated: 2026-01-25*
+*Last updated: 2026-01-26*
 
 For per-function status and will-not-implement: [STUB_FUNCTIONS_FULL.md](../archive/STUB_FUNCTIONS_FULL.md). Phase tables include a **vs QB64pe** column for feature parity; parity counts as ✓ when QB64pe implements and we do (any runtime), or when **neither** implements it (e.g. will-not-implement / stub-only on both).
 
@@ -24,7 +24,7 @@ See [RUNTIME_ARCHITECTURE_PERSPECTIVES.md](RUNTIME_ARCHITECTURE_PERSPECTIVES.md)
 
 ---
 
-## Current Implementation Status (2026-01)
+## Current Implementation Status (2026-01-26)
 
 - **~409 of 419** built-in functions/subs fully implemented (~97.6%); see [STUB_FUNCTIONS_FULL.md](../archive/STUB_FUNCTIONS_FULL.md).
 - **~7** legacy/event stubs (ERDEV, ON COM, ON UEVENT, ON SIGNAL, etc.) and **~3** obsolete (e.g. PEN) are **will-not-implement** (stub-only).
@@ -38,7 +38,7 @@ See [RUNTIME_ARCHITECTURE_PERSPECTIVES.md](RUNTIME_ARCHITECTURE_PERSPECTIVES.md)
 
 ```
 src/codegen/c_backend/runtime/
-├── mod.rs       - Header emission, runtime mode switch, forward decls
+├── mod.rs       - Header emission, runtime mode switch, forward decls, debug support
 ├── types.rs     - qb_string layout, type-size helpers
 ├── strings.rs   - LEN, LEFT$, RIGHT$, MID$, INSTR, CHR$, ASC, STR$, VAL, temp pool, compare
 ├── io.rs        - PRINT, INPUT, LINE INPUT, CLS, LOCATE, COLOR
@@ -49,11 +49,11 @@ src/codegen/c_backend/runtime/
 ├── arrays.rs    - LBOUND, UBOUND, REDIM
 ├── math.rs      - ABS, SGN, INT, FIX, CINT, CLNG, SQR, LOG, EXP, SIN, COS, TAN, ATN, _ATAN2, _PI, etc.
 ├── error.rs     - ON ERROR, RESUME, ERR, ERL, ERROR
-├── graphics.rs  - Stubs: SCREEN, CLS, PSET, LINE, CIRCLE, PAINT, COLOR, etc.; frame limiting
+├── graphics.rs  - Stubs: SCREEN, CLS, PSET, LINE, CIRCLE, PAINT, COLOR, etc.; frame limiting (QB64FRESH_MAX_FRAMES)
 ├── audio.rs     - Stubs: BEEP, SOUND, _SND*
 ├── legacy.rs    - DEF SEG, PEEK/POKE, OUT, INP, PALETTE, GOSUB stack
 ├── system.rs    - KILL, NAME, CHDIR, MKDIR, RMDIR, _FILEEXISTS, _DIREXISTS, ENVIRON$, COMMAND$, SHELL, SYSTEM, END, _OS$, _CWD$, _STARTDIR$, etc.
-└── debug.rs     - qb_dbg_line, qb_dbg_enter_proc/exit_proc; breakpoint/stepping hooks when compiled with --debug. IPC for debugger (tools/debug) in progress.
+└── debug.rs     - qb_dbg_line, qb_dbg_enter_proc/exit_proc; breakpoint/stepping hooks when compiled with --debug. IPC for debugger (tools/debug) infrastructure complete.
 ```
 
 ### External Runtime (Rust → libqb64fresh_rt)
@@ -191,7 +191,7 @@ runtime/src/
 ### 1.4 File I/O
 
 **External:** `runtime/src/io.rs` (file operations; KILL, NAME, CHDIR, MKDIR, RMDIR, _FILEEXISTS, _DIREXISTS).  
-**Inline:** `src/codegen/c_backend/runtime/file.rs` (OPEN, PRINT #, WRITE #, GET, PUT, etc.); `system.rs` (KILL, NAME, CHDIR, MKDIR, RMDIR, _FILEEXISTS, _DIREXISTS).
+**Inline:** `src/codegen/c_backend/runtime/file.rs` (OPEN, PRINT #, WRITE #, GET, PUT, etc.); `src/codegen/c_backend/runtime/system.rs` (KILL, NAME, CHDIR, MKDIR, RMDIR, _FILEEXISTS, _DIREXISTS).
 
 | Function | Status | vs QB64pe | Description |
 |----------|--------|-----------|-------------|
@@ -217,14 +217,14 @@ runtime/src/
 | `_FILEEXISTS(file)` | [x] | ✓ | Check file exists |
 | `_DIREXISTS(path)` | [x] | ✓ | Check directory exists (inline: system; external: io) |
 
-**Note (external):** `qb_chdir`, `qb_mkdir`, `qb_rmdir`, and `qb_dir_exists` are declared in `qb64fresh_rt.h` and implemented in `runtime/src/io.rs`.
+**Note (external):** `qb_chdir`, `qb_mkdir`, `qb_rmdir`, and `qb_dir_exists` are declared in `runtime/include/qb64fresh_rt.h` and implemented in `runtime/src/io.rs`.
 
 ---
 
 ## Phase 2: Graphics System
 
-**External:** `runtime/src/graphics/`, `runtime/src/graphics_ffi.rs`  
-**Inline:** `src/codegen/c_backend/runtime/graphics.rs` (stubs; `QB64FRESH_MAX_FRAMES` frame limiting)
+**External:** `runtime/src/graphics/` (GraphicsBackend trait, SDL2Backend, MockBackend), `runtime/src/graphics_ffi.rs`  
+**Inline:** `src/codegen/c_backend/runtime/graphics.rs` (stubs; `QB64FRESH_MAX_FRAMES` frame limiting, default 1000 frames)
 
 See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), and stub behavior.
 
@@ -276,7 +276,7 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 
 ### 2.4 Text and Fonts
 
-**External:** `runtime/src/font_ffi.rs`, `runtime/src/font_manager.rs` (optional FreeType)
+**External:** `runtime/src/font_ffi.rs`, `runtime/src/font_manager.rs` (optional FreeType via `graphics-sdl2-freetype` feature)
 
 | Function | Status | vs QB64pe | Description |
 |----------|--------|-----------|-------------|
@@ -293,7 +293,7 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 
 ### 3.1 Keyboard
 
-**External:** `runtime/src/io.rs` (keyboard)  
+**External:** `runtime/src/io.rs` (keyboard functions: qb_inkey, qb_keyhit, qb_keydown, qb_keyclear)  
 **Inline:** `src/codegen/c_backend/runtime/keyboard.rs`
 
 | Function | Status | vs QB64pe | Description |
@@ -307,8 +307,8 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 
 ### 3.2 Mouse
 
-**External:** `runtime/src/graphics_ffi.rs` (qb_mouse_*); **full** in external.  
-**Inline:** stubs in `graphics.rs`.
+**External:** `runtime/src/graphics_ffi.rs` (qb_mouse_* functions); **full** in external runtime via SDL2.  
+**Inline:** stubs in `src/codegen/c_backend/runtime/graphics.rs` (return 0/defaults).
 
 | Function | Status | vs QB64pe | Description |
 |----------|--------|-----------|-------------|
@@ -335,8 +335,8 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 
 ## Phase 4: Audio System
 
-**External:** `runtime/src/audio/`, `runtime/src/audio_ffi.rs` (Rodio) — **full**.  
-**Inline:** `src/codegen/c_backend/runtime/audio.rs` (stubs).
+**External:** `runtime/src/audio/` (AudioBackend trait, RodioBackend, MockBackend), `runtime/src/audio_ffi.rs` (Rodio) — **full**.  
+**Inline:** `src/codegen/c_backend/runtime/audio.rs` (stubs; no-op implementations).
 
 | Function | Status | vs QB64pe | Description |
 |----------|--------|-----------|-------------|
@@ -352,8 +352,8 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 
 ## Phase 5: System Integration
 
-**Inline:** `src/codegen/c_backend/runtime/system.rs`, `timing.rs`, `error.rs`  
-**External:** `runtime/src/io.rs` (env, command, shell), `runtime/src/dialogs.rs`
+**Inline:** `src/codegen/c_backend/runtime/system.rs`, `src/codegen/c_backend/runtime/timing.rs`, `src/codegen/c_backend/runtime/error.rs`  
+**External:** `runtime/src/io.rs` (env, command, shell), `runtime/src/dialogs.rs` (native dialogs via rfd crate)
 
 ### 5.1 Timing
 
@@ -371,7 +371,7 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 | Function | Status | vs QB64pe | Description |
 |----------|--------|-----------|-------------|
 | `ENVIRON$(name)` | [x] | ✓ | Get env variable |
-| `ENVIRON "name=value"` | [~] | ~ | Set env variable |
+| `ENVIRON "name=value"` | [x] | ✓ | Set env variable |
 | `COMMAND$` | [x] | ✓ | Command line |
 | `_OS$` | [x] | ✓ | Operating system |
 | `_SHELL(cmd$)` | [x] | ✓ | Execute command |
@@ -380,7 +380,7 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 
 ### 5.3 Dialogs and Clipboard
 
-**External:** `runtime/src/dialogs.rs` (rfd); clipboard in `graphics_ffi.rs`. **Full** in external.
+**External:** `runtime/src/dialogs.rs` (rfd crate for native dialogs); clipboard in `runtime/src/graphics_ffi.rs` (qb_clipboard_get/set). **Full** in external.
 
 | Function | Status | vs QB64pe | Description |
 |----------|--------|-----------|-------------|
@@ -405,7 +405,7 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 
 ## Phase 6: Networking
 
-**External:** `runtime/src/io.rs` implements `qb_net_*`; `qb64fresh_rt.h` declares `qb_net_openhost`, `qb_net_openconnection`, `qb_net_openclient`, `qb_net_connected`, `qb_net_close`, `qb_net_get`, `qb_net_put`, `qb_net_get_string`, `qb_net_put_string`, `qb_net_eof`, `qb_net_lof`.  
+**External:** `runtime/src/io.rs` implements `qb_net_*`; `runtime/include/qb64fresh_rt.h` declares `qb_net_openhost`, `qb_net_openconnection`, `qb_net_openclient`, `qb_net_connected`, `qb_net_close`, `qb_net_get`, `qb_net_put`, `qb_net_get_string`, `qb_net_put_string`, `qb_net_eof`, `qb_net_lof`.  
 **Inline:** `src/codegen/c_backend/runtime/system.rs` emits stubs.
 
 | Function | Status | vs QB64pe | Description |
@@ -416,6 +416,8 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 | `_CONNECTED(handle)` | [x] ext impl / [~] inline / [x] in header | ~ | Check connected |
 | `_CLOSEHOST` (CLOSE #) | [x] ext impl / [x] in header | ~ | Close handle (`qb_net_close`) |
 
+**Note on networking parity:** Our implementation uses numeric ports for `_OPENHOST` (e.g., `_OPENHOST(8080)`), while QB64pe uses a string format (e.g., `_OPENHOST("TCP/IP:8080")`). The semantic analyzer correctly expects a string, but the runtime implementation currently takes a numeric port. This is a known API difference that should be addressed for full parity. The external runtime implementation is functional but uses a different API signature than QB64pe.
+
 ---
 
 ## Recommended Crates (External Runtime)
@@ -425,7 +427,7 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 | Graphics | `sdl2` | Window, rendering, input |
 | Audio | `rodio` | Sound playback (replaces miniaudio in original plan) |
 | Images | `image` | Image loading/saving (_LOADIMAGE) |
-| Fonts | `freetype-rs` (optional) | FreeType-based _LOADFONT, Unicode |
+| Fonts | `freetype-rs` (optional) | FreeType-based _LOADFONT, Unicode (via `graphics-sdl2-freetype` feature) |
 | Dialogs | `rfd` | Native file/folder/message dialogs |
 | Time | `std::time`, `chrono` (if needed) | TIMER, DATE$, TIME$ |
 
@@ -433,12 +435,12 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 
 ## Implementation Order (Suggested)
 
-1. **Core I/O (done for bootstrap):** Strings, console I/O, file I/O, keyboard, math.
-2. **Graphics foundation (done in external):** SDL2 window, screen modes, CLS, COLOR, PSET, LINE, CIRCLE, VIEW, WINDOW, GET/PUT, _PUTIMAGE, alpha blending, PCOPY, screen pages.
-3. **Graphics extended (done):** Images, fonts, _LOADFONT, _PRINTSTRING, Unicode; _MAPTRIANGLE, _COPYPALETTE, _DISPLAYORDER.
-4. **Audio (done in external):** BEEP, SOUND, _SNDOPEN/_SNDPLAY family, PLAY, rodio backend.
-5. **Input (done in external):** Mouse, game controller/joystick (STICK, STRIG, _DEVICES, _AXIS, _BUTTON, ON STRIG).
-6. **System (done in external):** Dialogs, clipboard. **Networking:** `qb_net_*` implemented in `runtime/src/io.rs` and declared in `qb64fresh_rt.h`. **Directory ops:** `qb_chdir`, `qb_mkdir`, `qb_rmdir`, `qb_dir_exists` in header and `io.rs`.
+1. **Core I/O (done for bootstrap):** Strings, console I/O, file I/O, keyboard, math. ✅
+2. **Graphics foundation (done in external):** SDL2 window, screen modes, CLS, COLOR, PSET, LINE, CIRCLE, VIEW, WINDOW, GET/PUT, _PUTIMAGE, alpha blending, PCOPY, screen pages. ✅
+3. **Graphics extended (done):** Images, fonts, _LOADFONT, _PRINTSTRING, Unicode; _MAPTRIANGLE, _COPYPALETTE, _DISPLAYORDER. ✅
+4. **Audio (done in external):** BEEP, SOUND, _SNDOPEN/_SNDPLAY family, PLAY, rodio backend. ✅
+5. **Input (done in external):** Mouse, game controller/joystick (STICK, STRIG, _DEVICES, _AXIS, _BUTTON, ON STRIG). ✅
+6. **System (done in external):** Dialogs, clipboard. **Networking:** `qb_net_*` implemented in `runtime/src/io.rs` and declared in `runtime/include/qb64fresh_rt.h`. **Directory ops:** `qb_chdir`, `qb_mkdir`, `qb_rmdir`, `qb_dir_exists` in header and `io.rs`. ✅
 
 ---
 
@@ -456,5 +458,5 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 
 - [RUNTIME_ARCHITECTURE_PERSPECTIVES.md](RUNTIME_ARCHITECTURE_PERSPECTIVES.md) — dual-runtime trade-offs, when to use each, action items
 - [../GRAPHICS.md](../GRAPHICS.md) — graphics architecture, inline stubs, `QB64FRESH_MAX_FRAMES`, SDL2/Mock backends
-- [runtime/include/qb64fresh_rt.h](../../runtime/include/qb64fresh_rt.h) — C API contract for external runtime
+- [runtime/include/qb64fresh_rt.h](../../runtime/include/qb64fresh_rt.h) — C API contract for external runtime (all FFI function declarations)
 - [STUB_FUNCTIONS_FULL.md](../archive/STUB_FUNCTIONS_FULL.md) — full function catalog, implemented and will-not-implement

@@ -1,6 +1,6 @@
 # Testing Guide for QB64Fresh
 
-**Last Updated:** 2026-01-23
+**Last Updated:** 2026-01-26
 
 This document provides a comprehensive guide to the testing infrastructure for QB64Fresh, a modern BASIC compiler written in Rust.
 
@@ -35,18 +35,21 @@ QB64Fresh uses a **multi-layered testing strategy** to ensure correctness and co
 
 | Test Suite | Count | Status | Purpose |
 |------------|-------|--------|---------|
-| **Compiler unit tests** | 388 | ✅ passing | Test individual modules |
-| **Integration tests** | 718 | ✅ passing | End-to-end compilation |
+| **Compiler unit tests** | 850+ | ✅ passing | Test individual modules |
+| **Integration tests** | 718+ | ✅ passing | End-to-end compilation |
 | **Golden tests** | 10 | ✅ passing | Codegen regression detection |
 | **Property-based** | 19 | ✅ passing | Input fuzzing |
-| **Compatibility** | 3 | ✅ passing | Local fixture tests |
-| **Runtime tests** | 194 | ✅ passing | Runtime library testing |
-| **Execution tests** | 27 | ✅ passing | Full compile-and-run tests |
-| **QB64pe compatibility** | 141 files | 97.9% pass | External test suite |
+| **Compatibility** | 3+ | ✅ passing | Local fixture tests |
+| **Runtime tests** | 194+ | ✅ passing | Runtime library testing |
+| **Execution tests** | 27+ | ✅ passing | Full compile-and-run tests |
+| **QB64pe compatibility** | 115 files | 99.1% pass (114/115) | External test suite |
+| **Bootstrap tests** | Multiple | ✅ passing | QB64pe compilation tests |
 
 *Use `UPDATE_GOLDEN=1 cargo test golden` to regenerate golden files after intentional codegen changes.*
 
 **Total: 1,500+ tests** across the compiler and runtime library.
+
+**Test Coverage:** 81.63% (as of 2026-01-26)
 
 ---
 
@@ -211,7 +214,7 @@ cargo test --test proptest_tests
 
 **Types:**
 - **Local fixtures** (`tests/compatibility.rs`) - Small test cases in the repo
-- **QB64pe test suite** (`tests/qb45_compat.rs`) - Runs against 141 programs from QB64pe
+- **QB64pe test suite** (`tests/qb45_compat.rs`) - Runs against 115 programs from QB64pe (99.1% pass rate - 114/115)
 
 **Running:**
 ```bash
@@ -220,6 +223,9 @@ cargo test --test compatibility
 
 # QB64pe compatibility suite (requires large stack)
 RUST_MIN_STACK=8388608 cargo test --test qb45_compat
+
+# Bootstrap tests (QB64pe compilation)
+cargo test --test bootstrap_tests
 
 # With verbose output
 cargo test --test qb45_compat -- --nocapture
@@ -243,6 +249,19 @@ cargo test -p qb64fresh-runtime --lib --no-default-features --features "graphics
 cargo test -p qb64fresh-runtime --lib --features "graphics-sdl2 audio-rodio"
 ```
 
+### 8. Bootstrap Tests
+
+**Location:** `tests/bootstrap_tests.rs`
+
+**Purpose:** Verify that QB64Fresh can compile QB64pe itself (bootstrap validation).
+
+**Running:**
+```bash
+cargo test --test bootstrap_tests
+```
+
+These tests verify that the compiler can handle large, complex programs (59K+ lines) and generate working executables.
+
 ---
 
 ## Running Tests
@@ -265,6 +284,8 @@ cargo test --test golden_tests
 cargo test --test execution_tests
 cargo test --test proptest_tests
 cargo test --test compatibility
+cargo test --test bootstrap_tests
+cargo test --test qb45_compat
 
 # Run specific test
 cargo test test_name
@@ -344,12 +365,13 @@ QB64Fresh/
 │   ├── golden/                   # Golden test files
 │   │   ├── *.bas                 # Source files
 │   │   └── *.golden              # Expected compiler output
+│   ├── bootstrap_tests.rs        # QB64pe bootstrap tests
 │   ├── compatibility.rs          # Local compatibility tests
 │   ├── execution_tests.rs        # Full compile-and-run tests
 │   ├── golden_tests.rs           # Golden file testing
-│   ├── integration_tests.rs      # Integration tests (720 tests)
+│   ├── integration_tests.rs      # Integration tests (718+ tests)
 │   ├── proptest_tests.rs         # Property-based tests
-│   └── qb45_compat.rs            # QB64pe compatibility suite
+│   └── qb45_compat.rs            # QB64pe compatibility suite (115 files)
 └── runtime/                      # Runtime library
     └── src/
         └── **/*.rs               # Contains #[cfg(test)] mod tests
@@ -584,16 +606,17 @@ cargo llvm-cov --workspace --html
 
 ### Test Metrics
 
-Current test statistics (as of 2026-01-23):
+Current test statistics (as of 2026-01-26):
 
 - **Total tests:** 1,500+
-- **Compiler unit tests:** 388
-- **Integration tests:** 718
-- **Runtime tests:** 194
-- **Execution tests:** 27
+- **Compiler unit tests:** 850+
+- **Integration tests:** 718+
+- **Runtime tests:** 194+
+- **Execution tests:** 27+
 - **Property-based tests:** 19
 - **Golden tests:** 10
-- **Compatibility:** 141 files (97.9% pass)
+- **Compatibility:** 115 files (99.1% pass - 114/115)
+- **Test coverage:** 81.63%
 
 ### Benchmarking
 

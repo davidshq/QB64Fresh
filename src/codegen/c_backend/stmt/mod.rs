@@ -93,11 +93,18 @@ pub(super) struct StmtEmitter {
     pub no_shell: bool,
     /// Labels already emitted (to skip duplicates from ambiguous parsing).
     pub emitted_labels: std::collections::HashSet<String>,
+    /// Runtime mode (inline vs external) - affects how QbString data is accessed.
+    pub runtime_mode: super::RuntimeMode,
 }
 
 impl StmtEmitter {
     /// Creates a new statement emitter.
     pub fn new() -> Self {
+        Self::with_runtime_mode(super::RuntimeMode::Inline)
+    }
+
+    /// Creates a new statement emitter with the specified runtime mode.
+    pub fn with_runtime_mode(runtime_mode: super::RuntimeMode) -> Self {
         Self {
             label_counter: 0,
             indent: 0,
@@ -115,6 +122,7 @@ impl StmtEmitter {
             debug_source_file: None,
             no_shell: false,
             emitted_labels: std::collections::HashSet::new(),
+            runtime_mode,
         }
     }
 
@@ -266,26 +274,49 @@ impl StmtEmitter {
                 value,
             } => {
                 // Target is an lvalue (variable, array element, or field access)
-                // We need to pass its address to qb_mid_assign
                 let target_code = emit_expr(target, self.no_shell)?;
                 let start_code = emit_expr(start, self.no_shell)?;
                 let value_code = emit_expr(value, self.no_shell)?;
-                if let Some(len_expr) = length {
-                    let len_code = emit_expr(len_expr, self.no_shell)?;
+                
+                // Check if target is a fixed-length string (char array)
+                // Fixed-length strings need manual character copying, not qb_mid_assign
+                if matches!(target.basic_type, crate::semantic::types::BasicType::FixedString(_)) {
+                    // For fixed-length strings, manually copy characters
+                    let len_code = if let Some(len_expr) = length {
+                        emit_expr(len_expr, self.no_shell)?
+                    } else {
+                        // No length specified - replace rest of string
+                        format!("(int32_t)(strlen({}) - ({} - 1))", target_code, start_code)
+                    };
+                    let data_access = match self.runtime_mode {
+                        super::RuntimeMode::External => "qb_string_data(_mid_val)",
+                        super::RuntimeMode::Inline => "_mid_val->data",
+                    };
                     writeln!(
                         output,
-                        "{}qb_mid_assign(&({}), {}, {}, {});",
-                        indent, target_code, start_code, len_code, value_code
-                    )
-                    .unwrap();
+                        "{} {{ qb_string* _mid_val = {}; if (_mid_val) {{ int32_t _mid_start = {} - 1; int32_t _mid_len = {}; int32_t _mid_copy_len = _mid_len < (int32_t)strlen({}) ? _mid_len : (int32_t)strlen({}); if (_mid_start >= 0 && _mid_start < (int32_t)strlen({})) {{ strncpy({} + _mid_start, {}, _mid_copy_len); }} }} }}",
+                        indent, value_code, start_code, len_code, target_code, target_code, target_code, target_code, data_access
+                    ).unwrap();
                 } else {
-                    // No length specified - use -1 to indicate "rest of string"
-                    writeln!(
-                        output,
-                        "{}qb_mid_assign(&({}), {}, -1, {});",
-                        indent, target_code, start_code, value_code
-                    )
-                    .unwrap();
+                    // For dynamic strings (QbString*), use qb_mid_assign
+                    // We need to pass its address to qb_mid_assign
+                    if let Some(len_expr) = length {
+                        let len_code = emit_expr(len_expr, self.no_shell)?;
+                        writeln!(
+                            output,
+                            "{}qb_mid_assign(&({}), {}, {}, {});",
+                            indent, target_code, start_code, len_code, value_code
+                        )
+                        .unwrap();
+                    } else {
+                        // No length specified - use -1 to indicate "rest of string"
+                        writeln!(
+                            output,
+                            "{}qb_mid_assign(&({}), {}, -1, {});",
+                            indent, target_code, start_code, value_code
+                        )
+                        .unwrap();
+                    }
                 }
             }
 
@@ -2033,10 +2064,14 @@ impl StmtEmitter {
                     .map(|e| emit_expr(e, self.no_shell))
                     .transpose()?
                     .unwrap_or_else(|| "0.0".to_string());
+                let filename_access = match self.runtime_mode {
+                    super::RuntimeMode::External => format!("qb_string_data({})", filename_code),
+                    super::RuntimeMode::Inline => format!("{}->data", filename_code),
+                };
                 writeln!(
                     output,
-                    "{}qb_sndplayfile({}->data, (double){}, (double){}, (double){}, (double){});",
-                    indent, filename_code, volume_code, x_code, y_code, z_code
+                    "{}qb_sndplayfile({}, (double){}, (double){}, (double){}, (double){});",
+                    indent, filename_access, volume_code, x_code, y_code, z_code
                 )
                 .unwrap();
             }
@@ -2070,33 +2105,68 @@ impl StmtEmitter {
             // ==================== System Integration Statements ====================
             TypedStatementKind::Kill { filename } => {
                 let filename_code = emit_expr(filename, self.no_shell)?;
-                writeln!(output, "{}qb_file_kill({}->data);", indent, filename_code).unwrap();
+                let filename_access = match self.runtime_mode {
+                    super::RuntimeMode::External => format!("qb_string_data({})", filename_code),
+                    super::RuntimeMode::Inline => format!("{}->data", filename_code),
+                };
+                writeln!(output, "{}qb_file_kill({});", indent, filename_access).unwrap();
             }
 
             TypedStatementKind::Rename { old_name, new_name } => {
                 let old_code = emit_expr(old_name, self.no_shell)?;
                 let new_code = emit_expr(new_name, self.no_shell)?;
+                let old_access = match self.runtime_mode {
+                    super::RuntimeMode::External => format!("qb_string_data({})", old_code),
+                    super::RuntimeMode::Inline => format!("{}->data", old_code),
+                };
+                let new_access = match self.runtime_mode {
+                    super::RuntimeMode::External => format!("qb_string_data({})", new_code),
+                    super::RuntimeMode::Inline => format!("{}->data", new_code),
+                };
                 writeln!(
                     output,
-                    "{}qb_file_rename({}->data, {}->data);",
-                    indent, old_code, new_code
+                    "{}qb_file_rename({}, {});",
+                    indent, old_access, new_access
                 )
                 .unwrap();
             }
 
             TypedStatementKind::Mkdir { path } => {
                 let path_code = emit_expr(path, self.no_shell)?;
-                writeln!(output, "{}qb_mkdir({}->data);", indent, path_code).unwrap();
+                let path_access = match self.runtime_mode {
+                    super::RuntimeMode::External => format!("qb_string_data({})", path_code),
+                    super::RuntimeMode::Inline => format!("{}->data", path_code),
+                };
+                writeln!(output, "{}qb_mkdir({});", indent, path_access).unwrap();
             }
 
             TypedStatementKind::Rmdir { path } => {
                 let path_code = emit_expr(path, self.no_shell)?;
-                writeln!(output, "{}qb_rmdir({}->data);", indent, path_code).unwrap();
+                let path_access = match self.runtime_mode {
+                    super::RuntimeMode::External => format!("qb_string_data({})", path_code),
+                    super::RuntimeMode::Inline => format!("{}->data", path_code),
+                };
+                writeln!(output, "{}qb_rmdir({});", indent, path_access).unwrap();
             }
 
             TypedStatementKind::Chdir { path } => {
                 let path_code = emit_expr(path, self.no_shell)?;
-                writeln!(output, "{}qb_chdir({}->data);", indent, path_code).unwrap();
+                let path_access = match self.runtime_mode {
+                    super::RuntimeMode::External => format!("qb_string_data({})", path_code),
+                    super::RuntimeMode::Inline => format!("{}->data", path_code),
+                };
+                writeln!(output, "{}qb_chdir({});", indent, path_access).unwrap();
+            }
+
+            TypedStatementKind::Environ { env_string } => {
+                let env_string_code = emit_expr(env_string, self.no_shell)?;
+                writeln!(
+                    output,
+                    "{}qb_sub_environ({});",
+                    indent,
+                    env_string_code
+                )
+                .unwrap();
             }
 
             TypedStatementKind::ShellCmd { command } => {
@@ -2107,7 +2177,7 @@ impl StmtEmitter {
                 }
                 if let Some(cmd) = command {
                     let cmd_code = emit_expr(cmd, self.no_shell)?;
-                    writeln!(output, "{}qb_shell({}->data);", indent, cmd_code).unwrap();
+                    writeln!(output, "{}qb_shell({});", indent, cmd_code).unwrap();
                 } else {
                     writeln!(output, "{}qb_shell(NULL);", indent).unwrap();
                 }
@@ -2120,21 +2190,25 @@ impl StmtEmitter {
                     );
                 }
                 let cmd_code = emit_expr(command, self.no_shell)?;
-                writeln!(output, "{}qb_shell_hide({}->data);", indent, cmd_code).unwrap();
+                writeln!(output, "{}qb_shell_hide({});", indent, cmd_code).unwrap();
             }
 
             TypedStatementKind::Bload { filename, address } => {
                 let filename_code = emit_expr(filename, self.no_shell)?;
+                let filename_access = match self.runtime_mode {
+                    super::RuntimeMode::External => format!("qb_string_data({})", filename_code),
+                    super::RuntimeMode::Inline => format!("{}->data", filename_code),
+                };
                 if let Some(addr) = address {
                     let addr_code = emit_expr(addr, self.no_shell)?;
                     writeln!(
                         output,
-                        "{}qb_bload({}->data, (void*)(intptr_t){});",
-                        indent, filename_code, addr_code
+                        "{}qb_bload({}, (void*)(intptr_t){});",
+                        indent, filename_access, addr_code
                     )
                     .unwrap();
                 } else {
-                    writeln!(output, "{}qb_bload({}->data, NULL);", indent, filename_code).unwrap();
+                    writeln!(output, "{}qb_bload({}, NULL);", indent, filename_access).unwrap();
                 }
             }
 
@@ -2144,12 +2218,16 @@ impl StmtEmitter {
                 length,
             } => {
                 let filename_code = emit_expr(filename, self.no_shell)?;
+                let filename_access = match self.runtime_mode {
+                    super::RuntimeMode::External => format!("qb_string_data({})", filename_code),
+                    super::RuntimeMode::Inline => format!("{}->data", filename_code),
+                };
                 let addr_code = emit_expr(address, self.no_shell)?;
                 let len_code = emit_expr(length, self.no_shell)?;
                 writeln!(
                     output,
-                    "{}qb_bsave({}->data, (void*)(intptr_t){}, (size_t){});",
-                    indent, filename_code, addr_code, len_code
+                    "{}qb_bsave({}, (void*)(intptr_t){}, (size_t){});",
+                    indent, filename_access, addr_code, len_code
                 )
                 .unwrap();
             }
@@ -2200,7 +2278,11 @@ impl StmtEmitter {
             // ==================== Clipboard Statement ====================
             TypedStatementKind::ClipboardSet { text } => {
                 let text_code = emit_expr(text, self.no_shell)?;
-                writeln!(output, "{}qb_clipboard_set({}->data);", indent, text_code).unwrap();
+                let text_access = match self.runtime_mode {
+                    super::RuntimeMode::External => format!("qb_string_data({})", text_code),
+                    super::RuntimeMode::Inline => format!("{}->data", text_code),
+                };
+                writeln!(output, "{}qb_clipboard_set({});", indent, text_access).unwrap();
             }
 
             // ==================== C Library Integration ====================

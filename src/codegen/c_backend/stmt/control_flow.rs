@@ -260,7 +260,9 @@ impl super::StmtEmitter {
         let end_var = self.next_label("for_end_val");
         let step_var = self.next_label("for_step");
         writeln!(output, "{}{} {} = {};", indent, c_ty, end_var, end_code).unwrap();
-        writeln!(output, "{}{} {} = {};", indent, c_ty, step_var, step_code).unwrap();
+        // Step must be signed to correctly detect direction (negative steps).
+        // Using int64_t ensures any step value can be properly compared.
+        writeln!(output, "{}int64_t {} = {};", indent, step_var, step_code).unwrap();
 
         // In BASIC, the FOR loop variable retains its value after the loop ends.
         // We assign the start value before the loop and use the existing variable,

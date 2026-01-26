@@ -801,6 +801,10 @@ pub enum TokenKind {
     #[token("CHDIR", ignore(ascii_case))]
     Chdir,
 
+    /// ENVIRON statement - set environment variable
+    #[token("ENVIRON", ignore(ascii_case))]
+    Environ,
+
     /// SHELL statement - execute external command
     #[token("SHELL", ignore(ascii_case))]
     Shell,

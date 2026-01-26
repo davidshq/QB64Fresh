@@ -76,6 +76,9 @@ QbString* qb_trim(const QbString* s);
 int32_t qb_instrrev(const QbString* source, const QbString* search);
 int32_t qb_instrrev3(const QbString* s, const QbString* sub, int32_t start);
 
+/* String conversion from C string (for fixed-length strings) */
+QbString* qb_str_from_c(const char* s);
+
 /* ============================================================================
  * Memory Operations (_MEMNEW, _MEMFREE, _MEMGET, _MEMPUT, _MEMCOPY, _MEMFILL,
  *                    _MEM, _MEMEXISTS, _MEMELEMENT, _MEMIMAGE, _MEMSOUND, _OFFSET)
@@ -195,12 +198,22 @@ double qb_timer(void);
 void qb_sleep(double seconds);
 void qb_delay(double seconds);
 
+/* Date/Time functions */
+QbString* qb_date(void);        /* DATE$ - returns MM-DD-YYYY format */
+QbString* qb_time(void);        /* TIME$ - returns HH:MM:SS format */
+QbString* qb_date64(void);      /* _DATE$ - returns YYYY-MM-DD format */
+QbString* qb_time64(void);      /* _TIME$ - returns HH:MM:SS format */
+QbString* qb_cwd(void);         /* _CWD$ - current working directory */
+QbString* qb_startdir(void);    /* _STARTDIR$ - program start directory */
+QbString* qb_os(void);          /* _OS$ - operating system string */
+
 /* ============================================================================
  * File I/O Functions
  * ============================================================================ */
 
 /* File open/close */
 void qb_file_open(int32_t fnum, const char* filename, const char* mode);
+void qb_file_open_str(int32_t fnum, const QbString* filename, const char* mode);  /* Helper: qb_file_open with QbString* */
 void qb_file_set_reclen(int32_t fnum, int32_t len);
 void qb_file_close(int32_t fnum);
 void qb_file_close_all(void);
@@ -244,13 +257,16 @@ void qb_rset(QbString** var, QbString* value);
 /* File system operations */
 int32_t qb_file_kill(const char* filename);
 int32_t qb_file_rename(const char* old_name, const char* new_name);
-int32_t qb_file_exists(const char* path);
+int32_t qb_file_exists(const QbString* path);  /* _FILEEXISTS - accepts QbString* */
 
 /* Directory operations (CHDIR, MKDIR, RMDIR, _DIREXISTS) */
 int32_t qb_chdir(const char* path);
 int32_t qb_mkdir(const char* path);
 int32_t qb_rmdir(const char* path);
 int32_t qb_dir_exists(const QbString* path);
+
+/* Environment operations (ENVIRON statement) */
+void qb_sub_environ(QbString* env);
 
 /* ============================================================================
  * Networking (_OPENHOST, _OPENCONNECTION, _OPENCLIENT, _CONNECTED, _CLOSEHOST,
@@ -325,6 +341,14 @@ void qb_stop(void);
 void qb_init_args(int argc, char** argv);
 void qb_init_startdir(void);
 void _qb_init_palette(void);
+
+/* Error handling functions */
+int32_t qb_err_code(void);          /* ERR function - returns error code */
+int32_t qb_err_line(void);          /* ERL function - returns error line */
+int64_t qb_errorline(void);         /* _ERRORLINE - returns error line as 64-bit */
+QbString* qb_errormessage(void);   /* _ERRORMESSAGE$ - returns error message */
+int32_t qb_inclerrorline(void);    /* _INCLERRORLINE - error line in include file */
+QbString* qb_inclerrorfile(void);  /* _INCLERRORFILE$ - include file with error */
 
 /* Compatibility macros for inline runtime naming conventions */
 #define qb__rgb32(r, g, b) qb_rgb(r, g, b)

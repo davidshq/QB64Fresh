@@ -47,9 +47,9 @@ QB64Fresh can compile **QB64pe itself** — a 59,000-line BASIC compiler — int
 | Generated C | ~115K lines |
 | Executable | ~2.4 MB |
 | Parse + Codegen | ~800ms |
-| Status | ✅ `-h` works, ❌ compilation has memory issue |
+| Status | ✅ `-h` works, ✅ Runtime features complete, ⚠️ Full execution testing in progress |
 
-The bootstrapped QB64pe runs and displays help, but crashes when compiling programs due to a memory issue under investigation. See [BOOTSTRAP_PLAN.md](BOOTSTRAP_PLAN.md) for current status.
+The bootstrapped QB64pe runs and displays help. Runtime features (file I/O, keyboard input) are implemented and validated. QB64pe is compiled with external runtime (requires graphics support for GUI). Full execution testing (compiling BASIC programs with bootstrapped QB64pe) is in progress. See [docs/QB64PE_COMPILATION_PLAN.md](docs/QB64PE_COMPILATION_PLAN.md) for current status.
 
 **IMPORTANT:** Always use memory limits when running either compiler. See [docs/MEMORY_LIMITS.md](docs/MEMORY_LIMITS.md).
 
@@ -106,6 +106,8 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed documentation.
 
 ## Docs
 
+📚 **[Complete Documentation Index](docs/DOCS-README.md)** — Browse all documentation
+
 ### User Guides
 - **[Getting Started](docs/GETTING_STARTED.md)** — Tutorial: install, first program, compile, run
 - **[QB64Fresh Handbook](docs/QB64Fresh_HANDBOOK.md)** — Comprehensive user guide
@@ -115,14 +117,14 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed documentation.
 ### Reference
 - [Language Reference](docs/QB64Fresh_LANGUAGE_REFERENCE.md) — Supported language features
 - [Language Spec](docs/QB64PE_LANGUAGE_SPECIFICATION.md) — QB64PE language reference
-- [Header Parser API](docs/HEADER_PARSER_API.md) — C header parsing for DECLARE LIBRARY
+- [Header Parser API](docs/reference/HEADER_PARSER_API.md) — C header parsing for DECLARE LIBRARY
 
 ### Developer Docs
 - [DEVELOPMENT.md](docs/DEVELOPMENT.md) — Setup & contributing
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md) — Compiler pipeline design
 - [Behavioral Differences](docs/BEHAVIORAL_DIFFERENCES.md) — QB64Fresh vs QB64pe semantics
 - [QB64Fresh and Modern Languages](docs/QB64Fresh_AND_MODERN_LANGUAGES.md) — Comparison to modern languages
-- [Bootstrap Achievement](docs/archive/BOOTSTRAP_ACHIEVEMENT.md) — Compiling QB64pe with QB64Fresh
+- [Bootstrap Achievement](docs/ARCHITECTURE.md#bootstrap-achievement) — Compiling QB64pe with QB64Fresh
 - [AgenticLogs/](AgenticLogs/) — Development history
 
 ## VSCode Extension

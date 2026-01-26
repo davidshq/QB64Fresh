@@ -702,6 +702,8 @@ impl super::StmtEmitter {
             )
             .unwrap();
             writeln!(output, "{}    memset({}, 0, new_sz__);", indent, c_name).unwrap();
+            // Update size tracking variable
+            writeln!(output, "{}    {} = new_sz__;", indent, size_var).unwrap();
             // Register new bounds
             writeln!(output, "{}{}", indent, bounds_reg).unwrap();
             writeln!(output, "{}}}", indent).unwrap();

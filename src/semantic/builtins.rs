@@ -767,8 +767,12 @@ impl SemanticAnalyzer {
         );
 
         // Phase 5: Networking
-        // _OPENHOST takes a numeric port to listen on
-        self.register_builtin_function("_OPENHOST", &[("port", BasicType::Long)], BasicType::Long);
+        // _OPENHOST takes a connection specification string like "TCP/IP:12345"
+        self.register_builtin_function(
+            "_OPENHOST",
+            &[("connection_string", BasicType::String)],
+            BasicType::Long,
+        );
         self.register_builtin_function(
             "_OPENCONNECTION",
             &[("host_handle", BasicType::Long)],

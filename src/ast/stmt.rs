@@ -1253,6 +1253,15 @@ pub enum StatementKind {
         path: Expr,
     },
 
+    /// `ENVIRON "name=value"` - Set an environment variable
+    ///
+    /// Sets an environment variable for the current process.
+    /// The argument should be a string in the format "name=value".
+    Environ {
+        /// The environment variable assignment string (e.g., "PATH=/usr/bin")
+        env_string: Expr,
+    },
+
     /// `SHELL [command$]` - Execute an external command
     ///
     /// If no command is specified, opens an interactive shell.

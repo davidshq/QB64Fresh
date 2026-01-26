@@ -2,7 +2,7 @@
 
 **A candid comparison of strengths, weaknesses, viability, and fit within the current language landscape.**
 
-**Last Updated:** January 2026
+**Last Updated:** 2026-01-26
 
 ---
 

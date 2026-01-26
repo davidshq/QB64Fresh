@@ -135,11 +135,13 @@ pub(super) fn emit_expr(expr: &TypedExpr, no_shell: bool) -> Result<String, Code
             }
 
             // Special case: _INSTRREV with 3 arguments (start, source, search) uses qb_instrrev3
+            // C function signature: qb_instrrev3(source, search, start) - arguments reordered
             if upper_name == "_INSTRREV" && args.len() == 3 {
                 let args_code: Result<Vec<_>, _> =
                     args.iter().map(|e| emit_expr(e, no_shell)).collect();
-                let args_str = args_code?.join(", ");
-                return Ok(format!("qb_instrrev3({})", args_str));
+                let args_vec = args_code?;
+                // Reorder: BASIC (start, source, search) -> C (source, search, start)
+                return Ok(format!("qb_instrrev3({}, {}, {})", args_vec[1], args_vec[2], args_vec[0]));
             }
 
             // Special case: LBOUND with 2 arguments (array, dimension) uses qb_lbound2
@@ -285,14 +287,16 @@ pub(super) fn emit_expr(expr: &TypedExpr, no_shell: bool) -> Result<String, Code
 
             // Special case: STRING$ with 2 args - use numeric variant if second arg is not a string
             // STRING$(n, code) fills with ASCII code, STRING$(n, c$) fills with first char of string
+            // For external runtime, qb_string_fill takes int32_t, so we use qb_string_fill_str for string args
             if upper_name == "STRING$" && args.len() == 2 {
                 let args_code: Result<Vec<_>, _> =
                     args.iter().map(|e| emit_expr(e, no_shell)).collect();
-                let args_str = args_code?.join(", ");
+                let args_vec = args_code?;
                 if !args[1].basic_type.is_string() {
-                    return Ok(format!("qb_string_fill_code({})", args_str));
+                    return Ok(format!("qb_string_fill_code({}, {})", args_vec[0], args_vec[1]));
                 } else {
-                    return Ok(format!("qb_string_fill({})", args_str));
+                    // For string argument, use qb_string_fill_str which extracts first char
+                    return Ok(format!("qb_string_fill_str({}, {})", args_vec[0], args_vec[1]));
                 }
             }
 
@@ -324,14 +328,20 @@ pub(super) fn emit_expr(expr: &TypedExpr, no_shell: bool) -> Result<String, Code
             }
 
             // Special case: _SELECTFOLDERDIALOG$ with different argument counts
+            // External runtime: qb_selectfolderdialog(const char* title, const char* initial_dir)
+            // Inline runtime: qb_selectfolderdialog(qb_string* title) or qb_selectfolderdialog2(qb_string* title, qb_string* initial_dir)
             if upper_name == "_SELECTFOLDERDIALOG$" {
                 let args_code: Result<Vec<_>, _> =
                     args.iter().map(|e| emit_expr(e, no_shell)).collect();
-                let args_str = args_code?.join(", ");
-                return match args.len() {
-                    1 => Ok(format!("qb_selectfolderdialog({})", args_str)),
-                    2 => Ok(format!("qb_selectfolderdialog2({})", args_str)),
-                    _ => Ok(format!("qb_selectfolderdialog({})", args_str)),
+                let args_vec = args_code?;
+                return match args_vec.len() {
+                    0 => Ok("qb_selectfolderdialog(NULL, NULL)".to_string()), // No args - use NULL for both
+                    1 => Ok(format!("qb_selectfolderdialog(qb_string_data({}), NULL)", args_vec[0])), // 1 arg - convert to const char* and pass NULL for initial_dir
+                    2 => {
+                        // 2 args - convert both to const char*
+                        Ok(format!("qb_selectfolderdialog(qb_string_data({}), qb_string_data({}))", args_vec[0], args_vec[1]))
+                    },
+                    _ => Ok(format!("qb_selectfolderdialog(qb_string_data({}), NULL)", args_vec[0])), // Default to first arg
                 };
             }
 

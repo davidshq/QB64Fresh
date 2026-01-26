@@ -1,5 +1,7 @@
 # Memory Limits for QB64Fresh and QB64pe
 
+**Last Updated:** 2026-01-26
+
 ## Critical: Always Set Memory Limits
 
 When running QB64Fresh or QB64pe (whether the original or our bootstrapped version), **always constrain memory usage** to prevent system crashes.

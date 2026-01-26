@@ -119,6 +119,16 @@ bacon clippy
 
 Bacon provides a TUI that shows compilation errors, warnings, and test results as you save files.
 
+### Memory Limits (Important)
+
+**Always use memory limits when running QB64Fresh or QB64pe** - both compilers can consume 25GB+ memory and crash the system (if you introduce bugs :)). See [MEMORY_LIMITS.md](MEMORY_LIMITS.md) for details.
+
+Quick reference:
+```bash
+# Set 16GB memory limit before running
+bash -c 'ulimit -v 16777216 && cargo run --bin qb64fresh -- input.bas --emit-c'
+```
+
 ---
 
 ## Project Structure
@@ -221,7 +231,8 @@ cargo nextest run lexer::
 - Name test functions descriptively: `test_parse_if_statement_with_else`
 
 **Current Status:**
-- QB64pe compatibility: 141 test files, 97.9% pass rate
+- QB64pe compatibility: 114/115 test files (99.1% pass rate, excluding open_gl)
+- Test coverage: 81.63% (1,500+ tests including unit, integration, golden, and fuzz tests)
 - See [TESTING.md](TESTING.md) for comprehensive testing documentation
 
 ---
@@ -360,4 +371,4 @@ docs(readme): update build instructions
 
 ---
 
-*Last updated: 2026-01-23*
+*Last updated: 2026-01-26*

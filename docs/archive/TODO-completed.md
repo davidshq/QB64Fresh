@@ -447,7 +447,7 @@
 
 ---
 
-*Last updated: 2026-01-25 (Session 054)*
+*Last updated: 2026-01-26*
 
 ---
 
@@ -1014,7 +1014,19 @@ The following items were discovered to already be implemented during a TODO audi
 
 ## Phase 6: Tooling & Ecosystem ✅ (Session 054 / 2026-01-25)
 
-### Debugging (`tools/debug`) — Infrastructure
+### Debugging (`tools/debug`) ✅ Complete
+Debugger fully implemented with 50+ tests passing. See [ADR-0013](../adrs/ADR-0013-debugger-architecture.md) for architecture details.
+
+**Completed:**
+- [x] Debug infrastructure (symbols, values, frames, dap, sources, watch)
+- [x] Runtime state capture (debug info in generated C via `--debug` flag)
+- [x] Live breakpoint execution (runtime hooks with `qb_dbg_line()`)
+- [x] Variable value reading (DAP server pipe communication)
+- [x] Step execution (step into/over/out via `qb_dbg_enter_proc()`/`qb_dbg_exit_proc()`)
+- [x] DAP server for VS Code/Cursor integration
+- [x] Named pipe IPC for debugger ↔ debugee communication
+
+**Infrastructure Details:**
 - [x] Debug symbol extraction from AST (`symbols.rs`) — types, variables, scopes, procedures
 - [x] Value representation types (`values.rs`) — scalars, arrays, UDTs, display formatting
 - [x] Call stack frame structures (`frames.rs`) — stack frames, frame navigation, variable groups
@@ -1041,6 +1053,7 @@ The following items were discovered to already be implemented during a TODO audi
 - [x] Document symbols outline (Ctrl+Shift+O)
 - [x] Rename symbol
 - [x] Snippet expansion improvements
+- [x] Debugger support (DAP) - Runtime integration complete (Phase 6), VSCode extension needs `launch.json` configuration
 
 ---
 

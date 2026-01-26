@@ -1260,6 +1260,24 @@ impl<'a> TypeChecker<'a> {
                 TypedStatement::new(TypedStatementKind::Chdir { path: typed_path }, stmt.span)
             }
 
+            StatementKind::Environ { env_string } => {
+                let typed_env_string = self.check_expr(env_string);
+                // ENVIRON expects a string argument
+                if !typed_env_string.basic_type.is_string() {
+                    self.errors.push(SemanticError::type_mismatch(
+                        "STRING",
+                        format!("{:?}", typed_env_string.basic_type),
+                        stmt.span,
+                    ));
+                }
+                TypedStatement::new(
+                    TypedStatementKind::Environ {
+                        env_string: typed_env_string,
+                    },
+                    stmt.span,
+                )
+            }
+
             StatementKind::ShellCmd { command } => {
                 let typed_command = command.as_ref().map(|c| self.check_expr(c));
                 TypedStatement::new(

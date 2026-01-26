@@ -8,7 +8,7 @@ This guide helps QB64 users transition to QB64Fresh, a modern rewrite of QB64 bu
 
 **Good news:** Most QB64 programs work with minimal or no changes. QB64Fresh achieves **99.1% compatibility** (114/115 files) with QB45/QBasic test suites.
 
-**Ultimate validation:** QB64Fresh successfully compiles the **QB64pe compiler itself** - a 59,000-line BASIC codebase across 39 files - into a working 2.1MB executable. See [BOOTSTRAP_ACHIEVEMENT.md](BOOTSTRAP_ACHIEVEMENT.md) for details.
+**Ultimate validation:** QB64Fresh successfully compiles the **QB64pe compiler itself** - a 59,000-line BASIC codebase across 39 files - into a working 2.1MB executable. See [ARCHITECTURE.md](../ARCHITECTURE.md#bootstrap-achievement) for a summary, or [docs/archive/BOOTSTRAP_PLAN_FULL.md](../archive/BOOTSTRAP_PLAN_FULL.md) for detailed implementation history.
 
 ```bash
 # Try compiling your program
