@@ -9,7 +9,8 @@
 //! - `_ERRORLINE` and `_ERRORMESSAGE$` for detailed error information
 //! - Standard QB64 error message table
 
-use std::fmt::Write;
+use crate::codegen::error::CodeGenError;
+use crate::writeln_code;
 
 /// Emits C code for QB64 error handling support.
 ///
@@ -21,118 +22,107 @@ use std::fmt::Write;
 /// - `qb_errorline()` - Returns error line as 64-bit integer (_ERRORLINE)
 /// - `qb_errormessage()` - Returns error message string (_ERRORMESSAGE$)
 /// - Standard error message lookup table
-pub(super) fn emit_error_handling(output: &mut String) {
-    writeln!(output, "/* Error Handling */").unwrap();
-    writeln!(output).unwrap();
+pub(super) fn emit_error_handling(output: &mut String) -> Result<(), CodeGenError> {
+    writeln_code!(output, "/* Error Handling */")?;
+    writeln_code!(output)?;
 
     // Error state variables
-    writeln!(
+    writeln_code!(
         output,
         "static int32_t _qb_err = 0;           /* Current error code */"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "static int32_t _qb_erl = 0;           /* Error line number */"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "static void* _qb_error_handler = NULL; /* Error handler label */"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "static int _qb_error_resume_next = 0;  /* ON ERROR RESUME NEXT flag */"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "static void* _qb_error_line = NULL;    /* Line that caused error */"
-    )
-    .unwrap();
+    )?;
     // Include file error tracking (for $INCLUDE files)
-    writeln!(
+    writeln_code!(
         output,
         "static int32_t _INCLERRORLINE = 0;     /* Error line in include file */"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "static qb_string* _INCLERRORFILE_str = NULL; /* Include file with error */"
-    )
-    .unwrap();
-    writeln!(output).unwrap();
+    )?;
+    writeln_code!(output)?;
 
     // qb_error - Simulate an error
-    writeln!(output, "void qb_error(int32_t code) {{").unwrap();
-    writeln!(output, "    _qb_err = code;").unwrap();
-    writeln!(output, "    if (_qb_error_handler) {{").unwrap();
-    writeln!(
+    writeln_code!(output, "void qb_error(int32_t code) {{")?;
+    writeln_code!(output, "    _qb_err = code;")?;
+    writeln_code!(output, "    if (_qb_error_handler) {{")?;
+    writeln_code!(
         output,
         "        /* Jump to error handler - handled by generated code */"
-    )
-    .unwrap();
-    writeln!(output, "    }}").unwrap();
-    writeln!(output, "}}").unwrap();
-    writeln!(output).unwrap();
+    )?;
+    writeln_code!(output, "    }}")?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(output)?;
 
     // ERR function
-    writeln!(output, "int32_t qb_err_code(void) {{ return _qb_err; }}").unwrap();
-    writeln!(output).unwrap();
+    writeln_code!(output, "int32_t qb_err_code(void) {{ return _qb_err; }}")?;
+    writeln_code!(output)?;
 
     // ERL function
-    writeln!(output, "int32_t qb_err_line(void) {{ return _qb_erl; }}").unwrap();
-    writeln!(output).unwrap();
+    writeln_code!(output, "int32_t qb_err_line(void) {{ return _qb_erl; }}")?;
+    writeln_code!(output)?;
 
     // _ERRORLINE - returns line number where error occurred
-    writeln!(output, "int64_t qb_errorline(void) {{ return _qb_erl; }}").unwrap();
-    writeln!(output).unwrap();
+    writeln_code!(output, "int64_t qb_errorline(void) {{ return _qb_erl; }}")?;
+    writeln_code!(output)?;
 
     // _ERRORMESSAGE$ - returns error message for current or specified error
-    writeln!(output, "static const char* _qb_error_messages[] = {{").unwrap();
-    writeln!(output, "    \"No error\",").unwrap();
-    writeln!(output, "    \"NEXT without FOR\",").unwrap();
-    writeln!(output, "    \"Syntax error\",").unwrap();
-    writeln!(output, "    \"RETURN without GOSUB\",").unwrap();
-    writeln!(output, "    \"Out of DATA\",").unwrap();
-    writeln!(output, "    \"Illegal function call\",").unwrap();
-    writeln!(output, "    \"Overflow\",").unwrap();
-    writeln!(output, "    \"Out of memory\",").unwrap();
-    writeln!(output, "    \"Label not defined\",").unwrap();
-    writeln!(output, "    \"Subscript out of range\",").unwrap();
-    writeln!(output, "    \"Duplicate definition\",").unwrap();
-    writeln!(output, "    \"Division by zero\",").unwrap();
-    writeln!(output, "    \"Type mismatch\",").unwrap();
-    writeln!(output, "    \"Out of string space\",").unwrap();
-    writeln!(output, "    \"String too long\",").unwrap();
-    writeln!(output, "    \"String formula too complex\",").unwrap();
-    writeln!(output, "}};").unwrap();
-    writeln!(
+    writeln_code!(output, "static const char* _qb_error_messages[] = {{")?;
+    writeln_code!(output, "    \"No error\",")?;
+    writeln_code!(output, "    \"NEXT without FOR\",")?;
+    writeln_code!(output, "    \"Syntax error\",")?;
+    writeln_code!(output, "    \"RETURN without GOSUB\",")?;
+    writeln_code!(output, "    \"Out of DATA\",")?;
+    writeln_code!(output, "    \"Illegal function call\",")?;
+    writeln_code!(output, "    \"Overflow\",")?;
+    writeln_code!(output, "    \"Out of memory\",")?;
+    writeln_code!(output, "    \"Label not defined\",")?;
+    writeln_code!(output, "    \"Subscript out of range\",")?;
+    writeln_code!(output, "    \"Duplicate definition\",")?;
+    writeln_code!(output, "    \"Division by zero\",")?;
+    writeln_code!(output, "    \"Type mismatch\",")?;
+    writeln_code!(output, "    \"Out of string space\",")?;
+    writeln_code!(output, "    \"String too long\",")?;
+    writeln_code!(output, "    \"String formula too complex\",")?;
+    writeln_code!(output, "}};")?;
+    writeln_code!(
         output,
         "#define QB_NUM_ERROR_MESSAGES (sizeof(_qb_error_messages)/sizeof(_qb_error_messages[0]))"
-    )
-    .unwrap();
-    writeln!(output).unwrap();
+    )?;
+    writeln_code!(output)?;
 
-    writeln!(output, "qb_string* qb_errormessage(void) {{").unwrap();
-    writeln!(
+    writeln_code!(output, "qb_string* qb_errormessage(void) {{")?;
+    writeln_code!(
         output,
         "    if (_qb_err >= 0 && (size_t)_qb_err < QB_NUM_ERROR_MESSAGES)"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "        return qb_string_new(_qb_error_messages[_qb_err]);"
-    )
-    .unwrap();
-    writeln!(output, "    char buf[64];").unwrap();
-    writeln!(
+    )?;
+    writeln_code!(output, "    char buf[64];")?;
+    writeln_code!(
         output,
         "    snprintf(buf, sizeof(buf), \"Error %d\", _qb_err);"
-    )
-    .unwrap();
-    writeln!(output, "    return qb_string_new(buf);").unwrap();
-    writeln!(output, "}}").unwrap();
-    writeln!(output).unwrap();
+    )?;
+    writeln_code!(output, "    return qb_string_new(buf);")?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(output)?;
+    Ok(())
 }

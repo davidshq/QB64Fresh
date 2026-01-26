@@ -433,7 +433,9 @@ fn qb64pe_qb45_compatibility_test() {
 
     println!("✓ QB4.5 test program compiles correctly with QB64Fresh");
     println!("✓ Prerequisites validated for bootstrapped QB64pe QB4.5 compatibility");
-    println!("⚠ Full execution test requires runtime library build and bootstrapped QB64pe executable");
+    println!(
+        "⚠ Full execution test requires runtime library build and bootstrapped QB64pe executable"
+    );
 }
 
 /// Test that bootstrapped QB64pe can compile itself (meta-bootstrap).
@@ -481,8 +483,12 @@ fn qb64pe_self_compilation_test() {
     println!("✓ Generated C code is valid ({} lines)", stats.c_code_lines);
     println!("✓ Prerequisites validated for meta-bootstrap");
     println!("⚠ Full execution test requires:");
-    println!("  1. Build runtime with graphics: cargo build -p qb64fresh-runtime --release --features graphics-sdl2");
-    println!("  2. Compile QB64pe C with SDL2: gcc -I runtime/include qb64pe.c -L target/release -lqb64fresh_rt $(pkg-config --libs sdl2) -lm -lpthread -ldl -o qb64pe_bootstrapped");
+    println!(
+        "  1. Build runtime with graphics: cargo build -p qb64fresh-runtime --release --features graphics-sdl2"
+    );
+    println!(
+        "  2. Compile QB64pe C with SDL2: gcc -I runtime/include qb64pe.c -L target/release -lqb64fresh_rt $(pkg-config --libs sdl2) -lm -lpthread -ldl -o qb64pe_bootstrapped"
+    );
     println!("  3. Run: ./qb64pe_bootstrapped -x ../QB64pe/source/qb64pe.bas -o qb64pe_meta.c");
     println!("  4. Verify: qb64pe_meta.c exists and compiles");
 }

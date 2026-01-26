@@ -15,11 +15,10 @@
 //!   - Resetting data pointer to beginning
 //!   - Restoring to specific labeled DATA statement
 
-use std::fmt::Write;
-
 use crate::codegen::error::CodeGenError;
 use crate::semantic::typed_ir::TypedReadTarget;
 use crate::semantic::types::BasicType;
+use crate::writeln_code;
 
 use super::super::expr::emit_expr;
 use super::super::types::{c_identifier, c_type};
@@ -95,49 +94,47 @@ impl super::StmtEmitter {
 
             match var_type {
                 BasicType::String | BasicType::FixedString(_) => {
-                    writeln!(
+                    writeln_code!(
                         output,
                         "{}if (_qb_data_ptr < _qb_data_count && _qb_data[_qb_data_ptr].type == 's') {{",
                         indent
-                    )
-                    .unwrap();
-                    writeln!(
+                    )?;
+                    writeln_code!(
                         output,
                         "{}    {} = qb_str_from_c(_qb_data[_qb_data_ptr].v.s);",
-                        indent, c_target
-                    )
-                    .unwrap();
-                    writeln!(
+                        indent,
+                        c_target
+                    )?;
+                    writeln_code!(
                         output,
                         "{}}} else if (_qb_data_ptr < _qb_data_count) {{",
                         indent
-                    )
-                    .unwrap();
-                    writeln!(
+                    )?;
+                    writeln_code!(
                         output,
                         "{}    {} = qb_str_float(_qb_data[_qb_data_ptr].v.n);",
-                        indent, c_target
-                    )
-                    .unwrap();
-                    writeln!(output, "{}}}", indent).unwrap();
-                    writeln!(output, "{}_qb_data_ptr++;", indent).unwrap();
+                        indent,
+                        c_target
+                    )?;
+                    writeln_code!(output, "{}}}", indent)?;
+                    writeln_code!(output, "{}_qb_data_ptr++;", indent)?;
                 }
                 _ => {
                     let c_ty = c_type(&var_type);
-                    writeln!(
+                    writeln_code!(
                         output,
                         "{}if (_qb_data_ptr < _qb_data_count && _qb_data[_qb_data_ptr].type == 'd') {{",
                         indent
-                    )
-                    .unwrap();
-                    writeln!(
+                    )?;
+                    writeln_code!(
                         output,
                         "{}    {} = ({})_qb_data[_qb_data_ptr].v.n;",
-                        indent, c_target, c_ty
-                    )
-                    .unwrap();
-                    writeln!(output, "{}}}", indent).unwrap();
-                    writeln!(output, "{}_qb_data_ptr++;", indent).unwrap();
+                        indent,
+                        c_target,
+                        c_ty
+                    )?;
+                    writeln_code!(output, "{}}}", indent)?;
+                    writeln_code!(output, "{}_qb_data_ptr++;", indent)?;
                 }
             }
         }
@@ -171,25 +168,26 @@ impl super::StmtEmitter {
     ) -> Result<(), CodeGenError> {
         match label {
             None => {
-                writeln!(output, "{}_qb_data_ptr = 0;", indent).unwrap();
+                writeln_code!(output, "{}_qb_data_ptr = 0;", indent)?;
             }
             Some(lbl) => {
                 let label_upper = lbl.to_uppercase();
                 if let Some(&index) = self.data_label_indices.get(&label_upper) {
-                    writeln!(
+                    writeln_code!(
                         output,
                         "{}_qb_data_ptr = {}; /* RESTORE {} */",
-                        indent, index, lbl
-                    )
-                    .unwrap();
+                        indent,
+                        index,
+                        lbl
+                    )?;
                 } else {
-                    writeln!(
+                    writeln_code!(
                         output,
                         "{}/* Warning: RESTORE label '{}' not associated with DATA */",
-                        indent, lbl
-                    )
-                    .unwrap();
-                    writeln!(output, "{}_qb_data_ptr = 0;", indent).unwrap();
+                        indent,
+                        lbl
+                    )?;
+                    writeln_code!(output, "{}_qb_data_ptr = 0;", indent)?;
                 }
             }
         }

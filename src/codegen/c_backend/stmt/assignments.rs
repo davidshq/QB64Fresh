@@ -14,11 +14,10 @@
 //! All methods handle fixed-length string assignments specially, using
 //! `strncpy` to copy string data into character arrays.
 
-use std::fmt::Write;
-
 use crate::codegen::error::CodeGenError;
 use crate::semantic::typed_ir::TypedArrayDimension;
 use crate::semantic::types::BasicType;
+use crate::writeln_code;
 
 use super::super::expr::emit_expr;
 use super::super::types::{c_identifier, c_type};
@@ -44,24 +43,34 @@ impl super::StmtEmitter {
                 super::super::RuntimeMode::External => "qb_string_data(_tmp)",
                 super::super::RuntimeMode::Inline => "_tmp->data",
             };
-            writeln!(
+            writeln_code!(
                 output,
                 "{}{{ qb_string* _tmp = {}; strncpy({}, _tmp ? {} : \"\", {}); {}[{}] = '\\0'; }}",
-                indent, value_code, c_name, data_access, len, c_name, len
-            ).unwrap();
+                indent,
+                value_code,
+                c_name,
+                data_access,
+                len,
+                c_name,
+                len
+            )?;
         } else if *target_type == BasicType::String {
             // For dynamic strings: release old, retain new
             // This ensures proper refcount management for temp string cleanup
-            writeln!(
+            writeln_code!(
                 output,
                 "{}{{ qb_string* _new = {}; if ({} != _new) {{ qb_string_release({}); {} = qb_string_retain(_new); }} }}",
-                indent, value_code, c_name, c_name, c_name
-            ).unwrap();
+                indent,
+                value_code,
+                c_name,
+                c_name,
+                c_name
+            )?;
         } else if value.basic_type != *target_type {
             let c_ty = c_type(target_type);
-            writeln!(output, "{}{} = ({})({});", indent, c_name, c_ty, value_code).unwrap();
+            writeln_code!(output, "{}{} = ({})({});", indent, c_name, c_ty, value_code)?;
         } else {
-            writeln!(output, "{}{} = {};", indent, c_name, value_code).unwrap();
+            writeln_code!(output, "{}{} = {};", indent, c_name, value_code)?;
         }
         Ok(())
     }
@@ -123,34 +132,54 @@ impl super::StmtEmitter {
                 super::super::RuntimeMode::External => "qb_string_data(_tmp)",
                 super::super::RuntimeMode::Inline => "_tmp->data",
             };
-            writeln!(
+            writeln_code!(
                 output,
                 "{}{{ qb_string* _tmp = {}; strncpy({}[{}], _tmp ? {} : \"\", {}); {}[{}][{}] = '\\0'; }}",
-                indent, value_code, c_name, index_expr, data_access, len, c_name, index_expr, len
-            ).unwrap();
+                indent,
+                value_code,
+                c_name,
+                index_expr,
+                data_access,
+                len,
+                c_name,
+                index_expr,
+                len
+            )?;
         } else if *element_type == BasicType::String {
             // For dynamic string arrays: release old, retain new
             // This ensures proper refcount management for temp string cleanup
-            writeln!(
+            writeln_code!(
                 output,
                 "{}{{ qb_string* _new = {}; if ({}[{}] != _new) {{ qb_string_release({}[{}]); {}[{}] = qb_string_retain(_new); }} }}",
-                indent, value_code, c_name, index_expr, c_name, index_expr, c_name, index_expr
-            ).unwrap();
+                indent,
+                value_code,
+                c_name,
+                index_expr,
+                c_name,
+                index_expr,
+                c_name,
+                index_expr
+            )?;
         } else if value.basic_type != *element_type {
             let c_ty = c_type(element_type);
-            writeln!(
+            writeln_code!(
                 output,
                 "{}{}[{}] = ({})({});",
-                indent, c_name, index_expr, c_ty, value_code
-            )
-            .unwrap();
+                indent,
+                c_name,
+                index_expr,
+                c_ty,
+                value_code
+            )?;
         } else {
-            writeln!(
+            writeln_code!(
                 output,
                 "{}{}[{}] = {};",
-                indent, c_name, index_expr, value_code
-            )
-            .unwrap();
+                indent,
+                c_name,
+                index_expr,
+                value_code
+            )?;
         }
         Ok(())
     }
@@ -215,25 +244,48 @@ impl super::StmtEmitter {
                 super::super::RuntimeMode::External => "qb_string_data(_tmp)",
                 super::super::RuntimeMode::Inline => "_tmp->data",
             };
-            writeln!(
+            writeln_code!(
                 output,
                 "{}{{ qb_string* _tmp = {}; strncpy({}[{}]{}, _tmp ? {} : \"\", {}); {}[{}]{}[{}] = '\\0'; }}",
-                indent, value_code, c_name, index_expr, field_chain, data_access, len, c_name, index_expr, field_chain, len
-            ).unwrap();
+                indent,
+                value_code,
+                c_name,
+                index_expr,
+                field_chain,
+                data_access,
+                len,
+                c_name,
+                index_expr,
+                field_chain,
+                len
+            )?;
         } else if *field_type == BasicType::String {
             // For dynamic string UDT fields in arrays: release old, retain new
-            writeln!(
+            writeln_code!(
                 output,
                 "{}{{ qb_string* _new = {}; if ({}[{}]{} != _new) {{ qb_string_release({}[{}]{}); {}[{}]{} = qb_string_retain(_new); }} }}",
-                indent, value_code, c_name, index_expr, field_chain, c_name, index_expr, field_chain, c_name, index_expr, field_chain
-            ).unwrap();
+                indent,
+                value_code,
+                c_name,
+                index_expr,
+                field_chain,
+                c_name,
+                index_expr,
+                field_chain,
+                c_name,
+                index_expr,
+                field_chain
+            )?;
         } else {
-            writeln!(
+            writeln_code!(
                 output,
                 "{}{}[{}]{} = {};",
-                indent, c_name, index_expr, field_chain, value_code
-            )
-            .unwrap();
+                indent,
+                c_name,
+                index_expr,
+                field_chain,
+                value_code
+            )?;
         }
 
         Ok(())
@@ -266,25 +318,42 @@ impl super::StmtEmitter {
                 super::super::RuntimeMode::External => "qb_string_data(_tmp)",
                 super::super::RuntimeMode::Inline => "_tmp->data",
             };
-            writeln!(
+            writeln_code!(
                 output,
                 "{}{{ qb_string* _tmp = {}; strncpy({}{}, _tmp ? {} : \"\", {}); {}{}[{}] = '\\0'; }}",
-                indent, value_code, c_name, field_chain, data_access, len, c_name, field_chain, len
-            ).unwrap();
+                indent,
+                value_code,
+                c_name,
+                field_chain,
+                data_access,
+                len,
+                c_name,
+                field_chain,
+                len
+            )?;
         } else if *field_type == BasicType::String {
             // For dynamic string UDT fields: release old, retain new
-            writeln!(
+            writeln_code!(
                 output,
                 "{}{{ qb_string* _new = {}; if ({}{} != _new) {{ qb_string_release({}{}); {}{} = qb_string_retain(_new); }} }}",
-                indent, value_code, c_name, field_chain, c_name, field_chain, c_name, field_chain
-            ).unwrap();
+                indent,
+                value_code,
+                c_name,
+                field_chain,
+                c_name,
+                field_chain,
+                c_name,
+                field_chain
+            )?;
         } else {
-            writeln!(
+            writeln_code!(
                 output,
                 "{}{}{} = {};",
-                indent, c_name, field_chain, value_code
-            )
-            .unwrap();
+                indent,
+                c_name,
+                field_chain,
+                value_code
+            )?;
         }
 
         Ok(())

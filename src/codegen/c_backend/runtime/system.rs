@@ -38,7 +38,8 @@
 //! rather than string handling. String functions (LEN, LEFT$, MID$, etc.) remain
 //! byte-based in both QB64PE and QB64Fresh.
 
-use std::fmt::Write;
+use crate::codegen::error::CodeGenError;
+use crate::writeln_code;
 
 /// Emits C code for system-related stub function declarations.
 ///
@@ -50,743 +51,717 @@ use std::fmt::Write;
 /// # Arguments
 ///
 /// * `output` - A mutable string to append the generated C code to.
-pub(super) fn emit_stub_declarations(output: &mut String) {
-    writeln!(output, "/* Stub function implementations */").unwrap();
-    writeln!(output).unwrap();
+pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenError> {
+    writeln_code!(output, "/* Stub function implementations */")?;
+    writeln_code!(output)?;
 
     // File system functions - actual implementations
-    writeln!(output, "#include <sys/stat.h>").unwrap();
-    writeln!(output, "#ifdef _WIN32").unwrap();
-    writeln!(output, "#include <direct.h>").unwrap();
-    writeln!(output, "#define mkdir(path, mode) _mkdir(path)").unwrap();
-    writeln!(output, "#else").unwrap();
-    writeln!(output, "#include <unistd.h>").unwrap();
-    writeln!(output, "#endif").unwrap();
-    writeln!(output).unwrap();
+    writeln_code!(output, "#include <sys/stat.h>")?;
+    writeln_code!(output, "#ifdef _WIN32")?;
+    writeln_code!(output, "#include <direct.h>")?;
+    writeln_code!(output, "#define mkdir(path, mode) _mkdir(path)")?;
+    writeln_code!(output, "#else")?;
+    writeln_code!(output, "#include <unistd.h>")?;
+    writeln_code!(output, "#endif")?;
+    writeln_code!(output)?;
 
     // Helper to normalize path separators on non-Windows systems
-    writeln!(output, "#ifndef _WIN32").unwrap();
-    writeln!(
+    writeln_code!(output, "#ifndef _WIN32")?;
+    writeln_code!(
         output,
         "static void _qb_normalize_path_inplace(char* path) {{"
-    )
-    .unwrap();
-    writeln!(output, "    if (!path) return;").unwrap();
-    writeln!(output, "    for (char* p = path; *p; p++) {{").unwrap();
-    writeln!(output, "        if (*p == '\\\\') *p = '/';").unwrap();
-    writeln!(output, "    }}").unwrap();
-    writeln!(output, "}}").unwrap();
-    writeln!(output, "#else").unwrap();
-    writeln!(output, "#define _qb_normalize_path_inplace(p) ((void)0)").unwrap();
-    writeln!(output, "#endif").unwrap();
-    writeln!(output).unwrap();
+    )?;
+    writeln_code!(output, "    if (!path) return;")?;
+    writeln_code!(output, "    for (char* p = path; *p; p++) {{")?;
+    writeln_code!(output, "        if (*p == '\\\\') *p = '/';")?;
+    writeln_code!(output, "    }}")?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(output, "#else")?;
+    writeln_code!(output, "#define _qb_normalize_path_inplace(p) ((void)0)")?;
+    writeln_code!(output, "#endif")?;
+    writeln_code!(output)?;
 
-    writeln!(output, "int32_t qb_file_exists(qb_string* path) {{").unwrap();
-    writeln!(output, "    if (!path || !path->data) return 0;").unwrap();
-    writeln!(output, "    struct stat st;").unwrap();
-    writeln!(
+    writeln_code!(output, "int32_t qb_file_exists(qb_string* path) {{")?;
+    writeln_code!(output, "    if (!path || !path->data) return 0;")?;
+    writeln_code!(output, "    struct stat st;")?;
+    writeln_code!(
         output,
         "    if (stat(path->data, &st) == 0 && S_ISREG(st.st_mode)) return -1;"
-    )
-    .unwrap();
-    writeln!(output, "#ifndef _WIN32").unwrap();
-    writeln!(output, "    /* Try with normalized path */").unwrap();
-    writeln!(output, "    char* norm = strdup(path->data);").unwrap();
-    writeln!(output, "    _qb_normalize_path_inplace(norm);").unwrap();
-    writeln!(
+    )?;
+    writeln_code!(output, "#ifndef _WIN32")?;
+    writeln_code!(output, "    /* Try with normalized path */")?;
+    writeln_code!(output, "    char* norm = strdup(path->data);")?;
+    writeln_code!(output, "    _qb_normalize_path_inplace(norm);")?;
+    writeln_code!(
         output,
         "    int result = stat(norm, &st) == 0 && S_ISREG(st.st_mode) ? -1 : 0;"
-    )
-    .unwrap();
-    writeln!(output, "    free(norm);").unwrap();
-    writeln!(output, "    return result;").unwrap();
-    writeln!(output, "#else").unwrap();
-    writeln!(output, "    return 0;").unwrap();
-    writeln!(output, "#endif").unwrap();
-    writeln!(output, "}}").unwrap();
+    )?;
+    writeln_code!(output, "    free(norm);")?;
+    writeln_code!(output, "    return result;")?;
+    writeln_code!(output, "#else")?;
+    writeln_code!(output, "    return 0;")?;
+    writeln_code!(output, "#endif")?;
+    writeln_code!(output, "}}")?;
 
-    writeln!(output, "int32_t qb_dir_exists(qb_string* path) {{").unwrap();
-    writeln!(output, "    if (!path || !path->data) return 0;").unwrap();
-    writeln!(output, "    struct stat st;").unwrap();
-    writeln!(
+    writeln_code!(output, "int32_t qb_dir_exists(qb_string* path) {{")?;
+    writeln_code!(output, "    if (!path || !path->data) return 0;")?;
+    writeln_code!(output, "    struct stat st;")?;
+    writeln_code!(
         output,
         "    if (stat(path->data, &st) == 0 && S_ISDIR(st.st_mode)) return -1;"
-    )
-    .unwrap();
-    writeln!(output, "#ifndef _WIN32").unwrap();
-    writeln!(output, "    /* Try with normalized path */").unwrap();
-    writeln!(output, "    char* norm = strdup(path->data);").unwrap();
-    writeln!(output, "    _qb_normalize_path_inplace(norm);").unwrap();
-    writeln!(
+    )?;
+    writeln_code!(output, "#ifndef _WIN32")?;
+    writeln_code!(output, "    /* Try with normalized path */")?;
+    writeln_code!(output, "    char* norm = strdup(path->data);")?;
+    writeln_code!(output, "    _qb_normalize_path_inplace(norm);")?;
+    writeln_code!(
         output,
         "    int result = stat(norm, &st) == 0 && S_ISDIR(st.st_mode) ? -1 : 0;"
-    )
-    .unwrap();
-    writeln!(output, "    free(norm);").unwrap();
-    writeln!(output, "    return result;").unwrap();
-    writeln!(output, "#else").unwrap();
-    writeln!(output, "    return 0;").unwrap();
-    writeln!(output, "#endif").unwrap();
-    writeln!(output, "}}").unwrap();
+    )?;
+    writeln_code!(output, "    free(norm);")?;
+    writeln_code!(output, "    return result;")?;
+    writeln_code!(output, "#else")?;
+    writeln_code!(output, "    return 0;")?;
+    writeln_code!(output, "#endif")?;
+    writeln_code!(output, "}}")?;
 
-    writeln!(output, "qb_string* qb_fullpath(qb_string* path) {{").unwrap();
-    writeln!(
+    writeln_code!(output, "qb_string* qb_fullpath(qb_string* path) {{")?;
+    writeln_code!(
         output,
         "    if (!path || !path->data) return qb_string_new(\"\");"
-    )
-    .unwrap();
-    writeln!(output, "    char resolved[4096];").unwrap();
-    writeln!(output, "#ifdef _WIN32").unwrap();
-    writeln!(
+    )?;
+    writeln_code!(output, "    char resolved[4096];")?;
+    writeln_code!(output, "#ifdef _WIN32")?;
+    writeln_code!(
         output,
         "    if (_fullpath(resolved, path->data, sizeof(resolved)))"
-    )
-    .unwrap();
-    writeln!(output, "        return qb_string_new(resolved);").unwrap();
-    writeln!(output, "#else").unwrap();
+    )?;
+    writeln_code!(output, "        return qb_string_new(resolved);")?;
+    writeln_code!(output, "#else")?;
     // Normalize backslashes to forward slashes before calling realpath
-    writeln!(output, "    char* normalized = strdup(path->data);").unwrap();
-    writeln!(output, "    if (normalized) {{").unwrap();
-    writeln!(output, "        _qb_normalize_path_inplace(normalized);").unwrap();
-    writeln!(output, "        if (realpath(normalized, resolved)) {{").unwrap();
-    writeln!(output, "            free(normalized);").unwrap();
-    writeln!(output, "            return qb_string_new(resolved);").unwrap();
-    writeln!(output, "        }}").unwrap();
-    writeln!(output, "        free(normalized);").unwrap();
-    writeln!(output, "    }}").unwrap();
-    writeln!(output, "#endif").unwrap();
-    writeln!(
+    writeln_code!(output, "    char* normalized = strdup(path->data);")?;
+    writeln_code!(output, "    if (normalized) {{")?;
+    writeln_code!(output, "        _qb_normalize_path_inplace(normalized);")?;
+    writeln_code!(output, "        if (realpath(normalized, resolved)) {{")?;
+    writeln_code!(output, "            free(normalized);")?;
+    writeln_code!(output, "            return qb_string_new(resolved);")?;
+    writeln_code!(output, "        }}")?;
+    writeln_code!(output, "        free(normalized);")?;
+    writeln_code!(output, "    }}")?;
+    writeln_code!(output, "#endif")?;
+    writeln_code!(
         output,
         "    return qb_string_new(path->data ? path->data : \"\");"
-    )
-    .unwrap();
-    writeln!(output, "}}").unwrap();
+    )?;
+    writeln_code!(output, "}}")?;
 
-    writeln!(
+    writeln_code!(
         output,
         "qb_string* qb_dir(qb_string* spec) {{ (void)spec; return qb_string_new(\"\"); }}"
-    )
-    .unwrap();
+    )?;
 
-    writeln!(output, "int32_t qb_chdir(const char* path) {{").unwrap();
-    writeln!(output, "    if (!path) return -1;").unwrap();
-    writeln!(output, "#ifdef _WIN32").unwrap();
-    writeln!(output, "    return _chdir(path) == 0 ? 0 : -1;").unwrap();
-    writeln!(output, "#else").unwrap();
-    writeln!(output, "    char* n = strdup(path);").unwrap();
-    writeln!(output, "    if (!n) return -1;").unwrap();
-    writeln!(output, "    _qb_normalize_path_inplace(n);").unwrap();
-    writeln!(output, "    int r = chdir(n) == 0 ? 0 : -1;").unwrap();
-    writeln!(output, "    free(n);").unwrap();
-    writeln!(output, "    return r;").unwrap();
-    writeln!(output, "#endif").unwrap();
-    writeln!(output, "}}").unwrap();
+    writeln_code!(output, "int32_t qb_chdir(const char* path) {{")?;
+    writeln_code!(output, "    if (!path) return -1;")?;
+    writeln_code!(output, "#ifdef _WIN32")?;
+    writeln_code!(output, "    return _chdir(path) == 0 ? 0 : -1;")?;
+    writeln_code!(output, "#else")?;
+    writeln_code!(output, "    char* n = strdup(path);")?;
+    writeln_code!(output, "    if (!n) return -1;")?;
+    writeln_code!(output, "    _qb_normalize_path_inplace(n);")?;
+    writeln_code!(output, "    int r = chdir(n) == 0 ? 0 : -1;")?;
+    writeln_code!(output, "    free(n);")?;
+    writeln_code!(output, "    return r;")?;
+    writeln_code!(output, "#endif")?;
+    writeln_code!(output, "}}")?;
 
-    writeln!(output, "int32_t qb_mkdir(const char* path) {{").unwrap();
-    writeln!(output, "    if (!path) return -1;").unwrap();
-    writeln!(output, "#ifdef _WIN32").unwrap();
-    writeln!(output, "    return mkdir(path, 0755) == 0 ? 0 : -1;").unwrap();
-    writeln!(output, "#else").unwrap();
-    writeln!(output, "    char* n = strdup(path);").unwrap();
-    writeln!(output, "    if (!n) return -1;").unwrap();
-    writeln!(output, "    _qb_normalize_path_inplace(n);").unwrap();
-    writeln!(output, "    int r = mkdir(n, 0755) == 0 ? 0 : -1;").unwrap();
-    writeln!(output, "    free(n);").unwrap();
-    writeln!(output, "    return r;").unwrap();
-    writeln!(output, "#endif").unwrap();
-    writeln!(output, "}}").unwrap();
+    writeln_code!(output, "int32_t qb_mkdir(const char* path) {{")?;
+    writeln_code!(output, "    if (!path) return -1;")?;
+    writeln_code!(output, "#ifdef _WIN32")?;
+    writeln_code!(output, "    return mkdir(path, 0755) == 0 ? 0 : -1;")?;
+    writeln_code!(output, "#else")?;
+    writeln_code!(output, "    char* n = strdup(path);")?;
+    writeln_code!(output, "    if (!n) return -1;")?;
+    writeln_code!(output, "    _qb_normalize_path_inplace(n);")?;
+    writeln_code!(output, "    int r = mkdir(n, 0755) == 0 ? 0 : -1;")?;
+    writeln_code!(output, "    free(n);")?;
+    writeln_code!(output, "    return r;")?;
+    writeln_code!(output, "#endif")?;
+    writeln_code!(output, "}}")?;
 
-    writeln!(output, "int32_t qb_rmdir(const char* path) {{").unwrap();
-    writeln!(output, "    if (!path) return -1;").unwrap();
-    writeln!(output, "#ifdef _WIN32").unwrap();
-    writeln!(output, "    return _rmdir(path) == 0 ? 0 : -1;").unwrap();
-    writeln!(output, "#else").unwrap();
-    writeln!(output, "    char* n = strdup(path);").unwrap();
-    writeln!(output, "    if (!n) return -1;").unwrap();
-    writeln!(output, "    _qb_normalize_path_inplace(n);").unwrap();
-    writeln!(output, "    int r = rmdir(n) == 0 ? 0 : -1;").unwrap();
-    writeln!(output, "    free(n);").unwrap();
-    writeln!(output, "    return r;").unwrap();
-    writeln!(output, "#endif").unwrap();
-    writeln!(output, "}}").unwrap();
+    writeln_code!(output, "int32_t qb_rmdir(const char* path) {{")?;
+    writeln_code!(output, "    if (!path) return -1;")?;
+    writeln_code!(output, "#ifdef _WIN32")?;
+    writeln_code!(output, "    return _rmdir(path) == 0 ? 0 : -1;")?;
+    writeln_code!(output, "#else")?;
+    writeln_code!(output, "    char* n = strdup(path);")?;
+    writeln_code!(output, "    if (!n) return -1;")?;
+    writeln_code!(output, "    _qb_normalize_path_inplace(n);")?;
+    writeln_code!(output, "    int r = rmdir(n) == 0 ? 0 : -1;")?;
+    writeln_code!(output, "    free(n);")?;
+    writeln_code!(output, "    return r;")?;
+    writeln_code!(output, "#endif")?;
+    writeln_code!(output, "}}")?;
 
-    writeln!(output, "int32_t qb_file_kill(const char* filename) {{").unwrap();
-    writeln!(output, "    if (!filename) return -1;").unwrap();
-    writeln!(output, "#ifdef _WIN32").unwrap();
-    writeln!(output, "    return remove(filename) == 0 ? 0 : -1;").unwrap();
-    writeln!(output, "#else").unwrap();
-    writeln!(output, "    char* n = strdup(filename);").unwrap();
-    writeln!(output, "    if (!n) return -1;").unwrap();
-    writeln!(output, "    _qb_normalize_path_inplace(n);").unwrap();
-    writeln!(output, "    int r = remove(n) == 0 ? 0 : -1;").unwrap();
-    writeln!(output, "    free(n);").unwrap();
-    writeln!(output, "    return r;").unwrap();
-    writeln!(output, "#endif").unwrap();
-    writeln!(output, "}}").unwrap();
+    writeln_code!(output, "int32_t qb_file_kill(const char* filename) {{")?;
+    writeln_code!(output, "    if (!filename) return -1;")?;
+    writeln_code!(output, "#ifdef _WIN32")?;
+    writeln_code!(output, "    return remove(filename) == 0 ? 0 : -1;")?;
+    writeln_code!(output, "#else")?;
+    writeln_code!(output, "    char* n = strdup(filename);")?;
+    writeln_code!(output, "    if (!n) return -1;")?;
+    writeln_code!(output, "    _qb_normalize_path_inplace(n);")?;
+    writeln_code!(output, "    int r = remove(n) == 0 ? 0 : -1;")?;
+    writeln_code!(output, "    free(n);")?;
+    writeln_code!(output, "    return r;")?;
+    writeln_code!(output, "#endif")?;
+    writeln_code!(output, "}}")?;
 
-    writeln!(
+    writeln_code!(
         output,
         "int32_t qb_file_rename(const char* old_name, const char* new_name) {{"
-    )
-    .unwrap();
-    writeln!(output, "    if (!old_name || !new_name) return -1;").unwrap();
-    writeln!(output, "#ifdef _WIN32").unwrap();
-    writeln!(
+    )?;
+    writeln_code!(output, "    if (!old_name || !new_name) return -1;")?;
+    writeln_code!(output, "#ifdef _WIN32")?;
+    writeln_code!(
         output,
         "    return rename(old_name, new_name) == 0 ? 0 : -1;"
-    )
-    .unwrap();
-    writeln!(output, "#else").unwrap();
-    writeln!(output, "    char* o = strdup(old_name);").unwrap();
-    writeln!(output, "    char* n = strdup(new_name);").unwrap();
-    writeln!(
+    )?;
+    writeln_code!(output, "#else")?;
+    writeln_code!(output, "    char* o = strdup(old_name);")?;
+    writeln_code!(output, "    char* n = strdup(new_name);")?;
+    writeln_code!(
         output,
         "    if (!o || !n) {{ free(o); free(n); return -1; }}"
-    )
-    .unwrap();
-    writeln!(output, "    _qb_normalize_path_inplace(o);").unwrap();
-    writeln!(output, "    _qb_normalize_path_inplace(n);").unwrap();
-    writeln!(output, "    int r = rename(o, n) == 0 ? 0 : -1;").unwrap();
-    writeln!(output, "    free(o);").unwrap();
-    writeln!(output, "    free(n);").unwrap();
-    writeln!(output, "    return r;").unwrap();
-    writeln!(output, "#endif").unwrap();
-    writeln!(output, "}}").unwrap();
-    writeln!(output).unwrap();
+    )?;
+    writeln_code!(output, "    _qb_normalize_path_inplace(o);")?;
+    writeln_code!(output, "    _qb_normalize_path_inplace(n);")?;
+    writeln_code!(output, "    int r = rename(o, n) == 0 ? 0 : -1;")?;
+    writeln_code!(output, "    free(o);")?;
+    writeln_code!(output, "    free(n);")?;
+    writeln_code!(output, "    return r;")?;
+    writeln_code!(output, "#endif")?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(output)?;
 
     // Console/shell functions
-    writeln!(output, "int32_t qb_console_get(void) {{ return 1; }}").unwrap();
-    writeln!(
+    writeln_code!(output, "int32_t qb_console_get(void) {{ return 1; }}")?;
+    writeln_code!(
         output,
         "int32_t qb_console(int32_t mode) {{ (void)mode; return 1; }}"
-    )
-    .unwrap();
+    )?;
 
-    writeln!(output, "int32_t qb_shell(qb_string* cmd) {{").unwrap();
-    writeln!(output, "    if (!cmd || !cmd->data) return -1;").unwrap();
-    writeln!(output, "    return system(cmd->data);").unwrap();
-    writeln!(output, "}}").unwrap();
+    writeln_code!(output, "int32_t qb_shell(qb_string* cmd) {{")?;
+    writeln_code!(output, "    if (!cmd || !cmd->data) return -1;")?;
+    writeln_code!(output, "    return system(cmd->data);")?;
+    writeln_code!(output, "}}")?;
 
-    writeln!(
+    writeln_code!(
         output,
         "int32_t qb_shell_hide(qb_string* cmd) {{ return qb_shell(cmd); }}"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "int32_t qb_shellhide(qb_string* cmd) {{ return qb_shell(cmd); }}"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "int32_t qb_echo(int32_t state) {{ (void)state; return 0; }}"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "void qb_controlchr(int32_t state) {{ (void)state; }}"
-    )
-    .unwrap();
-    writeln!(output).unwrap();
+    )?;
+    writeln_code!(output)?;
 
     // String functions
-    writeln!(
+    writeln_code!(
         output,
         "void qb_asc_assign(qb_string** s, int32_t pos, int32_t ch) {{"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "    if (!s || !*s || pos < 1 || pos > (int32_t)(*s)->len) return;"
-    )
-    .unwrap();
-    writeln!(output, "    (*s)->data[pos - 1] = (char)ch;").unwrap();
-    writeln!(output, "}}").unwrap();
+    )?;
+    writeln_code!(output, "    (*s)->data[pos - 1] = (char)ch;")?;
+    writeln_code!(output, "}}")?;
 
-    writeln!(
+    writeln_code!(
         output,
         "int32_t qb_instrrev3(qb_string* s, qb_string* sub, int32_t start) {{"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "    if (!s || !sub || !s->data || !sub->data) return 0;"
-    )
-    .unwrap();
-    writeln!(output, "    if (sub->len == 0) return start;").unwrap();
-    writeln!(output, "    if (s->len < sub->len) return 0;").unwrap();
-    writeln!(output, "    int32_t search_start = (start < 1 || start > (int32_t)s->len) ? (int32_t)s->len : start;").unwrap();
-    writeln!(
+    )?;
+    writeln_code!(output, "    if (sub->len == 0) return start;")?;
+    writeln_code!(output, "    if (s->len < sub->len) return 0;")?;
+    writeln_code!(
+        output,
+        "    int32_t search_start = (start < 1 || start > (int32_t)s->len) ? (int32_t)s->len : start;"
+    )?;
+    writeln_code!(
         output,
         "    for (int32_t i = search_start - sub->len; i >= 0; i--) {{"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "        if (memcmp(s->data + i, sub->data, sub->len) == 0) return i + 1;"
-    )
-    .unwrap();
-    writeln!(output, "    }}").unwrap();
-    writeln!(output, "    return 0;").unwrap();
-    writeln!(output, "}}").unwrap();
-    writeln!(output).unwrap();
+    )?;
+    writeln_code!(output, "    }}")?;
+    writeln_code!(output, "    return 0;")?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(output)?;
 
     // Font functions (stubs)
-    writeln!(
+    writeln_code!(
         output,
         "void qb_sub__font(int32_t handle) {{ (void)handle; }}"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "void qb_sub__freefont(int32_t handle) {{ (void)handle; }}"
-    )
-    .unwrap();
-    writeln!(output, "int32_t qb_loadfont3(qb_string* path, int32_t size, qb_string* req) {{ (void)path; (void)size; (void)req; return 0; }}").unwrap();
+    )?;
+    writeln_code!(
+        output,
+        "int32_t qb_loadfont3(qb_string* path, int32_t size, qb_string* req) {{ (void)path; (void)size; (void)req; return 0; }}"
+    )?;
 
     // _MAPUNICODE implementation - maintains CP437 to Unicode mapping table
     // QB64PE uses this for font rendering: maps ASCII positions (0-255) to Unicode codepoints
     // Default: Code Page 437 (IBM PC original character set)
-    writeln!(
+    writeln_code!(
         output,
         "/* _MAPUNICODE - Code Page 437 to Unicode mapping */"
-    )
-    .unwrap();
-    writeln!(output, "static int32_t _qb_unicode_map[256] = {{").unwrap();
-    writeln!(
+    )?;
+    writeln_code!(output, "static int32_t _qb_unicode_map[256] = {{")?;
+    writeln_code!(
         output,
         "    /* 0x00-0x0F */ 0x0000, 0x0001, 0x0002, 0x0003, 0x0004, 0x0005, 0x0006, 0x0007,"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "                    0x0008, 0x0009, 0x000A, 0x000B, 0x000C, 0x000D, 0x000E, 0x000F,"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "    /* 0x10-0x1F */ 0x0010, 0x0011, 0x0012, 0x0013, 0x0014, 0x0015, 0x0016, 0x0017,"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "                    0x0018, 0x0019, 0x001A, 0x001B, 0x001C, 0x001D, 0x001E, 0x001F,"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "    /* 0x20-0x2F */ 0x0020, 0x0021, 0x0022, 0x0023, 0x0024, 0x0025, 0x0026, 0x0027,"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "                    0x0028, 0x0029, 0x002A, 0x002B, 0x002C, 0x002D, 0x002E, 0x002F,"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "    /* 0x30-0x3F */ 0x0030, 0x0031, 0x0032, 0x0033, 0x0034, 0x0035, 0x0036, 0x0037,"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "                    0x0038, 0x0039, 0x003A, 0x003B, 0x003C, 0x003D, 0x003E, 0x003F,"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "    /* 0x40-0x4F */ 0x0040, 0x0041, 0x0042, 0x0043, 0x0044, 0x0045, 0x0046, 0x0047,"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "                    0x0048, 0x0049, 0x004A, 0x004B, 0x004C, 0x004D, 0x004E, 0x004F,"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "    /* 0x50-0x5F */ 0x0050, 0x0051, 0x0052, 0x0053, 0x0054, 0x0055, 0x0056, 0x0057,"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "                    0x0058, 0x0059, 0x005A, 0x005B, 0x005C, 0x005D, 0x005E, 0x005F,"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "    /* 0x60-0x6F */ 0x0060, 0x0061, 0x0062, 0x0063, 0x0064, 0x0065, 0x0066, 0x0067,"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "                    0x0068, 0x0069, 0x006A, 0x006B, 0x006C, 0x006D, 0x006E, 0x006F,"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "    /* 0x70-0x7F */ 0x0070, 0x0071, 0x0072, 0x0073, 0x0074, 0x0075, 0x0076, 0x0077,"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "                    0x0078, 0x0079, 0x007A, 0x007B, 0x007C, 0x007D, 0x007E, 0x007F,"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "    /* 0x80-0x8F */ 0x00C7, 0x00FC, 0x00E9, 0x00E2, 0x00E4, 0x00E0, 0x00E5, 0x00E7,"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "                    0x00EA, 0x00EB, 0x00E8, 0x00EF, 0x00EE, 0x00EC, 0x00C4, 0x00C5,"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "    /* 0x90-0x9F */ 0x00C9, 0x00E6, 0x00C6, 0x00F4, 0x00F6, 0x00F2, 0x00FB, 0x00F9,"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "                    0x00FF, 0x00D6, 0x00DC, 0x00A2, 0x00A3, 0x00A5, 0x20A7, 0x0192,"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "    /* 0xA0-0xAF */ 0x00E1, 0x00ED, 0x00F3, 0x00FA, 0x00F1, 0x00D1, 0x00AA, 0x00BA,"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "                    0x00BF, 0x2310, 0x00AC, 0x00BD, 0x00BC, 0x00A1, 0x00AB, 0x00BB,"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "    /* 0xB0-0xBF */ 0x2591, 0x2592, 0x2593, 0x2502, 0x2524, 0x2561, 0x2562, 0x2556,"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "                    0x2555, 0x2563, 0x2551, 0x2557, 0x255D, 0x255C, 0x255B, 0x2510,"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "    /* 0xC0-0xCF */ 0x2514, 0x2534, 0x252C, 0x251C, 0x2500, 0x253C, 0x255E, 0x255F,"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "                    0x255A, 0x2554, 0x2569, 0x2566, 0x2560, 0x2550, 0x256C, 0x2567,"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "    /* 0xD0-0xDF */ 0x2568, 0x2564, 0x2565, 0x2559, 0x2558, 0x2552, 0x2553, 0x256B,"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "                    0x256A, 0x2518, 0x250C, 0x2588, 0x2584, 0x258C, 0x2590, 0x2580,"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "    /* 0xE0-0xEF */ 0x03B1, 0x00DF, 0x0393, 0x03C0, 0x03A3, 0x03C3, 0x00B5, 0x03C4,"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "                    0x03A6, 0x0398, 0x03A9, 0x03B4, 0x221E, 0x03C6, 0x03B5, 0x2229,"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "    /* 0xF0-0xFF */ 0x2261, 0x00B1, 0x2265, 0x2264, 0x2320, 0x2321, 0x00F7, 0x2248,"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "                    0x00B0, 0x2219, 0x00B7, 0x221A, 0x207F, 0x00B2, 0x25A0, 0x00A0"
-    )
-    .unwrap();
-    writeln!(output, "}};").unwrap();
+    )?;
+    writeln_code!(output, "}};")?;
     // Alias for direct array access (QB64PE uses _MAPUNICODE as an array)
-    writeln!(output, "#define _MAPUNICODE _qb_unicode_map").unwrap();
-    writeln!(output).unwrap();
+    writeln_code!(output, "#define _MAPUNICODE _qb_unicode_map")?;
+    writeln_code!(output)?;
 
     // _MAPUNICODE unicode_codepoint, ascii_position - Set mapping
-    writeln!(
+    writeln_code!(
         output,
         "void qb_mapunicode(int32_t unicode_code, int32_t ascii_pos) {{"
-    )
-    .unwrap();
-    writeln!(output, "    if (ascii_pos >= 0 && ascii_pos < 256) {{").unwrap();
-    writeln!(output, "        _qb_unicode_map[ascii_pos] = unicode_code;").unwrap();
-    writeln!(output, "    }}").unwrap();
-    writeln!(output, "}}").unwrap();
+    )?;
+    writeln_code!(output, "    if (ascii_pos >= 0 && ascii_pos < 256) {{")?;
+    writeln_code!(output, "        _qb_unicode_map[ascii_pos] = unicode_code;")?;
+    writeln_code!(output, "    }}")?;
+    writeln_code!(output, "}}")?;
 
     // _MAPUNICODE(ascii_position) - Get Unicode codepoint for ASCII position
-    writeln!(output, "int32_t qb__mapunicode1(int32_t ascii_pos) {{").unwrap();
-    writeln!(output, "    if (ascii_pos >= 0 && ascii_pos < 256) {{").unwrap();
-    writeln!(output, "        return _qb_unicode_map[ascii_pos];").unwrap();
-    writeln!(output, "    }}").unwrap();
-    writeln!(output, "    return 0;").unwrap();
-    writeln!(output, "}}").unwrap();
+    writeln_code!(output, "int32_t qb__mapunicode1(int32_t ascii_pos) {{")?;
+    writeln_code!(output, "    if (ascii_pos >= 0 && ascii_pos < 256) {{")?;
+    writeln_code!(output, "        return _qb_unicode_map[ascii_pos];")?;
+    writeln_code!(output, "    }}")?;
+    writeln_code!(output, "    return 0;")?;
+    writeln_code!(output, "}}")?;
 
     // Additional variants with fontpage parameter (fontpage is currently ignored - single font page)
-    writeln!(output, "int32_t qb__mapunicode2(int32_t ascii_pos, int32_t fontpage) {{ (void)fontpage; return qb__mapunicode1(ascii_pos); }}").unwrap();
-    writeln!(output, "int32_t qb__mapunicode(int32_t ascii_pos, int32_t fontpage, int32_t chr) {{ (void)fontpage; (void)chr; return qb__mapunicode1(ascii_pos); }}").unwrap();
-    writeln!(output).unwrap();
+    writeln_code!(
+        output,
+        "int32_t qb__mapunicode2(int32_t ascii_pos, int32_t fontpage) {{ (void)fontpage; return qb__mapunicode1(ascii_pos); }}"
+    )?;
+    writeln_code!(
+        output,
+        "int32_t qb__mapunicode(int32_t ascii_pos, int32_t fontpage, int32_t chr) {{ (void)fontpage; (void)chr; return qb__mapunicode1(ascii_pos); }}"
+    )?;
+    writeln_code!(output)?;
 
     // Window functions (stubs)
-    writeln!(
+    writeln_code!(
         output,
         "void qb_sub__title(qb_string* title) {{ (void)title; }}"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "void qb_sub__screenmove(int32_t x, int32_t y) {{ (void)x; (void)y; }}"
-    )
-    .unwrap();
-    writeln!(output, "void qb_sub__screenshow(void) {{ }}").unwrap();
-    writeln!(output, "void qb_icon(void) {{ }}").unwrap();
-    writeln!(output, "void qb_icon1(int32_t handle) {{ (void)handle; }}").unwrap();
-    writeln!(
+    )?;
+    writeln_code!(output, "void qb_sub__screenshow(void) {{ }}")?;
+    writeln_code!(output, "void qb_icon(void) {{ }}")?;
+    writeln_code!(output, "void qb_icon1(int32_t handle) {{ (void)handle; }}")?;
+    writeln_code!(
         output,
         "void qb_icon2(int32_t handle, qb_string* cmd) {{ (void)handle; (void)cmd; }}"
-    )
-    .unwrap();
-    writeln!(output).unwrap();
+    )?;
+    writeln_code!(output)?;
 
     // Environment functions
     // ENVIRON "name=value" - set environment variable
-    writeln!(output, "void qb_sub_environ(qb_string* env) {{").unwrap();
-    writeln!(output, "    if (!env || !env->data) return;").unwrap();
-    writeln!(output, "    const char* env_str = env->data;").unwrap();
-    writeln!(output).unwrap();
-    writeln!(output, "    // Parse 'name=value' format").unwrap();
-    writeln!(output, "    char* eq = strchr(env_str, '=');").unwrap();
-    writeln!(output, "    if (!eq || eq == env_str) return; // Invalid format (no '=' or name is empty)").unwrap();
-    writeln!(output).unwrap();
-    writeln!(output, "    // Allocate buffer for 'name=value' (putenv requires persistent string)").unwrap();
-    writeln!(output, "    size_t total_len = strlen(env_str);").unwrap();
-    writeln!(output, "    char* env_buf = (char*)malloc(total_len + 1);").unwrap();
-    writeln!(output, "    if (!env_buf) return;").unwrap();
-    writeln!(output, "    strcpy(env_buf, env_str);").unwrap();
-    writeln!(output).unwrap();
-    writeln!(output, "    // Use putenv (works on both Windows and Unix)").unwrap();
-    writeln!(output, "#ifdef _WIN32").unwrap();
-    writeln!(output, "    _putenv(env_buf);").unwrap();
-    writeln!(output, "#else").unwrap();
-    writeln!(output, "    putenv(env_buf); // Note: putenv takes ownership of the string").unwrap();
-    writeln!(output, "#endif").unwrap();
-    writeln!(output, "    // Don't free env_buf - putenv takes ownership").unwrap();
-    writeln!(output, "}}").unwrap();
-    writeln!(output).unwrap();
+    writeln_code!(output, "void qb_sub_environ(qb_string* env) {{")?;
+    writeln_code!(output, "    if (!env || !env->data) return;")?;
+    writeln_code!(output, "    const char* env_str = env->data;")?;
+    writeln_code!(output)?;
+    writeln_code!(output, "    // Parse 'name=value' format")?;
+    writeln_code!(output, "    char* eq = strchr(env_str, '=');")?;
+    writeln_code!(
+        output,
+        "    if (!eq || eq == env_str) return; // Invalid format (no '=' or name is empty)"
+    )?;
+    writeln_code!(output)?;
+    writeln_code!(
+        output,
+        "    // Allocate buffer for 'name=value' (putenv requires persistent string)"
+    )?;
+    writeln_code!(output, "    size_t total_len = strlen(env_str);")?;
+    writeln_code!(output, "    char* env_buf = (char*)malloc(total_len + 1);")?;
+    writeln_code!(output, "    if (!env_buf) return;")?;
+    writeln_code!(output, "    strcpy(env_buf, env_str);")?;
+    writeln_code!(output)?;
+    writeln_code!(output, "    // Use putenv (works on both Windows and Unix)")?;
+    writeln_code!(output, "#ifdef _WIN32")?;
+    writeln_code!(output, "    _putenv(env_buf);")?;
+    writeln_code!(output, "#else")?;
+    writeln_code!(
+        output,
+        "    putenv(env_buf); // Note: putenv takes ownership of the string"
+    )?;
+    writeln_code!(output, "#endif")?;
+    writeln_code!(output, "    // Don't free env_buf - putenv takes ownership")?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(output)?;
 
     // Error functions
-    writeln!(output, "int32_t qb_inclerrorline(void) {{ return 0; }}").unwrap();
-    writeln!(
+    writeln_code!(output, "int32_t qb_inclerrorline(void) {{ return 0; }}")?;
+    writeln_code!(
         output,
         "qb_string* qb_inclerrorfile(void) {{ return qb_string_new(\"\"); }}"
-    )
-    .unwrap();
-    writeln!(output, "int32_t qb_exit_state(void) {{ return 0; }}").unwrap();
-    writeln!(
+    )?;
+    writeln_code!(output, "int32_t qb_exit_state(void) {{ return 0; }}")?;
+    writeln_code!(
         output,
         "int32_t qb_statuscode(int32_t handle) {{ (void)handle; return 0; }}"
-    )
-    .unwrap();
-    writeln!(output).unwrap();
+    )?;
+    writeln_code!(output)?;
 
     // Network functions (stubs - no actual network support)
-    writeln!(
+    writeln_code!(
         output,
         "int64_t qb_net_openhost(int64_t port) {{ (void)port; return 0; }}"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "int32_t qb_net_openconnection(int32_t host) {{ (void)host; return 0; }}"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "int32_t qb_net_openclient(qb_string* addr) {{ (void)addr; return 0; }}"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "int32_t qb_net_connected(int32_t handle) {{ (void)handle; return 0; }}"
-    )
-    .unwrap();
+    )?;
     // _STATUSCODE - HTTP status code for network handles (stub returns 200 OK)
-    writeln!(
+    writeln_code!(
         output,
         "int64_t qb__statuscode(int64_t handle) {{ (void)handle; return 200; }}"
-    )
-    .unwrap();
+    )?;
     // Workaround array for legacy code that uses _STATUSCODE[handle] syntax
     // (from before _STATUSCODE was registered as a function)
-    writeln!(
+    writeln_code!(
         output,
         "static int64_t _STATUSCODE[256] = {{[0 ... 255] = 200}};"
-    )
-    .unwrap();
-    writeln!(output).unwrap();
+    )?;
+    writeln_code!(output)?;
     // Network I/O stubs (used by file.rs for network file handles)
-    writeln!(
+    writeln_code!(
         output,
         "size_t qb_net_get(int64_t handle, uint8_t* data, size_t size) {{ (void)handle; (void)data; (void)size; return 0; }}"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "size_t qb_net_put(int64_t handle, const uint8_t* data, size_t size) {{ (void)handle; (void)data; (void)size; return 0; }}"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "size_t qb_net_get_string(int64_t handle, qb_string* s) {{ (void)handle; (void)s; return 0; }}"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "size_t qb_net_put_string(int64_t handle, const qb_string* s) {{ (void)handle; (void)s; return 0; }}"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "int32_t qb_net_eof(int64_t handle) {{ (void)handle; return -1; }}"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "int64_t qb_net_lof(int64_t handle) {{ (void)handle; return 0; }}"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "void qb_net_close(int64_t handle) {{ (void)handle; }}"
-    )
-    .unwrap();
-    writeln!(output).unwrap();
+    )?;
+    writeln_code!(output)?;
 
     // Drag and drop functions (stubs)
-    writeln!(output, "int32_t qb_totaldroppedfiles(void) {{ return 0; }}").unwrap();
-    writeln!(output, "qb_string* qb_droppedfile_str(int32_t index) {{ (void)index; return qb_string_new(\"\"); }}").unwrap();
-    writeln!(output, "void qb_finishdrop(void) {{ }}").unwrap();
-    writeln!(output, "void qb_acceptfiledrop(void) {{ }}").unwrap();
-    writeln!(
+    writeln_code!(output, "int32_t qb_totaldroppedfiles(void) {{ return 0; }}")?;
+    writeln_code!(
+        output,
+        "qb_string* qb_droppedfile_str(int32_t index) {{ (void)index; return qb_string_new(\"\"); }}"
+    )?;
+    writeln_code!(output, "void qb_finishdrop(void) {{ }}")?;
+    writeln_code!(output, "void qb_acceptfiledrop(void) {{ }}")?;
+    writeln_code!(
         output,
         "void qb_acceptfiledrop1(int32_t state) {{ (void)state; }}"
-    )
-    .unwrap();
-    writeln!(output).unwrap();
+    )?;
+    writeln_code!(output)?;
 
     // Dialog functions (stubs)
-    writeln!(output, "int32_t qb_messagebox4(qb_string* title, qb_string* msg, qb_string* btns, int32_t def) {{ (void)title; (void)msg; (void)btns; (void)def; return 1; }}").unwrap();
-    writeln!(output, "qb_string* qb_savefiledialog4(qb_string* title, qb_string* filter, qb_string* def, int32_t flags) {{ (void)title; (void)filter; (void)def; (void)flags; return qb_string_new(\"\"); }}").unwrap();
-    writeln!(output, "qb_string* qb_openfiledialog5(qb_string* title, qb_string* filter, qb_string* def, qb_string* opts, int32_t flags) {{ (void)title; (void)filter; (void)def; (void)opts; (void)flags; return qb_string_new(\"\"); }}").unwrap();
-    writeln!(output).unwrap();
+    writeln_code!(
+        output,
+        "int32_t qb_messagebox4(qb_string* title, qb_string* msg, qb_string* btns, int32_t def) {{ (void)title; (void)msg; (void)btns; (void)def; return 1; }}"
+    )?;
+    writeln_code!(
+        output,
+        "qb_string* qb_savefiledialog4(qb_string* title, qb_string* filter, qb_string* def, int32_t flags) {{ (void)title; (void)filter; (void)def; (void)flags; return qb_string_new(\"\"); }}"
+    )?;
+    writeln_code!(
+        output,
+        "qb_string* qb_openfiledialog5(qb_string* title, qb_string* filter, qb_string* def, qb_string* opts, int32_t flags) {{ (void)title; (void)filter; (void)def; (void)opts; (void)flags; return qb_string_new(\"\"); }}"
+    )?;
+    writeln_code!(output)?;
 
     // Number conversion functions
-    writeln!(output, "int64_t qb_val_int64(qb_string* s) {{ if (!s || !s->data) return 0; return strtoll(s->data, NULL, 10); }}").unwrap();
-    writeln!(output, "uint64_t qb_val_uint64(qb_string* s) {{ if (!s || !s->data) return 0; return strtoull(s->data, NULL, 10); }}").unwrap();
-    writeln!(
+    writeln_code!(
+        output,
+        "int64_t qb_val_int64(qb_string* s) {{ if (!s || !s->data) return 0; return strtoll(s->data, NULL, 10); }}"
+    )?;
+    writeln_code!(
+        output,
+        "uint64_t qb_val_uint64(qb_string* s) {{ if (!s || !s->data) return 0; return strtoull(s->data, NULL, 10); }}"
+    )?;
+    writeln_code!(
         output,
         "double qb_fix(double x) {{ return x >= 0 ? floor(x) : ceil(x); }}"
-    )
-    .unwrap();
-    writeln!(output, "qb_string* qb_mkq(double val) {{ char buf[64]; snprintf(buf, sizeof(buf), \"%.17g\", val); return qb_string_new(buf); }}").unwrap();
-    writeln!(output, "double qb_cvq(qb_string* s) {{ if (!s || !s->data || s->len < 8) return 0.0; double d; memcpy(&d, s->data, 8); return d; }}").unwrap();
-    writeln!(output).unwrap();
+    )?;
+    writeln_code!(
+        output,
+        "qb_string* qb_mkq(double val) {{ char buf[64]; snprintf(buf, sizeof(buf), \"%.17g\", val); return qb_string_new(buf); }}"
+    )?;
+    writeln_code!(
+        output,
+        "double qb_cvq(qb_string* s) {{ if (!s || !s->data || s->len < 8) return 0.0; double d; memcpy(&d, s->data, 8); return d; }}"
+    )?;
+    writeln_code!(output)?;
 
     // Compression functions (stubs - no actual compression)
-    writeln!(
+    writeln_code!(
         output,
         "qb_string* qb_deflate(qb_string* data) {{ (void)data; return qb_string_new(\"\"); }}"
-    )
-    .unwrap();
-    writeln!(output, "qb_string* qb_md5(qb_string* data) {{ (void)data; return qb_string_new(\"00000000000000000000000000000000\"); }}").unwrap();
-    writeln!(output).unwrap();
+    )?;
+    writeln_code!(
+        output,
+        "qb_string* qb_md5(qb_string* data) {{ (void)data; return qb_string_new(\"00000000000000000000000000000000\"); }}"
+    )?;
+    writeln_code!(output)?;
 
     // Windows specific functions
-    writeln!(output, "int32_t logical_drives(void) {{ return 0; }}").unwrap();
+    writeln_code!(output, "int32_t logical_drives(void) {{ return 0; }}")?;
 
     // Additional stubs needed for QB64pe
     // _DEFAULTCOLOR and _BACKGROUNDCOLOR can be called with or without handle argument
-    writeln!(output, "int32_t qb_defaultcolor(void) {{ return 7; }}").unwrap();
-    writeln!(
+    writeln_code!(output, "int32_t qb_defaultcolor(void) {{ return 7; }}")?;
+    writeln_code!(
         output,
         "int32_t qb_defaultcolor1(int32_t handle) {{ (void)handle; return 7; }}"
-    )
-    .unwrap();
-    writeln!(output, "int32_t qb_backgroundcolor(void) {{ return 0; }}").unwrap();
-    writeln!(
+    )?;
+    writeln_code!(output, "int32_t qb_backgroundcolor(void) {{ return 0; }}")?;
+    writeln_code!(
         output,
         "int32_t qb_backgroundcolor1(int32_t handle) {{ (void)handle; return 0; }}"
-    )
-    .unwrap();
+    )?;
 
     // SCREEN function - reads character/attribute at screen position
     // SCREEN(row, col) returns ASCII code of character
     // SCREEN(row, col, 1) returns color attribute
-    writeln!(
+    writeln_code!(
         output,
         "int32_t qb_screen(int32_t row, int32_t col) {{ (void)row; (void)col; return 32; }}"
-    )
-    .unwrap();
-    writeln!(output, "int32_t qb_screen3(int32_t row, int32_t col, int32_t attr) {{ (void)row; (void)col; (void)attr; return attr ? 7 : 32; }}").unwrap();
+    )?;
+    writeln_code!(
+        output,
+        "int32_t qb_screen3(int32_t row, int32_t col, int32_t attr) {{ (void)row; (void)col; (void)attr; return attr ? 7 : 32; }}"
+    )?;
 
     // qb_gfx_screen - SCREEN statement for changing screen modes (4 args)
     // Must initialize frame counter to prevent infinite loops in stub mode
-    writeln!(output, "void qb_gfx_screen(int32_t mode, int32_t colorSwitch, int32_t activePage, int32_t visiblePage) {{").unwrap();
-    writeln!(output, "    _qb_gfx_warn();").unwrap();
-    writeln!(output, "    _qb_gfx_init_max_frames();").unwrap();
-    writeln!(
+    writeln_code!(
+        output,
+        "void qb_gfx_screen(int32_t mode, int32_t colorSwitch, int32_t activePage, int32_t visiblePage) {{"
+    )?;
+    writeln_code!(output, "    _qb_gfx_warn();")?;
+    writeln_code!(output, "    _qb_gfx_init_max_frames();")?;
+    writeln_code!(
         output,
         "    _qb_gfx_frame_count = 0; /* Reset frame counter on SCREEN */"
-    )
-    .unwrap();
-    writeln!(
+    )?;
+    writeln_code!(
         output,
         "    (void)mode; (void)colorSwitch; (void)activePage; (void)visiblePage;"
-    )
-    .unwrap();
-    writeln!(output, "}}").unwrap();
+    )?;
+    writeln_code!(output, "}}")?;
 
     // qb_gfx_resize - resize control (1 arg)
-    writeln!(output, "void qb_gfx_resize(int32_t flag) {{ (void)flag; }}").unwrap();
+    writeln_code!(output, "void qb_gfx_resize(int32_t flag) {{ (void)flag; }}")?;
 
     // Palette and resize functions
     // _PALETTECOLOR can be both function (get) and statement (set)
-    writeln!(output, "int32_t qb_palettecolor(int32_t attr, int32_t col, int32_t handle) {{ (void)attr; (void)col; (void)handle; return _qb_palette[attr & 255]; }}").unwrap();
-    writeln!(output, "int32_t qb_palettecolor_get(int32_t attr, int32_t handle) {{ (void)handle; return _qb_palette[attr & 255]; }}").unwrap();
-    writeln!(output, "int32_t qb_resize(void) {{ return 0; }}").unwrap();
-    writeln!(output, "int32_t qb_resizewidth(void) {{ return 80; }}").unwrap();
-    writeln!(output, "int32_t qb_resizeheight(void) {{ return 25; }}").unwrap();
+    writeln_code!(
+        output,
+        "int32_t qb_palettecolor(int32_t attr, int32_t col, int32_t handle) {{ (void)attr; (void)col; (void)handle; return _qb_palette[attr & 255]; }}"
+    )?;
+    writeln_code!(
+        output,
+        "int32_t qb_palettecolor_get(int32_t attr, int32_t handle) {{ (void)handle; return _qb_palette[attr & 255]; }}"
+    )?;
+    writeln_code!(output, "int32_t qb_resize(void) {{ return 0; }}")?;
+    writeln_code!(output, "int32_t qb_resizewidth(void) {{ return 80; }}")?;
+    writeln_code!(output, "int32_t qb_resizeheight(void) {{ return 25; }}")?;
 
     // Window management stub
-    writeln!(
+    writeln_code!(
         output,
         "void qb_sub_set_foreground_window(intptr_t hwnd) {{ (void)hwnd; }}"
-    )
-    .unwrap();
+    )?;
 
     // qb_string_copy - create a copy of a string
-    writeln!(output, "qb_string* qb_string_copy(qb_string* s) {{").unwrap();
-    writeln!(output, "    if (!s) return qb_string_new(\"\");").unwrap();
-    writeln!(
+    writeln_code!(output, "qb_string* qb_string_copy(qb_string* s) {{")?;
+    writeln_code!(output, "    if (!s) return qb_string_new(\"\");")?;
+    writeln_code!(
         output,
         "    return qb_string_new(s->data ? s->data : \"\");"
-    )
-    .unwrap();
-    writeln!(output, "}}").unwrap();
-    writeln!(output).unwrap();
+    )?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(output)?;
+    Ok(())
 }

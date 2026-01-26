@@ -7,10 +7,10 @@
 //! - GET, PUT
 //! - SEEK
 
-use std::fmt::Write;
+use crate::codegen::error::CodeGenError;
+use crate::writeln_code;
 
 use crate::ast::{FileAccess, FileLock, FileMode, PrintSeparator};
-use crate::codegen::error::CodeGenError;
 use crate::semantic::typed_ir::{TypedExpr, TypedInputTarget, TypedPrintItem};
 use crate::semantic::types::BasicType;
 
@@ -59,38 +59,43 @@ impl StmtEmitter {
         // For external runtime, use qb_file_open_str which accepts QbString* directly
         // For inline runtime, use ->data access
         let filename_access = match self.runtime_mode {
-            super::RuntimeMode::External => format!("{}", filename_code),
+            super::RuntimeMode::External => filename_code.to_string(),
             super::RuntimeMode::Inline => format!("{}->data", filename_code),
         };
-        
+
         match self.runtime_mode {
             super::RuntimeMode::External => {
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_file_open_str({}, {}, {});",
-                    indent, file_num_code, filename_access, c_mode
-                )
-                .unwrap();
+                    indent,
+                    file_num_code,
+                    filename_access,
+                    c_mode
+                )?;
             }
             super::RuntimeMode::Inline => {
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_file_open({}, {}, {});",
-                    indent, file_num_code, filename_access, c_mode
-                )
-                .unwrap();
+                    indent,
+                    file_num_code,
+                    filename_access,
+                    c_mode
+                )?;
             }
         }
 
         // Handle record length for random access
         if let Some(rec_len) = record_len {
             let rec_len_code = emit_expr(rec_len, self.no_shell)?;
-            writeln!(
+            writeln_code!(
                 output,
                 "{}qb_file_set_reclen({}, {});",
-                indent, file_num_code, rec_len_code
-            )
-            .unwrap();
+                indent,
+                file_num_code,
+                rec_len_code
+            )?;
         }
 
         Ok(())
@@ -121,23 +126,26 @@ impl StmtEmitter {
             super::RuntimeMode::External => format!("qb_string_data({})", filename_code),
             super::RuntimeMode::Inline => format!("{}->data", filename_code),
         };
-        
-        writeln!(
+
+        writeln_code!(
             output,
             "{}qb_file_open_legacy({}, {}, {});",
-            indent, file_num_code, mode_access, filename_access
-        )
-        .unwrap();
+            indent,
+            file_num_code,
+            mode_access,
+            filename_access
+        )?;
 
         // Handle record length for random access
         if let Some(rec_len) = record_len {
             let rec_len_code = emit_expr(rec_len, self.no_shell)?;
-            writeln!(
+            writeln_code!(
                 output,
                 "{}qb_file_set_reclen({}, {});",
-                indent, file_num_code, rec_len_code
-            )
-            .unwrap();
+                indent,
+                file_num_code,
+                rec_len_code
+            )?;
         }
 
         Ok(())
@@ -152,11 +160,11 @@ impl StmtEmitter {
     ) -> Result<(), CodeGenError> {
         if file_nums.is_empty() {
             // Close all files
-            writeln!(output, "{}qb_file_close_all();", indent).unwrap();
+            writeln_code!(output, "{}qb_file_close_all();", indent)?;
         } else {
             for file_num in file_nums {
                 let file_num_code = emit_expr(file_num, self.no_shell)?;
-                writeln!(output, "{}qb_file_close({});", indent, file_num_code).unwrap();
+                writeln_code!(output, "{}qb_file_close({});", indent, file_num_code)?;
             }
         }
         Ok(())
@@ -183,33 +191,35 @@ impl StmtEmitter {
                 } else {
                     expr_code
                 };
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_file_print_string({}, {});",
-                    indent, file_num_code, string_expr
-                )
-                .unwrap();
+                    indent,
+                    file_num_code,
+                    string_expr
+                )?;
             } else if item.expr.basic_type.is_float() {
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_file_print_float({}, {});",
-                    indent, file_num_code, expr_code
-                )
-                .unwrap();
+                    indent,
+                    file_num_code,
+                    expr_code
+                )?;
             } else {
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_file_print_int({}, {});",
-                    indent, file_num_code, expr_code
-                )
-                .unwrap();
+                    indent,
+                    file_num_code,
+                    expr_code
+                )?;
             }
 
             if let Some(sep) = &item.separator {
                 match sep {
                     PrintSeparator::Comma => {
-                        writeln!(output, "{}qb_file_print_tab({});", indent, file_num_code)
-                            .unwrap();
+                        writeln_code!(output, "{}qb_file_print_tab({});", indent, file_num_code)?;
                     }
                     PrintSeparator::Semicolon => {}
                 }
@@ -217,12 +227,12 @@ impl StmtEmitter {
         }
 
         if newline {
-            writeln!(
+            writeln_code!(
                 output,
                 "{}qb_file_print_newline({});",
-                indent, file_num_code
-            )
-            .unwrap();
+                indent,
+                file_num_code
+            )?;
         }
 
         Ok(())
@@ -243,39 +253,41 @@ impl StmtEmitter {
 
             if value.basic_type.is_string() {
                 // WRITE quotes strings
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_file_write_string({}, {});",
-                    indent, file_num_code, expr_code
-                )
-                .unwrap();
+                    indent,
+                    file_num_code,
+                    expr_code
+                )?;
             } else {
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_file_write_number({}, {});",
-                    indent, file_num_code, expr_code
-                )
-                .unwrap();
+                    indent,
+                    file_num_code,
+                    expr_code
+                )?;
             }
 
             // Add comma separator except for last item
             if i < values.len() - 1 {
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_file_write_char({}, ',');",
-                    indent, file_num_code
-                )
-                .unwrap();
+                    indent,
+                    file_num_code
+                )?;
             }
         }
 
         // WRITE always ends with newline
-        writeln!(
+        writeln_code!(
             output,
             "{}qb_file_print_newline({});",
-            indent, file_num_code
-        )
-        .unwrap();
+            indent,
+            file_num_code
+        )?;
 
         Ok(())
     }
@@ -339,28 +351,31 @@ impl StmtEmitter {
 
             match var_type {
                 BasicType::String | BasicType::FixedString(_) => {
-                    writeln!(
+                    writeln_code!(
                         output,
                         "{}qb_file_input_string({}, &{});",
-                        indent, file_num_code, target_code
-                    )
-                    .unwrap();
+                        indent,
+                        file_num_code,
+                        target_code
+                    )?;
                 }
                 _ if var_type.is_float() => {
-                    writeln!(
+                    writeln_code!(
                         output,
                         "{}qb_file_input_float({}, &{});",
-                        indent, file_num_code, target_code
-                    )
-                    .unwrap();
+                        indent,
+                        file_num_code,
+                        target_code
+                    )?;
                 }
                 _ => {
-                    writeln!(
+                    writeln_code!(
                         output,
                         "{}qb_file_input_int({}, &{});",
-                        indent, file_num_code, target_code
-                    )
-                    .unwrap();
+                        indent,
+                        file_num_code,
+                        target_code
+                    )?;
                 }
             }
         }
@@ -413,12 +428,13 @@ impl StmtEmitter {
             }
         };
 
-        writeln!(
+        writeln_code!(
             output,
             "{}qb_file_line_input({}, &{});",
-            indent, file_num_code, target_code
-        )
-        .unwrap();
+            indent,
+            file_num_code,
+            target_code
+        )?;
 
         Ok(())
     }
@@ -439,12 +455,13 @@ impl StmtEmitter {
         // Seek to position if specified
         if let Some(pos) = position {
             let pos_code = emit_expr(pos, self.no_shell)?;
-            writeln!(
+            writeln_code!(
                 output,
                 "{}qb_file_seek_record({}, {});",
-                indent, file_num_code, pos_code
-            )
-            .unwrap();
+                indent,
+                file_num_code,
+                pos_code
+            )?;
         }
 
         // Get target code and type for size calculation
@@ -494,20 +511,23 @@ impl StmtEmitter {
 
         // For strings, use specialized function that reads into the string's data buffer
         if matches!(var_type, BasicType::String) {
-            writeln!(
+            writeln_code!(
                 output,
                 "{}qb_file_get_string({}, {});",
-                indent, file_num_code, target_code
-            )
-            .unwrap();
+                indent,
+                file_num_code,
+                target_code
+            )?;
         } else {
             let size = type_size(&var_type);
-            writeln!(
+            writeln_code!(
                 output,
                 "{}qb_file_get({}, &{}, {});",
-                indent, file_num_code, target_code, size
-            )
-            .unwrap();
+                indent,
+                file_num_code,
+                target_code,
+                size
+            )?;
         }
 
         Ok(())
@@ -529,12 +549,13 @@ impl StmtEmitter {
         // Seek to position if specified
         if let Some(pos) = position {
             let pos_code = emit_expr(pos, self.no_shell)?;
-            writeln!(
+            writeln_code!(
                 output,
                 "{}qb_file_seek_record({}, {});",
-                indent, file_num_code, pos_code
-            )
-            .unwrap();
+                indent,
+                file_num_code,
+                pos_code
+            )?;
         }
 
         // Get target code and type for size calculation
@@ -584,20 +605,23 @@ impl StmtEmitter {
 
         // For strings, use specialized function that writes from the string's data buffer
         if matches!(var_type, BasicType::String) {
-            writeln!(
+            writeln_code!(
                 output,
                 "{}qb_file_put_string({}, {});",
-                indent, file_num_code, target_code
-            )
-            .unwrap();
+                indent,
+                file_num_code,
+                target_code
+            )?;
         } else {
             let size = type_size(&var_type);
-            writeln!(
+            writeln_code!(
                 output,
                 "{}qb_file_put({}, &{}, {});",
-                indent, file_num_code, target_code, size
-            )
-            .unwrap();
+                indent,
+                file_num_code,
+                target_code,
+                size
+            )?;
         }
 
         Ok(())
@@ -614,12 +638,13 @@ impl StmtEmitter {
         let file_num_code = emit_expr(file_num, self.no_shell)?;
         let pos_code = emit_expr(position, self.no_shell)?;
 
-        writeln!(
+        writeln_code!(
             output,
             "{}qb_file_seek({}, {});",
-            indent, file_num_code, pos_code
-        )
-        .unwrap();
+            indent,
+            file_num_code,
+            pos_code
+        )?;
 
         Ok(())
     }

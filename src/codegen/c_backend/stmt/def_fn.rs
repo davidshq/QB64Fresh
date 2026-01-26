@@ -12,11 +12,10 @@
 //! These methods are part of [`StmtEmitter`](super::StmtEmitter) and handle
 //! the generation of C code for BASIC DEF FN statements.
 
-use std::fmt::Write;
-
 use crate::codegen::error::CodeGenError;
 use crate::semantic::typed_ir::{TypedExpr, TypedParameter, TypedStatement};
 use crate::semantic::types::BasicType;
+use crate::writeln_code;
 
 use crate::codegen::c_backend::expr::emit_expr;
 use crate::codegen::c_backend::types::{c_identifier, c_type, default_init};
@@ -47,12 +46,14 @@ impl super::StmtEmitter {
 
         let body_code = emit_expr(body, self.no_shell)?;
 
-        writeln!(
+        writeln_code!(
             output,
             "static inline {} {}({}) {{ return {}; }}",
-            c_return_type, fn_name, param_list, body_code
-        )
-        .unwrap();
+            c_return_type,
+            fn_name,
+            param_list,
+            body_code
+        )?;
 
         Ok(())
     }
@@ -85,17 +86,18 @@ impl super::StmtEmitter {
         };
 
         // Function header
-        writeln!(
+        writeln_code!(
             output,
             "static {} {}({}) {{",
-            c_return_type, fn_name, param_list
-        )
-        .unwrap();
+            c_return_type,
+            fn_name,
+            param_list
+        )?;
 
         // Return value variable (initialized to default)
         let return_var = format!("_fn_{}", c_identifier(name));
         let init = default_init(return_type);
-        writeln!(output, "    {} {} = {};", c_return_type, return_var, init).unwrap();
+        writeln_code!(output, "    {} {} = {};", c_return_type, return_var, init)?;
 
         // Set return variable for EXIT FUNCTION
         let old_ret_var = self.current_func_ret_var.take();
@@ -111,8 +113,8 @@ impl super::StmtEmitter {
         self.current_func_ret_var = old_ret_var;
 
         // Return the result
-        writeln!(output, "    return {};", return_var).unwrap();
-        writeln!(output, "}}").unwrap();
+        writeln_code!(output, "    return {};", return_var)?;
+        writeln_code!(output, "}}")?;
 
         Ok(())
     }

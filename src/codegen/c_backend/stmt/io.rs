@@ -14,11 +14,10 @@
 //!   - Type-appropriate print functions
 //!   - Print separators (comma for tab, semicolon for no space)
 
-use std::fmt::Write;
-
 use crate::ast::PrintSeparator;
 use crate::codegen::error::CodeGenError;
 use crate::semantic::typed_ir::{TypedInputTarget, TypedPrintItem};
+use crate::writeln_code;
 
 use super::super::expr::{emit_expr, escape_string};
 use super::super::types::c_identifier;
@@ -128,26 +127,29 @@ impl super::StmtEmitter {
             };
 
             if var_type.is_string() {
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_input_string({}, &{});",
-                    indent, prompt_arg, target_code
-                )
-                .unwrap();
+                    indent,
+                    prompt_arg,
+                    target_code
+                )?;
             } else if var_type.is_float() {
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_input_float({}, &{});",
-                    indent, prompt_arg, target_code
-                )
-                .unwrap();
+                    indent,
+                    prompt_arg,
+                    target_code
+                )?;
             } else {
-                writeln!(
+                writeln_code!(
                     output,
                     "{}qb_input_int({}, &{});",
-                    indent, prompt_arg, target_code
-                )
-                .unwrap();
+                    indent,
+                    prompt_arg,
+                    target_code
+                )?;
             }
         }
         Ok(())
@@ -176,17 +178,17 @@ impl super::StmtEmitter {
         let expr_code = emit_expr(&item.expr, self.no_shell)?;
 
         if item.expr.basic_type.is_string() {
-            writeln!(output, "{}qb_print_string({});", indent, expr_code).unwrap();
+            writeln_code!(output, "{}qb_print_string({});", indent, expr_code)?;
         } else if item.expr.basic_type.is_float() {
-            writeln!(output, "{}qb_print_float({});", indent, expr_code).unwrap();
+            writeln_code!(output, "{}qb_print_float({});", indent, expr_code)?;
         } else {
-            writeln!(output, "{}qb_print_int({});", indent, expr_code).unwrap();
+            writeln_code!(output, "{}qb_print_int({});", indent, expr_code)?;
         }
 
         if let Some(sep) = &item.separator {
             match sep {
                 PrintSeparator::Comma => {
-                    writeln!(output, "{}qb_print_tab();", indent).unwrap();
+                    writeln_code!(output, "{}qb_print_tab();", indent)?;
                 }
                 PrintSeparator::Semicolon => {
                     // No separator - items print adjacent
