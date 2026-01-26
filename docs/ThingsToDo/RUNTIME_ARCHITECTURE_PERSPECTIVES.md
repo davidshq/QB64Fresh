@@ -102,7 +102,7 @@ Bootstrap needs only the ✅ rows; stubs are enough. Duplication (inline vs exte
 | Architect | Accept duplication + document | Medium |
 | Pragmatic | Ship, fix later | High |
 
-**Actions:** Document stub-only features ([STUB_FUNCTIONS_REMAINING.md](ThingsToDo/STUB_FUNCTIONS_REMAINING.md)). Long-term: consider generating inline from Rust if duplication hurts.
+**Actions:** Document stub-only features ([STUB_FUNCTIONS_FULL.md](../archive/STUB_FUNCTIONS_FULL.md)). Long-term: consider generating inline from Rust if duplication hurts.
 
 ---
 
@@ -118,6 +118,6 @@ Bootstrap needs only the ✅ rows; stubs are enough. Duplication (inline vs exte
 
 - [GRAPHICS.md](GRAPHICS.md) — Stubs, QB64FRESH_MAX_FRAMES, backends
 - [runtime/include/qb64fresh_rt.h](../runtime/include/qb64fresh_rt.h) — C API
-- [STUB_FUNCTIONS_REMAINING.md](ThingsToDo/STUB_FUNCTIONS_REMAINING.md)
+- [STUB_FUNCTIONS_FULL.md](../archive/STUB_FUNCTIONS_FULL.md)
 
 *Last updated: 2026-01-25*

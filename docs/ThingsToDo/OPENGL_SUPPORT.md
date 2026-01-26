@@ -2,25 +2,65 @@
 
 **Purpose:** Assessment and implementation plan for adding OpenGL (`_GL`) command support to QB64Fresh  
 **Created:** 2026-01-22  
-**Status:** Planning/Assessment
+**Updated:** 2026-01-25  
+**Status:** Planning/Assessment — *Raw `_GL*` is intentionally excluded per [ADR-0014](../adrs/ADR-0014-scope-and-excluded-features.md).*
 
 ---
 
 ## Table of Contents
 
-1. [Overview](#overview)
-2. [What Are `_GL` Commands?](#what-are-_gl-commands)
-3. [How QB64pe Supports OpenGL](#how-qb64pe-supports-opengl)
-4. [Complexity Assessment](#complexity-assessment)
-5. [Implementation Requirements](#implementation-requirements)
-6. [Architecture Considerations](#architecture-considerations)
-7. [Code Reuse from QB64pe](#code-reuse-from-qb64pe)
-8. [Compatibility with Rust OpenGL Bindings](#compatibility-with-rust-opengl-bindings)
-9. [QB64pe OpenGL Header Analysis](#qb64pe-opengl-header-analysis-strategy-1-step-1)
-10. [Estimated Effort](#estimated-effort)
-11. [Challenges](#challenges)
-12. [Recommendations](#recommendations)
-13. [Alternative Approaches](#alternative-approaches)
+1. [Current QB64Fresh Codebase Status](#current-qb64fresh-codebase-status)
+2. [Overview](#overview)
+3. [What Are `_GL` Commands?](#what-are-_gl-commands)
+4. [How QB64pe Supports OpenGL](#how-qb64pe-supports-opengl)
+5. [Complexity Assessment](#complexity-assessment)
+6. [Implementation Requirements](#implementation-requirements)
+7. [Architecture Considerations](#architecture-considerations)
+8. [Code Reuse from QB64pe](#code-reuse-from-qb64pe)
+9. [Compatibility with Rust OpenGL Bindings](#compatibility-with-rust-opengl-bindings)
+10. [QB64pe OpenGL Header Analysis](#qb64pe-opengl-header-analysis-strategy-1-step-1)
+11. [Estimated Effort](#estimated-effort)
+12. [Challenges](#challenges)
+13. [Recommendations](#recommendations)
+14. [Alternative Approaches](#alternative-approaches)
+
+---
+
+## Current QB64Fresh Codebase Status
+
+*(As of 2026-01-25)*
+
+### Policy: Raw `_GL*` Excluded
+
+Per **[ADR-0014: Scope and Intentionally Excluded Features](../adrs/ADR-0014-scope-and-excluded-features.md)**, raw OpenGL (`_GL*` commands such as `_GLglBegin`, `_GLglVertex3f`, etc.) is **intentionally excluded**. Rationale: we use SDL2/winit for graphics; `_GL*` would tie the stack to OpenGL; users can call OpenGL via `DECLARE LIBRARY` if needed.
+
+### What Exists Today
+
+| Area | Location | Status |
+|------|----------|--------|
+| **`_GLRENDER` statement** | `src/semantic/builtins.rs`, `src/codegen/c_backend/stmt/mod.rs` | Builtin registered; codegen emits `qb_glrender(mode)`. **Runtime:** `qb_glrender` is defined as a no-op stub in inline (`src/codegen/c_backend/runtime/graphics.rs`) and in `runtime/src/graphics_ffi.rs` / `runtime/include/qb64fresh_rt.h`. Programs link successfully; no OpenGL behavior. |
+| **`_GLCOMPAT` function** | `src/semantic/builtins.rs`, `src/codegen/c_backend/expr.rs` | Builtin registered; codegen emits `qb_glcompat()`. **Runtime:** `qb_glcompat` is defined as a no-op stub (returns 0) in inline and in `graphics_ffi.rs` / `qb64fresh_rt.h`. Programs link successfully. |
+| **`_GLRENDER` in display layers** | `runtime/src/graphics/sdl2.rs`, `runtime/src/graphics/mod.rs`, `runtime/src/graphics_ffi.rs` | `_GLRENDER=4` is documented as the OpenGL layer constant in `set_display_order` and `qb_displayorder`. The *layer* exists in the API; the OpenGL implementation does not. |
+| **`$INCLUDE` opengl path** | `src/preprocessor.rs` | `$INCLUDE: 'subs_functions\extensions\opengl\opengl_global.bas'` is path-normalized in `parse_include_directive` (backslash→slash). Preprocess would inline the file if it existed at the base path. QB64Fresh does not ship that file; no OpenGL-specific handling. |
+| **`$USELIBRARY:'opengl32'`** | `src/lexer/token.rs`, `src/parser/directives.rs`, `src/codegen/c_backend/stmt/mod.rs` | Lexed as `MetaUseLibrary`, parsed to `MetaUseLibrary { library }`, emitted as `/* $USELIBRARY:'opengl32' */` (comment); no linking or loading. |
+| **QB64pe `open_gl` tests** | `tests/qb45_compat.rs` | **Not run:** `open_gl` is omitted from the `subdirs` list (`qb45com`, `misc`, `n54`, `pete`, `thebob`); those programs use `_GL*` and would fail. |
+| **Integration tests** | `tests/integration_tests.rs` | `_GLRENDER 1` → assert C contains `qb_glrender(`; `_GLCOMPAT` → assert C contains `qb_glcompat(`; `$USELIBRARY:'opengl32'` → assert C contains `/* $USELIBRARY:'opengl32' */`. |
+
+### Gaps for Minimal “GL-related” Stubs
+
+`_GLRENDER` and `_GLCOMPAT` *compile and link* as no-ops:
+
+- **Inline runtime:** Stub C definitions in `src/codegen/c_backend/runtime/graphics.rs` (`qb_glrender`, `qb_glcompat`).
+- **External runtime:** Declarations in `runtime/include/qb64fresh_rt.h` and no-op implementations in `runtime/src/graphics_ffi.rs`.
+
+No real OpenGL; undefined reference errors for these two symbols are resolved.
+
+### References
+
+- [ADR-0014](../adrs/ADR-0014-scope-and-excluded-features.md) — scope and excluded features  
+- [ADR-0008](../adrs/ADR-0008-c-interoperability.md) — `DECLARE LIBRARY` for calling OpenGL directly  
+- [TODO.md](../../TODO.md) — “OpenGL Commands (Intentionally Excluded)”  
+- [README.md](../../README.md), [QB64Fresh_LANGUAGE_REFERENCE.md](../QB64Fresh_LANGUAGE_REFERENCE.md) — `_GL*` exclusion noted
 
 ---
 
@@ -208,6 +248,8 @@ OpenGL types map to QB64 types:
 
 ## Implementation Requirements
 
+> **Note (2026-01-25):** The two GL-related symbols `_GLRENDER` and `_GLCOMPAT` emit `qb_glrender(mode)` and `qb_glcompat()` respectively. **No-op stubs are now defined** in the inline runtime (`graphics.rs`) and in `graphics_ffi.rs` / `qb64fresh_rt.h`. Programs using them link successfully; no real OpenGL. See [Current QB64Fresh Codebase Status](#current-qb64fresh-codebase-status).
+
 ### 1. Parser Changes (Medium Complexity)
 
 **Tasks:**
@@ -278,8 +320,8 @@ void call_glClearColor(float r, float g, float b, float a) {
 
 **Files to Modify:**
 - `src/codegen/c_backend/mod.rs` - Add OpenGL code generation
-- `src/codegen/c_backend/runtime.rs` - Add OpenGL wrapper generation
-- New: `src/codegen/c_backend/opengl.rs` - OpenGL-specific codegen
+- `src/codegen/c_backend/runtime/` (e.g. `runtime/graphics.rs` or new `runtime/opengl.rs`) - Add OpenGL wrapper generation to inline runtime
+- New: `src/codegen/c_backend/opengl.rs` - OpenGL-specific codegen (optional)
 
 **Estimated Effort:** 3-4 days
 
@@ -1418,4 +1460,4 @@ This approach reduces risk, validates the architecture early, and provides a wor
 
 ---
 
-*Last updated: 2026-01-22*
+*Last updated: 2026-01-25*

@@ -1,8 +1,8 @@
 # QB64Fresh Runtime Functions Reference
 
-*Updated: 2026-01-24*
+*Updated: 2026-01-25*
 
-This document lists functions that have **stub implementations in the inline runtime** but are **fully implemented in the external runtime library**.
+This document lists functions that have **stub implementations in the inline runtime** but are **fully implemented in the external runtime library**. Stub-only and will-not-implement functions are documented in this file. [STUB_FUNCTIONS_REMAINING.md](../ThingsToDo/STUB_FUNCTIONS_REMAINING.md) is a pointer to this document.
 
 ## Understanding the Two Runtime Modes
 
@@ -49,6 +49,8 @@ QB64Fresh supports two runtime modes:
 | **Networking** | ⚠️ Stub | ✅ Full | TCP/IP client/server |
 | **Memory Operations** | ⚠️ Stub | ✅ Full | _MEMNEW, _MEMGET, _MEMPUT, etc. |
 | **Legacy Hardware** | ⚠️ Safe defaults | ❌ Intentional | Port I/O, light pen obsolete |
+
+**Compiler registration (2026-01-24):** The semantic analyzer registers 419 built-in functions/subs; ~409 are fully implemented (~97.6%), with ~13 remaining as stubs.
 
 ---
 
@@ -185,6 +187,9 @@ All audio functions are now fully implemented in the external runtime using Rodi
 | `_SNDRAWLEN()` | 0.0 | ✅ Full | ✅ Full | Get raw audio queue length |
 | `_SNDPLAYFILE()` | void | ✅ Full | ✅ Full | Play file directly (sync/async) |
 | `_SNDPLAYCOPY()` | void | ✅ Full | ✅ Full | Play copy for overlapping sounds |
+| `_SNDRAWDONE()` | 0 | ✅ Full | ✅ Full | Check if raw audio finished |
+| `_SNDRATE()` | 0 | ✅ Full | ✅ Full | Get audio sample rate |
+| `_SNDNEW()` | -1 | ✅ Full | ✅ Full | Create new audio buffer |
 
 **Implementation notes:**
 - Position tracking uses `Instant` timestamps since Rodio doesn't expose position
@@ -268,13 +273,13 @@ All audio functions are now fully implemented in the external runtime using Rodi
 | `_DONTBLEND` | void | ✅ Full | Disable alpha blending (statement) |
 | `_CLEARCOLOR` | void/-1 | ✅ Full | Set/get transparent color |
 
-#### Not Yet Implemented
+#### Texture and Layer (Added 2026-01-24)
 
 | Function | Inline Returns | External Status | Purpose |
 |----------|----------------|-----------------|---------|
-| `_MAPTRIANGLE` | void | ❌ Not yet | 3D textured triangle (needs SDL_RenderGeometry) |
-| `_COPYPALETTE` | void | ❌ Not yet | Copy palette between images |
-| `_DISPLAYORDER` | void | ❌ Not yet | Set layer rendering order |
+| `_MAPTRIANGLE` | void | ✅ Full | Software texture mapping rasterizer for 3D graphics |
+| `_COPYPALETTE` | void | ✅ Full | Copy palette between images |
+| `_DISPLAYORDER` | void | ✅ Full | Set hardware/software layer rendering order |
 
 ---
 
@@ -308,6 +313,19 @@ All audio functions are now fully implemented in the external runtime using Rodi
 | `_FONTWIDTH()` | 8 | ✅ Full | Get font width |
 | `_PRINTWIDTH()` | 0 | ✅ Full | Get text pixel width |
 
+#### Unicode Font Rendering (Added 2026-01-24)
+
+| Function | Inline Returns | External Status | Purpose |
+|----------|----------------|-----------------|---------|
+| `_LOADFONT` | -1 | ✅ Full | Load TrueType fonts (with "UNICODE" option) |
+| `_FREEFONT` | 0 | ✅ Full | Release font resources |
+| `_UPRINTSTRING` | void | ✅ Full | Render Unicode text at position |
+| `_UPRINTWIDTH()` | 0 | ✅ Full | Get Unicode text width in pixels |
+| `_UFONTHEIGHT()` | 0 | ✅ Full | Get Unicode font height |
+| `_ULINESPACING()` | 0 | ✅ Full | Get Unicode line spacing |
+| `_UCHARPOS()` | 0 | ✅ Full | Get character X position within string |
+| `_MAPUNICODE` | void | ✅ Full | CP437 to Unicode mapping table |
+
 ---
 
 ### Clipboard Functions (~2 functions)
@@ -335,17 +353,22 @@ All audio functions are now fully implemented in the external runtime using Rodi
 
 ---
 
-### Joystick Functions (~6 functions)
+### Joystick Functions (~8 functions)
 
 **External Runtime:** `runtime/src/joystick.rs` (306 lines, SDL2 gamepad API)
 
 | Function | Inline Returns | External Status | Purpose |
 |----------|----------------|-----------------|---------|
-| `STICK()` | 0 | ✅ Full | Get joystick position (QB4.5) |
-| `STRIG()` | 0 | ✅ Full | Get trigger state (QB4.5) |
+| `STICK(n)` | 0 (127) | ✅ Full | Axis position 0–254 (QB4.5) |
+| `STRIG(n)` | 0 | ✅ Full | Button state -1/0 (QB4.5) |
+| `STRIG(n, controller)` | 0 | ✅ Full | QB64 extension |
+| `ON STRIG(n) GOSUB` | ⚠️ Stub | ✅ Full | **Fresh exceeds QB64pe** (QB64pe parses but ignores; Fresh has full event system) |
+| `STRIG(n) ON/OFF/STOP` | ⚠️ Stub | ✅ Full | **Fresh exceeds QB64pe** (event control) |
 | `_DEVICES()` | 0 | ✅ Full | Get device count |
 | `_AXIS()` | 0.0 | ✅ Full | Get axis value |
 | `_BUTTON()` | 0 | ✅ Full | Get button state |
+
+Inline returns stub values (joystick requires SDL2).
 
 ---
 
@@ -377,6 +400,20 @@ All audio functions are now fully implemented in the external runtime using Rodi
 | `_MEMFILL()` | void | ✅ Full | Fill memory |
 | `_MEM()` | NULL | ✅ Full | Get variable memory |
 | `_OFFSET()` | 0 | ✅ Full | Get variable offset |
+| `VARPTR()` | 0 | ✅ Full | Get address of variable as LONG |
+| `VARPTR$()` | "" | ✅ Full | Get address as binary string (4 bytes) |
+| `VARSEG()` | 0 | ✅ Full | Returns 0 (flat memory model) |
+| `SADD()` | 0 | ✅ Full | Get address of string data |
+
+---
+
+### Callback Functions
+
+| Function | Inline Returns | External Status | Purpose |
+|----------|----------------|-----------------|---------|
+| `_PROCPTR()` | NULL | ✅ Full | Get procedure pointer for C callbacks |
+
+Generates proper C function signatures: FUNCTION callbacks return appropriate C type; SUB callbacks return `void`; BYVAL/BYREF parameters handled correctly.
 
 ---
 
@@ -389,7 +426,7 @@ These are intentionally minimal - they support compatibility with old BASIC prog
 | Function | Inline Status | External Status | QB64pe | Purpose |
 |----------|---------------|-----------------|--------|---------|
 | `LPOS()` | ✅ Full | ✅ Full | ✅ Full | Get printer carriage position (tracks column) |
-| `FRE()` | ⚠️ Stub (64 MB) | ⚠️ Stub | ⛔ Error | Get free memory (QB64pe returns error) |
+| `FRE()` | ⛔ Compile error | ⛔ Compile error | ⛔ Error | Get free memory (see Intentionally Disabled) |
 | `PEEK()` | ✅ Full | ✅ Full | ✅ Full | Read memory byte (sandboxed 1.1MB array) |
 | `POKE` | ✅ Full | ✅ Full | ✅ Full | Write memory byte (sandboxed, statement) |
 | `DEF SEG` | ✅ Full | ✅ Full | ✅ Full | Set memory segment (sandboxed, statement) |
@@ -406,15 +443,15 @@ VGA palette ports are emulated for legacy compatibility (matching QB64pe).
 
 **Supported ports:** 0x3C7 (read index), 0x3C8 (write index), 0x3C9 (RGB data), 0x3DA (vertical retrace). Other ports safely ignored.
 
-#### Hardware Functions - Obsolete Hardware
+#### Hardware Functions - Obsolete / Will Not Implement
 
 | Function | Inline Returns | External Status | Purpose |
 |----------|----------------|-----------------|---------|
-| `PEN()` | 0 | ❌ Obsolete | Get light pen state |
-| `ERDEV()` | 0 | ⚠️ Stub only | Get device error code |
-| `ERDEV$()` | "" | ⚠️ Stub only | Get device error name |
-| `IOCTL$()` | "" | ⚠️ Stub only | Get device status string |
-| `IOCTL` | void | ⚠️ Stub only | Send device control (statement) |
+| `PEN()` | 0 | ❌ Obsolete | Light pen — **will not implement** (hardware obsolete; QB64pe doesn't) |
+| `ERDEV()` | 0 | ⚠️ Stub only | Legacy DOS device error — **will not implement** (QB64pe doesn't register) |
+| `ERDEV$()` | "" | ⚠️ Stub only | Legacy DOS device error — **will not implement** (QB64pe doesn't register) |
+| `IOCTL$()` | ⛔ Compile error | ⛔ Compile error | Get device status (see Intentionally Disabled) |
+| `IOCTL` | void | ⚠️ Stub only | Send device control — **will not implement** (stub no-op in both) |
 
 #### System Interrupts (2 functions) - INT 0x33 Mouse Emulation ✅
 
@@ -435,17 +472,32 @@ Emulates INT 0x33 (mouse) like QB64pe for legacy program compatibility.
 
 | Function | Inline Returns | External Status | Purpose |
 |----------|----------------|-----------------|---------|
-| `ON STRIG` | void | ❌ Not yet | Joystick trigger handler (statement) |
-| `STRIG ON/OFF/STOP` | void | ❌ Not yet | Trigger control (statement) |
-| `ON COM` | void | ⚠️ Stub only | Serial port handler (statement) |
-| `COM ON/OFF/STOP` | void | ⚠️ Stub only | Serial control (statement) |
-| `ON PEN` | void | ❌ Obsolete | Light pen handler (statement) |
-| `PEN ON/OFF/STOP` | void | ❌ Obsolete | Light pen control (statement) |
-| `ON UEVENT` | void | ⚠️ Stub only | User event handler (statement) |
-| `UEVENT ON/OFF/STOP` | void | ⚠️ Stub only | User event control (statement) |
-| `_UEVENTTRIGGER` | void | ⚠️ Stub only | Trigger user event (statement) |
-| `ON SIGNAL` | void | ⚠️ Stub only | Signal handler (statement) |
-| `SIGNAL ON/OFF/STOP` | void | ⚠️ Stub only | Signal control (statement) |
+| `ON STRIG` | void | ✅ Full | Joystick trigger handler (external: full; inline: stub) |
+| `STRIG ON/OFF/STOP` | void | ✅ Full | Trigger control (external: full; inline: stub) |
+| `ON COM` | void | ⚠️ Stub only | Serial port handler — **will not implement** (QB64pe doesn't) |
+| `COM ON/OFF/STOP` | void | ⚠️ Stub only | Serial control — **will not implement** |
+| `ON PEN` | void | ❌ Obsolete | Light pen — **will not implement** (hardware obsolete) |
+| `PEN ON/OFF/STOP` | void | ❌ Obsolete | Light pen control — **will not implement** |
+| `ON UEVENT` | void | ⚠️ Stub only | User event handler — **will not implement** (QB64pe doesn't) |
+| `UEVENT ON/OFF/STOP` | void | ⚠️ Stub only | User event control — **will not implement** |
+| `_UEVENTTRIGGER` | void | ⚠️ Stub only | Trigger user event — **will not implement** |
+| `ON SIGNAL` | void | ⚠️ Stub only | Signal handler — **will not implement** (QB64pe doesn't) |
+| `SIGNAL ON/OFF/STOP` | void | ⚠️ Stub only | Signal control — **will not implement** |
+
+---
+
+## Intentionally Disabled Functions (Matches QB64pe)
+
+These functions throw **compile errors by design**, matching QB64pe's behavior. They have no modern equivalent.
+
+| Function | Behavior | Notes |
+|----------|----------|-------|
+| `FRE()` | Compile error | Legacy DOS memory function |
+| `SETMEM` | Compile error | Legacy DOS memory management |
+| `FILEATTR()` | Compile error | Legacy DOS file attributes |
+| `IOCTL$()` | Compile error | Legacy DOS device I/O control |
+
+QB64pe intentionally throws compile errors rather than stubs to prevent silent failures in programs that depend on these DOS-specific features. QB64Fresh matches this behavior.
 
 ---
 
@@ -464,17 +516,10 @@ Emulates INT 0x33 (mouse) like QB64pe for legacy program compatibility.
 
 ### What's Still Missing
 
-**Graphics (Low Priority):**
-1. `_MAPTRIANGLE` - 3D textured triangle (needs SDL_RenderGeometry)
-2. `_COPYPALETTE` - Copy palette between images
-3. `_DISPLAYORDER` - Layer rendering order
-
-**Legacy (Very Low Priority):**
-1. Serial port (COM) support - ON COM handlers
-2. User-defined events (UEVENT) - full implementation
-
-**Intentionally Not Implemented:**
-- Light pen (PEN) - obsolete hardware
+**Will Not Implement (stub-only; no further work):**
+- **Light pen (PEN, ON PEN, PEN ON/OFF/STOP)** — Hardware obsolete; QB64pe doesn't implement.
+- **Legacy device (ERDEV, ERDEV$, IOCTL statement)** — QB64pe doesn't register ERDEV/ERDEV$; we provide stubs. IOCTL is no-op in both.
+- **Event handlers (ON COM, COM ON/OFF/STOP, ON UEVENT, UEVENT ON/OFF/STOP, _UEVENTTRIGGER, ON SIGNAL, SIGNAL ON/OFF/STOP)** — QB64pe doesn't implement; we provide stubs. Very low priority.
 
 ---
 
@@ -510,3 +555,25 @@ qb64fresh myprogram.bas
 ```
 
 The external runtime requires SDL2 to be installed on the system.
+
+---
+
+## Core Language Functions (All Implemented)
+
+- **Math:** ABS, ATN, COS, SIN, TAN, EXP, LOG, SQR, SGN, INT, FIX, CINT, CLNG, CSNG, CDBL, MOD, RND, RANDOMIZE
+- **String:** LEN, LEFT$, RIGHT$, MID$, INSTR, UCASE$, LCASE$, LTRIM$, RTRIM$, SPACE$, STRING$, CHR$, ASC, VAL, STR$, HEX$, OCT$, BIN$, INKEY$, INPUT$
+- **I/O:** PRINT, INPUT, LINE INPUT, WRITE, OPEN, CLOSE, GET, PUT, SEEK, LOC, LOF, EOF, FREEFILE, NAME, KILL, FILES, MKDIR, RMDIR, CHDIR, CURDIR$
+- **Control flow:** IF/THEN/ELSE/END IF, SELECT CASE, FOR/NEXT, DO/LOOP, WHILE/WEND, GOTO, GOSUB/RETURN, ON...GOTO, ON...GOSUB, EXIT
+- **Data types:** DIM, REDIM, CONST, TYPE/END TYPE, SUB/END SUB, FUNCTION/END FUNCTION, DECLARE, SHARED, STATIC, COMMON
+- **Graphics (core):** SCREEN, CLS, COLOR, LOCATE, PSET, POINT, LINE, CIRCLE, PAINT, DRAW, VIEW, WINDOW, PALETTE, GET, PUT
+- **QB64 extensions (core):** _DEST, _SOURCE, _DISPLAY, _LIMIT, _DELAY, _KEYHIT, _KEYDOWN, _MOUSEX, _MOUSEY, _MOUSEBUTTON, _NEWIMAGE, _LOADIMAGE, _PUTIMAGE, _FREEIMAGE, _RGB, _RGBA, _RGB32, _RGBA32
+
+**Screen pages:** SCREEN and PCOPY support 4 pages for double/triple buffering.
+
+---
+
+## See Also
+
+- [STUB_FUNCTIONS_REMAINING.md](../ThingsToDo/STUB_FUNCTIONS_REMAINING.md) — Pointer; all content consolidated in this document
+- [GRAPHICS.md](../GRAPHICS.md) — Graphics documentation
+- [ADR-0008](../adrs/ADR-0008-c-interoperability.md) — DECLARE LIBRARY
