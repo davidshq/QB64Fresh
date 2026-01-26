@@ -20,17 +20,20 @@ QB64Fresh has two runtime implementations:
                                               │                   │
                                               ▼                   ▼
 ┌─────────────────────────────────┐  ┌─────────────────────────────────┐
-│   Inline Runtime (C Stubs)      │  │   External Runtime (Rust)       │
+│   Inline Runtime (emits C)      │  │   External Runtime (Rust)        │
 │                                 │  │                                 │
-│  src/codegen/c_backend/runtime/ │  │  runtime/src/                   │
-│  ├── strings.rs  (emits C)      │  │  ├── string.rs   (real impl)    │
-│  ├── io.rs       (emits C)      │  │  ├── io.rs       (real impl)    │
-│  ├── graphics.rs (stubs!)       │  │  ├── graphics/sdl2.rs (SDL2!)   │
-│  └── audio.rs    (stubs!)       │  │  └── audio/rodio.rs   (real!)   │
-│                                 │  │                                 │
-│  Output: Self-contained .c      │  │  Output: .c + libqb64fresh_rt.a │
-│  Graphics: Frame counting only  │  │  Graphics: Real SDL2 windows    │
-│  Audio: Silent                  │  │  Audio: Real sound playback     │
+│  src/codegen/c_backend/runtime/ │  │  runtime/src/                    │
+│  ├── types, strings, io, file   │  │  ├── string.rs     (real impl)   │
+│  ├── keyboard, memory, timing   │  │  ├── io.rs, math.rs              │
+│  ├── arrays, math, error        │  │  ├── graphics/    (SDL2)        │
+│  ├── graphics.rs (stubs!)       │  │  ├── audio/       (rodio)       │
+│  ├── audio.rs    (stubs!)       │  │  └── *_ffi.rs     (C bindings)  │
+│  └── legacy, system, debug      │  │                                 │
+│                                 │  │  Output: .c + libqb64fresh_rt.a │
+│  Output: Self-contained .c      │  │  Graphics: Real SDL2 windows    │
+│  Graphics: Frame limit + stubs  │  │  Audio: Real sound playback     │
+│  Audio: Silent                  │  │  Contract: runtime/include/     │
+│  (QB64FRESH_MAX_FRAMES=1000)    │  │          qb64fresh_rt.h         │
 └─────────────────────────────────┘  └─────────────────────────────────┘
 ```
 
@@ -108,13 +111,7 @@ x = INKEY$
 IF x <> "" THEN PRINT ASC(x)
 ```
 
-The inline runtime returns:
-- Arrow keys: `CHR$(0) + CHR$(72)` for Up
-
-The external runtime returns:
-- Arrow keys: `CHR$(0) + CHR$(72)` for Up
-
-Good - they match! But who verifies this? Where's the conformance test suite?
+Both return `CHR$(0) + CHR$(72)` for Up—they match. But who verifies this? Where's the conformance test suite?
 
 **Missing QB64 semantics in stubs:**
 
@@ -128,7 +125,7 @@ In inline mode, `POINT` returns 0 because there's no framebuffer. This could mas
 
 ### My Recommendation
 
-Create a compatibility test suite that runs against BOTH runtimes. Programs that don't use graphics should produce identical output. Document which features are stub-only.
+Create conformance tests for both runtimes (non-graphics programs should match). Document stub-only features (see Action Items).
 
 ---
 
@@ -217,7 +214,7 @@ This allows headless testing and future backend additions (Vulkan? WebGPU?).
 
 **The inline runtime violates DRY:**
 
-We have ~2000 lines of C-as-Rust-strings that duplicate the ~15000 lines of Rust runtime. When someone adds a feature, they must update both.
+We have ~9000 lines of Rust (in `src/codegen/c_backend/runtime/`) that *emit* inline C, overlapping in behavior with the ~16000 lines of Rust in `runtime/src/`. When someone adds a feature, they may need to update both the emitter and the external implementation.
 
 **No shared interface definition:**
 
@@ -239,7 +236,7 @@ Write a tool that reads the Rust runtime and generates equivalent C. Complex but
 
 **Option B: Shared header file**
 
-Create `qb64fresh_rt.h` as the source of truth. Both implementations must conform to it. The header already exists - enforce it!
+Use `runtime/include/qb64fresh_rt.h` as the contract for the external runtime. The inline runtime emits its own C and does not include this header; both should match the same semantics. The header exists—use it as the external API contract and enforce conformance.
 
 **Option C: Accept the duplication**
 
@@ -267,31 +264,25 @@ Let's be honest about what we have:
 | Graphics | ⚠️ Stubs | ✅ SDL2 | ❌ No |
 | Audio | ⚠️ Stubs | ✅ Rodio | ❌ No |
 
-**The bootstrap doesn't need graphics or audio.** QB64pe is a compiler - it reads files, processes text, writes files. The inline stubs are sufficient.
+Bootstrap only needs the ✅ rows (strings through math); inline’s stubs for graphics and audio are sufficient.
 
 ### What Actually Matters Right Now
 
-1. **Fix the INI file reading hang** - This is blocking the bootstrap
-2. **Ensure file I/O edge cases work** - Binary GET/PUT, random access
-3. **Keep keyboard input working** - For interactive prompts
+2. **Ensure file I/O edge cases work** — Binary GET/PUT, random access
+3. **Keep keyboard input working** — For interactive prompts
 
 Graphics and audio can wait until someone wants to compile a game.
 
 ### The Duplication Isn't Hurting Us
 
-Yes, there are two implementations. But:
-- The inline runtime is ~2000 lines of simple C
-- It rarely changes (core string/file ops are stable)
-- It serves a different purpose (portability vs. features)
-
-Premature unification would slow us down. Ship the bootstrap first, then consider refactoring.
+Two implementations, but: the inline runtime (~9k lines, see Architect) emits portable C; core string/file/keyboard/math behavior is stable and it serves a different purpose (portability, CI, headless). Premature unification would slow us down. Focus on the bootstrap first, then revisit architecture (see recommendations).
 
 ### My Recommendation
 
-1. **Document the split clearly** (this document helps!)
-2. **Add a CI job** that compiles a test program with BOTH runtimes
-3. **Focus on the bootstrap** - Get QB64pe compiling itself
-4. **Revisit architecture later** - When we have working software, we can refactor
+1. **Document the split clearly** (this document)
+2. **Add conformance tests and CI for both runtimes**
+3. **Focus on the bootstrap** — get QB64pe self-compiling
+4. **Revisit architecture** when the bootstrap works (e.g. Architect Option A if duplication hurts)
 
 ---
 
@@ -307,10 +298,8 @@ Premature unification would slow us down. Ship the bootstrap first, then conside
 
 ### Action Items
 
-1. **Immediate:** Fix the INI file hang blocking QB64pe bootstrap
-2. **Short-term:** Add conformance tests running both runtimes
-3. **Medium-term:** Document which features are stub-only
-4. **Long-term:** Consider generating inline C from Rust (if duplication becomes painful)
+3. **Medium-term:** Document stub-only features. See [STUB_FUNCTIONS_REMAINING.md](ThingsToDo/STUB_FUNCTIONS_REMAINING.md)
+4. **Long-term:** Consider generating inline C from Rust (Architect Option A) if duplication becomes painful
 
 ---
 
@@ -322,6 +311,7 @@ Premature unification would slow us down. Ship the bootstrap first, then conside
 - Teaching/learning (simple setup)
 - Compiling compilers (no graphics needed)
 - Distributing generated C code
+- Headless debugging (optional `debug` module: breakpoints, stepping, IPC)
 
 ### Use External Runtime When:
 - Building graphical applications
@@ -329,3 +319,13 @@ Premature unification would slow us down. Ship the bootstrap first, then conside
 - Need full QB64 compatibility
 - Performance matters (optimized Rust)
 - Developing the runtime itself
+
+---
+
+## Related Documentation
+
+- [GRAPHICS.md](GRAPHICS.md) — Graphics architecture, inline stub behavior, `QB64FRESH_MAX_FRAMES`, SDL2/Mock backends
+- [runtime/include/qb64fresh_rt.h](../runtime/include/qb64fresh_rt.h) — C API contract for the external runtime
+- [STUB_FUNCTIONS_REMAINING.md](ThingsToDo/STUB_FUNCTIONS_REMAINING.md) — Functions that are stub-only or partially implemented
+
+*Last updated: 2026-01-25*

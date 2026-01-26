@@ -71,6 +71,9 @@ pub enum CodeGenErrorKind {
     /// A feature that isn't implemented yet.
     UnsupportedFeature(String),
 
+    /// SHELL / _SHELLHIDE disabled by --no-shell compile-time flag.
+    ShellDisabled,
+
     /// A type that can't be represented in the target.
     UnsupportedType(String),
 
@@ -86,6 +89,9 @@ impl fmt::Display for CodeGenErrorKind {
         match self {
             CodeGenErrorKind::UnsupportedFeature(feature) => {
                 write!(f, "unsupported feature: {}", feature)
+            }
+            CodeGenErrorKind::ShellDisabled => {
+                write!(f, "SHELL and _SHELLHIDE are disabled by --no-shell")
             }
             CodeGenErrorKind::UnsupportedType(ty) => {
                 write!(f, "type '{}' cannot be represented in target", ty)

@@ -8,7 +8,7 @@
 
 use crate::ast::{
     ArrayDimension, CommonVariable, DataValue, DefTypeKind, DimVariable, ReadTarget, Span,
-    Statement, StatementKind, TypeSpec,
+    Statement, StatementKind,
 };
 use crate::lexer::TokenKind;
 
@@ -589,27 +589,92 @@ impl<'a> Parser<'a> {
         let ranges = self.parse_define_type()?;
 
         self.expect(&TokenKind::As, "AS")?;
-        let type_spec = self.parse_type_spec()?;
 
-        // Convert TypeSpec to DefTypeKind for the _DEFINE statement
-        let type_kind = match type_spec {
-            TypeSpec::Integer => DefTypeKind::Integer,
-            TypeSpec::Long => DefTypeKind::Long,
-            TypeSpec::Single => DefTypeKind::Single,
-            TypeSpec::Double => DefTypeKind::Double,
-            TypeSpec::String => DefTypeKind::String,
-            // For extended types, default to closest standard type
-            TypeSpec::Byte => DefTypeKind::Integer,
-            TypeSpec::Integer64 => DefTypeKind::Long,
-            TypeSpec::Float => DefTypeKind::Double,
-            _ => DefTypeKind::Single, // Default for unsupported types
-        };
+        // Parse the full type specification as a string (including _UNSIGNED prefix)
+        let type_spec = self.parse_define_type_spec()?;
 
         let span = self.span_from(start);
         Ok(Statement::new(
-            StatementKind::DefType { type_kind, ranges },
+            StatementKind::Define { type_spec, ranges },
             span,
         ))
+    }
+
+    /// Parses the type specification for _DEFINE, returning the full type name as a string.
+    ///
+    /// Handles: INTEGER, LONG, SINGLE, DOUBLE, STRING, _BYTE, _INTEGER64, _FLOAT, _OFFSET,
+    /// and _UNSIGNED variants.
+    fn parse_define_type_spec(&mut self) -> Result<String, ()> {
+        let mut type_name = String::new();
+
+        // Check for _UNSIGNED prefix
+        if self.match_token(&TokenKind::Unsigned) {
+            type_name.push_str("_UNSIGNED ");
+        }
+
+        // Get the base type token
+        let peeked = self.peek();
+        let token = match peeked {
+            Some(t) => t.clone(),
+            None => {
+                self.errors.push(ParseError::eof("type name"));
+                return Err(());
+            }
+        };
+
+        let base_type = match &token.kind {
+            TokenKind::Integer => {
+                self.advance();
+                "INTEGER"
+            }
+            TokenKind::Long => {
+                self.advance();
+                "LONG"
+            }
+            TokenKind::Single => {
+                self.advance();
+                "SINGLE"
+            }
+            TokenKind::Double => {
+                self.advance();
+                "DOUBLE"
+            }
+            TokenKind::String_ => {
+                self.advance();
+                "STRING"
+            }
+            TokenKind::Byte => {
+                self.advance();
+                "_BYTE"
+            }
+            TokenKind::Integer64 => {
+                self.advance();
+                "_INTEGER64"
+            }
+            TokenKind::Float => {
+                self.advance();
+                "_FLOAT"
+            }
+            TokenKind::Offset => {
+                self.advance();
+                "_OFFSET"
+            }
+            TokenKind::BitType => {
+                self.advance();
+                "_BIT"
+            }
+            _ => {
+                let span: Span = token.span.clone().into();
+                self.errors.push(ParseError::syntax(
+                    format!("expected type name, found {:?}", token.kind),
+                    span,
+                ));
+                return Err(());
+            }
+        };
+
+        type_name.push_str(base_type);
+        Ok(type_name)
     }
 
     /// Parses the letter ranges for DEFtype and _DEFINE statements.

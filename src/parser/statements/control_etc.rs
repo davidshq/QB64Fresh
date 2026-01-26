@@ -9,8 +9,8 @@
 //! - Miscellaneous statements (OPTION BASE, SWAP, etc.)
 
 use crate::ast::{
-    AllowFullScreenMode, ContinueType, EventControlMode, ExitType, FieldSpec, Parameter,
-    ResumeTarget, Span, Statement, StatementKind,
+    AllowFullScreenMode, ContinueType, EventControlMode, ExitType, Expr, ExprKind, FieldSpec,
+    Parameter, ResumeTarget, Span, Statement, StatementKind,
 };
 use crate::lexer::TokenKind;
 
@@ -679,11 +679,11 @@ impl<'a> Parser<'a> {
 
     // ==================== OPTION Statement ====================
 
-    /// Parses an OPTION statement (currently only OPTION BASE).
+    /// Parses an OPTION statement (OPTION BASE, OPTION _EXPLICIT, OPTION _EXPLICITARRAY).
     pub(in crate::parser) fn parse_option(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("OPTION keyword").span.start;
 
-        // Currently only OPTION BASE is supported
+        // Check for OPTION BASE
         if self.check(&TokenKind::Base) {
             self.advance(); // consume BASE
 
@@ -722,10 +722,20 @@ impl<'a> Parser<'a> {
                 StatementKind::OptionBase { base: base as i64 },
                 span,
             ))
+        } else if self.check(&TokenKind::Explicit) {
+            // OPTION _EXPLICIT - require explicit variable declarations
+            self.advance(); // consume _EXPLICIT
+            let span = self.span_from(start);
+            Ok(Statement::new(StatementKind::OptionExplicit, span))
+        } else if self.check(&TokenKind::ExplicitArray) {
+            // OPTION _EXPLICITARRAY - require explicit array declarations
+            self.advance(); // consume _EXPLICITARRAY
+            let span = self.span_from(start);
+            Ok(Statement::new(StatementKind::OptionExplicitArray, span))
         } else {
             let span = self.span_from(start);
             self.errors.push(ParseError::syntax(
-                "expected BASE after OPTION".to_string(),
+                "expected BASE, _EXPLICIT, or _EXPLICITARRAY after OPTION".to_string(),
                 span,
             ));
             Err(())
@@ -734,9 +744,16 @@ impl<'a> Parser<'a> {
 
     // ==================== CALL Statement ====================
 
-    /// Parses a CALL statement.
+    /// Parses a CALL statement, including CALL ABSOLUTE.
     pub(in crate::parser) fn parse_call(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("CALL keyword").span.start;
+
+        // Check for CALL ABSOLUTE (legacy x86 machine code execution)
+        if self.check(&TokenKind::Absolute) {
+            self.advance(); // consume ABSOLUTE
+            return self.parse_call_absolute(start);
+        }
+
         let name_token = self.expect(&TokenKind::Identifier, "procedure name")?;
         let name = name_token.text.to_string();
 
@@ -759,6 +776,41 @@ impl<'a> Parser<'a> {
 
         let span = self.span_from(start);
         Ok(Statement::new(StatementKind::Call { name, args }, span))
+    }
+
+    /// Parses CALL ABSOLUTE(args..., address).
+    ///
+    /// This is a legacy x86 statement for executing machine code at a memory address.
+    /// We parse it for compatibility but emit a warning at runtime.
+    fn parse_call_absolute(&mut self, start: usize) -> Result<Statement, ()> {
+        self.expect(&TokenKind::LeftParen, "(")?;
+
+        let mut all_args = Vec::new();
+        if !self.check(&TokenKind::RightParen) {
+            loop {
+                all_args.push(self.parse_expression()?);
+                if !self.match_token(&TokenKind::Comma) {
+                    break;
+                }
+            }
+        }
+
+        self.expect(&TokenKind::RightParen, ")")?;
+
+        // The last argument is the address
+        let address = all_args.pop().unwrap_or_else(|| {
+            // If no arguments, create a dummy zero address
+            Expr::new(ExprKind::IntegerLiteral(0), Span::new(start, start))
+        });
+
+        let span = self.span_from(start);
+        Ok(Statement::new(
+            StatementKind::CallAbsolute {
+                args: all_args,
+                address,
+            },
+            span,
+        ))
     }
 
     /// Parses a CALLS statement (call with segment).

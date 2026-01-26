@@ -26,8 +26,9 @@ A modern, ground-up rewrite of QB64 — a QuickBASIC compatible compiler that pr
 # Build the compiler
 cargo build --release
 
-# Compile a BASIC program
-cargo run --release -- examples/hello.bas
+# Compile a BASIC program to C, then build and run (see docs/GETTING_STARTED.md)
+cargo run --release -- examples/hello.bas --emit-c
+gcc examples/hello.c -o hello -lm && ./hello
 
 # Run with debug output
 cargo run -- examples/hello.bas --tokens   # Show tokenization
@@ -106,6 +107,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed documentation.
 ## Docs
 
 ### User Guides
+- **[Getting Started](docs/GETTING_STARTED.md)** — Tutorial: install, first program, compile, run
 - **[QB64Fresh Handbook](docs/QB64Fresh_HANDBOOK.md)** — Comprehensive user guide
 - [Migration Guide](docs/MIGRATION_GUIDE.md) — For QB64 users switching to QB64Fresh
 - [Examples](examples/) — Example programs

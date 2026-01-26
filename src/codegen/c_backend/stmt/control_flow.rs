@@ -80,7 +80,7 @@ impl super::StmtEmitter {
         else_branch: &Option<Vec<TypedStatement>>,
         output: &mut String,
     ) -> Result<(), CodeGenError> {
-        let cond_code = emit_expr(condition)?;
+        let cond_code = emit_expr(condition, self.no_shell)?;
         writeln!(output, "{}if ({}) {{", indent, cond_code).unwrap();
 
         self.indent += 1;
@@ -90,7 +90,7 @@ impl super::StmtEmitter {
         self.indent -= 1;
 
         for (elseif_cond, elseif_body) in elseif_branches {
-            let elseif_code = emit_expr(elseif_cond)?;
+            let elseif_code = emit_expr(elseif_cond, self.no_shell)?;
             writeln!(output, "{}}} else if ({}) {{", indent, elseif_code).unwrap();
 
             self.indent += 1;
@@ -140,7 +140,7 @@ impl super::StmtEmitter {
         output: &mut String,
     ) -> Result<(), CodeGenError> {
         let test_var = self.next_label("select");
-        let test_code = emit_expr(test_expr)?;
+        let test_code = emit_expr(test_expr, self.no_shell)?;
         let c_ty = c_type(&test_expr.basic_type);
 
         writeln!(output, "{}{} {} = {};", indent, c_ty, test_var, test_code).unwrap();
@@ -244,10 +244,10 @@ impl super::StmtEmitter {
     ) -> Result<(), CodeGenError> {
         let c_var = c_identifier(variable);
         let c_ty = c_type(var_type);
-        let start_code = emit_expr(start)?;
-        let end_code = emit_expr(end)?;
+        let start_code = emit_expr(start, self.no_shell)?;
+        let end_code = emit_expr(end, self.no_shell)?;
         let step_code = match step {
-            Some(s) => emit_expr(s)?,
+            Some(s) => emit_expr(s, self.no_shell)?,
             None => "1".to_string(),
         };
 
@@ -319,7 +319,7 @@ impl super::StmtEmitter {
         body: &[TypedStatement],
         output: &mut String,
     ) -> Result<(), CodeGenError> {
-        let cond_code = emit_expr(condition)?;
+        let cond_code = emit_expr(condition, self.no_shell)?;
         let break_label = self.next_label("while_end");
 
         self.loop_stack.push(LoopContext {
@@ -489,7 +489,7 @@ impl super::StmtEmitter {
     ///
     /// The C condition expression string.
     pub fn emit_do_condition(&self, cond: &TypedDoCondition) -> Result<String, CodeGenError> {
-        let cond_code = emit_expr(&cond.condition)?;
+        let cond_code = emit_expr(&cond.condition, self.no_shell)?;
         if cond.is_while {
             Ok(cond_code)
         } else {
@@ -552,7 +552,7 @@ impl super::StmtEmitter {
 
         match case_match {
             TypedCaseMatch::Single(expr) => {
-                let val = emit_expr(expr)?;
+                let val = emit_expr(expr, self.no_shell)?;
                 if is_string {
                     // String comparison: use qb_string_compare
                     Ok(format!("(qb_string_compare({}, {}) == 0)", test_var, val))
@@ -561,8 +561,8 @@ impl super::StmtEmitter {
                 }
             }
             TypedCaseMatch::Range { from, to } => {
-                let from_code = emit_expr(from)?;
-                let to_code = emit_expr(to)?;
+                let from_code = emit_expr(from, self.no_shell)?;
+                let to_code = emit_expr(to, self.no_shell)?;
                 if is_string {
                     // String range: lexicographic comparison
                     Ok(format!(
@@ -577,7 +577,7 @@ impl super::StmtEmitter {
                 }
             }
             TypedCaseMatch::Comparison { op, value } => {
-                let val = emit_expr(value)?;
+                let val = emit_expr(value, self.no_shell)?;
                 if is_string {
                     // String comparison: use qb_string_compare result
                     let cmp_expr = format!("qb_string_compare({}, {})", test_var, val);

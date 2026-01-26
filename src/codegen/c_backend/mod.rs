@@ -103,6 +103,8 @@ pub struct CBackend {
     debug_enabled: bool,
     /// Source file name (for debug tracking).
     source_file: Option<String>,
+    /// Disable SHELL / _SHELLHIDE (compile-time error if used). See --no-shell and SECURITY_MODEL.md.
+    no_shell: bool,
 }
 
 impl Default for CBackend {
@@ -118,6 +120,7 @@ impl CBackend {
             runtime_mode: RuntimeMode::Inline,
             debug_enabled: false,
             source_file: None,
+            no_shell: false,
         }
     }
 
@@ -127,6 +130,7 @@ impl CBackend {
             runtime_mode,
             debug_enabled: false,
             source_file: None,
+            no_shell: false,
         }
     }
 
@@ -144,6 +148,14 @@ impl CBackend {
     /// Sets the source file name for debug tracking.
     pub fn with_source_file(mut self, source_file: &str) -> Self {
         self.source_file = Some(source_file.to_string());
+        self
+    }
+
+    /// Disables SHELL and _SHELLHIDE. When set, code generation fails with `ShellDisabled` if
+    /// the program uses SHELL or _SHELLHIDE (statement or function form). Use for builds that
+    /// must not execute external commands. See `docs/SECURITY_MODEL.md`.
+    pub fn with_no_shell(mut self, enabled: bool) -> Self {
+        self.no_shell = enabled;
         self
     }
 
@@ -212,6 +224,7 @@ impl CodeGenerator for CBackend {
         let mut emitter = StmtEmitter::new();
         emitter.debug_enabled = self.debug_enabled;
         emitter.debug_source_file = self.source_file.clone();
+        emitter.no_shell = self.no_shell;
         let mut output = String::new();
 
         // Header (with optional debug support)

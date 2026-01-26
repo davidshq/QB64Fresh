@@ -163,6 +163,10 @@ impl<'a> Parser<'a> {
             // QB64 Memory functions (_MEM is both a type and a function)
             TokenKind::MemType => self.parse_builtin_function("_MEM"),
 
+            // QB64 Short-circuit operators (can be used as functions or infix operators)
+            TokenKind::AndAlso => self.parse_builtin_function("_ANDALSO"),
+            TokenKind::OrElse => self.parse_builtin_function("_ORELSE"),
+
             // Keywords that can be used as variable names in expression context
             // In BASIC, keywords like NAME, INPUT, OUTPUT can be used as variable names
             // when context makes it unambiguous that an identifier is expected.

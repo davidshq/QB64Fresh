@@ -16,15 +16,25 @@ examples/
 
 ## Running Examples
 
+**Inline runtime (simplest)** — console and simple I/O. The compiler writes a `.c` file beside the input (e.g. `examples/basics/hello.c`).
+
 ```bash
-# Compile an example
+# From QB64Fresh repo root. Use a memory limit (see docs/MEMORY_LIMITS.md)
+ulimit -v 16777216
 cargo run --release -- examples/basics/hello.bas --emit-c
 
-# Build the executable (Linux/macOS)
-gcc output.c -o program -L./target/release -lqb64fresh_rt -lSDL2 -lm
-
-# Run it
+# Build and run (inline = just -lm)
+gcc examples/basics/hello.c -o program -lm
 ./program
+```
+
+**External runtime** — for graphics and SDL2. Build the runtime, then use `--runtime external` and link:
+
+```bash
+cargo build -p qb64fresh-runtime --release
+cargo run --release -- examples/graphics/drawing.bas --emit-c --runtime external -o drawing.c
+gcc -I runtime/include drawing.c -L target/release -lqb64fresh_rt $(pkg-config --libs sdl2) -lm -lpthread -ldl -o drawing
+./drawing
 ```
 
 ## Example Index

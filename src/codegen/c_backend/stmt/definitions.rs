@@ -605,11 +605,11 @@ impl super::StmtEmitter {
         let size_expr = dimensions
             .iter()
             .map(|d| {
-                let upper_code = emit_expr(&d.upper)?;
+                let upper_code = emit_expr(&d.upper, self.no_shell)?;
                 let lower_code = d
                     .lower
                     .as_ref()
-                    .map(emit_expr)
+                    .map(|e| emit_expr(e, self.no_shell))
                     .transpose()?
                     .unwrap_or_else(|| "0".to_string());
                 Ok(format!("({} - {} + 1)", upper_code, lower_code))
@@ -623,10 +623,10 @@ impl super::StmtEmitter {
             let lower_code = dimensions[0]
                 .lower
                 .as_ref()
-                .map(emit_expr)
+                .map(|e| emit_expr(e, self.no_shell))
                 .transpose()?
                 .unwrap_or_else(|| "0".to_string());
-            let upper_code = emit_expr(&dimensions[0].upper)?;
+            let upper_code = emit_expr(&dimensions[0].upper, self.no_shell)?;
             format!(
                 "    qb_array_register({}, {}, {});",
                 c_name, lower_code, upper_code
@@ -638,13 +638,15 @@ impl super::StmtEmitter {
                 .map(|d| {
                     d.lower
                         .as_ref()
-                        .map(emit_expr)
+                        .map(|e| emit_expr(e, self.no_shell))
                         .transpose()
                         .map(|opt| opt.unwrap_or_else(|| "0".to_string()))
                 })
                 .collect();
-            let uppers: Result<Vec<String>, CodeGenError> =
-                dimensions.iter().map(|d| emit_expr(&d.upper)).collect();
+            let uppers: Result<Vec<String>, CodeGenError> = dimensions
+                .iter()
+                .map(|d| emit_expr(&d.upper, self.no_shell))
+                .collect();
             let lowers = lowers?;
             let uppers = uppers?;
             format!(

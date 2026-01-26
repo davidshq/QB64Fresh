@@ -2,12 +2,13 @@
 //!
 //! This module contains comprehensive tests for the parser, organized by feature area:
 //! - Basic parsing (literals, expressions, assignments)
-//! - File I/O statements
+//! - File I/O statements (including legacy OPEN)
 //! - Error handling
 //! - Control flow
 //! - Graphics statements
 //! - Audio statements
 //! - System statements
+//! - Parser `statements/` submodules (assignments, data_dims, declare, control_etc)
 
 use super::*;
 use crate::ast::StatementKind;
@@ -1800,6 +1801,30 @@ mod file_io_tests {
         }
     }
 
+    #[test]
+    fn test_parse_open_legacy() {
+        // Legacy syntax: OPEN mode$, [#]filenum, filename[, reclen]
+        let program = parse(r#"OPEN "O", #1, "output.txt""#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::OpenFileLegacy { .. }
+        ));
+
+        let program = parse(r#"OPEN "I", 2, "input.txt", 128"#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(
+            matches!(
+                &program.statements[0].kind,
+                StatementKind::OpenFileLegacy {
+                    record_len: Some(_),
+                    ..
+                }
+            ),
+            "Expected OpenFileLegacy with record_len"
+        );
+    }
+
     // ----- CLOSE Statement -----
 
     #[test]
@@ -2065,6 +2090,148 @@ mod file_io_tests {
         } else {
             panic!("Expected GraphicsGet statement");
         }
+    }
+}
+
+// ========================================================
+// Parser statements/ Submodule Tests
+//
+// Tests for logic in parser/statements/: assignments, data_dims,
+// declare, control_etc, print_input. These modules were split from
+// the main statement parser; these tests give explicit coverage.
+// ========================================================
+
+mod statements_tests {
+    use super::*;
+
+    // ----- assignments (SWAP, MID$=, LSET, RSET) -----
+
+    #[test]
+    fn test_parse_swap() {
+        let program = parse("SWAP a, b").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::Swap { .. }
+        ));
+    }
+
+    #[test]
+    fn test_parse_mid_assignment() {
+        let program = parse(r#"MID$(s$, 1, 2) = "x""#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::MidAssignment { .. }
+        ));
+    }
+
+    #[test]
+    fn test_parse_lset() {
+        let program = parse(r#"LSET a$ = "hello""#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::Lset { .. }
+        ));
+    }
+
+    #[test]
+    fn test_parse_rset() {
+        let program = parse(r#"RSET b$ = "world""#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::Rset { .. }
+        ));
+    }
+
+    // ----- data_dims (RESTORE) -----
+
+    #[test]
+    fn test_parse_restore() {
+        let program = parse("RESTORE").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::Restore { label: None }
+        ));
+    }
+
+    #[test]
+    fn test_parse_restore_with_label() {
+        let program = parse("RESTORE start").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::Restore { label: Some(_) }
+        ));
+    }
+
+    // ----- control_etc (SLEEP, ERASE) -----
+
+    #[test]
+    fn test_parse_sleep() {
+        let program = parse("SLEEP").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::Sleep { seconds: None }
+        ));
+    }
+
+    #[test]
+    fn test_parse_sleep_with_seconds() {
+        let program = parse("SLEEP 2").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::Sleep { seconds: Some(_) }
+        ));
+    }
+
+    #[test]
+    fn test_parse_erase() {
+        let program = parse("ERASE arr").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::Erase { .. }
+        ));
+    }
+
+    // ----- declare (DECLARE SUB, DECLARE FUNCTION) -----
+
+    #[test]
+    fn test_parse_declare_sub() {
+        let program = parse("DECLARE SUB foo()").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::DeclareSub { name, .. } if name == "foo"
+        ));
+    }
+
+    #[test]
+    fn test_parse_declare_sub_with_params() {
+        let program = parse("DECLARE SUB bar(x AS INTEGER, y AS LONG)").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        if let StatementKind::DeclareSub { name, params } = &program.statements[0].kind {
+            assert_eq!(name, "bar");
+            assert_eq!(params.len(), 2);
+        } else {
+            panic!("Expected DeclareSub");
+        }
+    }
+
+    #[test]
+    fn test_parse_declare_function() {
+        let program = parse("DECLARE FUNCTION baz() AS INTEGER").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            &program.statements[0].kind,
+            StatementKind::DeclareFunction { name, .. } if name == "baz"
+        ));
     }
 }
 

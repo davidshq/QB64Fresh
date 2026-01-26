@@ -31,6 +31,10 @@
 //! - [`control_flow`] - IF/FOR/WHILE/DO/SELECT parsing
 //! - [`procedures`] - SUB/FUNCTION/TYPE definitions
 //! - [`directives`] - Preprocessor directives ($INCLUDE, $IF)
+//! - [`audio`] - BEEP, SOUND, PLAY, _SND* statements
+//! - [`file_io`] - OPEN, CLOSE, GET, PUT, SEEK, WRITE # statements
+//! - [`graphics`] - SCREEN, LINE, CIRCLE, PAINT, VIEW, WINDOW, _DISPLAY, etc.
+//! - [`system`] - SHELL, KILL, NAME, MKDIR, BLOAD, BSAVE, _CLIPBOARD$, etc.
 //! - [`error`] - Parse error types
 //!
 //! # Error Recovery
