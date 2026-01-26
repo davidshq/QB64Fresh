@@ -162,7 +162,7 @@ impl super::StmtEmitter {
         code: &TypedExpr,
         output: &mut String,
     ) -> Result<(), CodeGenError> {
-        let code_expr = emit_expr(code)?;
+        let code_expr = emit_expr(code, self.no_shell)?;
         writeln!(output, "{}qb_error({});", indent, code_expr).unwrap();
         Ok(())
     }
@@ -188,7 +188,7 @@ impl super::StmtEmitter {
         targets: &[String],
         output: &mut String,
     ) -> Result<(), CodeGenError> {
-        let sel_code = emit_expr(selector)?;
+        let sel_code = emit_expr(selector, self.no_shell)?;
 
         writeln!(output, "{}switch ((int32_t)({}) - 1) {{", indent, sel_code).unwrap();
         for (i, target) in targets.iter().enumerate() {
@@ -223,7 +223,7 @@ impl super::StmtEmitter {
         targets: &[String],
         output: &mut String,
     ) -> Result<(), CodeGenError> {
-        let sel_code = emit_expr(selector)?;
+        let sel_code = emit_expr(selector, self.no_shell)?;
         let return_label = self.next_label("on_gosub_ret");
 
         writeln!(output, "{}switch ((int32_t)({}) - 1) {{", indent, sel_code).unwrap();

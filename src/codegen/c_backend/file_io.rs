@@ -34,8 +34,8 @@ impl StmtEmitter {
         record_len: Option<&TypedExpr>,
         output: &mut String,
     ) -> Result<(), CodeGenError> {
-        let filename_code = emit_expr(filename)?;
-        let file_num_code = emit_expr(file_num)?;
+        let filename_code = emit_expr(filename, self.no_shell)?;
+        let file_num_code = emit_expr(file_num, self.no_shell)?;
 
         // Determine C fopen mode string
         let c_mode = match mode {
@@ -65,7 +65,7 @@ impl StmtEmitter {
 
         // Handle record length for random access
         if let Some(rec_len) = record_len {
-            let rec_len_code = emit_expr(rec_len)?;
+            let rec_len_code = emit_expr(rec_len, self.no_shell)?;
             writeln!(
                 output,
                 "{}qb_file_set_reclen({}, {});",
@@ -87,9 +87,9 @@ impl StmtEmitter {
         record_len: Option<&TypedExpr>,
         output: &mut String,
     ) -> Result<(), CodeGenError> {
-        let mode_code = emit_expr(mode_expr)?;
-        let file_num_code = emit_expr(file_num)?;
-        let filename_code = emit_expr(filename)?;
+        let mode_code = emit_expr(mode_expr, self.no_shell)?;
+        let file_num_code = emit_expr(file_num, self.no_shell)?;
+        let filename_code = emit_expr(filename, self.no_shell)?;
 
         // The mode is a string expression that we'll pass to a runtime function
         // that interprets "O", "I", "A", "R", "B" at runtime
@@ -102,7 +102,7 @@ impl StmtEmitter {
 
         // Handle record length for random access
         if let Some(rec_len) = record_len {
-            let rec_len_code = emit_expr(rec_len)?;
+            let rec_len_code = emit_expr(rec_len, self.no_shell)?;
             writeln!(
                 output,
                 "{}qb_file_set_reclen({}, {});",
@@ -126,7 +126,7 @@ impl StmtEmitter {
             writeln!(output, "{}qb_file_close_all();", indent).unwrap();
         } else {
             for file_num in file_nums {
-                let file_num_code = emit_expr(file_num)?;
+                let file_num_code = emit_expr(file_num, self.no_shell)?;
                 writeln!(output, "{}qb_file_close({});", indent, file_num_code).unwrap();
             }
         }
@@ -142,10 +142,10 @@ impl StmtEmitter {
         newline: bool,
         output: &mut String,
     ) -> Result<(), CodeGenError> {
-        let file_num_code = emit_expr(file_num)?;
+        let file_num_code = emit_expr(file_num, self.no_shell)?;
 
         for item in items {
-            let expr_code = emit_expr(&item.expr)?;
+            let expr_code = emit_expr(&item.expr, self.no_shell)?;
 
             if item.expr.basic_type.is_string() {
                 writeln!(
@@ -201,10 +201,10 @@ impl StmtEmitter {
         values: &[TypedExpr],
         output: &mut String,
     ) -> Result<(), CodeGenError> {
-        let file_num_code = emit_expr(file_num)?;
+        let file_num_code = emit_expr(file_num, self.no_shell)?;
 
         for (i, value) in values.iter().enumerate() {
-            let expr_code = emit_expr(value)?;
+            let expr_code = emit_expr(value, self.no_shell)?;
 
             if value.basic_type.is_string() {
                 // WRITE quotes strings
@@ -254,7 +254,7 @@ impl StmtEmitter {
         output: &mut String,
     ) -> Result<(), CodeGenError> {
         use TypedInputTarget::*;
-        let file_num_code = emit_expr(file_num)?;
+        let file_num_code = emit_expr(file_num, self.no_shell)?;
 
         for target in targets {
             let (target_code, var_type) = match target {
@@ -265,8 +265,10 @@ impl StmtEmitter {
                     element_type,
                 } => {
                     let c_arr = c_identifier(name);
-                    let idx_code: Vec<_> =
-                        indices.iter().map(emit_expr).collect::<Result<_, _>>()?;
+                    let idx_code: Vec<_> = indices
+                        .iter()
+                        .map(|e| emit_expr(e, self.no_shell))
+                        .collect::<Result<_, _>>()?;
                     // Use first index for 1D array syntax
                     let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
                     (format!("{}[{}]", c_arr, idx), element_type.clone())
@@ -278,8 +280,10 @@ impl StmtEmitter {
                     field_type,
                 } => {
                     let c_arr = c_identifier(name);
-                    let idx_code: Vec<_> =
-                        indices.iter().map(emit_expr).collect::<Result<_, _>>()?;
+                    let idx_code: Vec<_> = indices
+                        .iter()
+                        .map(|e| emit_expr(e, self.no_shell))
+                        .collect::<Result<_, _>>()?;
                     let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
                     let field_chain = fields.join(".");
                     (
@@ -339,13 +343,16 @@ impl StmtEmitter {
     ) -> Result<(), CodeGenError> {
         use TypedInputTarget::*;
 
-        let file_num_code = emit_expr(file_num)?;
+        let file_num_code = emit_expr(file_num, self.no_shell)?;
 
         let target_code = match target {
             Variable { name, .. } => c_identifier(name),
             ArrayElement { name, indices, .. } => {
                 let c_arr = c_identifier(name);
-                let idx_code: Vec<_> = indices.iter().map(emit_expr).collect::<Result<_, _>>()?;
+                let idx_code: Vec<_> = indices
+                    .iter()
+                    .map(|e| emit_expr(e, self.no_shell))
+                    .collect::<Result<_, _>>()?;
                 let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
                 format!("{}[{}]", c_arr, idx)
             }
@@ -356,7 +363,10 @@ impl StmtEmitter {
                 ..
             } => {
                 let c_arr = c_identifier(name);
-                let idx_code: Vec<_> = indices.iter().map(emit_expr).collect::<Result<_, _>>()?;
+                let idx_code: Vec<_> = indices
+                    .iter()
+                    .map(|e| emit_expr(e, self.no_shell))
+                    .collect::<Result<_, _>>()?;
                 let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
                 let field_chain = fields.join(".");
                 format!("{}[{}].{}", c_arr, idx, field_chain)
@@ -389,11 +399,11 @@ impl StmtEmitter {
     ) -> Result<(), CodeGenError> {
         use crate::semantic::typed_ir::TypedInputTarget::*;
 
-        let file_num_code = emit_expr(file_num)?;
+        let file_num_code = emit_expr(file_num, self.no_shell)?;
 
         // Seek to position if specified
         if let Some(pos) = position {
-            let pos_code = emit_expr(pos)?;
+            let pos_code = emit_expr(pos, self.no_shell)?;
             writeln!(
                 output,
                 "{}qb_file_seek_record({}, {});",
@@ -411,7 +421,10 @@ impl StmtEmitter {
                 element_type,
             } => {
                 let c_arr = c_identifier(name);
-                let idx_code: Vec<_> = indices.iter().map(emit_expr).collect::<Result<_, _>>()?;
+                let idx_code: Vec<_> = indices
+                    .iter()
+                    .map(|e| emit_expr(e, self.no_shell))
+                    .collect::<Result<_, _>>()?;
                 let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
                 (format!("{}[{}]", c_arr, idx), element_type.clone())
             }
@@ -422,7 +435,10 @@ impl StmtEmitter {
                 field_type,
             } => {
                 let c_arr = c_identifier(name);
-                let idx_code: Vec<_> = indices.iter().map(emit_expr).collect::<Result<_, _>>()?;
+                let idx_code: Vec<_> = indices
+                    .iter()
+                    .map(|e| emit_expr(e, self.no_shell))
+                    .collect::<Result<_, _>>()?;
                 let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
                 let field_chain = fields.join(".");
                 (
@@ -473,11 +489,11 @@ impl StmtEmitter {
     ) -> Result<(), CodeGenError> {
         use crate::semantic::typed_ir::TypedInputTarget::*;
 
-        let file_num_code = emit_expr(file_num)?;
+        let file_num_code = emit_expr(file_num, self.no_shell)?;
 
         // Seek to position if specified
         if let Some(pos) = position {
-            let pos_code = emit_expr(pos)?;
+            let pos_code = emit_expr(pos, self.no_shell)?;
             writeln!(
                 output,
                 "{}qb_file_seek_record({}, {});",
@@ -495,7 +511,10 @@ impl StmtEmitter {
                 element_type,
             } => {
                 let c_arr = c_identifier(name);
-                let idx_code: Vec<_> = indices.iter().map(emit_expr).collect::<Result<_, _>>()?;
+                let idx_code: Vec<_> = indices
+                    .iter()
+                    .map(|e| emit_expr(e, self.no_shell))
+                    .collect::<Result<_, _>>()?;
                 let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
                 (format!("{}[{}]", c_arr, idx), element_type.clone())
             }
@@ -506,7 +525,10 @@ impl StmtEmitter {
                 field_type,
             } => {
                 let c_arr = c_identifier(name);
-                let idx_code: Vec<_> = indices.iter().map(emit_expr).collect::<Result<_, _>>()?;
+                let idx_code: Vec<_> = indices
+                    .iter()
+                    .map(|e| emit_expr(e, self.no_shell))
+                    .collect::<Result<_, _>>()?;
                 let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
                 let field_chain = fields.join(".");
                 (
@@ -554,8 +576,8 @@ impl StmtEmitter {
         position: &TypedExpr,
         output: &mut String,
     ) -> Result<(), CodeGenError> {
-        let file_num_code = emit_expr(file_num)?;
-        let pos_code = emit_expr(position)?;
+        let file_num_code = emit_expr(file_num, self.no_shell)?;
+        let pos_code = emit_expr(position, self.no_shell)?;
 
         writeln!(
             output,

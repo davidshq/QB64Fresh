@@ -1,6 +1,6 @@
 # QB64Fresh Handbook
 
-A comprehensive guide to using QB64Fresh — the modern BASIC compiler. It serves as the beginner-friendly **tutorial and getting started guide**, covering [Getting Started](#getting-started), [Installation](#installation), and your [first program](#compiling-your-first-program).
+A comprehensive guide to using QB64Fresh. For a step-by-step **tutorial and getting started** (install, first program, compile, run), see [GETTING_STARTED.md](GETTING_STARTED.md). This handbook covers [Getting Started](#getting-started), [Installation](#installation), and your [first program](#compiling-your-first-program).
 
 ---
 
@@ -43,10 +43,11 @@ PRINT "Nice to meet you, "; name; "!"
 
 Compile and run:
 ```bash
-cargo run -- hello.bas --emit-c > hello.c
+cargo run --release -- hello.bas --emit-c   # writes hello.c
 gcc hello.c -o hello -lm
 ./hello
 ```
+Use a memory limit when running the compiler; see [GETTING_STARTED.md](GETTING_STARTED.md).
 
 ---
 
@@ -70,15 +71,21 @@ gcc hello.c -o hello -lm
 
 ### Compiling Your First Program
 
-```bash
-# See all compiler stages
-cargo run -- myprogram.bas --tokens    # Tokenization
-cargo run -- myprogram.bas --ast       # Parse tree
-cargo run -- myprogram.bas --typed-ir  # Typed intermediate representation
-cargo run -- myprogram.bas --emit-c    # Generated C code
+See [GETTING_STARTED.md](GETTING_STARTED.md) for the full walkthrough, including memory limits and the C link step.
 
-# Full compilation (when runtime is linked)
-cargo run -- myprogram.bas -o myprogram
+```bash
+# Compile BASIC to C (use memory limit: ulimit -v 16777216, or ./run_limited.sh)
+cargo run --release -- myprogram.bas --emit-c   # writes myprogram.c
+
+# Build the executable (inline runtime, default)
+gcc myprogram.c -o myprogram -lm
+./myprogram
+
+# Inspect pipeline stages
+cargo run -- myprogram.bas --tokens     # Tokenization
+cargo run -- myprogram.bas --ast        # Parse tree
+cargo run -- myprogram.bas --typed-ir   # Typed IR
+cargo run -- myprogram.bas --emit-c      # C code
 ```
 
 ---

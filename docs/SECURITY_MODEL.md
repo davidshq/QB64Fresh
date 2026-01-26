@@ -122,13 +122,22 @@ All path arguments are expressions. They are passed through to the runtime or ge
 
 ---
 
-## 4. Possible Future Mitigations (Not Implemented)
+## 4. Compile-Time Option: `--no-shell` (Implemented)
+
+The **`--no-shell`** flag disables SHELL and _SHELLHIDE at compile time. If the program uses either construct (statement or function form), code generation fails with a clear error.
+
+- **Usage:** `qb64fresh program.bas --emit-c --no-shell`
+- **Effect:** SHELL, _SHELLHIDE (statements and `SHELL(cmd$)` / `_SHELLHIDE(cmd$)` function calls) are rejected with: *SHELL and _SHELLHIDE are disabled by --no-shell*.
+- **Use case:** Builds that must not run external commands (e.g. sandboxed or lock-down deployments).
+
+---
+
+## 5. Possible Future Mitigations (Not Implemented)
 
 The codebase and design do not currently include the following; they are documented here for clarity and as options for future work:
 
 | Option | Description |
 |--------|-------------|
-| **`--no-shell` (or similar)** | A compile-time flag to refuse or replace **SHELL** / **_SHELLHIDE** (e.g. error, or no-op) for builds that must not run external commands. |
 | **Configurable runtime policies** | Runtime flags or environment variables to disallow or restrict SHELL, or to constrain file operations to a given directory. |
 | **Path allowlists/restrictions** | Optional path validation in the runtime (e.g. reject `..` or paths outside a given root) for high-assurance or educational use. |
 
@@ -145,7 +154,7 @@ Any such feature would be documented separately and would not change the default
 
 ---
 
-## 6. Summary
+## 7. Summary
 
 | Topic | Default behavior | Sandboxing |
 |-------|------------------|------------|

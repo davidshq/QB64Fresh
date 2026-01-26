@@ -5,24 +5,6 @@
 A prioritized roadmap for QB64Fresh development. For completed features, see [TODO-completed.md](docs/archive/TODO-completed.md).
 
 ---
-
-## Priority 0: Bootstrap Completion (BLOCKING)
-
-**Current Status:** QB64pe compiles, `-h` works, but compilation crashes.
-
-- [ ] **Fix memory exhaustion during compilation** *(Critical - blocks bootstrap)*
-  - Bootstrapped QB64pe uses 25GB+ memory when compiling programs
-  - Crashes with segfault when memory limited to 16GB
-  - See [BOOTSTRAP_PLAN.md](BOOTSTRAP_PLAN.md) for details
-
-- [ ] **Diagnose root cause**
-  - Add memory tracking to generated C code
-  - Create minimal test case that reproduces the crash
-  - Compare with original QB64pe behavior
-
-**IMPORTANT:** Always use `ulimit -v 16777216` when running QB64pe. See [docs/MEMORY_LIMITS.md](docs/MEMORY_LIMITS.md).
-
----
 - All Phase 1, 2, 4 items have been completed — see [TODO-completed.md](docs/archive/TODO-completed.md).
 - Phase 5: All C Library Integration items completed — see [TODO-completed.md](docs/archive/TODO-completed.md).
 - Phase 7: All metacommands have been implemented — see [TODO-completed.md](docs/archive/TODO-completed.md).
@@ -64,9 +46,6 @@ Debugger infrastructure has been scaffolded as a workspace member (44 tests pass
 - [ ] Loop optimization *(Medium - 2-3 sessions)*
 - [ ] Inline small functions *(Medium - 2-3 sessions)*
 
-### Documentation
-- [ ] Tutorial/getting started guide *(Medium - 2-3 sessions)*
-
 ### Testing (See TESTING_INFRASTRUCTURE_PLAN.md for details)
 - [ ] Compatibility tests against QB64 programs *(Ongoing - add as discovered)*
 
@@ -93,7 +72,6 @@ If raw OpenGL is needed, users can use `DECLARE LIBRARY` to call OpenGL function
 These can be worked on independently of the compiler/runtime:
 
 - [ ] Debugger support (DAP) *(Large - requires runtime integration, see Phase 6)*
-- Formatter, linter, format/lint on save, build errors, settings, code actions, symbols, rename, snippets — see [TODO-completed.md](docs/archive/TODO-completed.md)
 
 ---
 

@@ -1014,6 +1014,7 @@ The following items were discovered to already be implemented during a TODO audi
 
 ### Documentation
 - [x] Language reference documentation *(Large - 4-6 sessions)* — **COMPLETED 2026-01-23**
+- [x] Tutorial/getting started guide *(Medium - 2-3 sessions)* — **COMPLETED 2026-01-25** — `docs/GETTING_STARTED.md`; Handbook and examples/README updated.
 
 ---
 

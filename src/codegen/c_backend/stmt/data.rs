@@ -68,7 +68,7 @@ impl super::StmtEmitter {
                     let c_arr = c_identifier(name);
                     let idx_parts: Vec<_> = indices
                         .iter()
-                        .map(emit_expr)
+                        .map(|e| emit_expr(e, self.no_shell))
                         .collect::<Result<Vec<_>, _>>()?;
                     let idx_str = idx_parts.join("][");
                     (format!("{}[{}]", c_arr, idx_str), basic_type.clone())
@@ -83,7 +83,7 @@ impl super::StmtEmitter {
                     let c_field = c_identifier(field);
                     let idx_parts: Vec<_> = indices
                         .iter()
-                        .map(emit_expr)
+                        .map(|e| emit_expr(e, self.no_shell))
                         .collect::<Result<Vec<_>, _>>()?;
                     let idx_str = idx_parts.join("][");
                     (

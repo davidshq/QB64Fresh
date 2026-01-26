@@ -11,5 +11,19 @@
         ]
       }
     ]
+  },
+  "permissions":{
+    "allow": [
+      "Bash(sed:*)",
+      "Bash(grep:*)",
+      "Bash(ls:*)",
+      "Bash(mkdir:*)",
+      "Bash(mv:*)",
+      "Bash(timeout:*)"
+    ],
+    "additionalDirectories": [
+      "../QB64pe/",
+      "//tmp"
+    ]
   }
 }

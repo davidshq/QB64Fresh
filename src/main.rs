@@ -53,6 +53,10 @@ struct Args {
     #[arg(long)]
     no_preprocess: bool,
 
+    /// Disable SHELL and _SHELLHIDE when using --emit-c (compile error if used). No effect with --ast, --tokens, --typed-ir.
+    #[arg(long)]
+    no_shell: bool,
+
     /// Verbose output
     #[arg(short, long)]
     verbose: bool,
@@ -232,6 +236,9 @@ fn main() {
             let source_file = args.input.to_string_lossy().to_string();
             backend = backend.with_debug(true).with_source_file(&source_file);
         }
+        if args.no_shell {
+            backend = backend.with_no_shell(true);
+        }
         let output = match backend.generate(&typed_program) {
             Ok(o) => o,
             Err(e) => {
@@ -283,4 +290,7 @@ fn main() {
     println!("  --typed-ir      Show typed IR after semantic analysis");
     println!("  --emit-c        Generate C code to .c file");
     println!("  --no-preprocess Skip $INCLUDE preprocessing");
+    println!(
+        "  --no-shell      Disable SHELL/_SHELLHIDE when using --emit-c (compile error if used)"
+    );
 }

@@ -5276,7 +5276,6 @@ mod call_absolute {
     use super::*;
 
     #[test]
-    #[ignore = "CALL ABSOLUTE not yet implemented in parser"]
     fn call_absolute_basic() {
         // CALL ABSOLUTE is a legacy statement that generates a warning
         let source = r#"
@@ -5514,14 +5513,12 @@ mod qb64_extension_functions {
 
     // Short-circuit operators
     #[test]
-    #[ignore = "_ANDALSO not yet implemented as expression function"]
     fn andalso_function() {
         let code = compile_to_c("DIM r AS LONG: r = _ANDALSO(1, 2)").unwrap();
         assert!(code.contains("qb_andalso("));
     }
 
     #[test]
-    #[ignore = "_ORELSE not yet implemented as expression function"]
     fn orelse_function() {
         let code = compile_to_c("DIM r AS LONG: r = _ORELSE(0, 1)").unwrap();
         assert!(code.contains("qb_orelse("));
@@ -6340,7 +6337,6 @@ mod metacommands_session036 {
     }
 
     #[test]
-    #[ignore = "OPTION _EXPLICIT not yet implemented in parser"]
     fn option_explicit() {
         // Just verify it parses - actual enforcement would require testing for errors
         let code = compile_to_c("OPTION _EXPLICIT\nDIM x AS INTEGER\nx = 5").unwrap();
@@ -6348,7 +6344,6 @@ mod metacommands_session036 {
     }
 
     #[test]
-    #[ignore = "OPTION _EXPLICITARRAY not yet implemented in parser"]
     fn option_explicitarray() {
         // Just verify it parses - actual enforcement would require testing for errors
         let code = compile_to_c("OPTION _EXPLICITARRAY\nDIM arr(10) AS INTEGER").unwrap();
@@ -6429,7 +6424,6 @@ y = _CAST(INTEGER, x)
     }
 
     #[test]
-    #[ignore = "_DEFINE type inference not yet implemented in semantic analysis"]
     fn define_statement() {
         let code = compile_to_c(
             r#"
