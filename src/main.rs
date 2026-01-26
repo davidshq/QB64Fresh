@@ -41,9 +41,13 @@ struct Args {
     #[arg(long = "emit-c")]
     emit_c: bool,
 
-    /// Runtime mode: 'inline' (default) or 'external'
-    #[arg(long, default_value = "inline")]
+    /// Runtime mode: 'external' (default, full graphics) or 'inline' (headless stubs)
+    #[arg(long, default_value = "external")]
     runtime: String,
+
+    /// Use headless mode with stub graphics (shorthand for --runtime inline)
+    #[arg(long)]
+    headless: bool,
 
     /// Enable debug mode (include debug hooks for breakpoints/stepping)
     #[arg(long)]
@@ -218,16 +222,20 @@ fn main() {
 
     // Code generation phase
     if args.emit_c {
-        // Parse runtime mode
-        let runtime_mode = match args.runtime.to_lowercase().as_str() {
-            "inline" => RuntimeMode::Inline,
-            "external" => RuntimeMode::External,
-            other => {
-                eprintln!(
-                    "Unknown runtime mode: '{}'. Use 'inline' or 'external'.",
-                    other
-                );
-                std::process::exit(1);
+        // Parse runtime mode - headless flag overrides to inline (stub graphics)
+        let runtime_mode = if args.headless {
+            RuntimeMode::Inline
+        } else {
+            match args.runtime.to_lowercase().as_str() {
+                "inline" => RuntimeMode::Inline,
+                "external" => RuntimeMode::External,
+                other => {
+                    eprintln!(
+                        "Unknown runtime mode: '{}'. Use 'inline' or 'external'.",
+                        other
+                    );
+                    std::process::exit(1);
+                }
             }
         };
 

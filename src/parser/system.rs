@@ -70,6 +70,16 @@ impl<'a> Parser<'a> {
         Ok(Statement::new(StatementKind::Chdir { path }, span))
     }
 
+    /// Parses ENVIRON statement.
+    ///
+    /// Syntax: `ENVIRON "name=value"`
+    pub(super) fn parse_environ(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("ENVIRON keyword").span.start;
+        let env_string = self.parse_expression()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::Environ { env_string }, span))
+    }
+
     // ==================== Shell Commands ====================
 
     /// Parses SHELL statement.

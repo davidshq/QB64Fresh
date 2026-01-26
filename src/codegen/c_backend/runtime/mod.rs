@@ -122,6 +122,7 @@ pub(in crate::codegen) fn emit_header_with_debug(
     writeln!(output, "#define _GREATER (1)").unwrap();
     writeln!(output, "#define _LESS (-1)").unwrap();
     // String constants (initialized after qb_string type is defined)
+    // For external runtime, _STR_EMPTY will be redefined after including the header
     writeln!(output, "#define _STR_EMPTY (&_qbs_empty)").unwrap();
     writeln!(output, "#define _STR_CRLF qb_string_new(\"\\r\\n\")").unwrap();
     writeln!(output, "#define _STR_LF qb_string_new(\"\\n\")").unwrap();
@@ -162,6 +163,491 @@ pub(in crate::codegen) fn emit_header_with_debug(
                 "/* Compile with: gcc -I<include_path> program.c -L<lib_path> -lqb64fresh_rt */"
             )
             .unwrap();
+            writeln!(output).unwrap();
+            // Error handling variables only - functions are in runtime library
+            // Only emit the static variables, not the functions (they're in libqb64fresh_rt.a)
+            writeln!(output, "/* Error Handling Variables (functions in runtime library) */").unwrap();
+            writeln!(output).unwrap();
+            writeln!(output, "static int32_t _qb_err = 0;").unwrap();
+            writeln!(output, "static int32_t _qb_erl = 0;").unwrap();
+            writeln!(output, "static void* _qb_error_handler = NULL;").unwrap();
+            writeln!(output, "static int _qb_error_resume_next = 0;").unwrap();
+            writeln!(output, "static void* _qb_error_line = NULL;").unwrap();
+            writeln!(output, "static int32_t _INCLERRORLINE = 0;").unwrap();
+            writeln!(output).unwrap();
+            // GOSUB stack and STRIG event ID - needed by generated code even with external runtime
+            legacy::emit_gosub_stack(output);
+            writeln!(output, "static uint32_t _qb_strig_event_id = 0;").unwrap();
+            writeln!(output).unwrap();
+            // Empty string constant - for external runtime, use qb_string_empty() function
+            // We'll call it once and cache the result
+            writeln!(output, "/* Empty string constant for external runtime */").unwrap();
+            writeln!(output, "static qb_string* _qbs_empty = NULL;").unwrap();
+            writeln!(output, "static void _init_qbs_empty(void) {{").unwrap();
+            writeln!(output, "    if (!_qbs_empty) _qbs_empty = qb_string_empty();").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // Redefine _STR_EMPTY to use the cached empty string
+            writeln!(output, "#undef _STR_EMPTY").unwrap();
+            writeln!(output, "#define _STR_EMPTY (_qbs_empty ? _qbs_empty : (_init_qbs_empty(), _qbs_empty))").unwrap();
+            writeln!(output).unwrap();
+            // Type size dummy variables - needed by generated code even with external runtime
+            types::emit_type_size_dummies(output);
+            writeln!(output).unwrap();
+            // Helper functions needed by generated code - simplified versions for external runtime
+            writeln!(output, "/* Helper functions for external runtime */").unwrap();
+            writeln!(output).unwrap();
+            // qb_len_str - string length (use runtime library function)
+            writeln!(output, "int32_t qb_len_str(qb_string* s) {{").unwrap();
+            writeln!(output, "    return s ? (int32_t)qb_string_len(s) : 0;").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // Temporary string pool functions - no-ops for external runtime (strings managed by library)
+            writeln!(output, "uint64_t qbs_tmp_base_get(void) {{ return 0; }}").unwrap();
+            writeln!(output, "void qbs_cleanup(uint64_t base, int dummy) {{ (void)base; (void)dummy; }}").unwrap();
+            writeln!(output).unwrap();
+            // qb_mid_assign - MID$ assignment for external runtime
+            // MID$(str$, start [, length]) = value$
+            // Replaces up to 'length' characters starting at 'start' (1-based)
+            // If length is -1, replace up to min(remaining length, value length)
+            writeln!(output, "void qb_mid_assign(qb_string** target, int32_t start, int32_t length, qb_string* value) {{").unwrap();
+            writeln!(output, "    if (!target || !*target || !value) return;").unwrap();
+            writeln!(output, "    qb_string* s = *target;").unwrap();
+            writeln!(output, "    size_t s_len = qb_string_len(s);").unwrap();
+            writeln!(output, "    if (start < 1 || (size_t)start > s_len) return;").unwrap();
+            writeln!(output, "    size_t idx = (size_t)(start - 1);").unwrap();
+            writeln!(output, "    size_t max_len = s_len - idx;").unwrap();
+            writeln!(output, "    size_t replace_len;").unwrap();
+            writeln!(output, "    if (length < 0) {{").unwrap();
+            writeln!(output, "        size_t value_len = qb_string_len(value);").unwrap();
+            writeln!(output, "        replace_len = (value_len < max_len) ? value_len : max_len;").unwrap();
+            writeln!(output, "    }} else {{").unwrap();
+            writeln!(output, "        replace_len = ((size_t)length < max_len) ? (size_t)length : max_len;").unwrap();
+            writeln!(output, "        size_t value_len = qb_string_len(value);").unwrap();
+            writeln!(output, "        if (replace_len > value_len) replace_len = value_len;").unwrap();
+            writeln!(output, "    }}").unwrap();
+            writeln!(output, "    // Build new string: left part + replacement + right part").unwrap();
+            writeln!(output, "    qb_string* left_part = (idx > 0) ? qb_left(s, (int32_t)idx) : qb_string_empty();").unwrap();
+            writeln!(output, "    qb_string* replace_part = (replace_len > 0) ? qb_left(value, (int32_t)replace_len) : qb_string_empty();").unwrap();
+            writeln!(output, "    size_t right_start = idx + replace_len;").unwrap();
+            writeln!(output, "    qb_string* right_part = (right_start < s_len) ? qb_right(s, (int32_t)(s_len - right_start + 1)) : qb_string_empty();").unwrap();
+            writeln!(output, "    qb_string* temp = qb_string_concat(left_part, replace_part);").unwrap();
+            writeln!(output, "    qb_string* new_str = qb_string_concat(temp, right_part);").unwrap();
+            writeln!(output, "    // Clean up temporary strings").unwrap();
+            writeln!(output, "    if (left_part) qb_string_release(left_part);").unwrap();
+            writeln!(output, "    if (replace_part) qb_string_release(replace_part);").unwrap();
+            writeln!(output, "    if (right_part) qb_string_release(right_part);").unwrap();
+            writeln!(output, "    if (temp) qb_string_release(temp);").unwrap();
+            writeln!(output, "    // Release old target and set new string").unwrap();
+            writeln!(output, "    qb_string_release(*target);").unwrap();
+            writeln!(output, "    *target = new_str;").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // qb_instr2 - 2-argument INSTR (starts at beginning)
+            writeln!(output, "int32_t qb_instr2(qb_string* s, qb_string* find) {{").unwrap();
+            writeln!(output, "    return qb_instr(1, s, find);").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // qb_controlchr - control character function (signature matches inline runtime)
+            // Note: Inline runtime has void qb_controlchr(int32_t state), but generated code may call it differently
+            // For now, provide both forms
+            writeln!(output, "int32_t qb_controlchr(int32_t code) {{").unwrap();
+            writeln!(output, "    return (code >= 0 && code <= 31) || code == 127;").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // qb_file_open_legacy - legacy file open (for compatibility)
+            // OPEN mode$, [#]filenum, filename[, reclen]
+            // Converts legacy syntax to standard qb_file_open call
+            writeln!(output, "void qb_file_open_legacy(int32_t fnum, const char* mode_char, const char* fname) {{").unwrap();
+            writeln!(output, "    if (!mode_char || !fname) return;").unwrap();
+            writeln!(output, "    // Convert legacy mode character to standard mode string").unwrap();
+            writeln!(output, "    const char* mode;").unwrap();
+            writeln!(output, "    switch (mode_char[0]) {{").unwrap();
+            writeln!(output, "        case 'I': case 'i': mode = \"r\"; break;").unwrap();
+            writeln!(output, "        case 'O': case 'o': mode = \"w\"; break;").unwrap();
+            writeln!(output, "        case 'A': case 'a': mode = \"a\"; break;").unwrap();
+            writeln!(output, "        case 'R': case 'r': mode = \"r+b\"; break;").unwrap();
+            writeln!(output, "        case 'B': case 'b': mode = \"r+b\"; break;").unwrap();
+            writeln!(output, "        default: mode = \"r\"; break;").unwrap();
+            writeln!(output, "    }}").unwrap();
+            writeln!(output, "    qb_file_open(fnum, fname, mode);").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // qb_ubound2 - 2-argument UBOUND function
+            // Stub implementation - returns 0 for now
+            // Proper implementation would require array metadata tracking
+            writeln!(output, "int32_t qb_ubound2(void* arr, int32_t dim) {{").unwrap();
+            writeln!(output, "    (void)arr; (void)dim;").unwrap();
+            writeln!(output, "    return 0;").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // qb_mki - make integer (for CV functions)
+            writeln!(output, "qb_string* qb_mki(int16_t n) {{").unwrap();
+            writeln!(output, "    uint8_t bytes[2];").unwrap();
+            writeln!(output, "    bytes[0] = (uint8_t)(n & 0xFF);").unwrap();
+            writeln!(output, "    bytes[1] = (uint8_t)((n >> 8) & 0xFF);").unwrap();
+            writeln!(output, "    return qb_string_from_bytes(bytes, 2);").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // qb_string_fill - STRING$(n, code) - provided by runtime library
+            // qb_string_fill_str - STRING$(n, c$) - wrapper for when STRING$ is called with a string argument
+            // This is a wrapper for when STRING$ is called with a string argument
+            writeln!(output, "qb_string* qb_string_fill_str(int32_t n, qb_string* c) {{").unwrap();
+            writeln!(output, "    if (!c || qb_string_len(c) == 0) return qb_string_empty();").unwrap();
+            writeln!(output, "    const char* data = qb_string_data(c);").unwrap();
+            writeln!(output, "    int32_t char_code = (unsigned char)data[0];").unwrap();
+            writeln!(output, "    return qb_string_fill(n, char_code);").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // qb_string_fill_code - STRING$(n, code) - fill with ASCII code (alias for compatibility)
+            writeln!(output, "qb_string* qb_string_fill_code(int32_t n, int32_t code) {{").unwrap();
+            writeln!(output, "    return qb_string_fill(n, code);").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // qb_mid2 - 2-argument MID$ function (start only, no length)
+            writeln!(output, "qb_string* qb_mid2(qb_string* s, int32_t start) {{").unwrap();
+            writeln!(output, "    return qb_mid(s, start, -1);").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // qb_asc2 - 2-argument ASC function (position)
+            writeln!(output, "int32_t qb_asc2(qb_string* s, int32_t pos) {{").unwrap();
+            writeln!(output, "    if (!s || pos < 1 || pos > (int32_t)qb_string_len(s)) return 0;").unwrap();
+            writeln!(output, "    const char* data = qb_string_data(s);").unwrap();
+            writeln!(output, "    return (unsigned char)data[pos - 1];").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // qb_array_register - register array metadata (1D version)
+            // Stub implementation - no-op for now
+            // Proper implementation would track array bounds for UBOUND/LBOUND functions
+            writeln!(output, "void qb_array_register(void* ptr, int32_t lower, int32_t upper) {{").unwrap();
+            writeln!(output, "    (void)ptr; (void)lower; (void)upper;").unwrap();
+            writeln!(output, "    // Array metadata registration not yet implemented").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // qb_ubound - return upper bound of array (first dimension)
+            // Stub implementation - returns 0 for now
+            // Proper implementation would require array metadata tracking
+            writeln!(output, "int32_t qb_ubound(void* arr) {{").unwrap();
+            writeln!(output, "    (void)arr;").unwrap();
+            writeln!(output, "    return 0;").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // qb_cvl - unpack 4-byte string to 32-bit long
+            writeln!(output, "int32_t qb_cvl(qb_string* s) {{").unwrap();
+            writeln!(output, "    if (!s || qb_string_len(s) < 4) return 0;").unwrap();
+            writeln!(output, "    const char* data = qb_string_data(s);").unwrap();
+            writeln!(output, "    int32_t result;").unwrap();
+            writeln!(output, "    memcpy(&result, data, 4);").unwrap();
+            writeln!(output, "    return result;").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // Command line arguments - needed by COMMAND$ functions
+            // Note: qb_init_args is provided by the runtime library
+            // We only need the static variables for qb_command_n and qb_commandcount
+            writeln!(output, "/* Command line arguments */").unwrap();
+            writeln!(output, "static int _qb_argc = 0;").unwrap();
+            writeln!(output, "static char** _qb_argv = NULL;").unwrap();
+            writeln!(output).unwrap();
+            // qb_command_n - COMMAND$(n) - get command line argument
+            writeln!(output, "qb_string* qb_command_n(int64_t n) {{").unwrap();
+            writeln!(output, "    if (n < 0 || n >= _qb_argc || !_qb_argv) return qb_string_empty();").unwrap();
+            writeln!(output, "    return qb_string_new(_qb_argv[n]);").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // qb_commandcount - _COMMANDCOUNT
+            writeln!(output, "int64_t qb_commandcount(void) {{").unwrap();
+            writeln!(output, "    return _qb_argc - 1;").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // qb_fullpath - _FULLPATH$
+            writeln!(output, "qb_string* qb_fullpath(qb_string* path) {{").unwrap();
+            writeln!(output, "    if (!path) return qb_string_empty();").unwrap();
+            writeln!(output, "    const char* path_str = qb_string_data(path);").unwrap();
+            writeln!(output, "    char* resolved = realpath(path_str, NULL);").unwrap();
+            writeln!(output, "    if (resolved) {{").unwrap();
+            writeln!(output, "        qb_string* result = qb_string_new(resolved);").unwrap();
+            writeln!(output, "        free(resolved);").unwrap();
+            writeln!(output, "        return result;").unwrap();
+            writeln!(output, "    }}").unwrap();
+            writeln!(output, "    return qb_string_retain(path);").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // qb_str - STR$(n) - convert number to string
+            writeln!(output, "qb_string* qb_str(double n) {{").unwrap();
+            writeln!(output, "    char buf[64];").unwrap();
+            writeln!(output, "    snprintf(buf, sizeof(buf), \" %g\", n);").unwrap();
+            writeln!(output, "    return qb_string_new(buf);").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // qb_asc_assign - ASC assignment (set character at position)
+            // For opaque strings, we need to create a new string with the modified character
+            writeln!(output, "void qb_asc_assign(qb_string** s, int32_t pos, int32_t ch) {{").unwrap();
+            writeln!(output, "    if (!s || !*s || pos < 1 || pos > (int32_t)qb_string_len(*s)) return;").unwrap();
+            writeln!(output, "    qb_string* old = *s;").unwrap();
+            writeln!(output, "    size_t len = qb_string_len(old);").unwrap();
+            writeln!(output, "    // Build new string: left + char + right").unwrap();
+            writeln!(output, "    qb_string* left = (pos > 1) ? qb_left(old, pos - 1) : qb_string_empty();").unwrap();
+            writeln!(output, "    qb_string* char_str = qb_chr(ch);").unwrap();
+            writeln!(output, "    qb_string* right = (pos < (int32_t)len) ? qb_right(old, (int32_t)(len - pos + 1)) : qb_string_empty();").unwrap();
+            writeln!(output, "    qb_string* temp = qb_string_concat(left, char_str);").unwrap();
+            writeln!(output, "    qb_string* new_str = qb_string_concat(temp, right);").unwrap();
+            writeln!(output, "    // Clean up").unwrap();
+            writeln!(output, "    if (left) qb_string_release(left);").unwrap();
+            writeln!(output, "    if (char_str) qb_string_release(char_str);").unwrap();
+            writeln!(output, "    if (right) qb_string_release(right);").unwrap();
+            writeln!(output, "    if (temp) qb_string_release(temp);").unwrap();
+            writeln!(output, "    qb_string_release(old);").unwrap();
+            writeln!(output, "    *s = new_str;").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // qb_shl - _SHL (shift left)
+            writeln!(output, "int64_t qb_shl(int64_t value, int32_t shift) {{").unwrap();
+            writeln!(output, "    return shift >= 0 ? (value << shift) : (value >> (-shift));").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // qb_file_get_string - GET # for strings (binary read into string buffer)
+            writeln!(output, "void qb_file_get_string(int32_t fnum, qb_string* s) {{").unwrap();
+            writeln!(output, "    if (!s) return;").unwrap();
+            writeln!(output, "    size_t len = qb_string_len(s);").unwrap();
+            writeln!(output, "    if (len == 0) return;").unwrap();
+            writeln!(output, "    // For external runtime, we need to use qb_file_get with the string's data").unwrap();
+            writeln!(output, "    // Note: This assumes the string buffer is writable, which may not be true for opaque types").unwrap();
+            writeln!(output, "    // For now, this is a stub - proper implementation requires runtime library support").unwrap();
+            writeln!(output, "    (void)fnum; (void)s;").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // qb_array_register_md - multi-dimensional array registration
+            // Stub implementation - no-op for now
+            // Proper implementation would track array bounds for UBOUND/LBOUND functions
+            writeln!(output, "void qb_array_register_md(void* ptr, int32_t num_dims, int32_t* lowers, int32_t* uppers) {{").unwrap();
+            writeln!(output, "    (void)ptr; (void)num_dims; (void)lowers; (void)uppers;").unwrap();
+            writeln!(output, "    // Multi-dimensional array metadata registration not yet implemented").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // qb_environ - ENVIRON$ function
+            writeln!(output, "qb_string* qb_environ(qb_string* name) {{").unwrap();
+            writeln!(output, "    if (!name) return qb_string_empty();").unwrap();
+            writeln!(output, "    const char* name_str = qb_string_data(name);").unwrap();
+            writeln!(output, "    const char* val = getenv(name_str);").unwrap();
+            writeln!(output, "    return val ? qb_string_new(val) : qb_string_empty();").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // qb_cvi - unpack 2-byte string to 16-bit integer
+            writeln!(output, "int16_t qb_cvi(qb_string* s) {{").unwrap();
+            writeln!(output, "    if (!s || qb_string_len(s) < 2) return 0;").unwrap();
+            writeln!(output, "    const char* data = qb_string_data(s);").unwrap();
+            writeln!(output, "    int16_t result;").unwrap();
+            writeln!(output, "    memcpy(&result, data, 2);").unwrap();
+            writeln!(output, "    return result;").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // qb_mkl - pack 32-bit long to 4-byte string
+            writeln!(output, "qb_string* qb_mkl(int32_t n) {{").unwrap();
+            writeln!(output, "    uint8_t bytes[4];").unwrap();
+            writeln!(output, "    memcpy(bytes, &n, 4);").unwrap();
+            writeln!(output, "    return qb_string_from_bytes(bytes, 4);").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // qb_readfile - _READFILE$
+            writeln!(output, "qb_string* qb_readfile(qb_string* path) {{").unwrap();
+            writeln!(output, "    if (!path) return qb_string_empty();").unwrap();
+            writeln!(output, "    const char* path_str = qb_string_data(path);").unwrap();
+            writeln!(output, "    FILE* f = fopen(path_str, \"rb\");").unwrap();
+            writeln!(output, "    if (!f) return qb_string_empty();").unwrap();
+            writeln!(output, "    fseek(f, 0, SEEK_END);").unwrap();
+            writeln!(output, "    long size = ftell(f);").unwrap();
+            writeln!(output, "    fseek(f, 0, SEEK_SET);").unwrap();
+            writeln!(output, "    char* buf = (char*)malloc(size + 1);").unwrap();
+            writeln!(output, "    if (!buf) {{ fclose(f); return qb_string_empty(); }}").unwrap();
+            writeln!(output, "    fread(buf, 1, size, f);").unwrap();
+            writeln!(output, "    buf[size] = '\\0';").unwrap();
+            writeln!(output, "    fclose(f);").unwrap();
+            writeln!(output, "    qb_string* result = qb_string_from_bytes((uint8_t*)buf, size);").unwrap();
+            writeln!(output, "    free(buf);").unwrap();
+            writeln!(output, "    return result;").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // qb_writefile - _WRITEFILE
+            writeln!(output, "void qb_writefile(qb_string* path, qb_string* content) {{").unwrap();
+            writeln!(output, "    if (!path || !content) return;").unwrap();
+            writeln!(output, "    const char* path_str = qb_string_data(path);").unwrap();
+            writeln!(output, "    const char* content_data = qb_string_data(content);").unwrap();
+            writeln!(output, "    size_t content_len = qb_string_len(content);").unwrap();
+            writeln!(output, "    FILE* f = fopen(path_str, \"wb\");").unwrap();
+            writeln!(output, "    if (!f) return;").unwrap();
+            writeln!(output, "    fwrite(content_data, 1, content_len, f);").unwrap();
+            writeln!(output, "    fclose(f);").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // qb_deflate - compression (stub)
+            writeln!(output, "qb_string* qb_deflate(qb_string* data) {{").unwrap();
+            writeln!(output, "    (void)data;").unwrap();
+            writeln!(output, "    return qb_string_empty();").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // qb_red32, qb_green32, qb_blue32 - color component extraction
+            writeln!(output, "int32_t qb_red32(uint32_t c) {{ return (c >> 16) & 0xFF; }}").unwrap();
+            writeln!(output, "int32_t qb_green32(uint32_t c) {{ return (c >> 8) & 0xFF; }}").unwrap();
+            writeln!(output, "int32_t qb_blue32(uint32_t c) {{ return c & 0xFF; }}").unwrap();
+            writeln!(output).unwrap();
+            // qb_val_uint64 - VAL with UINT64 type
+            writeln!(output, "uint64_t qb_val_uint64(qb_string* s) {{").unwrap();
+            writeln!(output, "    if (!s) return 0;").unwrap();
+            writeln!(output, "    const char* data = qb_string_data(s);").unwrap();
+            writeln!(output, "    return strtoull(data, NULL, 10);").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // qb_val_int64 - VAL with INT64 type
+            writeln!(output, "int64_t qb_val_int64(qb_string* s) {{").unwrap();
+            writeln!(output, "    if (!s) return 0;").unwrap();
+            writeln!(output, "    const char* data = qb_string_data(s);").unwrap();
+            writeln!(output, "    return strtoll(data, NULL, 10);").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // qb_file_put_string - PUT # for strings (binary write from string buffer)
+            writeln!(output, "void qb_file_put_string(int32_t fnum, qb_string* s) {{").unwrap();
+            writeln!(output, "    if (!s) return;").unwrap();
+            writeln!(output, "    size_t len = qb_string_len(s);").unwrap();
+            writeln!(output, "    if (len == 0) return;").unwrap();
+            writeln!(output, "    const char* data = qb_string_data(s);").unwrap();
+            writeln!(output, "    qb_file_put(fnum, data, len);").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // qb_error - ERROR statement
+            writeln!(output, "void qb_error(int32_t code) {{").unwrap();
+            writeln!(output, "    fprintf(stderr, \"ERROR %d\\n\", code);").unwrap();
+            writeln!(output, "    exit(code);").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // qb_echo - ECHO statement (console output control)
+            // ECHO ON/OFF controls whether INPUT prompts are displayed
+            // Stub implementation - echo is always on for now
+            writeln!(output, "void qb_echo(int32_t flag) {{").unwrap();
+            writeln!(output, "    (void)flag;").unwrap();
+            writeln!(output, "    // ECHO control not yet implemented in runtime library").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // qb_sgn - SGN function
+            writeln!(output, "int32_t qb_sgn(double n) {{").unwrap();
+            writeln!(output, "    if (n > 0) return 1;").unwrap();
+            writeln!(output, "    if (n < 0) return -1;").unwrap();
+            writeln!(output, "    return 0;").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // Additional missing functions - batch add
+            writeln!(output, "/* Additional stub functions for QB64PE compatibility */").unwrap();
+            writeln!(output, "int32_t qb_icon(void) {{ return 0; }}").unwrap();
+            writeln!(output, "int32_t qb_acceptfiledrop(void) {{ return 0; }}").unwrap();
+            writeln!(output, "int32_t qb_alpha(uint32_t c, int32_t mode) {{ (void)mode; return (c >> 24) & 0xFF; }}").unwrap();
+            writeln!(output, "int32_t qb_alpha32(uint32_t c) {{ return (c >> 24) & 0xFF; }}").unwrap();
+            writeln!(output, "double qb_arccot(double n) {{ return atan(1.0 / n); }}").unwrap();
+            writeln!(output, "double qb_arccsc(double n) {{ return asin(1.0 / n); }}").unwrap();
+            writeln!(output, "double qb_arcsec(double n) {{ return acos(1.0 / n); }}").unwrap();
+            writeln!(output, "int32_t qb_backgroundcolor(void) {{ return 0; }}").unwrap();
+            writeln!(output, "int32_t qb_blue(uint32_t c, int32_t mode) {{ (void)mode; return c & 0xFF; }}").unwrap();
+            writeln!(output, "double qb_clamp(double x, double min, double max) {{ if (x < min) return min; if (x > max) return max; return x; }}").unwrap();
+            writeln!(output, "int32_t qb_console(int32_t mode) {{ (void)mode; return 1; }}").unwrap();
+            writeln!(output, "double qb_cot(double n) {{ return 1.0 / tan(n); }}").unwrap();
+            writeln!(output, "double qb_coth(double n) {{ return 1.0 / tanh(n); }}").unwrap();
+            writeln!(output, "double qb_csc(double n) {{ return 1.0 / sin(n); }}").unwrap();
+            writeln!(output, "double qb_csch(double n) {{ return 1.0 / sinh(n); }}").unwrap();
+            writeln!(output, "int32_t qb_csrlin(void) {{ return 1; }}").unwrap();
+            writeln!(output, "double qb_cvd(qb_string* s) {{ if (!s || qb_string_len(s) < 8) return 0.0; double result; memcpy(&result, qb_string_data(s), 8); return result; }}").unwrap();
+            writeln!(output, "double qb_cvq(qb_string* s) {{ if (!s || qb_string_len(s) < 8) return 0.0; double result; memcpy(&result, qb_string_data(s), 8); return result; }}").unwrap();
+            writeln!(output, "float qb_cvs(qb_string* s) {{ if (!s || qb_string_len(s) < 4) return 0.0f; float result; memcpy(&result, qb_string_data(s), 4); return result; }}").unwrap();
+            writeln!(output, "int32_t qb_defaultcolor(void) {{ return 7; }}").unwrap();
+            writeln!(output, "void qb_def_seg(int32_t seg) {{ (void)seg; }}").unwrap();
+            writeln!(output, "qb_string* qb_droppedfile_str(int32_t index) {{ (void)index; return qb_string_empty(); }}").unwrap();
+            writeln!(output, "int32_t qb_exit_state(void) {{ return 0; }}").unwrap();
+            writeln!(output, "void qb_finishdrop(void) {{ }}").unwrap();
+            writeln!(output, "void qb_gfx_resize(int32_t flag) {{ (void)flag; }}").unwrap();
+            writeln!(output, "int32_t qb_green(uint32_t c, int32_t mode) {{ (void)mode; return (c >> 8) & 0xFF; }}").unwrap();
+            writeln!(output, "int32_t qb_lbound(void* arr) {{ (void)arr; return 0; }}").unwrap();
+            writeln!(output, "int32_t qb_loadfont3(qb_string* path, int32_t size, qb_string* req) {{ (void)path; (void)size; (void)req; return 0; }}").unwrap();
+            writeln!(output, "int32_t logical_drives(void) {{ return 0; }}").unwrap();
+            writeln!(output).unwrap();
+            // For external runtime, qb_sleep and qb_delay are provided by the runtime library
+            // However, qb_limit (for _LIMIT statement) needs to be emitted as it's not in the library
+            // Note: Do NOT call timing::emit_timing_functions() here - it would emit conflicting functions
+            writeln!(output, "/* Frame rate limiter for _LIMIT statement (external runtime) */").unwrap();
+            writeln!(output, "#ifndef _WIN32").unwrap();
+            writeln!(output, "#include <unistd.h>  /* For usleep */").unwrap();
+            writeln!(output, "#include <sys/time.h>  /* For gettimeofday */").unwrap();
+            writeln!(output, "#endif").unwrap();
+            writeln!(output, "static double qb_last_frame_time = 0.0;").unwrap();
+            writeln!(output).unwrap();
+            writeln!(output, "#ifdef _WIN32").unwrap();
+            writeln!(output, "static double qb_get_time_seconds(void) {{").unwrap();
+            writeln!(output, "    LARGE_INTEGER freq, count;").unwrap();
+            writeln!(output, "    QueryPerformanceFrequency(&freq);").unwrap();
+            writeln!(output, "    QueryPerformanceCounter(&count);").unwrap();
+            writeln!(output, "    return (double)count.QuadPart / (double)freq.QuadPart;").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output, "#else").unwrap();
+            writeln!(output, "static double qb_get_time_seconds(void) {{").unwrap();
+            writeln!(output, "    struct timeval tv;").unwrap();
+            writeln!(output, "    gettimeofday(&tv, NULL);").unwrap();
+            writeln!(output, "    return (double)tv.tv_sec + (double)tv.tv_usec / 1000000.0;").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output, "#endif").unwrap();
+            writeln!(output).unwrap();
+            writeln!(output, "void qb_limit(int fps) {{").unwrap();
+            writeln!(output, "    if (fps <= 0) return;").unwrap();
+            writeln!(output, "    double target_frame_time = 1.0 / (double)fps;").unwrap();
+            writeln!(output, "    double current_time = qb_get_time_seconds();").unwrap();
+            writeln!(output, "    if (qb_last_frame_time > 0.0) {{").unwrap();
+            writeln!(output, "        double elapsed = current_time - qb_last_frame_time;").unwrap();
+            writeln!(output, "        double wait_time = target_frame_time - elapsed;").unwrap();
+            writeln!(output, "        if (wait_time > 0.0) {{").unwrap();
+            writeln!(output, "#ifdef _WIN32").unwrap();
+            writeln!(output, "            Sleep((DWORD)(wait_time * 1000.0));").unwrap();
+            writeln!(output, "#else").unwrap();
+            writeln!(output, "            usleep((unsigned int)(wait_time * 1000000.0));").unwrap();
+            writeln!(output, "#endif").unwrap();
+            writeln!(output, "        }}").unwrap();
+            writeln!(output, "    }}").unwrap();
+            writeln!(output, "    qb_last_frame_time = qb_get_time_seconds();").unwrap();
+            writeln!(output, "}}").unwrap();
+            writeln!(output).unwrap();
+            // Note: qb_strig_check_event and qb_strig_event_done are provided by the runtime library
+            
+            // Additional missing functions for QB64PE compatibility
+            writeln!(output, "/* Additional QB64PE-specific functions */").unwrap();
+            writeln!(output, "double qb_sec(double n) {{ return 1.0 / cos(n); }}").unwrap();
+            writeln!(output, "double qb_sech(double n) {{ return 1.0 / cosh(n); }}").unwrap();
+            writeln!(output, "int32_t qb_negate(int32_t n) {{ return -n; }}").unwrap();
+            writeln!(output, "int32_t qb_red(uint32_t c, int32_t mode) {{ (void)mode; return (c >> 16) & 0xFF; }}").unwrap();
+            writeln!(output, "uint32_t qb__rgb(int32_t r, int32_t g, int32_t b, int32_t mode) {{ (void)r; (void)g; (void)b; (void)mode; return 0; }}").unwrap();
+            writeln!(output, "uint32_t qb__rgba(int32_t r, int32_t g, int32_t b, int32_t a, int32_t mode) {{ (void)r; (void)g; (void)b; (void)a; (void)mode; return 0; }}").unwrap();
+            writeln!(output, "int32_t qb_messagebox4(qb_string* title, qb_string* message, int32_t type, int32_t icon) {{ (void)title; (void)message; (void)type; (void)icon; return 0; }}").unwrap();
+            writeln!(output, "int64_t qb_timer_n(int32_t n) {{ (void)n; return 0; }}").unwrap();
+            writeln!(output, "void qb_sub__font(int32_t handle) {{ (void)handle; }}").unwrap();
+            writeln!(output, "void qb_sub__freefont(int32_t handle) {{ (void)handle; }}").unwrap();
+            writeln!(output, "void qb_mapunicode(int32_t unicode_code, int32_t ascii_pos) {{ (void)unicode_code; (void)ascii_pos; }}").unwrap();
+            writeln!(output, "int32_t qb__mapunicode1(int32_t code) {{ return code; }}").unwrap();
+            writeln!(output, "void qb_sub__title(qb_string* title) {{ (void)title; }}").unwrap();
+            writeln!(output, "int32_t qb_resize(void) {{ return 0; }}").unwrap();
+            writeln!(output, "int32_t qb_resizewidth(void) {{ return 80; }}").unwrap();
+            writeln!(output, "int32_t qb_resizeheight(void) {{ return 25; }}").unwrap();
+            writeln!(output, "int32_t qb_pos(int64_t n) {{ (void)n; return 0; }}").unwrap();
+            writeln!(output, "int32_t qb_screen(int32_t row, int32_t col) {{ (void)row; (void)col; return 32; }}").unwrap();
+            writeln!(output, "int32_t qb_screen3(int32_t mode, int32_t depth, int32_t flags) {{ (void)mode; (void)depth; (void)flags; return 0; }}").unwrap();
+            writeln!(output, "int32_t qb_screenx(void) {{ return 0; }}").unwrap();
+            writeln!(output, "int32_t qb_screeny(void) {{ return 0; }}").unwrap();
+            writeln!(output, "int32_t qb_readbit(qb_string* s, int32_t pos) {{ (void)s; (void)pos; return 0; }}").unwrap();
+            writeln!(output, "qb_string* qb_openfiledialog5(qb_string* title, qb_string* filter, qb_string* def, qb_string* opts, int32_t flags) {{ (void)title; (void)filter; (void)def; (void)opts; (void)flags; return qb_string_empty(); }}").unwrap();
+            writeln!(output, "qb_string* qb_savefiledialog4(qb_string* title, qb_string* filter, qb_string* def, int32_t flags) {{ (void)title; (void)filter; (void)def; (void)flags; return qb_string_empty(); }}").unwrap();
+            writeln!(output, "int32_t qb_statuscode(int32_t handle) {{ (void)handle; return 0; }}").unwrap();
+            writeln!(output, "int32_t qb_shellhide(qb_string* cmd) {{ (void)cmd; return 0; }}").unwrap();
+            writeln!(output, "void qb_sub_set_foreground_window(intptr_t hwnd) {{ (void)hwnd; }}").unwrap();
+            // Note: qb_sub_setdependency is defined in QB64pe source, don't redefine here
+            writeln!(output, "qb_string* qb_md5(qb_string* s) {{ (void)s; return qb_string_empty(); }}").unwrap();
+            writeln!(output, "qb_string* qb_mkd(double n) {{ uint8_t bytes[8]; memcpy(bytes, &n, 8); return qb_string_from_bytes(bytes, 8); }}").unwrap();
+            writeln!(output, "qb_string* qb_mkq(double n) {{ uint8_t bytes[8]; memcpy(bytes, &n, 8); return qb_string_from_bytes(bytes, 8); }}").unwrap();
+            writeln!(output, "qb_string* qb_mks(float n) {{ uint8_t bytes[4]; memcpy(bytes, &n, 4); return qb_string_from_bytes(bytes, 4); }}").unwrap();
+            writeln!(output, "int64_t qb_windowhasfocus(void) {{ return -1; }}").unwrap();
+            writeln!(output, "void qb_view_print(int32_t top, int32_t bottom) {{ (void)top; (void)bottom; }}").unwrap();
+            writeln!(output, "int32_t qb_totaldroppedfiles(void) {{ return 0; }}").unwrap();
             writeln!(output).unwrap();
         }
     }

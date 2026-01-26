@@ -13,7 +13,7 @@ QB64Fresh uses a **modern LSP-based architecture** instead of a monolithic IDE. 
 - **Linter** (`qb64fresh-lint`) - Static analysis (correctness, style, unused)
 - **Debugger** (`qb64fresh-debug`) - DAP server, breakpoints, step, call stack, symbols, watch; compiler `--debug` and runtime stubs. Runtime–debugger IPC integration in progress. See `tools/README.md`, `docs/adrs/ADR-0013-debugger-architecture.md`.
 
-Legend: ☑ = Implemented | ☐ = Not implemented | 🔶 = Partial/Different approach
+Legend: ☑ = Implemented | 📋 = Plan to implement | 🔶 = Partial/Different approach | 💭 = Maybe someday | ☐ = Not implemented | ❌ = Not planned / Not applicable
 
 ---
 
@@ -45,11 +45,11 @@ Legend: ☑ = Implemented | ☐ = Not implemented | 🔶 = Partial/Different app
 
 | Feature            | Shortcut | Status | Implementation |
 | ------------------ | -------- | ------ | -------------- |
-| → Skip comments    | -        | ☐      | -              |
-| → Skip strings     | -        | ☐      | -              |
-| → Only in comments | -        | ☐      | -              |
-| → Only in strings  | -        | ☐      | -              |
-| → Invert search    | -        | ☐      | -              |
+| → Skip comments    | -        | 💭      | VSCode has some regex support - may not need custom implementation |
+| → Skip strings     | -        | 💭      | VSCode has some regex support - may not need custom implementation |
+| → Only in comments | -        | 💭      | VSCode has some regex support - may not need custom implementation |
+| → Only in strings  | -        | 💭      | VSCode has some regex support - may not need custom implementation |
+| → Invert search    | -        | 💭      | VSCode has some regex support - may not need custom implementation |
 
 ---
 
@@ -57,18 +57,18 @@ Legend: ☑ = Implemented | ☐ = Not implemented | 🔶 = Partial/Different app
 
 | Feature                            | Shortcut | Status | Implementation |
 | ---------------------------------- | -------- | ------ | -------------- |
-| Run Only (No EXE save)             | -        | ☐      | -              |
-| Output EXE to Source Folder toggle | -        | ☐      | -              |
-| Generate License For EXE           | -        | ☐      | -              |
-| Modify COMMAND$ function parameter | -        | ☐      | -              |
-| Change Terminal (Linux only)       | -        | ☐      | -              |
-| Set Default EXE Folder             | -        | ☐      | -              |
+| Run Only (No EXE save)             | -        | 📋      | Core workflow feature - compile and run without saving executable |
+| Output EXE to Source Folder toggle | -        | 📋      | Common workflow need - control output location |
+| Generate License For EXE           | -        | 💭      | Nice-to-have but not essential |
+| Modify COMMAND$ function parameter | -        | 💭      | Niche feature - may not be needed |
+| Change Terminal (Linux only)       | -        | 💭      | Platform-specific - low priority |
+| Set Default EXE Folder             | -        | 📋      | Core workflow feature - configure default build output |
 | **Configure Logging**              |          |        |                |
-| → Enable/disable logging           | -        | ☐      | -              |
-| → Set log level                    | -        | ☐      | -              |
-| → Set log scopes                   | -        | ☐      | -              |
-| → Set log handlers                 | -        | ☐      | -              |
-| → Configure log file name          | -        | ☐      | -              |
+| → Enable/disable logging           | -        | 💭      | Unnecessary complexity for most users |
+| → Set log level                    | -        | 💭      | Unnecessary complexity for most users |
+| → Set log scopes                   | -        | 💭      | Unnecessary complexity for most users |
+| → Set log handlers                 | -        | 💭      | Unnecessary complexity for most users |
+| → Configure log file name          | -        | 💭      | Unnecessary complexity for most users |
 
 ---
 
@@ -77,27 +77,25 @@ Legend: ☑ = Implemented | ☐ = Not implemented | 🔶 = Partial/Different app
 | Feature                               | Shortcut | Status | Implementation                                                                 |
 | ------------------------------------- | -------- | ------ | ------------------------------------------------------------------------------ |
 | Start Paused                          | F7 / F8  | 🔶     | qb64fresh-debug supports; runtime IPC in progress                               |
-| Toggle Breakpoint                     | F9       | 🔶     | DAP/types in tools/debug; VSCode DAP client integration in progress            |
-| → Set breakpoints on lines            | -        | 🔶     | tools/debug                                                                    |
-| → Visual breakpoint indicators        | -        | 🔶     | Via DAP / editor when connected                                                 |
+| Toggle Breakpoint                     | F9       | 🔶     | DAP `setBreakpoints` implemented (`tools/debug/src/server.rs:535`), needs runtime integration |
 | Clear All Breakpoints                 | F10      | 🔶     | tools/debug                                                                    |
-| Toggle Skip Line                      | Ctrl+P   | ☐      | Not yet implemented                                                            |
-| → Skip marked lines during debug      | -        | ☐      | Not yet implemented                                                            |
-| Unskip All Lines                      | Ctrl+F10 | ☐      | Not yet implemented                                                            |
+| Toggle Skip Line                      | Ctrl+P   | 💭      | Niche debugging feature - low priority |
+| → Skip marked lines during debug      | -        | 💭      | Niche debugging feature - low priority |
+| Unskip All Lines                      | Ctrl+F10 | 💭      | Niche debugging feature - low priority |
 | **Watch List...**                     | F4       | 🔶     | watch.rs, values.rs; runtime variable read in progress                          |
 | → Add variables to watch              | -        | 🔶     | tools/debug                                                                    |
 | → Remove variables from watch         | -        | 🔶     | tools/debug                                                                    |
-| → Display format (DEC, HEX, BIN, OCT) | -        | ☐      | Not yet implemented                                                            |
+| → Display format (DEC, HEX, BIN, OCT) | -        | 💭      | Nice-to-have for low-level debugging but not blocking |
 | → Watch array elements                | -        | 🔶     | watch.rs parses; runtime read in progress                                      |
 | → Watch UDT members                   | -        | 🔶     | values.rs; runtime read in progress                                            |
-| → Watchpoint conditions               | -        | ☐      | Not yet implemented                                                            |
-| **Call Stack...**                     | F12      | 🔶     | frames.rs, DAP; runtime integration in progress                                 |
-| → View call stack history             | -        | 🔶     | tools/debug                                                                    |
-| → Navigate through call stack         | -        | 🔶     | tools/debug                                                                    |
-| Auto-add $DEBUG Metacommand toggle    | -        | ☐      | Not yet implemented                                                            |
-| Output Watch List to Console toggle   | -        | ☐      | Not yet implemented                                                            |
-| Set Base TCP/IP Port Number           | -        | ☐      | Not applicable (DAP-based)                                                     |
-| Purge C++ Libraries                   | -        | ☐      | Not applicable (C backend)                                                     |
+| → Watchpoint conditions               | -        | 📋      | Core debugging feature - DAP supports data breakpoints |
+| **Call Stack...**                     | F12      | 🔶     | frames.rs, DAP; VSCode UI ready, runtime integration in progress               |
+| → View call stack history             | -        | 🔶     | tools/debug; VSCode Debug panel shows call stack                               |
+| → Navigate through call stack         | -        | 🔶     | tools/debug; VSCode supports frame navigation                                  |
+| Auto-add $DEBUG Metacommand toggle    | -        | ❌      | Not applicable (different architecture) |
+| Output Watch List to Console toggle   | -        | 💭      | Nice-to-have but not essential |
+| Set Base TCP/IP Port Number           | -        | ❌      | Not applicable (DAP-based)                                                     |
+| Purge C++ Libraries                   | -        | ❌      | Not applicable (C backend)                                                     |
 
 ---
 
@@ -107,13 +105,13 @@ Legend: ☑ = Implemented | ☐ = Not implemented | 🔶 = Partial/Different app
 | ------------------------ | -------- | ------ | --------------------------- |
 | **Code Layout...**       |          |        |                             |
 | **Compiler Settings...** |          |        |                             |
-| → Optimization level     | -        | ☐      | Not yet exposed in settings |
-| → Debug symbols          | -        | ☐      | Not yet exposed             |
-| → C++ compiler flags     | -        | ☐      | Not yet exposed             |
-| → Extra linker flags     | -        | ☐      | Not yet exposed             |
-| → System MinGW toggle    | -        | ☐      | Not applicable              |
+| → Optimization level     | -        | 📋      | Essential for production builds - expose in VSCode settings |
+| → Debug symbols          | -        | 📋      | Essential for debugging - expose in VSCode settings |
+| → C++ compiler flags     | -        | 📋      | Important for advanced users - expose in VSCode settings |
+| → Extra linker flags     | -        | 📋      | Important for advanced users - expose in VSCode settings |
+| → System MinGW toggle    | -        | ❌      | Not applicable              |
 | **Undo/History...**      |          |        |                             |
-| Ignore Warnings toggle   | -        | ☐      | Not yet exposed             |
+| Ignore Warnings toggle   | -        | 📋      | Useful for legacy code - expose in VSCode settings |
 
 ---
 
@@ -122,19 +120,19 @@ Legend: ☑ = Implemented | ☐ = Not implemented | 🔶 = Partial/Different app
 | Feature                             | Shortcut | Status | Implementation      |
 | ----------------------------------- | -------- | ------ | ------------------- |
 | **ASCII Chart**                     |          |        |                     |
-| → Browse ASCII characters           | -        | ☐      | Not yet implemented |
-| → Insert characters into code       | -        | ☐      | Not yet implemented |
-| **Insert Quick Keycode**            | Ctrl+K   | ☐      | Not yet implemented |
-| → Capture key codes                 | -        | ☐      | Not yet implemented |
-| → Insert key code values            | -        | ☐      | Not yet implemented |
-| **Library Explorer** (if installed) | Ctrl+L   | ☐      | Not yet implemented |
+| → Browse ASCII characters           | -        | 💭      | Nice-to-have but not essential |
+| → Insert characters into code       | -        | 💭      | Nice-to-have but not essential |
+| **Insert Quick Keycode**            | Ctrl+K   | 💭      | Niche feature - low priority |
+| → Capture key codes                 | -        | 💭      | Niche feature - low priority |
+| → Insert key code values            | -        | 💭      | Niche feature - low priority |
+| **Library Explorer** (if installed) | Ctrl+L   | 💭      | Unclear value in QB64Fresh context |
 | **Math Evaluator**                  |          |        |                     |
-| → Calculate expressions             | -        | ☐      | Not yet implemented |
-| → Display results                   | -        | ☐      | Not yet implemented |
+| → Calculate expressions             | -        | 💭      | Nice but not essential |
+| → Display results                   | -        | 💭      | Nice but not essential |
 | **RGB Color Mixer**                 |          |        |                     |
-| → Mix colors visually               | -        | ☐      | Not yet implemented |
-| → Generate \_RGB statements         | -        | ☐      | Not yet implemented |
-| → Insert into code                  | -        | ☐      | Not yet implemented |
+| → Mix colors visually               | -        | 💭      | Useful for graphics but not core functionality |
+| → Generate \_RGB statements         | -        | 💭      | Useful for graphics but not core functionality |
+| → Insert into code                  | -        | 💭      | Useful for graphics but not core functionality |
 
 ---
 
@@ -143,17 +141,17 @@ Legend: ☑ = Implemented | ☐ = Not implemented | 🔶 = Partial/Different app
 | Feature                              | Shortcut | Status | Implementation                                     |
 | ------------------------------------ | -------- | ------ | -------------------------------------------------- |
 | View Help                            | Shift+F1 | 🔶     | LSP Server (hover provides built-in function docs) |
-| → Last viewed article                | -        | ☐      | Not yet implemented                                |
-| → Scrollable help window             | -        | ☐      | Not yet implemented                                |
-| → Search within help                 | -        | ☐      | Not yet implemented                                |
-| Contents Page                        | -        | ☐      | Not yet implemented                                |
-| Keywords Index (alphabetical)        | -        | ☐      | Not yet implemented                                |
-| Keywords by Usage                    | -        | ☐      | Not yet implemented                                |
-| Metacommands Overview                | -        | ☐      | Not yet implemented                                |
-| Variable Types Overview              | -        | ☐      | Not yet implemented                                |
-| Update Current Page (from Wiki)      | -        | ☐      | Not applicable                                     |
-| Update All Pages... (batch download) | -        | ☐      | Not applicable                                     |
-| View Current Page On Wiki (browser)  | -        | ☐      | Not yet implemented                                |
+| → Last viewed article                | -        | 💭      | Nice-to-have but hover docs might be sufficient |
+| → Scrollable help window             | -        | 💭      | Nice-to-have but hover docs might be sufficient |
+| → Search within help                 | -        | 💭      | Nice-to-have but hover docs might be sufficient |
+| Contents Page                        | -        | 💭      | Nice-to-have but hover docs might be sufficient |
+| Keywords Index (alphabetical)        | -        | 💭      | Nice-to-have but hover docs might be sufficient |
+| Keywords by Usage                    | -        | 💭      | Nice-to-have but hover docs might be sufficient |
+| Metacommands Overview                | -        | 💭      | Nice-to-have but hover docs might be sufficient |
+| Variable Types Overview              | -        | 💭      | Nice-to-have but hover docs might be sufficient |
+| Update Current Page (from Wiki)      | -        | ❌      | Not applicable                                     |
+| Update All Pages... (batch download) | -        | ❌      | Not applicable                                     |
+| View Current Page On Wiki (browser)  | -        | 💭      | Nice-to-have but hover docs might be sufficient |
 
 ---
 
@@ -180,26 +178,18 @@ Legend: ☑ = Implemented | ☐ = Not implemented | 🔶 = Partial/Different app
 
 | Feature            | Status | Implementation      |
 | ------------------ | ------ | ------------------- |
-| New SUB...         | ☐      | Not yet implemented |
-| New FUNCTION...    | ☐      | Not yet implemented |
-| RGB Color Mixer... | ☐      | Not yet implemented |
+| New SUB...         | 💭      | Snippets might be sufficient |
+| New FUNCTION...    | 💭      | Snippets might be sufficient |
+| RGB Color Mixer... | 💭      | Useful for graphics but not core functionality |
 
 ---
 
 ## Keyboard Shortcuts
 
-| Shortcut | Function              | Status | Implementation                  |
-| -------- | --------------------- | ------ | ------------------------------- |
-| Shift+F1 | Help main page        | ☐      | Not yet implemented             |
-| F4       | Watch list            | ☐      | Not yet implemented (needs DAP) |
-| F7/F8    | Start paused (debug)  | ☐      | Not yet implemented             |
-| F9       | Toggle breakpoint     | ☐      | Not yet implemented             |
-| F10      | Clear all breakpoints | ☐      | Not yet implemented             |
-| Ctrl+F10 | Unskip all lines      | ☐      | Not yet implemented             |
-| F12      | Call stack            | ☐      | Not yet implemented             |
-| Ctrl+K   | Quick keycode         | ☐      | Not yet implemented             |
-| Ctrl+L   | Library explorer      | ☐      | Not yet implemented             |
-| Ctrl+P   | Toggle skip line      | ☐      | Not yet implemented             |
+> **Note:** Keyboard shortcuts are documented in their respective menu sections above. See:
+> - **Debug shortcuts** (F4, F7/F8, F9, F10, F12, Ctrl+P, Ctrl+F10): [Debug Menu](#debug-menu)
+> - **Tools shortcuts** (Ctrl+K, Ctrl+L): [Tools Menu](#tools-menu)
+> - **Help shortcuts** (Shift+F1): [Help Menu](#help-menu)
 
 ---
 
@@ -207,101 +197,51 @@ Legend: ☑ = Implemented | ☐ = Not implemented | 🔶 = Partial/Different app
 
 | Feature                           | Status | Implementation      |
 | --------------------------------- | ------ | ------------------- |
-| Line-by-line compilation progress | ☐      | Not yet implemented |
-| Progress percentage display       | ☐      | Not yet implemented |
-| License file generation           | ☐      | Not yet implemented |
+| Line-by-line compilation progress | 📋      | UX improvement - show progress during build |
+| Progress percentage display       | 📋      | UX improvement - show progress during build |
+| License file generation           | 💭      | Nice-to-have but not essential |
 
 ---
 
 ## Debugging Features
 
 > **Note:** QB64Fresh provides **qb64fresh-debug** (`tools/debug`): a DAP server with breakpoints, step, call stack, watch, and symbols. The compiler supports `--debug` (emits `qb_dbg_line`, `qb_dbg_enter_proc`/`qb_dbg_exit_proc`); the inline C runtime includes stubs. Full runtime–debugger IPC (launch/attach, variable inspection in running process) is in progress. See `tools/README.md`, `docs/adrs/ADR-0013-debugger-architecture.md`.
+>
+> **See [Debug Menu](#debug-menu) above for detailed feature status with shortcuts.**
 
-### Breakpoints
-
-| Feature                 | Status | Implementation                                               |
-| ----------------------- | ------ | ------------------------------------------------------------ |
-| Set/clear breakpoints   | 🔶     | tools/debug, DAP; compiler --debug emits hooks; runtime IPC in progress |
-| Conditional breakpoints | ☐      | Not yet implemented                                          |
-| Visual indicators       | 🔶     | Via DAP/editor when connected                                |
-
-### Step Execution
-
-| Feature           | Status | Implementation                                               |
-| ----------------- | ------ | ------------------------------------------------------------ |
-| Start paused mode | 🔶     | tools/debug; runtime integration in progress                 |
-| Step execution    | 🔶     | tools/debug (step, stepin, stepout); runtime integration in progress |
-
-### Variable Watch
-
-| Feature                                  | Status | Implementation                                               |
-| ---------------------------------------- | ------ | ------------------------------------------------------------ |
-| Watch global variables                   | 🔶     | watch.rs, values.rs; runtime variable read in progress       |
-| Watch local variables                    | 🔶     | tools/debug; runtime read in progress                        |
-| Watch array elements                     | 🔶     | watch.rs; runtime read in progress                           |
-| Watch UDT members                        | 🔶     | values.rs; runtime read in progress                          |
-| Display format options (DEC/HEX/BIN/OCT) | ☐      | Not yet implemented                                          |
-| Watchpoint conditions                    | ☐      | Not yet implemented                                          |
-
-### Call Stack
-
-| Feature                | Status | Implementation                                    |
-| ---------------------- | ------ | ------------------------------------------------- |
-| Call stack tracing     | 🔶     | frames.rs, qb_dbg_enter_proc/exit_proc; runtime integration in progress |
-| Navigate through stack | 🔶     | tools/debug                                      |
-
-### Other Debug Features
+### Additional Debug Features
 
 | Feature                         | Status | Implementation                                   |
 | ------------------------------- | ------ | ------------------------------------------------ |
-| Line skip (skip specific lines) | ☐      | Not yet implemented                              |
-| $DEBUG metacommand              | ☐      | Not applicable (different architecture)          |
-| TCP/IP debug communication      | ☐      | Not applicable (DAP-based)                       |
+| Conditional breakpoints         | 📋      | Core debugging feature - DAP infrastructure ready, needs implementation |
+| Step execution (step, stepin, stepout) | 🔶     | tools/debug; runtime integration in progress |
 | Debug console integration       | 🔶     | tools/debug interactive CLI; DAP in progress    |
 
 ---
 
 ## Configuration & Settings
 
-### Settings Persistence
-
-### Window Settings
-
-### History Settings
-
-### Auto-save
-
-### Dictionaries
-
-| Feature                               | Status | Implementation                              |
-| ------------------------------------- | ------ | ------------------------------------------- |
-| Custom dictionaries for auto-complete | 🔶     | LSP Server provides built-in + user symbols |
+> **Note:** Configuration is handled via VSCode settings (workspace/user settings.json). Most IDE settings from QB64pe map to VSCode's native configuration system.
 
 ---
 
 ## File Dialogs
 
-### File Open Dialog
-
-### File Save Dialog
-
-### Other Dialogs
+> **Note:** File dialogs are provided by VSCode's native file picker (Ctrl+P for quick open, File menu for save/open).
 
 | Feature             | Status | Implementation      |
 | ------------------- | ------ | ------------------- |
-| Color picker dialog | ☐      | Not yet implemented |
+| Color picker dialog | 💭      | Useful for graphics but not core functionality |
 
 ---
 
 ## Information & Dialogs
 
-### Error Reporting
-
-### Status Bar
+> **Note:** Error reporting is provided by LSP diagnostics (shown inline in editor). Status bar information is provided by VSCode.
 
 | Feature              | Status | Implementation      |
 | -------------------- | ------ | ------------------- |
-| Compilation progress | ☐      | Not yet implemented |
+| Compilation progress | 📋      | UX improvement - show progress during build |
 
 ---
 
@@ -310,12 +250,12 @@ Legend: ☑ = Implemented | ☐ = Not implemented | 🔶 = Partial/Different app
 | Feature                     | Status | Implementation                                |
 | --------------------------- | ------ | --------------------------------------------- |
 | Integrated help system      | 🔶     | LSP Server hover (50+ built-in function docs) |
-| Wiki page download/caching  | ☐      | Not yet implemented                           |
+| Wiki page download/caching  | 💭      | Nice-to-have but hover docs might be sufficient |
 | Context-sensitive help (F1) | 🔶     | LSP hover on mouse over                       |
-| Keyword-to-Wiki links       | ☐      | Not yet implemented                           |
-| Update single page          | ☐      | Not applicable                                |
-| Batch update all pages      | ☐      | Not applicable                                |
-| Online Wiki access          | ☐      | Not yet implemented                           |
+| Keyword-to-Wiki links       | 💭      | Nice-to-have but hover docs might be sufficient |
+| Update single page          | ❌      | Not applicable                                |
+| Batch update all pages      | ❌      | Not applicable                                |
+| Online Wiki access          | 💭      | Nice-to-have but hover docs might be sufficient |
 
 ---
 
@@ -323,25 +263,17 @@ Legend: ☑ = Implemented | ☐ = Not implemented | 🔶 = Partial/Different app
 
 | Feature                 | Status | Implementation               |
 | ----------------------- | ------ | ---------------------------- |
-| Debug line highlighting | ☐      | Needs DAP implementation     |
-| Breakpoint indicators   | ☐      | Needs DAP implementation     |
 | Progress indicators     | 🔶     | Terminal output during build |
 
 ---
 
 ## Project Management
 
-| Feature                       | Status | Implementation               |
-| ----------------------------- | ------ | ---------------------------- |
-| Bookmark persistence per file | 🔶     | VSCode extension (Bookmarks) |
-
----
+> **Note:** Project management is handled via VSCode workspace folders. Multi-file projects are supported via `$INCLUDE` directives.
 
 ## Source Code Analysis
 
-### Warning Detection
-
-### Analysis Features
+> **Note:** Warning detection and static analysis are provided by the LSP server (diagnostics) and `qb64fresh-lint` tool.
 
 | Feature             | Status | Implementation      |
 | ------------------- | ------ | ------------------- |
@@ -353,12 +285,12 @@ Legend: ☑ = Implemented | ☐ = Not implemented | 🔶 = Partial/Different app
 
 | Feature                              | Status | Implementation      |
 | ------------------------------------ | ------ | ------------------- |
-| HTML export with syntax highlighting | ☐      | Not yet implemented |
-| RTF export with colors               | ☐      | Not yet implemented |
-| Discord code block export            | ☐      | Not yet implemented |
-| Forum code box export                | ☐      | Not yet implemented |
-| Wiki format export                   | ☐      | Not yet implemented |
-| Wiki link generation in exports      | ☐      | Not yet implemented |
+| HTML export with syntax highlighting | 💭      | Nice-to-have for sharing code but not essential |
+| RTF export with colors               | 💭      | Nice-to-have for documentation but not essential |
+| Discord code block export            | 💭      | Niche use case - low priority |
+| Forum code box export                | 💭      | Niche use case - low priority |
+| Wiki format export                   | 💭      | Niche use case - low priority |
+| Wiki link generation in exports      | 💭      | Niche use case - low priority |
 
 ---
 
@@ -400,7 +332,7 @@ QB64Fresh uses a modern Rust-based architecture instead of the monolithic BASIC 
 | -------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | **Compiler**         | Lexer, Parser, Type System, C Codegen, Preprocessor, `--debug` (qb_dbg_line, qb_dbg_enter/exit_proc)  | LLVM backend (future)                                                               |
 | **LSP Server**       | Diagnostics, Hover, Go-to-definition, Find references, Rename, Completion, Symbols, References, Signature Help, Inlay Hints | -                                                                                   |
-| **VSCode Extension** | Syntax highlighting, Build/Run, Format-on-save, Lint-on-save, Keybindings, Rename, Workspace search (Ctrl+T), Settings | DAP client UI for qb64fresh-debug (launch config in progress)                       |
+| **VSCode Extension** | Syntax highlighting, Build/Run, Format-on-save, Lint-on-save, Keybindings, Rename, Workspace search (Ctrl+T), Settings | DAP client UI for qb64fresh-debug (launch config complete, breakpoints, step, variables) |
 | **Formatter**        | Keyword case, Indentation, Spacing, Style presets (default, minimal, qb64, pretty)                   | $FORMAT:ON/OFF toggle (parsed as no-op; IDE toggle = VSCode format-on-save)         |
 | **Linter**           | Unused detection, Style checks, Correctness hints                                                     | More rules                                                                          |
 | **Debugger**         | tools/debug: DAP server, breakpoints, step, call stack, symbols, values, frames, watch, sources       | Runtime–debugger IPC, variable inspection in running process; VSCode DAP client     |
@@ -435,11 +367,9 @@ QB64Fresh uses a modern Rust-based architecture instead of the monolithic BASIC 
 ## Notes
 
 - **Total features identified**: 200+ distinct features from QB64PE
-- **Legend**: ☑ = Implemented | 🔶 = Partial/Different approach | ☐ = Not implemented
-- Features provided by VSCode are marked as implemented since they work with the QB64Fresh extension
-- Debugging features require a Debug Adapter Protocol (DAP) implementation
-- Many VSCode native features (undo, copy, paste, etc.) work out of the box
 
 ---
 
-_Document updated to track QB64Fresh implementation status. Last updated: 2026-01-25._
+_Document updated to track QB64Fresh implementation status. Last updated: 2026-01-26._
+
+**Note:** Completed items (☑) are moved to `docs/archive/IDE-FUNCTIONALITY-COMPLETED.md` to keep this checklist focused on pending work.

@@ -183,7 +183,7 @@ int64_t qb_freefont(int64_t handle);
 // ... and many more functions
 ```
 
-**Note:** The actual function declarations are embedded in the generated C code via the inline runtime mode. See `src/codegen/c_backend/runtime.rs` for the complete list.
+**Note:** The actual function declarations are embedded in the generated C code via the inline runtime mode. See `src/codegen/c_backend/runtime/graphics.rs` for the stub implementations and `runtime/include/qb64fresh_rt.h` for the external runtime declarations.
 
 ### Layer 3: Backend Implementations
 
@@ -196,7 +196,7 @@ int64_t qb_freefont(int64_t handle);
 
 ### Layer 4: Generated C Code
 
-Code generator emits calls to the stable C FFI. Examples from `src/codegen/c_backend/stmt.rs`:
+Code generator emits calls to the stable C FFI. Examples from `src/codegen/c_backend/stmt/mod.rs`:
 
 ```c
 // Generated from: SCREEN 13
@@ -241,9 +241,12 @@ cargo test --lib
 
 ```toml
 [features]
-default = ["graphics-sdl2"]
-graphics-sdl2 = ["sdl2"]
-graphics-mock = []
+default = ["graphics-sdl2", "audio-rodio", "dialogs"]
+graphics-sdl2 = ["sdl2", "image"]
+graphics-sdl2-ttf = ["sdl2/ttf"]  # Requires SDL2_ttf library
+graphics-sdl2-freetype = ["graphics-sdl2", "freetype"]  # FreeType-based font rendering
+graphics-mock = []  # For testing without display
+freetype = ["freetype-rs", "lazy_static"]  # FreeType font library support
 graphics-native = []      # Future
 graphics-wasm = ["web-sys", "wasm-bindgen"]  # Future
 ```
@@ -510,7 +513,8 @@ Based on ADR-0006, the following features are **complete**:
 | Mouse input | ✅ Complete | Position, buttons, movement, wheel support |
 | Clipboard | ✅ Complete | Get/set text from system clipboard |
 | Font rendering (8x8 bitmap) | ✅ Complete | Built-in font for text mode |
-| TrueType font support (_LOADFONT) | ✅ Complete | Optional feature via SDL2_ttf |
+| TrueType font support (_LOADFONT) | ✅ Complete | Optional feature via SDL2_ttf or FreeType |
+| FreeType font support | ✅ Complete | Optional feature via `graphics-sdl2-freetype` for advanced font rendering |
 | Text output (PRINT, LOCATE) | ✅ Complete | Text mode and graphics mode text |
 | Image buffers (_NEWIMAGE, _LOADIMAGE, _PUTIMAGE) | ✅ Complete | QB64 extended graphics support |
 | VIEW/WINDOW coordinate systems | ✅ Complete | Viewport and world coordinate mapping |
@@ -531,7 +535,7 @@ Based on ADR-0006, the following features are **complete**:
 | `runtime/src/graphics/mock.rs` | Mock backend for testing | Records operations for verification |
 | `runtime/src/graphics/font.rs` | Font rendering | 8x8 bitmap font and TrueType support |
 | `runtime/src/graphics_ffi.rs` | C FFI bindings | ~1600 lines, exports `qb_gfx_*` functions |
-| `src/codegen/c_backend/stmt.rs` | Graphics code generation | Emits C calls for all graphics statements |
+| `src/codegen/c_backend/stmt/mod.rs` | Graphics code generation | Emits C calls for all graphics statements (integrated with statement emitter) |
 | `src/parser/graphics.rs` | Graphics statement parsing | Parses SCREEN, PSET, LINE, CIRCLE, etc. |
 
 ## Supported Graphics Statements
@@ -619,4 +623,4 @@ The following BASIC graphics statements are fully supported:
 
 ---
 
-*Last updated: 2026-01-24 (session-050: Added stub frame limiting documentation)*
+*Last updated: 2026-01-26*

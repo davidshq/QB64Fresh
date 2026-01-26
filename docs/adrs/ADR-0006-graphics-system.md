@@ -166,3 +166,5 @@ Generated C code calls functions like:
 - `runtime/src/graphics/sdl2.rs` - SDL2 backend (~2100 lines)
 - `runtime/src/graphics/font.rs` - Font rendering and text output
 - `runtime/src/graphics_ffi.rs` - C FFI functions
+
+**Detailed Documentation:** See [docs/GRAPHICS.md](../GRAPHICS.md) for comprehensive architecture details, implementation status, supported statements, usage instructions, and runtime modes.

@@ -1,7 +1,7 @@
 # QB64Fresh Language Reference
 
 **Version:** 0.1.0  
-**Last Updated:** 2026-01-24
+**Last Updated:** 2026-01-26
 
 This document provides a comprehensive reference for all statements and functions available in QB64Fresh. QB64Fresh is a modern BASIC compiler that maintains compatibility with QB4.5 and QB64 while providing a clean, well-documented implementation.
 
@@ -11,7 +11,7 @@ QB64Fresh supports **QB4.5 compatibility** and a **curated set of QB64 extension
 
 - **Excluded:** Raw OpenGL (`_GL*` commands) are intentionally excluded. QB64Fresh uses SDL2/winit for graphics. Use `DECLARE LIBRARY` to call OpenGL directly if needed.
 - **Stub-only (compile, limited/no runtime):** `INP`, `OUT`, `WAIT`, `INTERRUPT`/`INTERRUPTX`, `PEN`, `IOCTL`/`IOCTL$`, `ERDEV`/`ERDEV$`, `ON COM`, `ON UEVENT`, `ON SIGNAL`—accepted for porting but behavior is no-op or undefined.
-- **Authoritative source:** For the exact set of built-in functions and procedure signatures, see `src/semantic/builtins.rs`. For parser coverage, see `src/ast/stmt.rs` and the parser modules.
+- **Authoritative source:** For the exact set of built-in functions and procedure signatures, see `src/semantic/builtins.rs` (405+ built-in registrations covering 240+ unique functions). For parser coverage, see `src/ast/stmt.rs` and the parser modules.
 
 See [ADR-0014: Scope and Intentionally Excluded Features](adrs/ADR-0014-scope-and-excluded-features.md) and [FUTURE.md](ThingsToDo/FUTURE.md) for rationale and details.
 

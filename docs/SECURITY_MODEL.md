@@ -1,6 +1,6 @@
 # QB64Fresh Security Model: SHELL and File Operations
 
-*Last updated: 2026-01-24*
+*Last updated: 2026-01-26*
 
 The architectural decision (no sandbox, match traditional BASIC) is in [ADR-0015: No-Sandbox Execution Model](adrs/ADR-0015-no-sandbox-execution-model.md).
 

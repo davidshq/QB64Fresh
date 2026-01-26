@@ -2,7 +2,7 @@
 
 **Purpose:** Assessment and implementation plan for adding OpenGL (`_GL`) command support to QB64Fresh  
 **Created:** 2026-01-22  
-**Updated:** 2026-01-25  
+**Updated:** 2026-01-26  
 **Status:** Planning/Assessment — *Raw `_GL*` is intentionally excluded per [ADR-0014](../adrs/ADR-0014-scope-and-excluded-features.md).*
 
 ---
@@ -32,7 +32,15 @@
 
 ### Policy: Raw `_GL*` Excluded
 
-Per **[ADR-0014: Scope and Intentionally Excluded Features](../adrs/ADR-0014-scope-and-excluded-features.md)**, raw OpenGL (`_GL*` commands such as `_GLglBegin`, `_GLglVertex3f`, etc.) is **intentionally excluded**. Rationale: we use SDL2/winit for graphics; `_GL*` would tie the stack to OpenGL; users can call OpenGL via `DECLARE LIBRARY` if needed.
+Per **[ADR-0014: Scope and Intentionally Excluded Features](../adrs/ADR-0014-scope-and-excluded-features.md)**, raw OpenGL (`_GL*` commands such as `_GLglBegin`, `_GLglVertex3f`, etc.) is **intentionally excluded**. 
+
+**Rationale:**
+1. We use SDL2/winit for graphics, not raw OpenGL
+2. Raw GL commands expose implementation details that reduce portability
+3. The `_MAPTRIANGLE` statement provides 3D capability without raw GL
+4. Future WebGL/Vulkan backends would be incompatible with GL commands
+
+If raw OpenGL is needed, users can use `DECLARE LIBRARY` to call OpenGL functions directly. See [ADR-0008](../adrs/ADR-0008-c-interoperability.md) for details on `DECLARE LIBRARY`.
 
 ### What Exists Today
 
@@ -1460,4 +1468,4 @@ This approach reduces risk, validates the architecture early, and provides a wor
 
 ---
 
-*Last updated: 2026-01-25*
+*Last updated: 2026-01-26*

@@ -1315,6 +1315,12 @@ pub enum TypedStatementKind {
         path: TypedExpr,
     },
 
+    /// ENVIRON statement - set environment variable.
+    Environ {
+        /// The environment variable assignment string (e.g., "PATH=/usr/bin").
+        env_string: TypedExpr,
+    },
+
     /// SHELL statement - execute external command.
     ShellCmd {
         /// The command to execute (optional).

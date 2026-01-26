@@ -120,4 +120,4 @@ Bootstrap needs only the ✅ rows; stubs are enough. Duplication (inline vs exte
 - [runtime/include/qb64fresh_rt.h](../runtime/include/qb64fresh_rt.h) — C API
 - [STUB_FUNCTIONS_FULL.md](../archive/STUB_FUNCTIONS_FULL.md)
 
-*Last updated: 2026-01-25*
+*Last updated: 2026-01-26*

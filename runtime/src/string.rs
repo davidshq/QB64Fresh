@@ -90,6 +90,18 @@ pub unsafe extern "C" fn qb_string_new(s: *const c_char) -> *mut QbString {
     qb_string_from_bytes(bytes.as_ptr(), bytes.len())
 }
 
+/// Convert a C string to QbString (alias for qb_string_new).
+///
+/// This function is used for fixed-length string conversions.
+///
+/// # Safety
+/// - `s` must be a valid null-terminated C string or null
+/// - The returned string must be released with `qb_string_release`
+#[no_mangle]
+pub unsafe extern "C" fn qb_str_from_c(s: *const c_char) -> *mut QbString {
+    qb_string_new(s)
+}
+
 /// Create an empty string.
 ///
 /// # Safety

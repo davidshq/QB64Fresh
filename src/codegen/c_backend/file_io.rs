@@ -56,12 +56,31 @@ impl StmtEmitter {
         let _ = access;
         let _ = lock;
 
-        writeln!(
-            output,
-            "{}qb_file_open({}, {}->data, {});",
-            indent, file_num_code, filename_code, c_mode
-        )
-        .unwrap();
+        // For external runtime, use qb_file_open_str which accepts QbString* directly
+        // For inline runtime, use ->data access
+        let filename_access = match self.runtime_mode {
+            super::RuntimeMode::External => format!("{}", filename_code),
+            super::RuntimeMode::Inline => format!("{}->data", filename_code),
+        };
+        
+        match self.runtime_mode {
+            super::RuntimeMode::External => {
+                writeln!(
+                    output,
+                    "{}qb_file_open_str({}, {}, {});",
+                    indent, file_num_code, filename_access, c_mode
+                )
+                .unwrap();
+            }
+            super::RuntimeMode::Inline => {
+                writeln!(
+                    output,
+                    "{}qb_file_open({}, {}, {});",
+                    indent, file_num_code, filename_access, c_mode
+                )
+                .unwrap();
+            }
+        }
 
         // Handle record length for random access
         if let Some(rec_len) = record_len {
@@ -93,10 +112,20 @@ impl StmtEmitter {
 
         // The mode is a string expression that we'll pass to a runtime function
         // that interprets "O", "I", "A", "R", "B" at runtime
+        // For external runtime, we need to use qb_string_data() to get const char*
+        let mode_access = match self.runtime_mode {
+            super::RuntimeMode::External => format!("qb_string_data({})", mode_code),
+            super::RuntimeMode::Inline => format!("{}->data", mode_code),
+        };
+        let filename_access = match self.runtime_mode {
+            super::RuntimeMode::External => format!("qb_string_data({})", filename_code),
+            super::RuntimeMode::Inline => format!("{}->data", filename_code),
+        };
+        
         writeln!(
             output,
-            "{}qb_file_open_legacy({}, {}->data, {}->data);",
-            indent, file_num_code, mode_code, filename_code
+            "{}qb_file_open_legacy({}, {}, {});",
+            indent, file_num_code, mode_access, filename_access
         )
         .unwrap();
 
@@ -148,10 +177,16 @@ impl StmtEmitter {
             let expr_code = emit_expr(&item.expr, self.no_shell)?;
 
             if item.expr.basic_type.is_string() {
+                // For external runtime, ensure fixed-length strings are converted to qb_string*
+                let string_expr = if matches!(item.expr.basic_type, BasicType::FixedString(_)) {
+                    format!("qb_str_from_c({})", expr_code)
+                } else {
+                    expr_code
+                };
                 writeln!(
                     output,
                     "{}qb_file_print_string({}, {});",
-                    indent, file_num_code, expr_code
+                    indent, file_num_code, string_expr
                 )
                 .unwrap();
             } else if item.expr.basic_type.is_float() {

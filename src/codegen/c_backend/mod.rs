@@ -221,7 +221,7 @@ impl CBackend {
 
 impl CodeGenerator for CBackend {
     fn generate(&self, program: &TypedProgram) -> Result<GeneratedOutput, CodeGenError> {
-        let mut emitter = StmtEmitter::new();
+        let mut emitter = StmtEmitter::with_runtime_mode(self.runtime_mode);
         emitter.debug_enabled = self.debug_enabled;
         emitter.debug_source_file = self.source_file.clone();
         emitter.no_shell = self.no_shell;
@@ -414,6 +414,10 @@ impl CodeGenerator for CBackend {
 
         // Main function
         writeln!(output, "int main(int argc, char** argv) {{").unwrap();
+        // Initialize runtime library (external runtime only)
+        if self.runtime_mode == RuntimeMode::External {
+            writeln!(output, "    qb_runtime_init();").unwrap();
+        }
         // Initialize command-line argument access for COMMAND$ and _COMMANDCOUNT
         writeln!(output, "    qb_init_args(argc, argv);").unwrap();
         // Initialize start directory for _STARTDIR$
@@ -537,6 +541,10 @@ impl CodeGenerator for CBackend {
         // Debug shutdown before exit
         if self.debug_enabled {
             writeln!(output, "    qb_dbg_shutdown();").unwrap();
+        }
+        // Shutdown runtime library (external runtime only)
+        if self.runtime_mode == RuntimeMode::External {
+            writeln!(output, "    qb_runtime_shutdown();").unwrap();
         }
         writeln!(output, "    return 0;").unwrap();
         writeln!(output, "}}").unwrap();

@@ -399,3 +399,5 @@ PRINT "Number:"; atoi(num)
 - `src/header_parser/mod.rs` - C header parser entry point
 - `src/header_parser/lexer.rs` - C header tokenizer
 - `src/header_parser/parser.rs` - C function declaration parser
+
+**API Reference:** See [docs/reference/HEADER_PARSER_API.md](../reference/HEADER_PARSER_API.md) for complete programmatic API documentation.

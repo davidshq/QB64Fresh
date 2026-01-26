@@ -79,7 +79,13 @@ src/
 │   ├── mod.rs            # Parser entry point, recursive descent
 │   ├── tokens.rs         # Token navigation utilities (peek, advance, match)
 │   ├── expressions.rs    # Pratt parser with full operator precedence
-│   ├── statements.rs     # Core statement parsing (largest file)
+│   ├── statements/       # Statement parsing submodules
+│   │   ├── mod.rs        # Statement dispatcher
+│   │   ├── assignments.rs # Variable assignments, MID$, ASC statements
+│   │   ├── print_input.rs # PRINT, INPUT, LINE INPUT statements
+│   │   ├── declare.rs    # DECLARE SUB/FUNCTION/LIBRARY statements
+│   │   ├── data_dims.rs  # DIM, REDIM, DATA, CONST statements
+│   │   └── control_etc.rs # Control flow helpers and miscellaneous statements
 │   ├── control_flow.rs   # IF/FOR/WHILE/DO/SELECT parsing
 │   ├── procedures.rs     # SUB/FUNCTION/TYPE definitions
 │   ├── directives.rs     # Preprocessor directives ($IF, $CHECKING)
@@ -87,10 +93,13 @@ src/
 │   ├── graphics.rs       # Graphics: SCREEN, CLS, PSET, LINE, CIRCLE, etc.
 │   ├── file_io.rs        # File I/O: OPEN, CLOSE, GET, PUT, SEEK
 │   ├── system.rs         # System: KILL, NAME, MKDIR, SHELL, mouse, clipboard
+│   ├── tests.rs          # Parser test utilities
 │   └── error.rs          # ParseError types with spans
 │
 ├── semantic/             # Phase 3: Semantic Analysis (~15,153 lines) ✓
 │   ├── mod.rs            # Analysis entry point, built-in registration
+│   ├── builtins.rs       # Built-in function and constant registration
+│   ├── collect.rs        # Declaration collection (Pass 1)
 │   ├── symbols.rs        # Symbol table with scope management
 │   ├── types.rs          # BasicType enum, type inference
 │   ├── typed_ir.rs       # TypedProgram, TypedExpr, TypedStatement
@@ -98,7 +107,13 @@ src/
 │   └── checker/          # Type Checker Submodule
 │       ├── mod.rs        # Checker entry point
 │       ├── expressions.rs # Expression type checking
-│       ├── statements.rs  # Statement type checking
+│       ├── statements.rs  # Statement type checking dispatcher
+│       ├── statements/    # Statement type checking submodules
+│       │   ├── audio.rs   # Audio statement type checking
+│       │   ├── graphics.rs # Graphics statement type checking
+│       │   ├── data.rs    # DATA/READ/RESTORE type checking
+│       │   ├── error_flow.rs # Error handling and computed control flow
+│       │   └── io.rs      # File I/O statement type checking
 │       ├── control_flow.rs # Control flow validation
 │       ├── assignments.rs  # Assignment validation
 │       ├── definitions.rs  # Definition handling
@@ -149,7 +164,10 @@ src/
 │
 └── lsp/                  # Language Server Protocol ✓
     ├── mod.rs            # LSP server implementation (tower-lsp)
-    └── main.rs           # qb64fresh-lsp binary entry
+    ├── position.rs       # Position/offset conversion utilities
+    ├── signatures.rs    # Built-in function signature helpers
+    ├── tests.rs         # LSP test utilities
+    └── main.rs          # qb64fresh-lsp binary entry
 
 tools/                    # Development Tools
 ├── fix_encoding.rs       # DOS encoding converter
@@ -220,6 +238,23 @@ The parser builds an AST from tokens using two techniques:
 1. **Pratt Parsing** for expressions - handles operator precedence elegantly
 2. **Recursive Descent** for statements - straightforward and readable
 
+**Module Organization:**
+- Core parsing logic in `mod.rs` and `tokens.rs`
+- Expression parsing in `expressions.rs` (Pratt parser)
+- Statement parsing organized into `statements/` subdirectory:
+  - `assignments.rs` - Variable assignments, MID$, ASC
+  - `print_input.rs` - PRINT, INPUT, LINE INPUT
+  - `declare.rs` - DECLARE statements
+  - `data_dims.rs` - DIM, REDIM, DATA, CONST
+  - `control_etc.rs` - Miscellaneous control flow helpers
+- Specialized modules for domain-specific statements:
+  - `control_flow.rs` - IF/FOR/WHILE/DO/SELECT
+  - `procedures.rs` - SUB/FUNCTION/TYPE definitions
+  - `graphics.rs` - Graphics statements
+  - `audio.rs` - Audio statements
+  - `file_io.rs` - File I/O statements
+  - `system.rs` - System/OS statements
+
 **BASIC Operator Precedence (highest to lowest):**
 ```
 ^           Exponentiation (right-associative)
@@ -283,8 +318,21 @@ Handles:
 - **Symbol Resolution** - Build symbol tables, resolve references, SHARED variables
 - **Type Checking** - Verify type compatibility, infer types from suffixes
 - **Validation** - Check for undefined labels, duplicate definitions, EXIT context
-- **Two-Pass Analysis** - Pass 1 collects declarations, Pass 2 type checks
-- **Built-in Functions** - 30+ standard functions registered (LEN, CHR$, SIN, etc.)
+- **Two-Pass Analysis** - Pass 1 collects declarations (`collect.rs`), Pass 2 type checks
+- **Built-in Functions** - 30+ standard functions registered in `builtins.rs` (LEN, CHR$, SIN, etc.)
+
+**Module Organization:**
+- `mod.rs` - Main analyzer entry point
+- `builtins.rs` - Built-in function and constant registration
+- `collect.rs` - Declaration collection (Pass 1: SUB/FUNCTION/labels)
+- `checker/` - Type checking (Pass 2):
+  - `statements.rs` - Statement dispatcher
+  - `statements/` - Specialized statement type checking:
+    - `audio.rs` - Audio statements
+    - `graphics.rs` - Graphics statements
+    - `data.rs` - DATA/READ/RESTORE
+    - `error_flow.rs` - Error handling and computed control flow
+    - `io.rs` - File I/O statements
 
 **Key types:**
 ```rust
@@ -456,14 +504,29 @@ This section describes how to extend QB64Fresh with new features. For developmen
 2. Add AST node(s) to `src/ast/expr.rs` or `src/ast/stmt.rs`
 3. Add parser logic to appropriate module:
    - `parser/expressions.rs` - New operators or expression forms
-   - `parser/statements.rs` - New statement types
+   - `parser/statements/` - New statement types:
+     - `assignments.rs` - Assignment variants
+     - `print_input.rs` - I/O statements
+     - `declare.rs` - DECLARE statements
+     - `data_dims.rs` - DIM/REDIM/DATA/CONST
+     - `control_etc.rs` - Miscellaneous statements
    - `parser/control_flow.rs` - New control structures
    - `parser/graphics.rs` - Graphics commands
    - `parser/audio.rs` - Audio commands
    - `parser/file_io.rs` - File operations
    - `parser/system.rs` - System/OS operations
 4. Add typed IR node to `src/semantic/typed_ir.rs`
-5. Add type checking to `src/semantic/checker/`
+5. Add type checking to `src/semantic/checker/`:
+   - `statements.rs` - For statement dispatcher updates
+   - `statements/` - For specialized statement type checking:
+     - `audio.rs` - Audio statements
+     - `graphics.rs` - Graphics statements
+     - `data.rs` - DATA/READ/RESTORE
+     - `error_flow.rs` - Error handling
+     - `io.rs` - File I/O
+   - `expressions.rs` - For expression type checking
+   - `assignments.rs` - For assignment validation
+   - `definitions.rs` - For definition handling
 6. Add code generation to appropriate module:
    - `src/codegen/c_backend/expr.rs` - For new expression forms
    - `src/codegen/c_backend/stmt/` - For new statements:
@@ -576,6 +639,8 @@ dialogs = ["rfd"]  # Native file dialogs
 - [docs/PARSER_PLAN.md](docs/PARSER_PLAN.md) - Parser implementation details
 - [docs/QB64_SYNTAX_REFERENCE.md](docs/QB64_SYNTAX_REFERENCE.md) - Language syntax reference
 - [docs/QB64PE_LANGUAGE_SPECIFICATION.md](docs/QB64PE_LANGUAGE_SPECIFICATION.md) - QB64PE language reference
+- [docs/reference/HEADER_PARSER_API.md](reference/HEADER_PARSER_API.md) - C header parser API reference
+- [docs/GRAPHICS.md](GRAPHICS.md) - Graphics system architecture, implementation, and usage guide
 - [docs/INFORM_FUNCTIONALITY.md](docs/INFORM_FUNCTIONALITY.md) - InForm WYSIWYG UI designer and GUI engine (external to QB64pe)
 - [docs/INFORM_EXPERT_DISCUSSION.md](docs/INFORM_EXPERT_DISCUSSION.md) - Expert discussion: enhanced InForm (usefulness, direction, classic vs. modern, AI)
 - [SECURITY_MODEL.md](SECURITY_MODEL.md) - SHELL and file operation security (command injection, path traversal, no sandbox)
@@ -600,6 +665,24 @@ dialogs = ["rfd"]  # Native file dialogs
 | ADR-0014 | Scope and intentionally excluded features |
 | ADR-0015 | No-sandbox execution model (SHELL, file ops) |
 
+## Design Decisions Summary
+
+Key architectural decisions made during development:
+
+### Graphics and Audio Backends
+
+- **Graphics backend**: Trait-based abstraction with SDL2 as default, mock for testing
+  - See [ADR-0006](../adrs/ADR-0006-graphics-system.md) for details
+- **Sound backend**: Trait-based abstraction with rodio as default, mock for testing
+  - See [ADR-0007](../adrs/ADR-0007-audio-system.md) for details
+
+### Memory Model
+
+- **PEEK/POKE**: Use sandboxed conventional memory (cmem) - a 1MB heap buffer emulating DOS memory model, matching QB64pe's approach. This allows legacy programs to do pointer arithmetic tricks safely without accessing real system memory.
+- **_MEM operations**: Fully integrated with VARPTR compatibility - `_MEM` functions accept any pointer via `qb_mem_of()`, enabling `_MEM(VARPTR(variable))` patterns to work correctly.
+
+For detailed architecture decision records, see [docs/adrs/](../adrs/README.md).
+
 ## Code Statistics Summary
 
 | Component | Lines | Status |
@@ -615,6 +698,42 @@ dialogs = ["rfd"]  # Native file dialogs
 | Linter (lint) | ~1,200 | ✓ Complete |
 | **Test Suite** | **1,500+** | Unit, integration, golden, fuzz |
 
+## Bootstrap Achievement
+
+QB64Fresh successfully compiles the **QB64pe compiler itself** - a 59,000-line BASIC codebase across 39 files - into a working 2.1MB executable. This demonstrates QB64Fresh's capability to handle large, real-world BASIC programs.
+
+**Metrics:**
+- QB64pe source: 39 files, ~59,000 lines of BASIC
+- Preprocessed size: 2.64 MB (with all `$INCLUDE` files)
+- Generated C code: 83,705 lines (~4.5 MB)
+- Final executable: 2.1 MB ELF binary
+- Compilation time: ~800ms on modern hardware
+
+**Key Technical Challenges Solved:**
+1. **Dual Namespace Model** - Separate storage for scalars and arrays with same base name
+2. **Function Call Name Resolution** - Using canonical names with type suffixes
+3. **TYPE Alternate Syntax** - Extended parser for `AS TYPE field1, field2, ...` syntax
+4. **Extended Type Suffixes** - Support for `&&`, `~&&`, `~&`, `%%` suffixes
+5. **SHARED Array Handling** - Proper global scope modification for `REDIM _PRESERVE`
+6. **Polymorphic _IIF** - Type inference from both branches using numeric promotion
+7. **C Code Generation** - Fixed TYPE ordering, identifier escaping, stack size handling
+
+**Status:** QB64pe compiles without errors (0 parse, 0 semantic, 0 GCC errors) and runs successfully. Runtime features (file I/O, keyboard input) are complete. The generated executable runs and displays help (`-h` works). Full execution testing (compiling BASIC programs with bootstrapped QB64pe) is in progress.
+
+**Important:** QB64pe is compiled with `RuntimeMode::External` because it requires graphics support for its GUI. The runtime library must be built with `--features graphics-sdl2` and linked with SDL2 libraries.
+
+**Runtime Features Completed:**
+- ✅ File I/O operations (OPEN, CLOSE, PRINT#, INPUT#, GET, PUT, SEEK)
+- ✅ Keyboard input (INKEY$, _KEYHIT) - Unix and Windows support
+- ✅ String operations (validated through integration tests)
+- ✅ Array operations (validated through integration tests)
+- ✅ Command-line argument parsing (verified via `-h` flag)
+- ✅ Error handling (ON ERROR GOTO, RESUME)
+
+See [docs/QB64PE_COMPILATION_PLAN.md](QB64PE_COMPILATION_PLAN.md) for detailed implementation status.
+
+For detailed implementation history and technical challenges, see [docs/archive/BOOTSTRAP_PLAN_FULL.md](archive/BOOTSTRAP_PLAN_FULL.md).
+
 ---
 
-*Last updated: 2026-01-25*
+*Last updated: 2026-01-26*

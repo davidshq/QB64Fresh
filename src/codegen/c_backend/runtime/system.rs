@@ -564,11 +564,29 @@ pub(super) fn emit_stub_declarations(output: &mut String) {
     writeln!(output).unwrap();
 
     // Environment functions
-    writeln!(
-        output,
-        "void qb_sub_environ(qb_string* env) {{ (void)env; }}"
-    )
-    .unwrap();
+    // ENVIRON "name=value" - set environment variable
+    writeln!(output, "void qb_sub_environ(qb_string* env) {{").unwrap();
+    writeln!(output, "    if (!env || !env->data) return;").unwrap();
+    writeln!(output, "    const char* env_str = env->data;").unwrap();
+    writeln!(output).unwrap();
+    writeln!(output, "    // Parse 'name=value' format").unwrap();
+    writeln!(output, "    char* eq = strchr(env_str, '=');").unwrap();
+    writeln!(output, "    if (!eq || eq == env_str) return; // Invalid format (no '=' or name is empty)").unwrap();
+    writeln!(output).unwrap();
+    writeln!(output, "    // Allocate buffer for 'name=value' (putenv requires persistent string)").unwrap();
+    writeln!(output, "    size_t total_len = strlen(env_str);").unwrap();
+    writeln!(output, "    char* env_buf = (char*)malloc(total_len + 1);").unwrap();
+    writeln!(output, "    if (!env_buf) return;").unwrap();
+    writeln!(output, "    strcpy(env_buf, env_str);").unwrap();
+    writeln!(output).unwrap();
+    writeln!(output, "    // Use putenv (works on both Windows and Unix)").unwrap();
+    writeln!(output, "#ifdef _WIN32").unwrap();
+    writeln!(output, "    _putenv(env_buf);").unwrap();
+    writeln!(output, "#else").unwrap();
+    writeln!(output, "    putenv(env_buf); // Note: putenv takes ownership of the string").unwrap();
+    writeln!(output, "#endif").unwrap();
+    writeln!(output, "    // Don't free env_buf - putenv takes ownership").unwrap();
+    writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
     // Error functions

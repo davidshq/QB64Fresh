@@ -1,6 +1,8 @@
 # QB64Fresh Handbook
 
-A comprehensive guide to using QB64Fresh. For a step-by-step **tutorial and getting started** (install, first program, compile, run), see [GETTING_STARTED.md](GETTING_STARTED.md). This handbook covers [Getting Started](#getting-started), [Installation](#installation), and your [first program](#compiling-your-first-program).
+A comprehensive guide to using QB64Fresh. For a step-by-step **tutorial and getting started** (install, first program, compile, run), see [GETTING_STARTED.md](GETTING_STARTED.md). This handbook covers language basics, graphics, audio, file I/O, C library integration, and advanced topics.
+
+**Last Updated:** 2026-01-26
 
 ---
 
@@ -249,7 +251,7 @@ END DECLARE
 
 ### C Header Parsing (Advanced)
 
-QB64Fresh can automatically parse C header files to extract function declarations. This feature requires the `header-parsing` feature flag.
+QB64Fresh can automatically parse C header files to extract function declarations, constants, and struct definitions. This feature requires the `header-parsing` feature flag.
 
 #### Enabling Header Parsing
 
@@ -257,6 +259,8 @@ Build with the feature enabled:
 ```bash
 cargo build --features header-parsing
 ```
+
+**Note:** The header parser is available as a library feature. See [HEADER_PARSER_API.md](reference/HEADER_PARSER_API.md) for complete documentation.
 
 #### Programmatic Header Parsing
 

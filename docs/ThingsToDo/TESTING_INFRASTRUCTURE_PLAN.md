@@ -1,7 +1,7 @@
 # Testing Infrastructure Plan - Remaining Work
 
 **Created:** 2026-01-18
-**Updated:** 2026-01-25
+**Updated:** 2026-01-26
 **Purpose:** Track remaining testing infrastructure work for QB64Fresh
 
 > **Note:** 
@@ -33,7 +33,7 @@ The **runtime library** has comprehensive test coverage:
 | **Execution tests** | **27** | ✅ passing | `cargo test --test execution_tests` |
 | QB64pe compat | 122/141 files | 86.5% | `cargo test --test qb45_compat -- --nocapture` |
 
-### Current Test Failures (as of 2026-01-25)
+### Current Test Failures (as of 2026-01-26)
 
 - **Golden tests:** 8 of 10 currently fail (codegen output diffs, e.g. STRIG dispatch ordering); 2 pass. Golden baselines may need refresh after recent codegen changes.
 - **Other suites:** All passing. Remaining work is in "Remaining Gaps" and "Remaining QB64pe Failures" below.
@@ -114,3 +114,4 @@ The **runtime library** has comprehensive test coverage:
 *Updated: 2026-01-22 - Refreshed test counts, documented current failures*
 *Updated: 2026-01-25 - Refreshed test counts, QB64pe 122/141 (86.5%); completed items moved to TESTING-COMPLETED*
 *Updated: 2026-01-25 - Runtime 195→208; golden 2 pass/8 fail (codegen diff); io/string line counts*
+*Updated: 2026-01-26 - Reviewed and verified current state matches codebase*
