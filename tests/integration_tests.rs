@@ -7697,3 +7697,142 @@ s = STR$(42)
         assert!(code.contains(" 42"));
     }
 }
+
+/// Tests for debug mode code generation (Phase 6: Tooling)
+mod debug_codegen_tests {
+    use super::*;
+
+    /// Helper to compile with debug mode enabled
+    fn compile_to_c_debug(source: &str) -> Result<String, String> {
+        let tokens = lex(source);
+        let mut parser = Parser::new(&tokens);
+        let program = parser
+            .parse()
+            .map_err(|errors| format!("Parse errors: {:?}", errors))?;
+
+        let mut analyzer = SemanticAnalyzer::new();
+        let typed_program = analyzer
+            .analyze(&program)
+            .map_err(|errors| format!("Semantic errors: {:?}", errors))?;
+
+        let backend = CBackend::with_runtime_mode(RuntimeMode::Inline)
+            .with_debug(true)
+            .with_source_file("test.bas");
+        let output = backend
+            .generate(&typed_program)
+            .map_err(|e| format!("CodeGen error: {}", e))?;
+
+        Ok(output.code)
+    }
+
+    #[test]
+    fn debug_mode_emits_line_hooks() {
+        let code = compile_to_c_debug("PRINT \"Hello\"\nPRINT \"World\"").unwrap();
+        // Debug mode should emit qb_dbg_line calls
+        assert!(
+            code.contains("qb_dbg_line("),
+            "Expected qb_dbg_line call in debug output"
+        );
+    }
+
+    #[test]
+    fn debug_mode_includes_debug_runtime() {
+        let code = compile_to_c_debug("PRINT 1").unwrap();
+        // Debug runtime should include state variables and functions
+        assert!(
+            code.contains("_qb_dbg_enabled"),
+            "Expected debug state variable"
+        );
+        assert!(
+            code.contains("qb_dbg_init"),
+            "Expected qb_dbg_init function"
+        );
+        assert!(
+            code.contains("qb_dbg_shutdown"),
+            "Expected qb_dbg_shutdown function"
+        );
+    }
+
+    #[test]
+    fn debug_mode_emits_proc_enter_exit() {
+        let code = compile_to_c_debug(
+            r#"
+SUB MySub
+    PRINT "In sub"
+END SUB
+
+MySub
+"#,
+        )
+        .unwrap();
+        // Debug mode should emit procedure enter/exit hooks
+        assert!(
+            code.contains("qb_dbg_enter_proc"),
+            "Expected procedure enter hook"
+        );
+        assert!(
+            code.contains("qb_dbg_exit_proc"),
+            "Expected procedure exit hook"
+        );
+    }
+
+    #[test]
+    fn debug_mode_initializes_from_env() {
+        let code = compile_to_c_debug("PRINT 1").unwrap();
+        // Debug mode should check for QB64FRESH_DEBUG_PIPE env var
+        assert!(
+            code.contains("QB64FRESH_DEBUG_PIPE"),
+            "Expected env var check for debug pipe"
+        );
+    }
+
+    #[test]
+    fn debug_mode_includes_breakpoint_support() {
+        let code = compile_to_c_debug("PRINT 1").unwrap();
+        // Debug runtime should include breakpoint functions
+        assert!(
+            code.contains("qb_dbg_add_bp"),
+            "Expected breakpoint add function"
+        );
+        assert!(
+            code.contains("qb_dbg_remove_bp"),
+            "Expected breakpoint remove function"
+        );
+        assert!(
+            code.contains("qb_dbg_is_bp"),
+            "Expected breakpoint check function"
+        );
+    }
+
+    #[test]
+    fn debug_mode_includes_variable_inspection() {
+        let code = compile_to_c_debug("PRINT 1").unwrap();
+        // Debug runtime should include variable inspection helpers
+        assert!(
+            code.contains("qb_dbg_var_int"),
+            "Expected int variable inspection"
+        );
+        assert!(
+            code.contains("qb_dbg_var_float"),
+            "Expected float variable inspection"
+        );
+        assert!(
+            code.contains("qb_dbg_var_string"),
+            "Expected string variable inspection"
+        );
+    }
+
+    #[test]
+    fn non_debug_mode_excludes_hooks() {
+        // Without debug mode, none of these hooks should be present
+        let code = compile_to_c("PRINT 1").unwrap();
+        assert!(
+            !code.contains("qb_dbg_line"),
+            "Non-debug should not have line hooks"
+        );
+        assert!(
+            !code.contains("_qb_dbg_enabled"),
+            "Non-debug should not have debug state"
+        );
+    }
+}
