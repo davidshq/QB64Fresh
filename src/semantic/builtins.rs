@@ -1349,6 +1349,180 @@ impl SemanticAnalyzer {
         self.register_builtin_function("_SCALEDWIDTH", &[], BasicType::Long);
         self.register_builtin_function("_SCALEDHEIGHT", &[], BasicType::Long);
 
+        // Dialog functions
+        self.register_builtin_function_with_optionals(
+            "_COLORCHOOSERDIALOG",
+            &[
+                ("initial_color", BasicType::Long, true),
+                ("title", BasicType::String, true),
+            ],
+            BasicType::Long,
+        );
+
+        // HSB color functions (Hue-Saturation-Brightness)
+        self.register_builtin_function(
+            "_HSB32",
+            &[
+                ("hue", BasicType::Single),
+                ("saturation", BasicType::Single),
+                ("brightness", BasicType::Single),
+            ],
+            BasicType::Long,
+        );
+        self.register_builtin_function(
+            "_HSBA32",
+            &[
+                ("hue", BasicType::Single),
+                ("saturation", BasicType::Single),
+                ("brightness", BasicType::Single),
+                ("alpha", BasicType::Single),
+            ],
+            BasicType::Long,
+        );
+        self.register_builtin_function("_HUE32", &[("color", BasicType::Long)], BasicType::Single);
+        self.register_builtin_function(
+            "_SATURATION32",
+            &[("color", BasicType::Long)],
+            BasicType::Single,
+        );
+        self.register_builtin_function(
+            "_BRIGHTNESS32",
+            &[("color", BasicType::Long)],
+            BasicType::Single,
+        );
+
+        // Networking functions
+        self.register_builtin_function(
+            "_CONNECTIONADDRESS",
+            &[("handle", BasicType::Long)],
+            BasicType::Long,
+        );
+        self.register_builtin_function(
+            "_CONNECTIONADDRESS$",
+            &[("handle", BasicType::Long)],
+            BasicType::String,
+        );
+
+        // File I/O extended
+        self.register_builtin_function(
+            "_FILES$",
+            &[("spec", BasicType::String)],
+            BasicType::String,
+        );
+        self.register_builtin_function(
+            "_EMBEDDED$",
+            &[("name", BasicType::String)],
+            BasicType::String,
+        );
+
+        // Device input extended
+        self.register_builtin_function("_LASTHANDLER", &[], BasicType::Long);
+
+        // Sound creation
+        self.register_builtin_function(
+            "_SNDNEW",
+            &[
+                ("frames", BasicType::Long),
+                ("channels", BasicType::Long),
+                ("bits", BasicType::Long),
+            ],
+            BasicType::Long,
+        );
+
+        // Error handling extended
+        self.register_builtin_function("_INCLERRORFILE$", &[], BasicType::String);
+        self.register_builtin_function("_INCLERRORLINE", &[], BasicType::Long);
+        self.register_builtin_function("_STATUSCODE", &[], BasicType::Long);
+
+        // Unicode mapping - dual purpose:
+        // As statement: _MAPUNICODE unicode&, ascii% (sets mapping, returns 0)
+        // As function: _MAPUNICODE(ascii%) (gets mapping, returns unicode)
+        self.register_builtin_function_with_optionals(
+            "_MAPUNICODE",
+            &[
+                ("unicode_or_ascii", BasicType::Long, false),
+                ("ascii", BasicType::Long, true),
+            ],
+            BasicType::Long,
+        );
+
+        // Unicode font functions
+        self.register_builtin_function(
+            "_UCHARPOS",
+            &[("text", BasicType::String), ("pos", BasicType::Long)],
+            BasicType::Long,
+        );
+        self.register_builtin_function(
+            "_UFONTHEIGHT",
+            &[("handle", BasicType::Long)],
+            BasicType::Long,
+        );
+        self.register_builtin_function(
+            "_UPRINTWIDTH",
+            &[("text", BasicType::String)],
+            BasicType::Long,
+        );
+
+        // Graphics rendering mode constants (return constant values)
+        self.register_builtin_function("_SMOOTH", &[], BasicType::Long);
+        self.register_builtin_function("_SMOOTHSHRUNK", &[], BasicType::Long);
+        self.register_builtin_function("_SMOOTHSTRETCHED", &[], BasicType::Long);
+        self.register_builtin_function("_HARDWARE", &[], BasicType::Long);
+        self.register_builtin_function("_HARDWARE1", &[], BasicType::Long);
+        self.register_builtin_function("_SOFTWARE", &[], BasicType::Long);
+        self.register_builtin_function("_STRETCH", &[], BasicType::Long);
+        self.register_builtin_function("_SEAMLESS", &[], BasicType::Long);
+        self.register_builtin_function("_SQUAREPIXELS", &[], BasicType::Long);
+        self.register_builtin_function("_BEHIND", &[], BasicType::Long);
+
+        // Graphics direction constants
+        self.register_builtin_function("_ANTICLOCKWISE", &[], BasicType::Long);
+        self.register_builtin_function("_CLOCKWISE", &[], BasicType::Long);
+
+        // Print mode constants
+        self.register_builtin_function("_KEEPBACKGROUND", &[], BasicType::Long);
+        self.register_builtin_function("_FILLBACKGROUND", &[], BasicType::Long);
+        self.register_builtin_function("_ONLYBACKGROUND", &[], BasicType::Long);
+
+        // Alignment constant
+        self.register_builtin_function("_MIDDLE", &[], BasicType::Long);
+
+        // Auto display constant
+        self.register_builtin_function("_AUTO", &[], BasicType::Long);
+
+        // Type/mode keyword constants
+        self.register_builtin_function("_ALL", &[], BasicType::Long);
+        self.register_builtin_function("_BLINK", &[], BasicType::Long);
+        self.register_builtin_function("_OFF", &[], BasicType::Long);
+        self.register_builtin_function("_ONLY", &[], BasicType::Long);
+
+        // Sound/network mode constants
+        self.register_builtin_function("_WAVE", &[], BasicType::Long);
+        self.register_builtin_function("_DONTWAIT", &[], BasicType::Long);
+
+        // Console functions
+        self.register_builtin_function("_CONSOLETITLE$", &[], BasicType::String);
+        self.register_builtin_function("_SCREENBUFFER", &[], BasicType::Long);
+        self.register_builtin_function("_SCINKEY$", &[], BasicType::String);
+
+        // Debug/assertion functions
+        self.register_builtin_function("_ASSERTERROR$", &[], BasicType::String);
+        self.register_builtin_function("_GLCOMPAT", &[], BasicType::Long);
+
+        // Display extended
+        self.register_builtin_function("_FULLSCREENSMOOTH", &[], BasicType::Long);
+        self.register_builtin_function("_DISPLAYWIDTH", &[], BasicType::Long);
+        self.register_builtin_function("_DISPLAYHEIGHT", &[], BasicType::Long);
+
+        // Date/time functions
+        self.register_builtin_function("_YEAR", &[], BasicType::Long);
+        self.register_builtin_function("_MONTH", &[], BasicType::Long);
+        self.register_builtin_function("_DAY", &[], BasicType::Long);
+        self.register_builtin_function("_HOUR", &[], BasicType::Long);
+        self.register_builtin_function("_MINUTE", &[], BasicType::Long);
+        self.register_builtin_function("_SECOND", &[], BasicType::Long);
+        self.register_builtin_function("_WEEKDAY", &[], BasicType::Long);
+
         // Register built-in subs
         self.register_builtin_subs();
     }
@@ -1494,6 +1668,42 @@ impl SemanticAnalyzer {
 
         // Window icon statement
         self.register_builtin_sub("_SCREENICON", &[]);
+
+        // Logging statements
+        self.register_builtin_sub("_LOGTRACE", &[("message", BasicType::String)]);
+        self.register_builtin_sub("_LOGINFO", &[("message", BasicType::String)]);
+        self.register_builtin_sub("_LOGWARN", &[("message", BasicType::String)]);
+        self.register_builtin_sub("_LOGERROR", &[("message", BasicType::String)]);
+        self.register_builtin_sub("_LOGMINLEVEL", &[("level", BasicType::Long)]);
+
+        // Graphics extended statements
+        self.register_builtin_sub(
+            "_SAVEIMAGE",
+            &[("filename", BasicType::String), ("handle", BasicType::Long)],
+        );
+        self.register_builtin_sub("_SCREENPRINT", &[("text", BasicType::String)]);
+        self.register_builtin_sub("_PRINTIMAGE", &[("handle", BasicType::Long)]);
+        self.register_builtin_sub("_GLRENDER", &[("mode", BasicType::Long)]);
+
+        // Resource cleanup
+        self.register_builtin_sub("_CLEAR", &[("handle", BasicType::Long)]);
+
+        // Toggle statement
+        self.register_builtin_sub("_TOGGLE", &[("handle", BasicType::Long)]);
+
+        // Sound extended statements
+        self.register_builtin_sub(
+            "_SNDRAWBATCH",
+            &[
+                ("handle", BasicType::Long),
+                ("data", BasicType::Long),
+                ("frames", BasicType::Long),
+            ],
+        );
+        self.register_builtin_sub("_MIDISOUNDBANK", &[("filename", BasicType::String)]);
+
+        // Device handler statement
+        self.register_builtin_sub("_NEWHANDLER", &[("handler", BasicType::Long)]);
     }
 
     /// Registers a single built-in function.
