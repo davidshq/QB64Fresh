@@ -2301,6 +2301,18 @@ pub extern "C" fn qb_maptriangle_ex(
     }
 }
 
+/// _GLRENDER mode - OpenGL render mode. No-op stub; raw _GL* excluded per ADR-0014.
+#[no_mangle]
+pub extern "C" fn qb_glrender(_mode: i32) {
+    // No-op; OpenGL not supported
+}
+
+/// _GLCOMPAT - OpenGL compatibility mode. No-op stub; returns 0.
+#[no_mangle]
+pub extern "C" fn qb_glcompat() -> i32 {
+    0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1369,4 +1369,10 @@ pub(super) fn emit_graphics_stubs(output: &mut String) {
     .unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
+
+    // _GLRENDER, _GLCOMPAT - OpenGL stubs (no-op; raw _GL* excluded per ADR-0014)
+    writeln!(output, "/* OpenGL stubs */").unwrap();
+    writeln!(output, "void qb_glrender(int32_t mode) {{ (void)mode; }}").unwrap();
+    writeln!(output, "int32_t qb_glcompat(void) {{ return 0; }}").unwrap();
+    writeln!(output).unwrap();
 }
