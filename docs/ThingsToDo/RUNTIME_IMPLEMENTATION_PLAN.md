@@ -55,7 +55,7 @@ src/codegen/c_backend/runtime/
 ├── audio.rs     - Stubs: BEEP, SOUND, _SND*
 ├── legacy.rs    - DEF SEG, PEEK/POKE, OUT, INP, PALETTE, GOSUB stack
 ├── system.rs    - ENVIRON$, COMMAND$, SHELL, SYSTEM, END, _OS$, _CWD$, _STARTDIR$, etc.
-└── debug.rs     - Optional: breakpoints, stepping, IPC for debugger
+└── debug.rs     - qb_dbg_line, qb_dbg_enter_proc/exit_proc; breakpoint/stepping hooks when compiled with --debug. IPC for debugger (tools/debug) in progress.
 ```
 
 ### External Runtime (Rust → libqb64fresh_rt)
@@ -103,21 +103,22 @@ runtime/src/
 
 ### 1.1 Memory Management
 
-**Inline:** `src/codegen/c_backend/runtime/memory.rs`  
-**External:** Not a separate module; `_MEM*` and related may be inlined or TBD.
+**Inline:** `src/codegen/c_backend/runtime/memory.rs` — full implementation for core ops; typed get/put/fill; `_MEMELEMENT`. `_MEMIMAGE` and `_MEMSOUND` return empty (stub).  
+**External:** `_MEM*` not in `qb64fresh_rt.h`; programs using `_MEM*` with `--runtime external` would need these added to the lib or use inline.
 
 | Function | Status | Description |
 |----------|--------|-------------|
-| `_MEMNEW(size)` | [~] | Allocate memory block |
-| `_MEMFREE(block)` | [~] | Free memory block |
-| `_MEMEXISTS(block)` | [~] | Check if block is valid |
-| `_MEMCOPY(src, dest, size)` | [~] | Copy memory |
-| `_MEMGET(block, offset, type)` | [~] | Read typed value |
-| `_MEMPUT(block, offset, value)` | [~] | Write typed value |
-| `_MEMFILL(block, offset, size, value)` | [~] | Fill memory |
-| `_MEM(var)` | [~] | Get memory block for variable |
-| `_MEMSOUND(handle)` | [~] | Get memory block for sound |
-| `_MEMIMAGE(handle)` | [~] | Get memory block for image |
+| `_MEMNEW(size)` | [x] | Allocate memory block |
+| `_MEMFREE(block)` | [x] | Free memory block |
+| `_MEMEXISTS(block)` | [x] | Check if block is valid |
+| `_MEMCOPY(src, dest, size)` | [x] | Copy memory |
+| `_MEMGET(block, offset, type)` | [x] | Read typed value |
+| `_MEMPUT(block, offset, value)` | [x] | Write typed value |
+| `_MEMFILL(block, offset, size, value)` | [x] | Fill memory |
+| `_MEM(var)` | [x] | Get memory block for variable (qb_mem_of, etc.) |
+| `_MEMELEMENT(block, index)` | [x] | Element offset |
+| `_MEMSOUND(handle)` | [~] | Stub (returns empty) |
+| `_MEMIMAGE(handle)` | [~] | Stub (returns empty) |
 
 ### 1.2 String System
 
@@ -131,21 +132,21 @@ runtime/src/
 | `RIGHT$(str, n)` | [x] | Right substring |
 | `MID$(str, start, len)` | [x] | Middle substring |
 | `INSTR(start, str, search)` | [x] | Find substring |
-| `_INSTRREV(start, str, search)` | [~] | Find from right |
+| `_INSTRREV(start, str, search)` | [x] | Find from right (qb_instrrev, qb_instrrev3) |
 | `UCASE$(str)` | [x] | Uppercase |
 | `LCASE$(str)` | [x] | Lowercase |
 | `LTRIM$(str)` | [x] | Trim left |
 | `RTRIM$(str)` | [x] | Trim right |
-| `_TRIM$(str)` | [~] | Trim both |
+| `_TRIM$(str)` | [x] | Trim both (qb_trim; same as TRIM$) |
 | `SPACE$(n)` | [x] | Create spaces |
 | `STRING$(n, char)` | [x] | Create repeated char |
 | `CHR$(n)` | [x] | ASCII to char |
 | `ASC(str, pos)` | [x] | Char to ASCII |
 | `STR$(num)` | [x] | Number to string |
 | `VAL(str)` | [x] | String to number |
-| `HEX$(num)` | [~] | Number to hex |
-| `OCT$(num)` | [~] | Number to octal |
-| `_BIN$(num)` | [~] | Number to binary |
+| `HEX$(num)` | [x] | Number to hex (qb_hex) |
+| `OCT$(num)` | [x] | Number to octal (qb_oct) |
+| `_BIN$(num)` | [x] | Number to binary (qb_bin) |
 
 ### 1.3 Math Functions
 
@@ -160,8 +161,8 @@ runtime/src/
 | `FIX(x)` | [x] | Truncate toward zero |
 | `CINT(x)` | [x] | Convert to integer |
 | `CLNG(x)` | [x] | Convert to long |
-| `CSNG(x)` | [~] | Convert to single |
-| `CDBL(x)` | [~] | Convert to double |
+| `CSNG(x)` | [x] | Convert to single |
+| `CDBL(x)` | [x] | Convert to double |
 | `SQR(x)` | [x] | Square root |
 | `LOG(x)` | [x] | Natural log |
 | `EXP(x)` | [x] | Exponential |
@@ -193,7 +194,7 @@ runtime/src/
 | `PRINT #n, data` | [x] | Write to file |
 | `INPUT #n, vars` | [x] | Read from file |
 | `LINE INPUT #n, str$` | [x] | Read line |
-| `WRITE #n, data` | [~] | Write CSV format |
+| `WRITE #n, data` | [x] | Write CSV format (qb_file_write_*; file.rs, file_io.rs) |
 | `GET #n, pos, var` | [x] | Binary read |
 | `PUT #n, pos, var` | [x] | Binary write |
 | `SEEK #n, pos` | [x] | Set position |
@@ -204,10 +205,11 @@ runtime/src/
 | `FREEFILE` | [x] | Next free file number |
 | `KILL file` | [x] | Delete file |
 | `NAME old AS new` | [x] | Rename file |
-| `CHDIR path` | [~] | Change directory |
-| `MKDIR path` | [~] | Create directory |
-| `RMDIR path` | [~] | Remove directory |
+| `CHDIR path` | [x] | Change directory (inline: system.rs; external: io.rs) |
+| `MKDIR path` | [x] | Create directory |
+| `RMDIR path` | [x] | Remove directory |
 | `_FILEEXISTS(file)` | [x] | Check file exists |
+| `_DIREXISTS(path)` | [x] | Check directory exists (inline: system; external: io) |
 
 ---
 
@@ -387,7 +389,7 @@ See [GRAPHICS.md](GRAPHICS.md) for architecture, backends (SDL2, Mock), and stub
 | `ON ERROR GOTO label` | [x] | Set error handler |
 | `RESUME`, `RESUME NEXT`, `RESUME label` | [x] | Resume after error |
 | `ERR`, `ERL` | [x] | Error code/line |
-| `_ERRORMESSAGE$` | [~] | Error message |
+| `_ERRORMESSAGE$` | [x] | Error message (qb_errormessage; error.rs) |
 | `ERROR n` | [x] | Generate error |
 
 ---

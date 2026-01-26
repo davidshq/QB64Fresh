@@ -1,10 +1,8 @@
 # Runtime Architecture: Expert Perspectives
 
-This document explores QB64Fresh's dual-runtime architecture through the lens of different engineering disciplines. The goal is to understand why this design exists, its trade-offs, and potential improvements.
+QB64Fresh's dual-runtime design: why it exists, trade-offs, and improvements.
 
-## The Architecture in Question
-
-QB64Fresh has two runtime implementations:
+## The Architecture
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -39,293 +37,87 @@ QB64Fresh has two runtime implementations:
 
 ---
 
-## 🦀 The Rust Engineer's Perspective
+## 🦀 Rust Engineer
 
-**Primary Concern:** Memory safety, FFI correctness, idiomatic Rust
+**Concern:** Memory safety, FFI, idiomatic Rust
 
-### What I Like
-
-The external runtime in `runtime/src/` is well-structured Rust:
-
-```rust
-// Reference-counted strings with proper cleanup
-pub struct QbString { ... }
-
-#[no_mangle]
-pub unsafe extern "C" fn qb_string_release(s: *mut QbString) {
-    if s.is_null() { return; }
-    let header = get_header_mut(s as *mut c_char);
-    header.ref_count -= 1;
-    if header.ref_count == 0 {
-        // Proper deallocation
-    }
-}
-```
-
-The `#[no_mangle]` and `extern "C"` annotations are correct for FFI. The null checks are good defensive programming.
-
-### What Concerns Me
-
-**1. The inline runtime is C code embedded in Rust strings:**
-
-```rust
-// This is... not great
-writeln!(output, "void qb_print_string(qb_string* s) {{").unwrap();
-writeln!(output, "    if (s && s->data) printf(\"%s\", s->data);").unwrap();
-writeln!(output, "}}").unwrap();
-```
-
-No compiler checks this C code. Typos, memory bugs, undefined behavior - none of it gets caught until GCC compiles the output.
-
-**2. Two implementations means two places for bugs:**
-
-If we fix a bug in the Rust runtime's `qb_instr()`, we might forget to fix it in the inline C version. They can drift apart silently.
-
-### My Recommendation
-
-Consider generating the inline C from the Rust code, or at minimum, share test cases between both implementations. The duplication is a maintenance burden.
+- **Like:** External runtime: proper `#[no_mangle] extern "C"`, null checks, ref-counted strings.
+- **Concern:** Inline runtime is C in Rust strings—no compiler checks; bugs surface only at GCC. Two implementations → drift (fix in one, forget the other).
+- **Recommendation:** Generate inline C from Rust, or at least share tests between both.
 
 ---
 
-## 🔤 The Language Engineer's Perspective
+## 🔤 Language Engineer
 
-**Primary Concern:** Semantic correctness, QB64 compatibility, edge cases
+**Concern:** Semantic correctness, QB64 compatibility
 
-### What I Like
-
-The separation allows testing compilation without graphics dependencies. I can verify that:
-- Type checking works
-- Control flow is correct
-- Expressions evaluate properly
-
-All without needing SDL2 installed.
-
-### What Concerns Me
-
-**Semantic drift between implementations:**
-
-```basic
-' What does this return on each runtime?
-DIM x AS STRING
-x = INKEY$
-IF x <> "" THEN PRINT ASC(x)
-```
-
-Both return `CHR$(0) + CHR$(72)` for Up—they match. But who verifies this? Where's the conformance test suite?
-
-**Missing QB64 semantics in stubs:**
-
-```basic
-SCREEN 13
-PSET (100, 100), 15
-x = POINT(100, 100)  ' Should return 15
-```
-
-In inline mode, `POINT` returns 0 because there's no framebuffer. This could mask bugs in programs that depend on reading back pixel values.
-
-### My Recommendation
-
-Create conformance tests for both runtimes (non-graphics programs should match). Document stub-only features (see Action Items).
+- **Like:** Inline lets us test compilation (types, control flow, expressions) without SDL2.
+- **Concern:** Semantic drift: who verifies INKEY$, POINT, etc. match? Stub POINT returns 0; no framebuffer can hide bugs.
+- **Recommendation:** Conformance tests for both runtimes. Document stub-only behavior.
 
 ---
 
-## 🖥️ The QB64 Expert's Perspective
+## 🖥️ QB64 Expert
 
-**Primary Concern:** Compatibility with real QB64pe behavior
+**Concern:** Compatibility with QB64pe
 
-### Historical Context
-
-QB64pe itself has a similar split! It has:
-- `libqb.cpp` - The core runtime
-- `libqb_gfx.cpp` - Graphics (optional, can be stubbed)
-
-The QB64Fresh architecture mirrors this, which is good for compatibility reasoning.
-
-### What I Like
-
-The inline stubs handle the tricky QB64 conventions:
-
-```c
-// QB64's INKEY$ returns CHR$(0) + scan_code for extended keys
-if (ch == 0 || ch == 224) {
-    char buf[3] = {0, (char)_getch(), 0};
-    return qb_string_new(buf);
-}
-```
-
-This matches QB64pe's behavior. Arrow keys, function keys, etc. all work correctly.
-
-### What Concerns Me
-
-**QB64pe-specific features may behave differently:**
-
-```basic
-' QB64pe-specific
-DIM m AS _MEM
-m = _MEM(array())
-```
-
-The `_MEM` functions are complex and interact with QB64's internal memory model. The stubs return dummy values, but real programs might depend on actual memory addresses.
-
-**The bootstrap chicken-and-egg:**
-
-We're trying to compile QB64pe with QB64Fresh. But QB64pe uses every obscure feature of QB64. The stubs need to be "good enough" for compilation, even if they're not fully functional.
-
-### My Recommendation
-
-Focus on making the bootstrap work first. Document which QB64pe features are used during compilation vs. runtime. The compiler itself doesn't need `_SNDPLAY` - it just needs file I/O and string handling.
+- **Like:** Mirrors QB64pe’s split (libqb vs libqb_gfx). Inline stubs respect QB64 quirks (e.g. INKEY$ = CHR$(0)+scan_code for extended keys).
+- **Concern:** `_MEM` and QB64pe-specific features get dummy stubs; bootstrap needs “good enough” for compilation, not full behavior.
+- **Recommendation:** Bootstrap first. Document which QB64pe features are compile-time vs runtime. Compiler needs file I/O and strings, not `_SNDPLAY`.
 
 ---
 
-## 🏗️ The Software Architect's Perspective
+## 🏗️ Software Architect
 
-**Primary Concern:** System design, maintainability, extensibility
+**Concern:** Maintainability, extensibility
 
-### The Good
-
-**Clear separation of concerns:**
-
-```
-Compiler (src/)           - Language processing
-Inline Runtime (codegen/) - Portable C generation
-External Runtime (runtime/) - Full-featured implementation
-```
-
-Each has a distinct responsibility. The compiler doesn't know which runtime will be used.
-
-**The trait-based graphics backend is excellent:**
-
-```rust
-pub trait GraphicsBackend {
-    fn init(&mut self, width: u32, height: u32) -> Result<()>;
-    fn cls(&mut self) -> Result<()>;
-    fn pset(&mut self, x: i32, y: i32, color: u32) -> Result<()>;
-    // ...
-}
-
-// Implementations
-pub struct Sdl2Backend { ... }
-pub struct MockBackend { ... }  // For testing!
-```
-
-This allows headless testing and future backend additions (Vulkan? WebGPU?).
-
-### What Concerns Me
-
-**The inline runtime violates DRY:**
-
-We have ~9000 lines of Rust (in `src/codegen/c_backend/runtime/`) that *emit* inline C, overlapping in behavior with the ~16000 lines of Rust in `runtime/src/`. When someone adds a feature, they may need to update both the emitter and the external implementation.
-
-**No shared interface definition:**
-
-```rust
-// Rust runtime
-pub extern "C" fn qb_left(s: *const QbString, n: i32) -> *mut QbString
-
-// Inline runtime (in strings!)
-"qb_string* qb_left(qb_string* s, int32_t n) {"
-```
-
-These SHOULD be the same signature, but there's no mechanism ensuring they are.
-
-### My Recommendation
-
-**Option A: Generate inline from external**
-
-Write a tool that reads the Rust runtime and generates equivalent C. Complex but eliminates duplication.
-
-**Option B: Shared header file**
-
-Use `runtime/include/qb64fresh_rt.h` as the contract for the external runtime. The inline runtime emits its own C and does not include this header; both should match the same semantics. The header exists—use it as the external API contract and enforce conformance.
-
-**Option C: Accept the duplication**
-
-Document it clearly. The inline runtime is intentionally minimal. Don't try to achieve feature parity - let them serve different purposes.
-
-I lean toward **Option C** with clear documentation.
+- **Like:** Clear separation: compiler | inline (portable C) | external (full impl). GraphicsBackend trait (SDL2, Mock) enables headless tests and future backends.
+- **Concern:** Inline ~9k lines *emitting* C overlaps `runtime/` ~16k; no shared contract enforces `qb_left` etc. match.
+- **Recommendation:** **A)** Generate inline from Rust. **B)** Use `qb64fresh_rt.h` as the single API contract. **C)** Accept duplication, document that inline is intentionally minimal. Prefer **C** with clear docs.
 
 ---
 
-## 🔧 The Pragmatic Engineer's Perspective
+## 🔧 Pragmatic Engineer
 
-**Primary Concern:** Does it work? Can we ship it?
+**Concern:** Does it work? Can we ship?
 
-### Reality Check
+| Feature | Inline | External | Bootstrap? |
+|---------|--------|----------|------------|
+| Strings, I/O, keyboard, math | ✅ | ✅ | ✅ |
+| Graphics, audio | ⚠️ Stubs | ✅ | ❌ |
 
-Let's be honest about what we have:
+Bootstrap needs only the ✅ rows; stubs are enough. Duplication (inline vs external) serves different goals: portability, CI, headless vs full graphics/audio. Unifying now would slow progress.
 
-| Feature | Inline | External | Needed for Bootstrap? |
-|---------|--------|----------|----------------------|
-| Strings | ✅ Full | ✅ Full | ✅ Yes |
-| File I/O | ✅ Full | ✅ Full | ✅ Yes |
-| Console I/O | ✅ Full | ✅ Full | ✅ Yes |
-| Keyboard | ✅ Full | ✅ Full | ✅ Yes |
-| Math | ✅ Full | ✅ Full | ✅ Yes |
-| Graphics | ⚠️ Stubs | ✅ SDL2 | ❌ No |
-| Audio | ⚠️ Stubs | ✅ Rodio | ❌ No |
-
-Bootstrap only needs the ✅ rows (strings through math); inline’s stubs for graphics and audio are sufficient.
-
-### What Actually Matters Right Now
-
-2. **Ensure file I/O edge cases work** — Binary GET/PUT, random access
-3. **Keep keyboard input working** — For interactive prompts
-
-Graphics and audio can wait until someone wants to compile a game.
-
-### The Duplication Isn't Hurting Us
-
-Two implementations, but: the inline runtime (~9k lines, see Architect) emits portable C; core string/file/keyboard/math behavior is stable and it serves a different purpose (portability, CI, headless). Premature unification would slow us down. Focus on the bootstrap first, then revisit architecture (see recommendations).
-
-### My Recommendation
-
-1. **Document the split clearly** (this document)
-2. **Add conformance tests and CI for both runtimes**
-3. **Focus on the bootstrap** — get QB64pe self-compiling
-4. **Revisit architecture** when the bootstrap works (e.g. Architect Option A if duplication hurts)
+- **Recommendation:** Document the split (this doc), add conformance + CI, focus on bootstrap, revisit architecture (e.g. generate-inline) when it hurts.
 
 ---
 
-## Consensus Summary
+## Consensus & Action Items
 
 | Expert | Verdict | Priority |
 |--------|---------|----------|
-| Rust Engineer | Concerned about C-in-strings | Medium - testing helps |
-| Language Engineer | Wants conformance tests | High - catches drift |
-| QB64 Expert | Bootstrap-focused | High - practical |
-| Architect | Accepts duplication with docs | Medium - document it |
-| Pragmatic Engineer | Ship it, fix later | High - unblock progress |
+| Rust | C-in-strings risky; share tests | Medium |
+| Language | Conformance tests | High |
+| QB64 | Bootstrap first | High |
+| Architect | Accept duplication + document | Medium |
+| Pragmatic | Ship, fix later | High |
 
-### Action Items
-
-3. **Medium-term:** Document stub-only features. See [STUB_FUNCTIONS_REMAINING.md](ThingsToDo/STUB_FUNCTIONS_REMAINING.md)
-4. **Long-term:** Consider generating inline C from Rust (Architect Option A) if duplication becomes painful
+**Actions:** Document stub-only features ([STUB_FUNCTIONS_REMAINING.md](ThingsToDo/STUB_FUNCTIONS_REMAINING.md)). Long-term: consider generating inline from Rust if duplication hurts.
 
 ---
 
-## Appendix: When to Use Each Runtime
+## When to Use Each Runtime
 
-### Use Inline Runtime When:
-- Running in CI/CD (no display server)
-- Quick syntax checking
-- Teaching/learning (simple setup)
-- Compiling compilers (no graphics needed)
-- Distributing generated C code
-- Headless debugging (optional `debug` module: breakpoints, stepping, IPC)
+**Inline:** CI, syntax checks, teaching, compiler build, distributing .c, headless debugging.
 
-### Use External Runtime When:
-- Building graphical applications
-- Playing audio
-- Need full QB64 compatibility
-- Performance matters (optimized Rust)
-- Developing the runtime itself
+**External:** Graphics, audio, full QB64 behavior, performance, runtime development.
 
 ---
 
-## Related Documentation
+## Related
 
-- [GRAPHICS.md](GRAPHICS.md) — Graphics architecture, inline stub behavior, `QB64FRESH_MAX_FRAMES`, SDL2/Mock backends
-- [runtime/include/qb64fresh_rt.h](../runtime/include/qb64fresh_rt.h) — C API contract for the external runtime
-- [STUB_FUNCTIONS_REMAINING.md](ThingsToDo/STUB_FUNCTIONS_REMAINING.md) — Functions that are stub-only or partially implemented
+- [GRAPHICS.md](GRAPHICS.md) — Stubs, QB64FRESH_MAX_FRAMES, backends
+- [runtime/include/qb64fresh_rt.h](../runtime/include/qb64fresh_rt.h) — C API
+- [STUB_FUNCTIONS_REMAINING.md](ThingsToDo/STUB_FUNCTIONS_REMAINING.md)
 
 *Last updated: 2026-01-25*
