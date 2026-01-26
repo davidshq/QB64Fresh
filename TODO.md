@@ -14,19 +14,14 @@ A prioritized roadmap for QB64Fresh development. For completed features, see [TO
 
 ## Phase 3: Graphics System - Remaining Items
 
-### Not Yet Implemented
-- [ ] Hardware acceleration option *(Large - 4-6 sessions, requires GPU backend work)*
-
-### Completed (see TODO-completed.md)
-- [x] Alpha blending — _BLEND, _DONTBLEND, _CLEARCOLOR in external runtime (SDL2)
-- [x] Multiple screen pages — SCREEN active/visual page, PCOPY; 4 pages in `runtime/src/graphics/sdl2.rs`
+All Phase 3 items completed — see [TODO-completed.md](docs/archive/TODO-completed.md).
 
 ---
 
 ## Phase 5: Advanced Features - Remaining Items
 
 ### Networking
-- [ ] Network stream I/O (PUT/GET with network handles) *(Medium - 2-3 sessions)* — Runtime: `qb_net_get`, `qb_net_put`, `qb_net_get_string`, `qb_net_put_string`, `qb_net_eof`, `qb_net_lof` in `qb64fresh_rt.h`; codegen wiring for PUT #/GET # on network handles TBD.
+All networking items completed — see [TODO-completed.md](docs/archive/TODO-completed.md).
 
 ### Input Devices
 - [ ] Touch input support *(Medium - 2-3 sessions)*

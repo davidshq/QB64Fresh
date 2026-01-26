@@ -166,6 +166,11 @@
 - [x] PUT statement (graphics) - display array to screen (runtime stubs)
 - [x] PUT action modes: XOR, PSET, PRESET, AND, OR
 
+### Alpha Blending & Page Support
+- [x] Alpha blending — `_BLEND`, `_DONTBLEND`, `_CLEARCOLOR` in external runtime (SDL2)
+- [x] Multiple screen pages — SCREEN active/visual page, `PCOPY`; 4 pages in `runtime/src/graphics/sdl2.rs`
+- [x] Hardware acceleration — persistent SDL2 streaming textures; dirty flag optimization; O(1) page switches
+
 ### Mouse Input
 - [x] `_MOUSEX`, `_MOUSEY`, `_MOUSEBUTTON` - full pipeline
 - [x] `_MOUSEINPUT` - check for mouse events
@@ -230,6 +235,8 @@
 - [x] `_OPENCONNECTION` function - accept incoming connection (non-blocking)
 - [x] `_OPENCLIENT` function - connect to TCP server
 - [x] `_CONNECTED` function - check connection status
+- [x] Network stream I/O — `PUT #`/`GET #` dispatch to `qb_net_put`/`qb_net_get` when handle < 0
+- [x] `EOF()` / `LOF()` for network handles — `qb_net_eof`, `qb_net_lof` in runtime
 
 ### Clipboard (Parser/Semantic/Codegen complete - backend integration pending)
 - [x] `_CLIPBOARD$` function (get)
