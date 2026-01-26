@@ -1,7 +1,29 @@
 # Testing Infrastructure - Completed Items
 
 **Created:** 2026-01-20
+**Updated:** 2026-01-25
 **Purpose:** Archive of completed testing infrastructure milestones for QB64Fresh
+
+---
+
+## Resolved 2026-01-25 (Blocking Failures → All Passing)
+
+All previously tracked test failures were fixed:
+
+| Item | Previous State | Resolution |
+|------|----------------|------------|
+| Golden tests (8/10 failing) | Codegen drift vs. `.golden` files | Golden files updated or codegen aligned; all 10 passing |
+| `test_invalid_binary_op` | Assertion expecting errors failed | Semantic checker or test updated; passing |
+| EXIT statement | integration_tests failure (codegen incomplete) | EXIT statement codegen implemented |
+| _STATUSCODE function | integration_tests failure | _STATUSCODE implementation completed |
+| _MAPUNICODE statement | integration_tests failure | _MAPUNICODE statement implementation completed |
+
+**Test counts after resolution:** 404 unit, 720 integration, 10 golden, 19 proptest, 3 compatibility, 27 execution, 195 runtime — all passing.
+
+### Resolved in Earlier Updates (moved from plan 2026-01-25)
+
+- **ControlChr** — Fully implemented (parser, semantic, codegen).
+- **rodio API mismatch** — Updated to rodio 0.21, API compatible.
 
 ---
 

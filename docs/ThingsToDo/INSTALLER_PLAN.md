@@ -1,7 +1,8 @@
 # QB64Fresh Installer and Distribution Plan
 
 **Status:** Plan  
-**Created:** 2026-01-24
+**Created:** 2026-01-24  
+**Updated:** 2026-01-25
 
 This document outlines a plan to distribute QB64Fresh so that **users do not need Rust** to use the compiler, and to provide installers that handle QB64Fresh binaries plus the C toolchain.
 
@@ -32,7 +33,7 @@ This document outlines a plan to distribute QB64Fresh so that **users do not nee
 | `qb64fresh-fmt` | Code formatter | Full/developer installs |
 | `qb64fresh-lint` | Static analyzer | Full/developer installs |
 | `qb64fresh-debug` | DAP debugger (infrastructure) | Optional, niche |
-| `fix_encoding` | Legacy encoding (CP437, Latin1) conversion | Optional, niche |
+| `fix_encoding` | Legacy encoding (CP437, Latin1) conversion; built from `tools/` | Optional, niche |
 
 **Recommendation:**  
 - **Minimal install:** `qb64fresh`, `qb64fresh-lsp`  
@@ -42,8 +43,8 @@ This document outlines a plan to distribute QB64Fresh so that **users do not nee
 
 | Artifact | Purpose |
 |----------|---------|
-| `libqb64fresh_rt.a` (Linux/macOS) or `qb64fresh_rt.lib` (Windows) | Static runtime library for graphics/audio/dialogs |
-| `qb64fresh_rt.h` | C header for linking |
+| `libqb64fresh_rt.a` (Linux/macOS; Windows MinGW) or `qb64fresh_rt.lib` (Windows MSVC) | Static runtime library for graphics/audio/dialogs |
+| `qb64fresh_rt.h` | C header (from `runtime/include/`) |
 
 **Note:** The external runtime links against **SDL2** (and on Linux, often **ALSA** for audio). We do not necessarily bundle these; the plan below treats SDL2 as a system/sideload dependency for `--runtime external`.
 
@@ -164,10 +165,12 @@ This document outlines a plan to distribute QB64Fresh so that **users do not nee
 
 ### 5.1 CI / CD for binaries
 
-- **GitHub Actions** (or equivalent) to:
-  - Build `qb64fresh`, `qb64fresh-lsp`, and optionally `qb64fresh-fmt`, `qb64fresh-lint` (and `fix_encoding`, `qb64fresh-debug` if we include them) in release mode.
-  - Build `qb64fresh-runtime` as a static lib (`libqb64fresh_rt.a` / `qb64fresh_rt.lib`) with `graphics-sdl2`, `audio-rodio`, `dialogs` (and optionally `graphics-sdl2-ttf`).
-  - For runtime: we need SDL2 (and on Linux, ALSA) on the build workers; our current `sdl2`/`rodio` setup assumes that.
+**Current CI** (`.github/workflows/ci.yml`): runs **lint** (fmt, clippy), **test** (ubuntu, macos, windows), **audit**, **coverage**, **docs**, **golden-tests**, **fuzz-check**, **qb45_compat**. It does **not** build release binaries or the runtime static lib for distribution. Phase 1 below adds that.
+
+**Planned release-build jobs** (GitHub Actions or equivalent):
+- Build `qb64fresh`, `qb64fresh-lsp`, and optionally `qb64fresh-fmt`, `qb64fresh-lint` (and `fix_encoding`, `qb64fresh-debug` if included) in **release** mode.
+- Build `qb64fresh-runtime` as a static lib (`libqb64fresh_rt.a` / `qb64fresh_rt.lib`) with default features: `graphics-sdl2`, `audio-rodio`, `dialogs` (see `runtime/Cargo.toml`); optionally `graphics-sdl2-ttf`.
+- For runtime: SDL2 (and on Linux, ALSA for rodio) on build workers; `sdl2`/`rodio` setup assumes these.
 
 **Targets (minimum for v1):**
 
@@ -201,9 +204,10 @@ This document outlines a plan to distribute QB64Fresh so that **users do not nee
 ### 6.1 Documentation and examples
 
 - **In install directory / package:**
-  - `README.txt` or `GETTING_STARTED.txt`: minimal “compile and run” for `--runtime inline` and, in one paragraph, `--runtime external` plus SDL2.
-  - Link or short section to the full [QB64Fresh Handbook](QB64Fresh_HANDBOOK.md) and [Migration Guide](QB64PE_TO_QB64Fresh_MIGRATION_GUIDE.md).
-- **Optional:** A small `examples/` (e.g. `hello.bas`, one graphics `hello_gfx.bas`) in the install.
+  - `README.txt` or `GETTING_STARTED.txt`: minimal “compile and run” for `--runtime inline` and, in one paragraph, `--runtime external` plus SDL2. Source: [GETTING_STARTED.md](../GETTING_STARTED.md).
+  - Link or short section to [QB64Fresh Handbook](../QB64Fresh_HANDBOOK.md) and [QB64PE to QB64Fresh Migration Guide](../QB64pe/QB64PE_TO_QB64Fresh_MIGRATION_GUIDE.md).
+  - **Optional:** For advanced users (e.g. bootstrapping large .bas): mention `run_limited.sh` or `ulimit` and link to [MEMORY_LIMITS.md](../MEMORY_LIMITS.md).
+- **Optional:** A small `examples/` (e.g. `hello.bas`, one graphics example) in the install; see repo `examples/` (basics, graphics, audio, etc.).
 
 ### 6.2 PATH and environment
 
@@ -285,6 +289,8 @@ This document outlines a plan to distribute QB64Fresh so that **users do not nee
 ## 9. References
 
 - [ARCHITECTURE.md](../ARCHITECTURE.md) — Pipeline, runtime modes, inline vs external.
+- [GETTING_STARTED.md](../GETTING_STARTED.md) — Compile and run (inline and external).
 - [QB64Fresh Handbook](../QB64Fresh_HANDBOOK.md) — User-facing usage and options.
-- [ARCHIVE / STUB_FUNCTIONS_FULL.md](../archive/STUB_FUNCTIONS_FULL.md) — Inline vs external runtime behavior.
-- [DEVELOPMENT.md](../DEVELOPMENT.md) — How to build from source (for contributors, not end users).
+- [archive/STUB_FUNCTIONS_FULL.md](../archive/STUB_FUNCTIONS_FULL.md) — Implemented and will-not-implement functions; inline vs external.
+- [DEVELOPMENT.md](../DEVELOPMENT.md) — Build from source (for contributors).
+- [MEMORY_LIMITS.md](../MEMORY_LIMITS.md) — Memory limits when compiling large inputs.

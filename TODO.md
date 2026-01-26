@@ -7,25 +7,28 @@ A prioritized roadmap for QB64Fresh development. For completed features, see [TO
 ---
 - All Phase 1, 2, 4 items have been completed — see [TODO-completed.md](docs/archive/TODO-completed.md).
 - Phase 5: All C Library Integration items completed — see [TODO-completed.md](docs/archive/TODO-completed.md).
+- Phase 5: Joystick/gamepad full in external runtime — see [TODO-completed.md](docs/archive/TODO-completed.md).
 - Phase 7: All metacommands have been implemented — see [TODO-completed.md](docs/archive/TODO-completed.md).
+- Runtime header: `qb_chdir`, `qb_mkdir`, `qb_rmdir`, `qb_dir_exists`, and `qb_net_*` are in `qb64fresh_rt.h`.
 ---
 
 ## Phase 3: Graphics System - Remaining Items
 
 ### Not Yet Implemented
-- [ ] Alpha blending support *(Medium - 2-3 sessions)*
 - [ ] Hardware acceleration option *(Large - 4-6 sessions, requires GPU backend work)*
-- [ ] Multiple screen pages *(Medium - 2-3 sessions)*
+
+### Completed (see TODO-completed.md)
+- [x] Alpha blending — _BLEND, _DONTBLEND, _CLEARCOLOR in external runtime (SDL2)
+- [x] Multiple screen pages — SCREEN active/visual page, PCOPY; 4 pages in `runtime/src/graphics/sdl2.rs`
 
 ---
 
 ## Phase 5: Advanced Features - Remaining Items
 
 ### Networking
-- [ ] Network stream I/O (PUT/GET with network handles) *(Medium - 2-3 sessions)*
+- [ ] Network stream I/O (PUT/GET with network handles) *(Medium - 2-3 sessions)* — Runtime: `qb_net_get`, `qb_net_put`, `qb_net_get_string`, `qb_net_put_string`, `qb_net_eof`, `qb_net_lof` in `qb64fresh_rt.h`; codegen wiring for PUT #/GET # on network handles TBD.
 
 ### Input Devices
-- [ ] Joystick/gamepad support *(Medium - 2-3 sessions, SDL2 has gamepad API)*
 - [ ] Touch input support *(Medium - 2-3 sessions)*
 
 ---
@@ -46,7 +49,7 @@ Debugger infrastructure has been scaffolded as a workspace member (44 tests pass
 - [ ] Loop optimization *(Medium - 2-3 sessions)*
 - [ ] Inline small functions *(Medium - 2-3 sessions)*
 
-### Testing (See TESTING_INFRASTRUCTURE_PLAN.md for details)
+### Testing (See [docs/ThingsToDo/TESTING_INFRASTRUCTURE_PLAN.md](docs/ThingsToDo/TESTING_INFRASTRUCTURE_PLAN.md) for details)
 - [ ] Compatibility tests against QB64 programs *(Ongoing - add as discovered)*
 
 ---

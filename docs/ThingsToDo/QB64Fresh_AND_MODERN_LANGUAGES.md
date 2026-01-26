@@ -107,8 +107,8 @@ QB64Fresh is a **ground-up rewrite** of QB64: a BASIC compiler that targets QBas
 
 ### 3.4 Gaps vs. QB64pe and Modern BASIC
 
-- **Not yet:** alpha blending, hardware-accelerated backends, `_THREAD`, full `_MEM` model. Some QB64-specific libs (e.g. InForm, raw OpenGL) are out of scope or require DECLARE LIBRARY and custom C.
-- **Behavioral differences:** A few edge cases in semantics, graphics, or built-ins. Documented in [BEHAVIORAL_DIFFERENCES.md](BEHAVIORAL_DIFFERENCES.md).
+- **Not yet:** hardware-accelerated backends, `_THREAD`, full `_MEM` model. (Alpha blending is done: _BLEND, _DONTBLEND, _CLEARCOLOR.) Some QB64-specific libs (e.g. InForm, raw OpenGL) are out of scope or require DECLARE LIBRARY and custom C.
+- **Behavioral differences:** A few edge cases in semantics, graphics, or built-ins. Documented in [QB64PE_TO_QB64Fresh_BEHAVIORAL_DIFFERENCES.md](../QB64pe/QB64PE_TO_QB64Fresh_BEHAVIORAL_DIFFERENCES.md).
 
 **Comparison:** Better for “typical” QB4.5/QB64 workloads than for the full superset of QB64pe + all extensions.
 
@@ -147,7 +147,7 @@ QB64Fresh is a **ground-up rewrite** of QB64: a BASIC compiler that targets QBas
 ### 4.3 Sustainability
 
 - **Open implementation:** Rust codebase, clear structure, and docs lower the barrier to contribution and long-term maintenance.
-- **Bootstrap and tests:** 1,500+ tests, QB4.5 compat suite, and bootstrap of QB64pe provide confidence for refactors and evolution.
+- **Bootstrap and tests:** 1,390+ tests, QB4.5 compat suite (122/141 qbasic_testcases, 86.5%), and bootstrap of QB64pe provide confidence for refactors and evolution.
 - **Scope discipline:** By not chasing web, mobile, or ML, the project can stay focused and avoid feature creep.
 
 ---
@@ -210,7 +210,7 @@ QB64Fresh does not try to be a general-purpose, do-everything language. It focus
 ## 7. Related Documents
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — Compiler pipeline and design
-- [BEHAVIORAL_DIFFERENCES.md](BEHAVIORAL_DIFFERENCES.md) — QB64Fresh vs QB64pe semantics
-- [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md) — Moving from QB64 to QB64Fresh
+- [QB64PE_TO_QB64Fresh_BEHAVIORAL_DIFFERENCES.md](../QB64pe/QB64PE_TO_QB64Fresh_BEHAVIORAL_DIFFERENCES.md) — QB64Fresh vs QB64pe semantics
+- [QB64PE_TO_QB64Fresh_MIGRATION_GUIDE.md](../QB64pe/QB64PE_TO_QB64Fresh_MIGRATION_GUIDE.md) — Moving from QB64 to QB64Fresh
 - [DEVELOPMENT.md](DEVELOPMENT.md) — Contributing and development setup
 - [docs/adrs/](adrs/README.md) — Architecture decision records

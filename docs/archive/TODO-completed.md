@@ -244,6 +244,9 @@
 - [x] `_DIREXISTS` / `_FILEEXISTS`
 - [x] `_DIR$` function (directory listing)
 
+### Input Devices (External Runtime) ✅ (2026-01-25)
+- [x] Joystick/gamepad full implementation — STICK, STRIG, _DEVICES, _AXIS, _BUTTON, ON STRIG, STRIG ON/OFF/STOP in external runtime (`runtime/src/joystick.rs`, SDL2 gamepad API). Inline: stubs (returns 127/0).
+
 ---
 
 ## Phase 6: Tooling & Ecosystem (Partial)
