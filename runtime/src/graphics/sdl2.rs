@@ -410,6 +410,99 @@ impl SDL2Backend {
         }
     }
 
+    /// Set a pixel with alpha blending support.
+    ///
+    /// When blending is enabled for the destination:
+    /// - Fully transparent pixels (alpha=0) are skipped
+    /// - Semi-transparent pixels (0 < alpha < 255) are blended with destination
+    /// - Fully opaque pixels (alpha=255) are written directly
+    ///
+    /// When blending is disabled, pixels are written directly regardless of alpha.
+    fn set_pixel_blended(&mut self, x: i32, y: i32, color: u32) {
+        let src_alpha = (color >> 24) & 0xFF;
+
+        // Check if blending is enabled for the destination
+        let blend_enabled = if self.dest_handle == 0 {
+            self.screen_blend_enabled
+        } else {
+            self.images
+                .get(&self.dest_handle)
+                .map(|img| img.blend_enabled)
+                .unwrap_or(true)
+        };
+
+        if blend_enabled {
+            if src_alpha == 0 {
+                // Fully transparent - skip this pixel
+                return;
+            } else if src_alpha < 255 {
+                // Semi-transparent - blend with destination
+                if let Some(dest_color) = self.get_pixel_buffer_dest(x, y) {
+                    let blended = Self::blend_colors(color, dest_color);
+                    self.set_pixel_buffer(x, y, blended);
+                    return;
+                }
+            }
+        }
+
+        // Fully opaque or blending disabled - direct write
+        self.set_pixel_buffer(x, y, color);
+    }
+
+    /// Get a pixel from the destination buffer (for blending).
+    ///
+    /// Unlike `get_pixel_buffer()` which reads from the source, this reads
+    /// from the current destination (for alpha compositing).
+    fn get_pixel_buffer_dest(&self, x: i32, y: i32) -> Option<u32> {
+        if self.dest_handle == 0 {
+            // Reading from screen (active page)
+            self.pixel_index(x, y).and_then(|idx| {
+                self.page_buffers
+                    .get(self.active_page)
+                    .and_then(|page| page.get(idx).copied())
+            })
+        } else {
+            // Reading from image buffer
+            self.images
+                .get(&self.dest_handle)
+                .and_then(|img| img.get_pixel(x, y))
+        }
+    }
+
+    /// Compute the final color after alpha blending (if enabled).
+    ///
+    /// Returns:
+    /// - `Some(color)` - The final color to draw (either blended or original)
+    /// - `None` - Skip this pixel (fully transparent with blending enabled)
+    fn compute_blended_color(&self, x: i32, y: i32, color: u32) -> Option<u32> {
+        let src_alpha = (color >> 24) & 0xFF;
+
+        // Check if blending is enabled for the destination
+        let blend_enabled = if self.dest_handle == 0 {
+            self.screen_blend_enabled
+        } else {
+            self.images
+                .get(&self.dest_handle)
+                .map(|img| img.blend_enabled)
+                .unwrap_or(true)
+        };
+
+        if blend_enabled {
+            if src_alpha == 0 {
+                // Fully transparent - skip this pixel
+                return None;
+            } else if src_alpha < 255 {
+                // Semi-transparent - blend with destination
+                if let Some(dest_color) = self.get_pixel_buffer_dest(x, y) {
+                    return Some(Self::blend_colors(color, dest_color));
+                }
+            }
+        }
+
+        // Fully opaque or blending disabled - use original color
+        Some(color)
+    }
+
     fn get_pixel_buffer(&self, x: i32, y: i32) -> Option<u32> {
         if self.source_handle == 0 {
             // Reading from screen (active page)
@@ -1701,10 +1794,19 @@ impl GraphicsBackend for SDL2Backend {
             return Ok(());
         }
 
-        self.set_pixel_buffer(sx, sy, color);
+        // Apply alpha blending if enabled
+        let final_color = self.compute_blended_color(sx, sy, color);
+
+        // Skip fully transparent pixels when blending is enabled
+        if final_color.is_none() {
+            return Ok(());
+        }
+        let final_color = final_color.unwrap();
+
+        self.set_pixel_buffer(sx, sy, final_color);
 
         if let Some(canvas) = self.canvas.as_mut() {
-            canvas.set_draw_color(Self::argb_to_sdl_color(color));
+            canvas.set_draw_color(Self::argb_to_sdl_color(final_color));
             let _ = canvas.draw_point(Point::new(sx, sy));
         }
 
@@ -1764,15 +1866,16 @@ impl GraphicsBackend for SDL2Backend {
                 let rect = Rect::new(x, y, w.max(1), h.max(1));
                 let _ = canvas.fill_rect(rect);
 
+                // Update pixel buffer with blending support
                 for py in y..(y + h as i32) {
                     for px in x..(x + w as i32) {
-                        self.set_pixel_buffer(px, py, color);
+                        self.set_pixel_blended(px, py, color);
                     }
                 }
             } else {
                 let _ = canvas.draw_line(Point::new(sx1, sy1), Point::new(sx2, sy2));
 
-                // Update pixel buffer (Bresenham's)
+                // Update pixel buffer (Bresenham's) with blending support
                 let dx = (sx2 - sx1).abs();
                 let dy = (sy2 - sy1).abs();
                 let sxd = if sx1 < sx2 { 1 } else { -1 };
@@ -1782,7 +1885,7 @@ impl GraphicsBackend for SDL2Backend {
                 let mut y = sy1;
 
                 loop {
-                    self.set_pixel_buffer(x, y, color);
+                    self.set_pixel_blended(x, y, color);
                     if x == sx2 && y == sy2 {
                         break;
                     }
@@ -1855,12 +1958,13 @@ impl GraphicsBackend for SDL2Backend {
         if filled {
             self.draw_circle_filled(cx, cy, radius, color);
 
+            // Update pixel buffer with blending support
             for py in (cy - radius)..=(cy + radius) {
                 for px in (cx - radius)..=(cx + radius) {
                     let dx = px - cx;
                     let dy = py - cy;
                     if dx * dx + dy * dy <= radius * radius {
-                        self.set_pixel_buffer(px, py, color);
+                        self.set_pixel_blended(px, py, color);
                     }
                 }
             }
@@ -3070,5 +3174,91 @@ mod tests {
         assert!(!backend.get_mouse_button(1));
         assert!(!backend.get_mouse_button(2));
         assert!(!backend.get_mouse_button(3));
+    }
+
+    // --- Additional SDL2 backend unit tests (no initialize; exercise real backend code) ---
+
+    #[test]
+    fn test_argb_to_sdl_color_black_white() {
+        let black = SDL2Backend::argb_to_sdl_color(0xFF00_0000);
+        assert_eq!(black, Color::RGBA(0, 0, 0, 0xFF));
+        let white = SDL2Backend::argb_to_sdl_color(0xFFFF_FFFF);
+        assert_eq!(white, Color::RGBA(0xFF, 0xFF, 0xFF, 0xFF));
+    }
+
+    #[test]
+    fn test_image_buffer_multiple_pixels() {
+        let mut img = ImageBuffer::new(8, 8, 32, 0xFF00_8000); // ARGB dark green fill
+        assert_eq!(img.get_pixel(0, 0), Some(0xFF00_8000));
+        img.set_pixel(3, 4, 0xFFFF_00FF);
+        img.set_pixel(7, 7, 0xFF00_00FF);
+        assert_eq!(img.get_pixel(3, 4), Some(0xFFFF_00FF));
+        assert_eq!(img.get_pixel(7, 7), Some(0xFF00_00FF));
+        assert_eq!(img.get_pixel(1, 1), Some(0xFF00_8000)); // unchanged
+    }
+
+    #[test]
+    fn test_palette_entries() {
+        let palette = ColorPalette::default();
+        assert_eq!(palette.colors[0], 0xFF00_0000);
+        assert_eq!(palette.colors[7], 0xFFAA_AAAA); // EGA light gray
+        assert_eq!(palette.colors[255], 0xFF00_0000); // last entry (only 0–15 set)
+    }
+
+    // ========================================================================
+    // Alpha Blending Tests
+    // ========================================================================
+
+    #[test]
+    fn test_blend_colors_fully_opaque() {
+        // Fully opaque source should completely replace destination
+        let src = 0xFF_FF0000; // Opaque red
+        let dst = 0xFF_00FF00; // Opaque green
+        let result = SDL2Backend::blend_colors(src, dst);
+        // With alpha=255, source dominates
+        assert_eq!((result >> 16) & 0xFF, 0xFF); // Red channel
+        assert_eq!((result >> 8) & 0xFF, 0x00); // Green channel (from src)
+    }
+
+    #[test]
+    fn test_blend_colors_fully_transparent() {
+        // Fully transparent source should leave destination unchanged
+        let src = 0x00_FF0000; // Transparent red
+        let dst = 0xFF_00FF00; // Opaque green
+        let result = SDL2Backend::blend_colors(src, dst);
+        // With alpha=0, destination dominates
+        assert_eq!((result >> 16) & 0xFF, 0x00); // Red channel (from dst)
+        assert_eq!((result >> 8) & 0xFF, 0xFF); // Green channel
+    }
+
+    #[test]
+    fn test_blend_colors_semi_transparent() {
+        // 50% transparent red over opaque green
+        let src = 0x80_FF0000; // 50% red (alpha = 128)
+        let dst = 0xFF_00FF00; // Opaque green
+        let result = SDL2Backend::blend_colors(src, dst);
+
+        let out_r = (result >> 16) & 0xFF;
+        let out_g = (result >> 8) & 0xFF;
+
+        // Red should be roughly 128 (50% of 255)
+        // Green should be roughly 127 (50% of 255)
+        // Allow some tolerance for integer rounding
+        assert!(out_r >= 125 && out_r <= 130, "Red: {}", out_r);
+        assert!(out_g >= 125 && out_g <= 130, "Green: {}", out_g);
+    }
+
+    #[test]
+    fn test_blend_enabled_default() {
+        // Alpha blending should be enabled by default for screen
+        let backend = SDL2Backend::new();
+        assert!(backend.screen_blend_enabled);
+    }
+
+    #[test]
+    fn test_image_buffer_blend_enabled_default() {
+        // Alpha blending should be enabled by default for new images
+        let img = ImageBuffer::new(10, 10, 32, 0xFF000000);
+        assert!(img.blend_enabled);
     }
 }
