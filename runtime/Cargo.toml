@@ -16,7 +16,7 @@ libc = "0.2"
 
 # For graphics support
 # Note: "ttf" feature requires SDL2_ttf library installed on the system
-sdl2 = { version = "0.38", optional = true }
+sdl2 = { version = "0.38", optional = true, features = ["unsafe_textures"] }
 
 # For image loading (_LOADIMAGE support)
 image = { version = "0.25", optional = true, default-features = false, features = ["png", "jpeg", "bmp", "gif"] }

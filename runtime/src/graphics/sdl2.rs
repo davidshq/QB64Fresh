@@ -8,8 +8,9 @@ use super::{GraphicsBackend, GraphicsError, GraphicsErrorKind};
 use sdl2::event::Event;
 use sdl2::mouse::MouseButton;
 use sdl2::pixels::Color;
+use sdl2::pixels::PixelFormatEnum;
 use sdl2::rect::{Point, Rect};
-use sdl2::render::Canvas;
+use sdl2::render::{Canvas, Texture, TextureCreator};
 use sdl2::video::{FullscreenType, Window};
 use sdl2::EventPump;
 use sdl2::Sdl;
@@ -203,6 +204,14 @@ pub struct SDL2Backend {
     visual_page: usize,
     /// Maximum number of pages for current mode
     max_pages: usize,
+    /// Persistent GPU textures for each page (hardware acceleration)
+    /// When dirty, the CPU buffer is uploaded to the texture in display()
+    page_textures: Vec<Option<Texture>>,
+    /// Dirty flags - true if page needs texture upload before display
+    page_dirty: Vec<bool>,
+    /// Texture creator for creating persistent textures
+    /// Uses unsafe_textures feature for 'static lifetime simplification
+    texture_creator: Option<TextureCreator<sdl2::video::WindowContext>>,
     /// Image buffers (handle -> buffer)
     images: HashMap<i32, ImageBuffer>,
     /// Next available image handle
@@ -294,6 +303,9 @@ impl SDL2Backend {
             active_page: 0,
             visual_page: 0,
             max_pages: 4, // Default to 4 pages
+            page_textures: Vec::new(),
+            page_dirty: Vec::new(),
+            texture_creator: None,
             images: HashMap::new(),
             next_handle: 1, // 0 is reserved for screen
             source_handle: 0,
@@ -593,7 +605,7 @@ impl SDL2Backend {
         let width = self.width;
         let height = self.height;
 
-        // First pass: update pixel buffer
+        // Update pixel buffer only - canvas update deferred to display()
         for row in 0..FONT_HEIGHT {
             for col in 0..FONT_WIDTH {
                 let x = px + col as i32;
@@ -620,27 +632,9 @@ impl SDL2Backend {
             }
         }
 
-        // Second pass: draw to canvas
-        if let Some(canvas) = self.canvas.as_mut() {
-            for row in 0..FONT_HEIGHT {
-                for col in 0..FONT_WIDTH {
-                    let x = px + col as i32;
-                    let y = py + row as i32;
-
-                    if x < 0 || y < 0 || x >= width as i32 || y >= height as i32 {
-                        continue;
-                    }
-
-                    let color = if is_pixel_set(bitmap, row as usize, col as usize) {
-                        fg_color
-                    } else {
-                        bg_color
-                    };
-
-                    canvas.set_draw_color(Self::argb_to_sdl_color(color));
-                    let _ = canvas.draw_point(Point::new(x, y));
-                }
-            }
+        // Mark page as dirty for deferred texture upload in display()
+        if let Some(dirty) = self.page_dirty.get_mut(self.active_page) {
+            *dirty = true;
         }
     }
 
@@ -669,7 +663,7 @@ impl SDL2Backend {
         let fg_g = ((fg_color >> 8) & 0xFF) as u8;
         let fg_b = (fg_color & 0xFF) as u8;
 
-        // First pass: update pixel buffer with alpha blending
+        // Update pixel buffer with alpha blending (canvas update deferred to display())
         for gy in 0..glyph.height {
             for gx in 0..glyph.width {
                 let px = x + gx as i32;
@@ -701,49 +695,9 @@ impl SDL2Backend {
             }
         }
 
-        // Second pass: draw to canvas (if active page is visual)
-        if self.active_page == self.visual_page {
-            // Collect points to draw first to avoid borrow conflicts
-            let mut draw_points: Vec<(i32, i32, u32)> = Vec::new();
-
-            for gy in 0..glyph.height {
-                for gx in 0..glyph.width {
-                    let px = x + gx as i32;
-                    let py = y + gy as i32;
-
-                    if px < 0 || py < 0 || px >= width as i32 || py >= height as i32 {
-                        continue;
-                    }
-
-                    let alpha_idx = (gy * glyph.width + gx) as usize;
-                    if alpha_idx >= glyph.data.len() {
-                        continue;
-                    }
-
-                    let alpha = glyph.data[alpha_idx];
-                    if alpha == 0 {
-                        continue;
-                    }
-
-                    // Get the blended color from pixel buffer
-                    if let Some(idx) = self.pixel_index(px, py) {
-                        if let Some(page) = self.page_buffers.get(self.active_page) {
-                            if idx < page.len() {
-                                let color = page[idx];
-                                draw_points.push((px, py, color));
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Now draw all the points to canvas
-            if let Some(canvas) = self.canvas.as_mut() {
-                for (px, py, color) in draw_points {
-                    canvas.set_draw_color(Self::argb_to_sdl_color(color));
-                    let _ = canvas.draw_point(Point::new(px, py));
-                }
-            }
+        // Mark page as dirty for deferred texture upload in display()
+        if let Some(dirty) = self.page_dirty.get_mut(self.active_page) {
+            *dirty = true;
         }
     }
 
@@ -773,23 +727,16 @@ impl SDL2Backend {
             return;
         }
 
-        let canvas = match self.canvas.as_mut() {
-            Some(c) => c,
-            None => return,
-        };
-        canvas.set_draw_color(Self::argb_to_sdl_color(color));
-
+        // Midpoint circle algorithm - write to pixel buffer only
         let mut x = radius;
         let mut y = 0;
         let mut p = 1 - radius;
 
-        let points = [
-            Point::new(cx + x, cy),
-            Point::new(cx - x, cy),
-            Point::new(cx, cy + x),
-            Point::new(cx, cy - x),
-        ];
-        let _ = canvas.draw_points(&points[..]);
+        // Initial 4 points
+        self.set_pixel_buffer(cx + x, cy, color);
+        self.set_pixel_buffer(cx - x, cy, color);
+        self.set_pixel_buffer(cx, cy + x, color);
+        self.set_pixel_buffer(cx, cy - x, color);
 
         while x > y {
             y += 1;
@@ -804,17 +751,22 @@ impl SDL2Backend {
                 break;
             }
 
-            let points = [
-                Point::new(cx + x, cy + y),
-                Point::new(cx - x, cy + y),
-                Point::new(cx + x, cy - y),
-                Point::new(cx - x, cy - y),
-                Point::new(cx + y, cy + x),
-                Point::new(cx - y, cy + x),
-                Point::new(cx + y, cy - x),
-                Point::new(cx - y, cy - x),
-            ];
-            let _ = canvas.draw_points(&points[..]);
+            // Draw 8 octant points
+            self.set_pixel_buffer(cx + x, cy + y, color);
+            self.set_pixel_buffer(cx - x, cy + y, color);
+            self.set_pixel_buffer(cx + x, cy - y, color);
+            self.set_pixel_buffer(cx - x, cy - y, color);
+            self.set_pixel_buffer(cx + y, cy + x, color);
+            self.set_pixel_buffer(cx - y, cy + x, color);
+            self.set_pixel_buffer(cx + y, cy - x, color);
+            self.set_pixel_buffer(cx - y, cy - x, color);
+        }
+
+        // Mark page as dirty for deferred texture upload in display()
+        if self.dest_handle == 0 {
+            if let Some(dirty) = self.page_dirty.get_mut(self.active_page) {
+                *dirty = true;
+            }
         }
     }
 
@@ -823,17 +775,20 @@ impl SDL2Backend {
             return;
         }
 
-        let canvas = match self.canvas.as_mut() {
-            Some(c) => c,
-            None => return,
-        };
-        canvas.set_draw_color(Self::argb_to_sdl_color(color));
-
+        // Midpoint circle algorithm with horizontal line fills
         let mut x = radius;
         let mut y = 0;
         let mut p = 1 - radius;
 
-        let _ = canvas.draw_line(Point::new(cx - x, cy), Point::new(cx + x, cy));
+        // Helper to draw a horizontal line to pixel buffer
+        let draw_hline = |slf: &mut Self, x1: i32, x2: i32, y: i32| {
+            for px in x1..=x2 {
+                slf.set_pixel_buffer(px, y, color);
+            }
+        };
+
+        // Initial horizontal line through center
+        draw_hline(self, cx - x, cx + x, cy);
 
         while x > y {
             y += 1;
@@ -848,11 +803,19 @@ impl SDL2Backend {
                 break;
             }
 
-            let _ = canvas.draw_line(Point::new(cx - x, cy + y), Point::new(cx + x, cy + y));
-            let _ = canvas.draw_line(Point::new(cx - x, cy - y), Point::new(cx + x, cy - y));
+            // Fill horizontal spans for each octant pair
+            draw_hline(self, cx - x, cx + x, cy + y);
+            draw_hline(self, cx - x, cx + x, cy - y);
             if x != y {
-                let _ = canvas.draw_line(Point::new(cx - y, cy + x), Point::new(cx + y, cy + x));
-                let _ = canvas.draw_line(Point::new(cx - y, cy - x), Point::new(cx + y, cy - x));
+                draw_hline(self, cx - y, cx + y, cy + x);
+                draw_hline(self, cx - y, cx + y, cy - x);
+            }
+        }
+
+        // Mark page as dirty for deferred texture upload in display()
+        if self.dest_handle == 0 {
+            if let Some(dirty) = self.page_dirty.get_mut(self.active_page) {
+                *dirty = true;
             }
         }
     }
@@ -877,6 +840,7 @@ impl SDL2Backend {
         let height = self.height as i32;
 
         let mut stack = vec![(start_x, start_y)];
+        let mut filled = false;
 
         while let Some((x, y)) = stack.pop() {
             if x < 0 || x >= width || y < 0 || y >= height {
@@ -899,15 +863,19 @@ impl SDL2Backend {
             }
 
             self.set_pixel_buffer(x, y, fill_color);
-            if let Some(canvas) = self.canvas.as_mut() {
-                canvas.set_draw_color(Self::argb_to_sdl_color(fill_color));
-                let _ = canvas.draw_point(Point::new(x, y));
-            }
+            filled = true;
 
             stack.push((x + 1, y));
             stack.push((x - 1, y));
             stack.push((x, y + 1));
             stack.push((x, y - 1));
+        }
+
+        // Mark page as dirty for deferred texture upload in display()
+        if filled && self.dest_handle == 0 {
+            if let Some(dirty) = self.page_dirty.get_mut(self.active_page) {
+                *dirty = true;
+            }
         }
     }
 
@@ -1309,18 +1277,21 @@ impl SDL2Backend {
                             src_color | 0xFF000000
                         };
 
-                        // Write to destination
+                        // Write to destination (pixel buffer only, canvas updated in display())
                         if dest_handle == 0 {
                             self.set_pixel_buffer(dx, dy, final_color);
-                            if let Some(canvas) = self.canvas.as_mut() {
-                                canvas.set_draw_color(Self::argb_to_sdl_color(final_color));
-                                let _ = canvas.draw_point(Point::new(dx, dy));
-                            }
                         } else if let Some(img) = self.images.get_mut(&dest_handle) {
                             img.set_pixel(dx, dy, final_color);
                         }
                     }
                 }
+            }
+        }
+
+        // Mark page as dirty for deferred texture upload in display()
+        if dest_handle == 0 {
+            if let Some(dirty) = self.page_dirty.get_mut(self.active_page) {
+                *dirty = true;
             }
         }
 
@@ -1593,6 +1564,23 @@ impl GraphicsBackend for SDL2Backend {
             )
         })?;
 
+        // Create texture creator for persistent GPU textures (hardware acceleration)
+        // Uses unsafe_textures feature for 'static lifetime simplification
+        let texture_creator = canvas.texture_creator();
+
+        // Create persistent streaming textures for each page
+        // These textures remain allocated and are only updated when dirty
+        let page_textures: Vec<Option<Texture>> = (0..self.max_pages)
+            .map(|_| {
+                texture_creator
+                    .create_texture_streaming(PixelFormatEnum::ARGB8888, width, height)
+                    .ok()
+            })
+            .collect();
+
+        // Initialize dirty flags - all pages dirty initially to force first upload
+        let page_dirty = vec![true; self.max_pages];
+
         let event_pump = sdl_context.event_pump().map_err(|e| {
             GraphicsError::new(
                 GraphicsErrorKind::BackendError,
@@ -1622,6 +1610,9 @@ impl GraphicsBackend for SDL2Backend {
         self.sdl_context = Some(sdl_context);
         self.canvas = Some(canvas);
         self.event_pump = Some(event_pump);
+        self.texture_creator = Some(texture_creator);
+        self.page_textures = page_textures;
+        self.page_dirty = page_dirty;
         self.initialized = true;
         self.width = width;
         self.height = height;
@@ -1653,6 +1644,10 @@ impl GraphicsBackend for SDL2Backend {
         }
 
         self.event_pump = None;
+        // Clear textures before texture_creator (textures depend on it)
+        self.page_textures.clear();
+        self.page_dirty.clear();
+        self.texture_creator = None;
         self.canvas = None;
         self.sdl_context = None;
         self.page_buffers.clear();
@@ -1678,12 +1673,9 @@ impl GraphicsBackend for SDL2Backend {
             page.fill(self.bg_color);
         }
 
-        // If active page == visual page, also clear canvas
-        if self.active_page == self.visual_page {
-            if let Some(canvas) = self.canvas.as_mut() {
-                canvas.set_draw_color(Self::argb_to_sdl_color(self.bg_color));
-                canvas.clear();
-            }
+        // Mark page as dirty for deferred texture upload in display()
+        if let Some(dirty) = self.page_dirty.get_mut(self.active_page) {
+            *dirty = true;
         }
 
         self.cursor_row = 1;
@@ -1805,9 +1797,11 @@ impl GraphicsBackend for SDL2Backend {
 
         self.set_pixel_buffer(sx, sy, final_color);
 
-        if let Some(canvas) = self.canvas.as_mut() {
-            canvas.set_draw_color(Self::argb_to_sdl_color(final_color));
-            let _ = canvas.draw_point(Point::new(sx, sy));
+        // Mark page as dirty for deferred texture upload in display()
+        if self.dest_handle == 0 {
+            if let Some(dirty) = self.page_dirty.get_mut(self.active_page) {
+                *dirty = true;
+            }
         }
 
         Ok(())
@@ -1854,51 +1848,50 @@ impl GraphicsBackend for SDL2Backend {
         let (sx1, sy1) = self.world_to_screen(x1 as f64, y1 as f64);
         let (sx2, sy2) = self.world_to_screen(x2 as f64, y2 as f64);
 
-        if let Some(canvas) = self.canvas.as_mut() {
-            canvas.set_draw_color(Self::argb_to_sdl_color(color));
+        if filled {
+            // Draw filled rectangle (box) to pixel buffer only
+            let x = sx1.min(sx2);
+            let y = sy1.min(sy2);
+            let w = (sx1 - sx2).unsigned_abs() as i32;
+            let h = (sy1 - sy2).unsigned_abs() as i32;
 
-            if filled {
-                // Draw filled rectangle (box)
-                let x = sx1.min(sx2);
-                let y = sy1.min(sy2);
-                let w = (sx1 - sx2).unsigned_abs();
-                let h = (sy1 - sy2).unsigned_abs();
-                let rect = Rect::new(x, y, w.max(1), h.max(1));
-                let _ = canvas.fill_rect(rect);
-
-                // Update pixel buffer with blending support
-                for py in y..(y + h as i32) {
-                    for px in x..(x + w as i32) {
-                        self.set_pixel_blended(px, py, color);
-                    }
+            // Update pixel buffer with blending support
+            for py in y..(y + h.max(1)) {
+                for px in x..(x + w.max(1)) {
+                    self.set_pixel_blended(px, py, color);
                 }
-            } else {
-                let _ = canvas.draw_line(Point::new(sx1, sy1), Point::new(sx2, sy2));
+            }
+        } else {
+            // Draw line to pixel buffer using Bresenham's algorithm
+            let dx = (sx2 - sx1).abs();
+            let dy = (sy2 - sy1).abs();
+            let sxd = if sx1 < sx2 { 1 } else { -1 };
+            let syd = if sy1 < sy2 { 1 } else { -1 };
+            let mut err = dx - dy;
+            let mut x = sx1;
+            let mut y = sy1;
 
-                // Update pixel buffer (Bresenham's) with blending support
-                let dx = (sx2 - sx1).abs();
-                let dy = (sy2 - sy1).abs();
-                let sxd = if sx1 < sx2 { 1 } else { -1 };
-                let syd = if sy1 < sy2 { 1 } else { -1 };
-                let mut err = dx - dy;
-                let mut x = sx1;
-                let mut y = sy1;
-
-                loop {
-                    self.set_pixel_blended(x, y, color);
-                    if x == sx2 && y == sy2 {
-                        break;
-                    }
-                    let e2 = 2 * err;
-                    if e2 > -dy {
-                        err -= dy;
-                        x += sxd;
-                    }
-                    if e2 < dx {
-                        err += dx;
-                        y += syd;
-                    }
+            loop {
+                self.set_pixel_blended(x, y, color);
+                if x == sx2 && y == sy2 {
+                    break;
                 }
+                let e2 = 2 * err;
+                if e2 > -dy {
+                    err -= dy;
+                    x += sxd;
+                }
+                if e2 < dx {
+                    err += dx;
+                    y += syd;
+                }
+            }
+        }
+
+        // Mark page as dirty for deferred texture upload in display()
+        if self.dest_handle == 0 {
+            if let Some(dirty) = self.page_dirty.get_mut(self.active_page) {
+                *dirty = true;
             }
         }
 
@@ -2034,38 +2027,22 @@ impl GraphicsBackend for SDL2Backend {
             return Err(GraphicsError::not_initialized());
         }
 
-        // If active_page != visual_page, we need to render the visual page's buffer
-        // to the canvas before presenting. When they're the same, drawing operations
-        // already updated the canvas.
-        if self.active_page != self.visual_page {
-            // Render visual page buffer to canvas
-            if let (Some(canvas), Some(page)) = (
-                self.canvas.as_mut(),
-                self.page_buffers.get(self.visual_page),
-            ) {
-                // Create a texture and copy the visual page to it
-                let texture_creator = canvas.texture_creator();
-                let mut texture = texture_creator
-                    .create_texture_streaming(
-                        sdl2::pixels::PixelFormatEnum::ARGB8888,
-                        self.width,
-                        self.height,
-                    )
-                    .map_err(|e| {
-                        GraphicsError::new(
-                            GraphicsErrorKind::BackendError,
-                            format!("Failed to create texture: {}", e),
-                        )
-                    })?;
+        let vp = self.visual_page;
+        let width = self.width as usize;
+        let height = self.height as usize;
 
-                // Copy pixel data to texture
-                texture
-                    .with_lock(None, |buffer: &mut [u8], pitch: usize| {
-                        for y in 0..self.height as usize {
-                            for x in 0..self.width as usize {
-                                let pixel = page[y * self.width as usize + x];
+        // Upload dirty visual page to its persistent texture
+        // This replaces per-pixel canvas.draw_point() calls with a single bulk upload
+        if self.page_dirty.get(vp).copied().unwrap_or(false) {
+            if let Some(page) = self.page_buffers.get(vp) {
+                if let Some(Some(texture)) = self.page_textures.get_mut(vp) {
+                    // Bulk copy pixel buffer to GPU texture
+                    let _ = texture.with_lock(None, |buffer: &mut [u8], pitch: usize| {
+                        for y in 0..height {
+                            for x in 0..width {
+                                let pixel = page[y * width + x];
                                 let offset = y * pitch + x * 4;
-                                // ARGB8888 format
+                                // ARGB8888 format (SDL expects BGRA byte order)
                                 buffer[offset] = (pixel & 0xFF) as u8; // B
                                 buffer[offset + 1] = ((pixel >> 8) & 0xFF) as u8; // G
                                 buffer[offset + 2] = ((pixel >> 16) & 0xFF) as u8; // R
@@ -2073,25 +2050,20 @@ impl GraphicsBackend for SDL2Backend {
                                 // A
                             }
                         }
-                    })
-                    .map_err(|e| {
-                        GraphicsError::new(
-                            GraphicsErrorKind::BackendError,
-                            format!("Failed to update texture: {}", e),
-                        )
-                    })?;
-
-                // Copy texture to canvas
-                canvas.copy(&texture, None, None).map_err(|e| {
-                    GraphicsError::new(
-                        GraphicsErrorKind::BackendError,
-                        format!("Failed to copy texture: {}", e),
-                    )
-                })?;
+                    });
+                    // Mark page as clean after upload
+                    if let Some(dirty) = self.page_dirty.get_mut(vp) {
+                        *dirty = false;
+                    }
+                }
             }
         }
 
+        // Blit persistent texture to screen (single GPU operation)
         if let Some(canvas) = self.canvas.as_mut() {
+            if let Some(Some(texture)) = self.page_textures.get(vp) {
+                let _ = canvas.copy(texture, None, None);
+            }
             canvas.present();
         }
 
@@ -2121,22 +2093,10 @@ impl GraphicsBackend for SDL2Backend {
             // Clone source page, then assign to destination
             let src_data = self.page_buffers[src_page].clone();
             self.page_buffers[dst_page] = src_data;
-        }
 
-        // If destination is the visual page, also update the canvas
-        if dst_page == self.visual_page {
-            if let Some(canvas) = self.canvas.as_mut() {
-                // Redraw canvas from visual page buffer
-                let page = &self.page_buffers[self.visual_page];
-                for y in 0..self.height as i32 {
-                    for x in 0..self.width as i32 {
-                        let idx = (y as u32 * self.width + x as u32) as usize;
-                        if idx < page.len() {
-                            canvas.set_draw_color(Self::argb_to_sdl_color(page[idx]));
-                            let _ = canvas.draw_point(Point::new(x, y));
-                        }
-                    }
-                }
+            // Mark destination page as dirty - texture upload deferred to display()
+            if let Some(dirty) = self.page_dirty.get_mut(dst_page) {
+                *dirty = true;
             }
         }
 
@@ -2173,22 +2133,14 @@ impl GraphicsBackend for SDL2Backend {
             ));
         }
 
-        // If switching to a different visual page, we need to update the canvas
+        // If switching to a different visual page, mark it as dirty
+        // Texture upload deferred to display() - O(1) page switch!
         if page_num != self.visual_page {
             self.visual_page = page_num;
 
-            // Redraw canvas from the new visual page buffer
-            if let Some(canvas) = self.canvas.as_mut() {
-                let page_data = &self.page_buffers[self.visual_page];
-                for y in 0..self.height as i32 {
-                    for x in 0..self.width as i32 {
-                        let idx = (y as u32 * self.width + x as u32) as usize;
-                        if idx < page_data.len() {
-                            canvas.set_draw_color(Self::argb_to_sdl_color(page_data[idx]));
-                            let _ = canvas.draw_point(Point::new(x, y));
-                        }
-                    }
-                }
+            // Mark new visual page as dirty so display() will upload it
+            if let Some(dirty) = self.page_dirty.get_mut(page_num) {
+                *dirty = true;
             }
         }
 
