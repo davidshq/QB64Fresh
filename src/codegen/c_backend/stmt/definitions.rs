@@ -246,6 +246,12 @@ impl super::StmtEmitter {
 
         // Set current procedure name for unique label generation
         self.current_proc = Some(c_name.clone());
+        // Track byref STRING parameters for EXIT SUB writebacks
+        self.current_func_byref_strings = params
+            .iter()
+            .filter(|p| !p.by_val && p.basic_type == BasicType::String && !p.is_array)
+            .map(|p| c_identifier(&p.name))
+            .collect();
 
         // Save temp pool base for this procedure - cleanup after each statement
         writeln!(output, "    uint64_t _qbs_proc_base = qbs_tmp_base_get();").unwrap();
@@ -260,6 +266,7 @@ impl super::StmtEmitter {
         self.indent -= 1;
 
         self.current_proc = None;
+        self.current_func_byref_strings.clear();
 
         // Write back STRING byref parameters to caller's variables
         // Only strings need writeback - they use reference counting and local copies
@@ -374,6 +381,12 @@ impl super::StmtEmitter {
         self.current_proc = Some(c_name.clone());
         // Set return variable for EXIT FUNCTION
         self.current_func_ret_var = Some(ret_var.clone());
+        // Track byref STRING parameters for EXIT FUNCTION writebacks
+        self.current_func_byref_strings = params
+            .iter()
+            .filter(|p| !p.by_val && p.basic_type == BasicType::String && !p.is_array)
+            .map(|p| c_identifier(&p.name))
+            .collect();
 
         // Save temp pool base for this function - cleanup after each statement
         writeln!(output, "    uint64_t _qbs_proc_base = qbs_tmp_base_get();").unwrap();
@@ -389,6 +402,7 @@ impl super::StmtEmitter {
 
         self.current_proc = None;
         self.current_func_ret_var = None;
+        self.current_func_byref_strings.clear();
 
         // Write back STRING byref parameters to caller's variables
         // Only strings need writeback - they use reference counting and local copies

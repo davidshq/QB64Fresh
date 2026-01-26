@@ -563,7 +563,15 @@ pub(super) fn emit_expr(expr: &TypedExpr, no_shell: bool) -> Result<String, Code
             name,
             indices,
             dimensions,
-        } => emit_array_access(name, indices, dimensions, no_shell),
+        } => {
+            let array_code = emit_array_access(name, indices, dimensions, no_shell)?;
+            // Fixed-length string array elements need conversion to qb_string*
+            if matches!(expr.basic_type, BasicType::FixedString(_)) {
+                Ok(format!("qb_str_from_c({})", array_code))
+            } else {
+                Ok(array_code)
+            }
+        }
 
         TypedExprKind::Convert { expr, to_type } => {
             let inner_code = emit_expr(expr, no_shell)?;
@@ -587,7 +595,13 @@ pub(super) fn emit_expr(expr: &TypedExpr, no_shell: bool) -> Result<String, Code
         TypedExprKind::FieldAccess { object, field } => {
             let obj_code = emit_expr(object, no_shell)?;
             let c_field = c_identifier(field);
-            Ok(format!("{}.{}", obj_code, c_field))
+            let field_access = format!("{}.{}", obj_code, c_field);
+            // Fixed-length string fields need conversion to qb_string*
+            if matches!(expr.basic_type, BasicType::FixedString(_)) {
+                Ok(format!("qb_str_from_c({})", field_access))
+            } else {
+                Ok(field_access)
+            }
         }
 
         TypedExprKind::ArrayRef { name, .. } => {
@@ -1474,6 +1488,44 @@ fn needs_fixed_string_conversion(expr: &TypedExpr) -> bool {
                 )
         }
         _ => false,
+    }
+}
+
+/// Safely extracts `const char*` from a string expression for use with C functions
+/// that expect `const char*` (like file operations, system calls, etc.).
+///
+/// This function handles both `QbString*` (from `emit_expr()`) and fixed-length
+/// strings (char arrays) by ensuring proper conversion.
+///
+/// # Arguments
+///
+/// * `expr` - The string expression to extract data from
+/// * `expr_code` - The C code for the expression (from `emit_expr()`)
+/// * `runtime_mode` - Whether we're using inline or external runtime
+///
+/// # Returns
+///
+/// C code that evaluates to `const char*` pointing to the string data.
+pub(super) fn emit_string_data_access(
+    expr: &TypedExpr,
+    expr_code: &str,
+    runtime_mode: super::RuntimeMode,
+) -> String {
+    // Check if this is a fixed-length string that needs conversion
+    // Even though emit_expr() should convert them, we double-check here for safety
+    let needs_conversion = matches!(expr.basic_type, BasicType::FixedString(_))
+        && !expr_code.starts_with("qb_str_from_c(")
+        && !expr_code.starts_with("qb_string_");
+
+    let qb_string_expr = if needs_conversion {
+        format!("qb_str_from_c({})", expr_code)
+    } else {
+        expr_code.to_string()
+    };
+
+    match runtime_mode {
+        super::RuntimeMode::External => format!("qb_string_data({})", qb_string_expr),
+        super::RuntimeMode::Inline => format!("{}->data", qb_string_expr),
     }
 }
 

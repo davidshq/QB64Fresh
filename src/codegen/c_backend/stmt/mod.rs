@@ -44,7 +44,7 @@ use crate::semantic::typed_ir::{
 };
 use crate::semantic::types::BasicType;
 
-use super::expr::{emit_expr, escape_string};
+use super::expr::{emit_expr, emit_string_data_access, escape_string};
 use super::types::{c_identifier, c_type, default_init};
 
 /// Context for the current loop (for EXIT statement handling).
@@ -73,6 +73,9 @@ pub(super) struct StmtEmitter {
     pub current_proc: Option<String>,
     /// Current function's return variable (for EXIT FUNCTION).
     pub current_func_ret_var: Option<String>,
+    /// Current function's byref STRING parameter names (for EXIT FUNCTION writebacks).
+    /// These need to be written back before any return statement.
+    pub current_func_byref_strings: Vec<String>,
     /// Global variable names (to avoid re-declaring as locals).
     pub global_var_names: std::collections::HashSet<String>,
     /// Global array variable names (arrays can't be implicitly declared as scalars).
@@ -112,6 +115,7 @@ impl StmtEmitter {
             data_label_indices: HashMap::new(),
             current_proc: None,
             current_func_ret_var: None,
+            current_func_byref_strings: Vec::new(),
             global_var_names: std::collections::HashSet::new(),
             global_array_names: std::collections::HashSet::new(),
             shared_global_names: std::collections::HashSet::new(),
@@ -2064,10 +2068,7 @@ impl StmtEmitter {
                     .map(|e| emit_expr(e, self.no_shell))
                     .transpose()?
                     .unwrap_or_else(|| "0.0".to_string());
-                let filename_access = match self.runtime_mode {
-                    super::RuntimeMode::External => format!("qb_string_data({})", filename_code),
-                    super::RuntimeMode::Inline => format!("{}->data", filename_code),
-                };
+                let filename_access = emit_string_data_access(filename, &filename_code, self.runtime_mode);
                 writeln!(
                     output,
                     "{}qb_sndplayfile({}, (double){}, (double){}, (double){}, (double){});",
@@ -2105,24 +2106,15 @@ impl StmtEmitter {
             // ==================== System Integration Statements ====================
             TypedStatementKind::Kill { filename } => {
                 let filename_code = emit_expr(filename, self.no_shell)?;
-                let filename_access = match self.runtime_mode {
-                    super::RuntimeMode::External => format!("qb_string_data({})", filename_code),
-                    super::RuntimeMode::Inline => format!("{}->data", filename_code),
-                };
+                let filename_access = emit_string_data_access(filename, &filename_code, self.runtime_mode);
                 writeln!(output, "{}qb_file_kill({});", indent, filename_access).unwrap();
             }
 
             TypedStatementKind::Rename { old_name, new_name } => {
                 let old_code = emit_expr(old_name, self.no_shell)?;
                 let new_code = emit_expr(new_name, self.no_shell)?;
-                let old_access = match self.runtime_mode {
-                    super::RuntimeMode::External => format!("qb_string_data({})", old_code),
-                    super::RuntimeMode::Inline => format!("{}->data", old_code),
-                };
-                let new_access = match self.runtime_mode {
-                    super::RuntimeMode::External => format!("qb_string_data({})", new_code),
-                    super::RuntimeMode::Inline => format!("{}->data", new_code),
-                };
+                let old_access = emit_string_data_access(old_name, &old_code, self.runtime_mode);
+                let new_access = emit_string_data_access(new_name, &new_code, self.runtime_mode);
                 writeln!(
                     output,
                     "{}qb_file_rename({}, {});",
@@ -2133,28 +2125,19 @@ impl StmtEmitter {
 
             TypedStatementKind::Mkdir { path } => {
                 let path_code = emit_expr(path, self.no_shell)?;
-                let path_access = match self.runtime_mode {
-                    super::RuntimeMode::External => format!("qb_string_data({})", path_code),
-                    super::RuntimeMode::Inline => format!("{}->data", path_code),
-                };
+                let path_access = emit_string_data_access(path, &path_code, self.runtime_mode);
                 writeln!(output, "{}qb_mkdir({});", indent, path_access).unwrap();
             }
 
             TypedStatementKind::Rmdir { path } => {
                 let path_code = emit_expr(path, self.no_shell)?;
-                let path_access = match self.runtime_mode {
-                    super::RuntimeMode::External => format!("qb_string_data({})", path_code),
-                    super::RuntimeMode::Inline => format!("{}->data", path_code),
-                };
+                let path_access = emit_string_data_access(path, &path_code, self.runtime_mode);
                 writeln!(output, "{}qb_rmdir({});", indent, path_access).unwrap();
             }
 
             TypedStatementKind::Chdir { path } => {
                 let path_code = emit_expr(path, self.no_shell)?;
-                let path_access = match self.runtime_mode {
-                    super::RuntimeMode::External => format!("qb_string_data({})", path_code),
-                    super::RuntimeMode::Inline => format!("{}->data", path_code),
-                };
+                let path_access = emit_string_data_access(path, &path_code, self.runtime_mode);
                 writeln!(output, "{}qb_chdir({});", indent, path_access).unwrap();
             }
 
@@ -2195,10 +2178,7 @@ impl StmtEmitter {
 
             TypedStatementKind::Bload { filename, address } => {
                 let filename_code = emit_expr(filename, self.no_shell)?;
-                let filename_access = match self.runtime_mode {
-                    super::RuntimeMode::External => format!("qb_string_data({})", filename_code),
-                    super::RuntimeMode::Inline => format!("{}->data", filename_code),
-                };
+                let filename_access = emit_string_data_access(filename, &filename_code, self.runtime_mode);
                 if let Some(addr) = address {
                     let addr_code = emit_expr(addr, self.no_shell)?;
                     writeln!(
@@ -2218,10 +2198,7 @@ impl StmtEmitter {
                 length,
             } => {
                 let filename_code = emit_expr(filename, self.no_shell)?;
-                let filename_access = match self.runtime_mode {
-                    super::RuntimeMode::External => format!("qb_string_data({})", filename_code),
-                    super::RuntimeMode::Inline => format!("{}->data", filename_code),
-                };
+                let filename_access = emit_string_data_access(filename, &filename_code, self.runtime_mode);
                 let addr_code = emit_expr(address, self.no_shell)?;
                 let len_code = emit_expr(length, self.no_shell)?;
                 writeln!(
@@ -2278,10 +2255,7 @@ impl StmtEmitter {
             // ==================== Clipboard Statement ====================
             TypedStatementKind::ClipboardSet { text } => {
                 let text_code = emit_expr(text, self.no_shell)?;
-                let text_access = match self.runtime_mode {
-                    super::RuntimeMode::External => format!("qb_string_data({})", text_code),
-                    super::RuntimeMode::Inline => format!("{}->data", text_code),
-                };
+                let text_access = emit_string_data_access(text, &text_code, self.runtime_mode);
                 writeln!(output, "{}qb_clipboard_set({});", indent, text_access).unwrap();
             }
 
