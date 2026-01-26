@@ -34,6 +34,7 @@ pub mod graphics_ffi;
 pub mod io;
 pub mod joystick;
 pub mod math;
+pub mod memory;
 pub mod string;
 
 // Re-export everything at the crate root for C access
@@ -48,6 +49,7 @@ pub use graphics_ffi::*;
 pub use io::*;
 pub use joystick::*;
 pub use math::*;
+pub use memory::*;
 pub use string::*;
 
 /// Initialize the runtime. Call this at program start.
