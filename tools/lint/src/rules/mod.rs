@@ -295,7 +295,7 @@ mod tests {
             LintCategory::Style,
             Severity::Warning,
             "Test message",
-            Span::new(0, 10),
+            Span::new(0, 10, 1),
         )
         .with_suggestion("Try this instead")
         .with_note("Additional context");

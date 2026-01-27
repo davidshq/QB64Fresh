@@ -16,7 +16,7 @@
 use crate::error::{DebugError, DebugResult};
 use crate::symbols::DebugSymbols;
 use crate::SourceLocation;
-use qb64fresh::ast::{Program, Span};
+use qb64fresh::ast::{Program, Span, StatementKind};
 use qb64fresh::lexer::lex;
 use qb64fresh::parser::Parser;
 use std::collections::HashMap;
@@ -176,6 +176,9 @@ impl SourceFileInfo {
 pub struct SourceManager {
     /// Loaded source files, keyed by absolute path.
     files: HashMap<PathBuf, SourceFileInfo>,
+    /// Files currently being loaded (to prevent circular include loops).
+    /// This tracks files that are in the process of being loaded but not yet inserted into `files`.
+    loading: std::collections::HashSet<PathBuf>,
     /// Search paths for finding $INCLUDE files.
     search_paths: Vec<PathBuf>,
     /// The main (entry) source file.
@@ -187,6 +190,7 @@ impl SourceManager {
     pub fn new() -> Self {
         Self {
             files: HashMap::new(),
+            loading: std::collections::HashSet::new(),
             search_paths: Vec::new(),
             main_file: None,
         }
@@ -222,26 +226,52 @@ impl SourceManager {
             return Ok(());
         }
 
-        let source = std::fs::read_to_string(&abs_path).map_err(|e| DebugError::ReadError {
-            path: abs_path.clone(),
-            source: e,
-        })?;
+        // Don't reload if currently being loaded (prevents circular include loops)
+        if self.loading.contains(&abs_path) {
+            return Ok(());
+        }
 
-        let mut file_info = SourceFileInfo::new(abs_path.clone(), source);
-        file_info.parse()?;
+        // Mark as being loaded
+        self.loading.insert(abs_path.clone());
 
-        // TODO: Scan for $INCLUDE directives and load those files too
-        // This would require parsing the preprocessor directives
+        // Use a scope to ensure we remove from loading even on error
+        let result = (|| -> DebugResult<()> {
+            let source = std::fs::read_to_string(&abs_path).map_err(|e| DebugError::ReadError {
+                path: abs_path.clone(),
+                source: e,
+            })?;
 
-        self.files.insert(abs_path, file_info);
-        Ok(())
+            let mut file_info = SourceFileInfo::new(abs_path.clone(), source);
+            file_info.parse()?;
+
+            // Scan for $INCLUDE directives and load those files recursively
+            self.scan_and_load_includes(&abs_path, &mut file_info)?;
+
+            self.files.insert(abs_path.clone(), file_info);
+            Ok(())
+        })();
+
+        // Remove from loading set (whether success or failure)
+        self.loading.remove(&abs_path);
+
+        result
     }
 
     /// Loads source from a string (for testing or in-memory debugging).
+    ///
+    /// Note: For in-memory sources, $INCLUDE paths may not resolve correctly
+    /// since there's no file system path to resolve relative to. This is primarily
+    /// useful for testing with simple programs that don't use includes.
     pub fn load_string(&mut self, name: &str, source: String) -> DebugResult<()> {
         let path = PathBuf::from(name);
         let mut file_info = SourceFileInfo::new(path.clone(), source);
         file_info.parse()?;
+
+        // Try to scan for includes (may not resolve if path doesn't exist)
+        // This is best-effort for in-memory sources
+        if path.exists() {
+            let _ = self.scan_and_load_includes(&path, &mut file_info);
+        }
 
         if self.main_file.is_none() {
             self.main_file = Some(path.clone());
@@ -380,6 +410,81 @@ impl SourceManager {
 
         None
     }
+
+    /// Scans a parsed file's AST for $INCLUDE directives and loads those files recursively.
+    ///
+    /// This method:
+    /// - Extracts all `$INCLUDE` directives from the AST
+    /// - Resolves each include path relative to the parent file
+    /// - Recursively loads included files (which may themselves include other files)
+    /// - Tracks the include relationships in `IncludeInfo`
+    /// - Sets the parent file reference on included files
+    ///
+    /// # Arguments
+    ///
+    /// * `parent_path` - The path of the file being scanned
+    /// * `file_info` - The file info containing the parsed AST
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - An include path cannot be resolved
+    /// - An included file cannot be read
+    /// - An included file fails to parse
+    fn scan_and_load_includes(
+        &mut self,
+        parent_path: &Path,
+        file_info: &mut SourceFileInfo,
+    ) -> DebugResult<()> {
+        let ast = match &file_info.ast {
+            Some(ast) => ast,
+            None => return Ok(()), // No AST means no includes to scan
+        };
+
+        // Scan all statements for $INCLUDE directives
+        for stmt in &ast.statements {
+            if let StatementKind::IncludeDirective { path } = &stmt.kind {
+                let include_line = stmt.span.line;
+
+                // Resolve the include path
+                let resolved_path = self
+                    .resolve_include(path, parent_path)
+                    .ok_or_else(|| DebugError::ReadError {
+                        path: PathBuf::from(path),
+                        source: std::io::Error::new(
+                            std::io::ErrorKind::NotFound,
+                            format!("Could not resolve $INCLUDE path: {}", path),
+                        ),
+                    })?;
+
+                // Record the include relationship (always track, even if file already loaded)
+                let include_info = IncludeInfo {
+                    path: PathBuf::from(path),
+                    include_line,
+                    resolved_path: Some(resolved_path.clone()),
+                };
+                file_info.includes.push(include_info);
+
+                // Load the included file recursively (load_file handles duplicates and will
+                // recursively scan for includes in the included file)
+                self.load_file(&resolved_path)?;
+
+                // Set the parent relationship on the loaded file
+                // Only set parent if not already set (first include wins)
+                // Note: In circular include scenarios (A includes B, B includes A), the first
+                // file to be loaded will not have a parent, and the second will become its parent.
+                // This is acceptable behavior - the important thing is that both files are loaded
+                // and include relationships are tracked.
+                if let Some(included_file) = self.files.get_mut(&resolved_path) {
+                    if included_file.parent.is_none() {
+                        included_file.parent = Some(parent_path.to_path_buf());
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl Default for SourceManager {
@@ -509,5 +614,209 @@ mod tests {
         let pos_with_stack = SourcePosition::with_stack(loc_inner, vec![loc_outer]);
 
         assert_eq!(pos_with_stack.full_path(), "include.bas:5 -> main.bas:10");
+    }
+
+    #[test]
+    fn test_include_scanning() {
+        use std::fs;
+        use std::io::Write;
+        use tempfile::TempDir;
+
+        // Create a temporary directory with test files
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+
+        // Create an included file
+        let include_path = temp_path.join("included.bas");
+        let mut include_file = fs::File::create(&include_path).unwrap();
+        writeln!(include_file, "DIM y AS INTEGER").unwrap();
+        writeln!(include_file, "y = 42").unwrap();
+        include_file.flush().unwrap();
+        drop(include_file);
+
+        // Create a main file that includes the other file
+        let main_path = temp_path.join("main.bas");
+        let mut main_file = fs::File::create(&main_path).unwrap();
+        writeln!(main_file, "DIM x AS INTEGER").unwrap();
+        writeln!(main_file, "$INCLUDE: 'included.bas'").unwrap();
+        writeln!(main_file, "PRINT x, y").unwrap();
+        main_file.flush().unwrap();
+        drop(main_file);
+
+        // Load the main file
+        let mut manager = SourceManager::new();
+        manager.load_main(&main_path).unwrap();
+
+        // Verify both files are loaded
+        assert_eq!(manager.file_count(), 2);
+        assert!(manager.get_file(&main_path).is_some());
+        assert!(manager.get_file(&include_path).is_some());
+
+        // Verify the include relationship
+        let main_file_info = manager.get_file(&main_path).unwrap();
+        assert_eq!(main_file_info.includes.len(), 1);
+        assert_eq!(
+            main_file_info.includes[0].include_line,
+            2
+        ); // $INCLUDE is on line 2
+
+        // Verify the included file has the correct parent
+        let included_file_info = manager.get_file(&include_path).unwrap();
+        assert_eq!(
+            included_file_info.parent.as_ref(),
+            Some(&main_path)
+        );
+
+        // Verify we can access source from both files
+        assert_eq!(
+            manager.get_file(&main_path).unwrap().get_line(1),
+            Some("DIM x AS INTEGER")
+        );
+        assert_eq!(
+            manager.get_file(&include_path).unwrap().get_line(1),
+            Some("DIM y AS INTEGER")
+        );
+    }
+
+    #[test]
+    fn test_multiple_includes_same_file() {
+        use std::fs;
+        use std::io::Write;
+        use tempfile::TempDir;
+
+        // Test that the same file can be included by multiple files
+        // and that the first include sets the parent (first include wins)
+
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+
+        // Create a shared include file
+        let shared_path = temp_path.join("shared.bas");
+        let mut shared_file = fs::File::create(&shared_path).unwrap();
+        writeln!(shared_file, "DIM shared_var AS INTEGER").unwrap();
+        writeln!(shared_file, "shared_var = 100").unwrap();
+        shared_file.flush().unwrap();
+        drop(shared_file);
+
+        // Create first file that includes shared
+        let file_a_path = temp_path.join("file_a.bas");
+        let mut file_a = fs::File::create(&file_a_path).unwrap();
+        writeln!(file_a, "DIM a AS INTEGER").unwrap();
+        writeln!(file_a, "$INCLUDE: 'shared.bas'").unwrap();
+        writeln!(file_a, "a = 1").unwrap();
+        file_a.flush().unwrap();
+        drop(file_a);
+
+        // Create second file that also includes shared
+        let file_b_path = temp_path.join("file_b.bas");
+        let mut file_b = fs::File::create(&file_b_path).unwrap();
+        writeln!(file_b, "DIM b AS INTEGER").unwrap();
+        writeln!(file_b, "$INCLUDE: 'shared.bas'").unwrap();
+        writeln!(file_b, "b = 2").unwrap();
+        file_b.flush().unwrap();
+        drop(file_b);
+
+        // Create main file that includes both
+        let main_path = temp_path.join("main.bas");
+        let mut main_file = fs::File::create(&main_path).unwrap();
+        writeln!(main_file, "$INCLUDE: 'file_a.bas'").unwrap();
+        writeln!(main_file, "$INCLUDE: 'file_b.bas'").unwrap();
+        writeln!(main_file, "PRINT a, b, shared_var").unwrap();
+        main_file.flush().unwrap();
+        drop(main_file);
+
+        // Load the main file
+        let mut manager = SourceManager::new();
+        manager.load_main(&main_path).unwrap();
+
+        // Verify all files are loaded (main, file_a, file_b, shared - 4 files)
+        assert_eq!(manager.file_count(), 4);
+
+        // Verify shared.bas is included by both file_a and file_b
+        let file_a_info = manager.get_file(&file_a_path).unwrap();
+        assert_eq!(file_a_info.includes.len(), 1);
+        assert!(file_a_info.includes[0].resolved_path.as_ref().unwrap() == &shared_path);
+
+        let file_b_info = manager.get_file(&file_b_path).unwrap();
+        assert_eq!(file_b_info.includes.len(), 1);
+        assert!(file_b_info.includes[0].resolved_path.as_ref().unwrap() == &shared_path);
+
+        // Verify shared.bas's parent is file_a (first include wins)
+        let shared_info = manager.get_file(&shared_path).unwrap();
+        assert_eq!(
+            shared_info.parent.as_ref(),
+            Some(&file_a_path)
+        );
+
+        // Verify main includes both file_a and file_b
+        let main_info = manager.get_file(&main_path).unwrap();
+        assert_eq!(main_info.includes.len(), 2);
+    }
+
+    #[test]
+    fn test_circular_includes() {
+        use std::fs;
+        use std::io::Write;
+        use tempfile::TempDir;
+
+        // Test circular includes: A includes B, B includes A
+        // This should not cause infinite loops due to duplicate check
+
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+
+        // Create file A that includes B
+        let file_a_path = temp_path.join("file_a.bas");
+        let mut file_a = fs::File::create(&file_a_path).unwrap();
+        writeln!(file_a, "DIM a AS INTEGER").unwrap();
+        writeln!(file_a, "$INCLUDE: 'file_b.bas'").unwrap();
+        writeln!(file_a, "a = 1").unwrap();
+        file_a.flush().unwrap();
+        drop(file_a);
+
+        // Create file B that includes A (circular!)
+        let file_b_path = temp_path.join("file_b.bas");
+        let mut file_b = fs::File::create(&file_b_path).unwrap();
+        writeln!(file_b, "DIM b AS INTEGER").unwrap();
+        writeln!(file_b, "$INCLUDE: 'file_a.bas'").unwrap();
+        writeln!(file_b, "b = 2").unwrap();
+        file_b.flush().unwrap();
+        drop(file_b);
+
+        // Load file A (which will trigger loading B, which will try to load A again)
+        let mut manager = SourceManager::new();
+        manager.load_main(&file_a_path).unwrap();
+
+        // Verify both files are loaded (not stuck in infinite loop)
+        assert_eq!(manager.file_count(), 2);
+        assert!(manager.get_file(&file_a_path).is_some());
+        assert!(manager.get_file(&file_b_path).is_some());
+
+        // Verify include relationships are tracked
+        let file_a_info = manager.get_file(&file_a_path).unwrap();
+        assert_eq!(file_a_info.includes.len(), 1);
+        assert!(file_a_info.includes[0].resolved_path.as_ref().unwrap() == &file_b_path);
+
+        let file_b_info = manager.get_file(&file_b_path).unwrap();
+        assert_eq!(file_b_info.includes.len(), 1);
+        assert!(file_b_info.includes[0].resolved_path.as_ref().unwrap() == &file_a_path);
+
+        // Verify both files are loaded (circular includes handled by duplicate check)
+        let file_a_info = manager.get_file(&file_a_path).unwrap();
+        let file_b_info = manager.get_file(&file_b_path).unwrap();
+        
+        // Verify both files are accessible
+        assert_eq!(file_a_info.get_line(1), Some("DIM a AS INTEGER"));
+        assert_eq!(file_b_info.get_line(1), Some("DIM b AS INTEGER"));
+        
+        // Verify include relationships are tracked in both directions
+        assert_eq!(file_a_info.includes.len(), 1);
+        assert_eq!(file_b_info.includes.len(), 1);
+        assert!(file_a_info.includes[0].resolved_path.as_ref().unwrap() == &file_b_path);
+        assert!(file_b_info.includes[0].resolved_path.as_ref().unwrap() == &file_a_path);
+        
+        // Note: Parent assignment in circular includes depends on load order.
+        // The duplicate check prevents infinite loops, which is the critical behavior.
+        // The exact parent relationship may vary, but both files should be loaded.
     }
 }

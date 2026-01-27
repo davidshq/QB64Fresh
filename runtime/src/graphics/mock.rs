@@ -4,6 +4,7 @@
 //! Useful for headless testing and verifying graphics operations.
 
 use super::{GraphicsBackend, GraphicsError};
+use std::collections::HashMap;
 
 /// A no-op graphics backend used for testing.
 ///
@@ -30,6 +31,9 @@ pub struct MockBackend {
     active_page: i32,
     /// Visual page for display (0-based)
     visual_page: i32,
+    /// Image palettes (handle -> palette array)
+    /// Handle 0 represents the screen palette
+    image_palettes: HashMap<i32, [u32; 256]>,
 }
 
 /// Recorded graphics operation.
@@ -72,6 +76,7 @@ impl MockBackend {
             last_gfx_y: 0,
             active_page: 0,
             visual_page: 0,
+            image_palettes: HashMap::new(),
         }
     }
 
@@ -205,6 +210,10 @@ impl GraphicsBackend for MockBackend {
         }
         // Mock always returns the color we last set
         Ok(self.fg_color)
+    }
+
+    fn get_last_position(&self) -> (i32, i32) {
+        (self.last_gfx_x, self.last_gfx_y)
     }
 
     fn line(
@@ -386,6 +395,62 @@ impl GraphicsBackend for MockBackend {
     fn get_pages(&self) -> (i32, i32) {
         (self.active_page, self.visual_page)
     }
+
+    // ========================================================================
+    // Per-Image Palette Operations
+    // ========================================================================
+
+    fn get_palette_for_image(&self, index: i32, handle: i32) -> u32 {
+        if index < 0 || index >= 256 {
+            return 0;
+        }
+
+        // Get palette for the specified handle, or default to black
+        self.image_palettes
+            .get(&handle)
+            .map(|palette| palette[index as usize])
+            .unwrap_or(0)
+    }
+
+    fn set_palette_for_image(
+        &mut self,
+        index: i32,
+        color: u32,
+        handle: i32,
+    ) -> Result<(), GraphicsError> {
+        if index < 0 || index >= 256 {
+            return Ok(()); // Invalid index, silently ignore
+        }
+
+        // Get or create palette for this handle
+        let palette = self
+            .image_palettes
+            .entry(handle)
+            .or_insert_with(|| {
+                // Initialize with default EGA/VGA palette
+                let mut colors = [0xFF000000u32; 256];
+                colors[0] = 0xFF000000; // Black
+                colors[1] = 0xFF0000AA; // Blue
+                colors[2] = 0xFF00AA00; // Green
+                colors[3] = 0xFF00AAAA; // Cyan
+                colors[4] = 0xFFAA0000; // Red
+                colors[5] = 0xFFAA00AA; // Magenta
+                colors[6] = 0xFFAA5500; // Brown
+                colors[7] = 0xFFAAAAAA; // Light gray
+                colors[8] = 0xFF555555; // Dark gray
+                colors[9] = 0xFF5555FF; // Light blue
+                colors[10] = 0xFF55FF55; // Light green
+                colors[11] = 0xFF55FFFF; // Light cyan
+                colors[12] = 0xFFFF5555; // Light red
+                colors[13] = 0xFFFF55FF; // Light magenta
+                colors[14] = 0xFFFFFF55; // Yellow
+                colors[15] = 0xFFFFFFFF; // White
+                colors
+            });
+
+        palette[index as usize] = color;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -459,14 +524,14 @@ mod tests {
 
         // Draw a line with absolute coords
         backend
-            .line_step(0, 0, 100, 100, 15, false, false, false)
+            .line_step(0, 0, 100, 100, 15, false, false, false, false, None)
             .unwrap();
         // Last point should be the end of the line
         assert_eq!((backend.last_gfx_x, backend.last_gfx_y), (100, 100));
 
         // LINE with STEP on end point
         backend
-            .line_step(200, 200, 50, 50, 15, false, false, true)
+            .line_step(200, 200, 50, 50, 15, false, false, false, true, None)
             .unwrap();
         // End point should be 200+50, 200+50 = 250, 250
         // But x1,y1 are absolute, so last_gfx becomes 250, 250

@@ -227,21 +227,21 @@ PRINT "hello"
                 LintCategory::Correctness,
                 Severity::Error,
                 "error",
-                qb64fresh::ast::Span::new(0, 1),
+                qb64fresh::ast::Span::new(0, 1, 1),
             ),
             LintDiagnostic::new(
                 "test",
                 LintCategory::Style,
                 Severity::Warning,
                 "warning",
-                qb64fresh::ast::Span::new(0, 1),
+                qb64fresh::ast::Span::new(0, 1, 1),
             ),
             LintDiagnostic::new(
                 "test",
                 LintCategory::Style,
                 Severity::Hint,
                 "hint",
-                qb64fresh::ast::Span::new(0, 1),
+                qb64fresh::ast::Span::new(0, 1, 1),
             ),
         ];
 

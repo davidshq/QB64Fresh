@@ -288,7 +288,7 @@ impl DebugSymbols {
                 id: DebugScopeId::GLOBAL,
                 kind: DebugScopeKind::Global,
                 parent: None,
-                span: Span::new(0, 0),
+                span: Span::new(0, 0, 1),
             },
         );
 
@@ -436,9 +436,12 @@ impl DebugSymbols {
                 let body_span = if body.is_empty() {
                     None
                 } else {
+                    let first = body.first().unwrap();
+                    let last = body.last().unwrap();
                     Some(Span::new(
-                        body.first().unwrap().span.start,
-                        body.last().unwrap().span.end,
+                        first.span.start,
+                        last.span.end,
+                        first.span.line,
                     ))
                 };
 
@@ -505,9 +508,12 @@ impl DebugSymbols {
                 let body_span = if body.is_empty() {
                     None
                 } else {
+                    let first = body.first().unwrap();
+                    let last = body.last().unwrap();
                     Some(Span::new(
-                        body.first().unwrap().span.start,
-                        body.last().unwrap().span.end,
+                        first.span.start,
+                        last.span.end,
+                        first.span.line,
                     ))
                 };
 
