@@ -404,6 +404,59 @@ impl SDL2Backend {
         }
     }
 
+    /// Scroll the text console up by one line.
+    ///
+    /// This shifts all pixel rows up by `FONT_HEIGHT` pixels and clears the bottom
+    /// line with the background color. Used when text output would exceed the
+    /// bottom of the screen.
+    ///
+    /// # Implementation
+    ///
+    /// The page buffer is stored as a flat array: `pixels[y * width + x]`.
+    /// To scroll:
+    /// 1. Copy rows `char_height..height` to rows `0..(height - char_height)`
+    /// 2. Clear the bottom `char_height` rows with background color
+    fn scroll_text_up(&mut self) {
+        let char_height = FONT_HEIGHT as usize;
+        let width = self.width as usize;
+        let height = self.height as usize;
+
+        if char_height >= height {
+            // Screen is too small to scroll, just clear it
+            if let Some(page) = self.page_buffers.get_mut(self.active_page) {
+                page.fill(self.bg_color);
+            }
+            return;
+        }
+
+        if let Some(page) = self.page_buffers.get_mut(self.active_page) {
+            // Shift all rows up by char_height pixels
+            // Copy from row char_height to row 0, row char_height+1 to row 1, etc.
+            // IMPORTANT: Copy in reverse order (bottom to top) to avoid overwriting
+            // data that hasn't been copied yet when ranges overlap.
+            for src_y in (char_height..height).rev() {
+                let dst_y = src_y - char_height;
+                let src_start = src_y * width;
+                let dst_start = dst_y * width;
+                if src_start + width <= page.len() && dst_start + width <= page.len() {
+                    page.copy_within(src_start..(src_start + width), dst_start);
+                }
+            }
+
+            // Clear the bottom char_height rows with background color
+            let clear_start = (height - char_height) * width;
+            let clear_end = height * width;
+            if clear_start < page.len() && clear_end <= page.len() {
+                page[clear_start..clear_end].fill(self.bg_color);
+            }
+        }
+
+        // Mark page as dirty for deferred texture upload in display()
+        if let Some(dirty) = self.page_dirty.get_mut(self.active_page) {
+            *dirty = true;
+        }
+    }
+
     fn set_pixel_buffer(&mut self, x: i32, y: i32, color: u32) {
         if self.dest_handle == 0 {
             // Drawing to screen (active page)
@@ -776,14 +829,15 @@ impl SDL2Backend {
         }
 
         // Midpoint circle algorithm with horizontal line fills
+        // Uses set_pixel_blended() to support alpha blending when enabled
         let mut x = radius;
         let mut y = 0;
         let mut p = 1 - radius;
 
-        // Helper to draw a horizontal line to pixel buffer
+        // Helper to draw a horizontal line with blending support
         let draw_hline = |slf: &mut Self, x1: i32, x2: i32, y: i32| {
             for px in x1..=x2 {
-                slf.set_pixel_buffer(px, y, color);
+                slf.set_pixel_blended(px, y, color);
             }
         };
 
@@ -1808,7 +1862,11 @@ impl GraphicsBackend for SDL2Backend {
                 // Newline
                 self.cursor_col = 1;
                 self.cursor_row += 1;
-                // TODO: scroll if needed
+                // Scroll if cursor exceeds bottom row
+                if self.cursor_row > rows {
+                    self.scroll_text_up();
+                    self.cursor_row = rows;
+                }
                 continue;
             }
 
@@ -1832,12 +1890,11 @@ impl GraphicsBackend for SDL2Backend {
             if self.cursor_col > cols {
                 self.cursor_col = 1;
                 self.cursor_row += 1;
-            }
-
-            // Scroll if needed (simplified - just wrap)
-            if self.cursor_row > rows {
-                self.cursor_row = rows;
-                // TODO: implement actual scrolling
+                // Scroll if cursor exceeds bottom row after wrapping
+                if self.cursor_row > rows {
+                    self.scroll_text_up();
+                    self.cursor_row = rows;
+                }
             }
         }
 
@@ -1865,10 +1922,10 @@ impl GraphicsBackend for SDL2Backend {
         let final_color = self.compute_blended_color(sx, sy, color);
 
         // Skip fully transparent pixels when blending is enabled
-        if final_color.is_none() {
-            return Ok(());
-        }
-        let final_color = final_color.unwrap();
+        let final_color = match final_color {
+            Some(c) => c,
+            None => return Ok(()),
+        };
 
         self.set_pixel_buffer(sx, sy, final_color);
 
@@ -1906,6 +1963,10 @@ impl GraphicsBackend for SDL2Backend {
         })
     }
 
+    fn get_last_position(&self) -> (i32, i32) {
+        (self.last_gfx_x, self.last_gfx_y)
+    }
+
     fn line(
         &mut self,
         x1: i32,
@@ -1930,8 +1991,9 @@ impl GraphicsBackend for SDL2Backend {
             // Draw filled rectangle (box) to pixel buffer only
             let x = sx1.min(sx2);
             let y = sy1.min(sy2);
-            let w = (sx1 - sx2).unsigned_abs() as i32;
-            let h = (sy1 - sy2).unsigned_abs() as i32;
+            // Use saturating cast to prevent overflow when converting from u32 to i32
+            let w = (sx1 - sx2).unsigned_abs().min(i32::MAX as u32) as i32;
+            let h = (sy1 - sy2).unsigned_abs().min(i32::MAX as u32) as i32;
 
             // Update pixel buffer with blending support
             for py in y..(y + h.max(1)) {
@@ -2022,18 +2084,9 @@ impl GraphicsBackend for SDL2Backend {
         let (cx, cy) = self.world_to_screen(x as f64, y as f64);
 
         if filled {
+            // draw_circle_filled() now uses set_pixel_blended() internally,
+            // so no redundant drawing is needed
             self.draw_circle_filled(cx, cy, radius, color);
-
-            // Update pixel buffer with blending support
-            for py in (cy - radius)..=(cy + radius) {
-                for px in (cx - radius)..=(cx + radius) {
-                    let dx = px - cx;
-                    let dy = py - cy;
-                    if dx * dx + dy * dy <= radius * radius {
-                        self.set_pixel_blended(px, py, color);
-                    }
-                }
-            }
         } else {
             self.draw_circle_outline(cx, cy, radius, color);
         }
@@ -2164,8 +2217,26 @@ impl GraphicsBackend for SDL2Backend {
         // Copy page buffer contents
         if src_page != dst_page {
             // Clone source page, then assign to destination
-            let src_data = self.page_buffers[src_page].clone();
-            self.page_buffers[dst_page] = src_data;
+            // Use .get() for defensive bounds checking even though we validated above
+            let src_data = match self.page_buffers.get(src_page) {
+                Some(data) => data.clone(),
+                None => {
+                    return Err(GraphicsError::new(
+                        GraphicsErrorKind::InvalidArgument,
+                        format!("Page buffer access failed: src={}", src_page),
+                    ));
+                }
+            };
+            
+            match self.page_buffers.get_mut(dst_page) {
+                Some(dst_buf) => *dst_buf = src_data,
+                None => {
+                    return Err(GraphicsError::new(
+                        GraphicsErrorKind::InvalidArgument,
+                        format!("Page buffer access failed: dst={}", dst_page),
+                    ));
+                }
+            }
 
             // Mark destination page as dirty - texture upload deferred to display()
             if let Some(dirty) = self.page_dirty.get_mut(dst_page) {
@@ -2394,6 +2465,49 @@ impl GraphicsBackend for SDL2Backend {
         } else {
             0
         }
+    }
+
+    fn get_palette_for_image(&self, index: i32, handle: i32) -> u32 {
+        if index < 0 || index >= 256 {
+            return 0;
+        }
+
+        if handle == 0 {
+            // Screen/current destination - use screen_palette
+            self.screen_palette[index as usize]
+        } else if let Some(img) = self.images.get(&handle) {
+            // Per-image palette
+            img.palette[index as usize]
+        } else {
+            // Invalid handle - fall back to global palette
+            self.palette.colors[index as usize]
+        }
+    }
+
+    fn set_palette_for_image(
+        &mut self,
+        index: i32,
+        color: u32,
+        handle: i32,
+    ) -> Result<(), GraphicsError> {
+        if index < 0 || index >= 256 {
+            return Ok(()); // Invalid index, silently ignore
+        }
+
+        if handle == 0 {
+            // Screen/current destination - update screen_palette
+            self.screen_palette[index as usize] = color;
+            // Also update global palette for compatibility
+            self.palette.colors[index as usize] = color;
+        } else if let Some(img) = self.images.get_mut(&handle) {
+            // Per-image palette
+            img.palette[index as usize] = color;
+        } else {
+            // Invalid handle - fall back to global palette
+            self.palette.colors[index as usize] = color;
+        }
+
+        Ok(())
     }
 
     // ========================================================================
@@ -2733,11 +2847,9 @@ impl GraphicsBackend for SDL2Backend {
     fn move_mouse(&mut self, x: i32, y: i32) {
         if self.initialized {
             if let Some(ctx) = self.sdl_context.as_ref() {
-                ctx.mouse().warp_mouse_in_window(
-                    self.canvas.as_ref().map(|c| c.window()).unwrap(),
-                    x,
-                    y,
-                );
+                if let Some(window) = self.canvas.as_ref().map(|c| c.window()) {
+                    ctx.mouse().warp_mouse_in_window(window, x, y);
+                }
             }
             self.mouse_x = x;
             self.mouse_y = y;
@@ -2795,6 +2907,33 @@ impl GraphicsBackend for SDL2Backend {
 
     fn is_screen_visible(&self) -> bool {
         self.screen_visible
+    }
+
+    fn set_title(&mut self, title: &str) {
+        if let Some(canvas) = self.canvas.as_mut() {
+            let _ = canvas.window_mut().set_title(title);
+        }
+    }
+
+    fn set_icon(&mut self, handle: i32) -> i32 {
+        // NOTE: Icon setting is intentionally not implemented at this time.
+        // This would require:
+        // 1. Retrieving the image buffer from self.images
+        // 2. Converting the ARGB pixel buffer to an SDL2 Surface
+        // 3. Setting the window icon via canvas.window_mut().set_icon()
+        // 4. Tracking the current icon handle for get_icon()
+        //
+        // This feature is low priority and can be implemented when needed.
+        // For now, return 0 to indicate no icon is set.
+        let _ = handle;
+        0
+    }
+
+    fn get_icon(&self) -> i32 {
+        // NOTE: Icon retrieval is intentionally not implemented at this time.
+        // This would require tracking the current icon handle set by set_icon().
+        // Returns 0 to indicate no icon is currently set.
+        0
     }
 
     // ========================================================================
@@ -2992,7 +3131,7 @@ impl GraphicsBackend for SDL2Backend {
     #[cfg(feature = "freetype")]
     fn load_font_with_options(&mut self, path: &str, size: u16, options: u32) -> i64 {
         use crate::font_manager::FONT_MANAGER;
-        let mut fm = FONT_MANAGER.lock().unwrap();
+        let mut fm = FONT_MANAGER.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         fm.load_font(path, size, options)
     }
 
@@ -3021,7 +3160,7 @@ impl GraphicsBackend for SDL2Backend {
         }
 
         // Use FreeType font rendering
-        let mut fm = FONT_MANAGER.lock().unwrap();
+        let mut fm = FONT_MANAGER.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Some(font) = fm.get_font_mut(current_font) {
             let mut px = x;
             let baseline = font.baseline;
@@ -3062,7 +3201,7 @@ impl GraphicsBackend for SDL2Backend {
             return self.get_print_width(text);
         }
 
-        let mut fm = FONT_MANAGER.lock().unwrap();
+        let mut fm = FONT_MANAGER.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         fm.get_text_width(current_font, text)
     }
 
@@ -3079,7 +3218,7 @@ impl GraphicsBackend for SDL2Backend {
             return self.get_font_height() as i64;
         }
 
-        let fm = FONT_MANAGER.lock().unwrap();
+        let fm = FONT_MANAGER.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         fm.get_font_height(handle).unwrap_or(16) as i64
     }
 
@@ -3101,7 +3240,7 @@ impl GraphicsBackend for SDL2Backend {
             return self.get_font_height() as i64;
         }
 
-        let fm = FONT_MANAGER.lock().unwrap();
+        let fm = FONT_MANAGER.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         fm.get_font_height(current_font).unwrap_or(16) as i64
     }
 
@@ -3127,7 +3266,7 @@ impl GraphicsBackend for SDL2Backend {
                 .collect();
         }
 
-        let mut fm = FONT_MANAGER.lock().unwrap();
+        let mut fm = FONT_MANAGER.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         fm.get_char_positions(current_font, text)
     }
 

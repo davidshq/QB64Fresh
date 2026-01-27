@@ -493,6 +493,9 @@ int32_t qb_fullscreen_get(void);
 void qb_screenmove(int32_t x, int32_t y);
 void qb_screenshow(void);
 void qb_screenhide(void);
+void qb_sub__title(const QbString* title);  /* _TITLE statement */
+int32_t qb_icon(void);                   /* _ICON function (get current icon) */
+int32_t qb_icon1(int32_t handle);        /* _ICON statement (set icon from handle) */
 
 /* Windows-only desktop functions */
 int64_t qb_windowhandle(void);       /* Returns HWND on Windows, 0 on other platforms */

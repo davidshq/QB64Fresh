@@ -64,6 +64,7 @@ use qb64fresh::ast::{Program, Span, Statement, StatementKind};
 use qb64fresh::lexer::lex;
 use qb64fresh::parser::Parser;
 use std::collections::HashMap;
+use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 
 /// Source location information.
@@ -257,6 +258,42 @@ pub struct Debugger {
     state: ExecutionState,
     /// Current source location (when paused).
     current_location: Option<SourceLocation>,
+    /// Optional connection to the debuggee runtime.
+    ///
+    /// When `None`, execution control methods will return errors indicating
+    /// that runtime integration is required.
+    connection: Option<Box<dyn Connection>>,
+}
+
+/// Trait for debug connections to enable runtime integration.
+///
+/// This trait abstracts over the concrete `DebugConnection` type to allow
+/// the debugger to work with different connection implementations (real runtime,
+/// mock for testing, etc.).
+pub trait Connection: Send + Sync {
+    /// Sends a command to the debuggee.
+    fn send_command(&mut self, cmd: &DebugCommand) -> Result<(), ProtocolError>;
+
+    /// Receives an event from the debuggee (blocking).
+    fn receive_event(&mut self) -> Result<DebugEvent, ProtocolError>;
+
+    /// Tries to receive an event without blocking.
+    fn try_receive_event(&mut self) -> Result<Option<DebugEvent>, ProtocolError>;
+}
+
+// Implement Connection for DebugConnection
+impl<R: BufRead + Send + Sync, W: Write + Send + Sync> Connection for DebugConnection<R, W> {
+    fn send_command(&mut self, cmd: &DebugCommand) -> Result<(), ProtocolError> {
+        DebugConnection::send_command(self, cmd)
+    }
+
+    fn receive_event(&mut self) -> Result<DebugEvent, ProtocolError> {
+        DebugConnection::receive_event(self)
+    }
+
+    fn try_receive_event(&mut self) -> Result<Option<DebugEvent>, ProtocolError> {
+        DebugConnection::try_receive_event(self)
+    }
 }
 
 impl Debugger {
@@ -272,6 +309,7 @@ impl Debugger {
             next_breakpoint_id: next_id,
             state: ExecutionState::NotStarted,
             current_location: None,
+            connection: None,
         }
     }
 
@@ -303,6 +341,23 @@ impl Debugger {
     /// Returns the current source location (if paused).
     pub fn current_location(&self) -> Option<&SourceLocation> {
         self.current_location.as_ref()
+    }
+
+    /// Attaches a connection to the debuggee runtime.
+    ///
+    /// This must be called before using execution control methods.
+    pub fn attach_connection<C: Connection + 'static>(&mut self, connection: C) {
+        self.connection = Some(Box::new(connection));
+    }
+
+    /// Detaches the current connection.
+    pub fn detach_connection(&mut self) {
+        self.connection = None;
+    }
+
+    /// Returns whether a connection to the runtime is attached.
+    pub fn is_connected(&self) -> bool {
+        self.connection.is_some()
     }
 
     /// Loads a source file for debugging.
@@ -456,51 +511,334 @@ impl Debugger {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Execution Control (Stubs for now - will be implemented with runtime)
+    // Execution Control
     // ─────────────────────────────────────────────────────────────────────────
 
     /// Starts or continues program execution.
+    ///
+    /// # Errors
+    ///
+    /// - Returns `ConnectionError` if no runtime connection is attached
+    /// - Returns `SessionError` if the current state doesn't allow running
+    ///   (e.g., already running or completed)
     pub fn run(&mut self) -> DebugResult<ExecutionState> {
-        // TODO: Implement actual execution control
-        // This will integrate with the QB64Fresh runtime
+        // Validate state transition
+        match self.state {
+            ExecutionState::Running => {
+                return Err(DebugError::SessionError {
+                    message: "Program is already running".to_string(),
+                });
+            }
+            ExecutionState::Completed | ExecutionState::Error => {
+                return Err(DebugError::SessionError {
+                    message: format!(
+                        "Cannot run program in {:?} state",
+                        self.state
+                    ),
+                });
+            }
+            _ => {} // Valid states: NotStarted, Paused, Stepping
+        }
+
+        // Send command to runtime if connected
+        if let Some(conn) = &mut self.connection {
+            conn.send_command(&DebugCommand::Continue)
+                .map_err(|e| DebugError::ConnectionError {
+                    message: format!("Failed to send CONTINUE command: {}", e),
+                })?;
+        } else {
+            return Err(DebugError::ConnectionError {
+                message: "No runtime connection attached. Call attach_connection() first.".to_string(),
+            });
+        }
+
         self.state = ExecutionState::Running;
         Ok(self.state)
     }
 
     /// Pauses program execution.
+    ///
+    /// # Errors
+    ///
+    /// - Returns `ConnectionError` if no runtime connection is attached
+    /// - Returns `SessionError` if the program is not running
     pub fn pause(&mut self) -> DebugResult<ExecutionState> {
-        // TODO: Implement actual pause
+        // Validate state transition
+        if self.state != ExecutionState::Running {
+            return Err(DebugError::SessionError {
+                message: format!(
+                    "Cannot pause program in {:?} state (must be Running)",
+                    self.state
+                ),
+            });
+        }
+
+        // Send command to runtime if connected
+        if let Some(conn) = &mut self.connection {
+            conn.send_command(&DebugCommand::Pause)
+                .map_err(|e| DebugError::ConnectionError {
+                    message: format!("Failed to send PAUSE command: {}", e),
+                })?;
+        } else {
+            return Err(DebugError::ConnectionError {
+                message: "No runtime connection attached. Call attach_connection() first.".to_string(),
+            });
+        }
+
         self.state = ExecutionState::Paused;
         Ok(self.state)
     }
 
     /// Steps to the next statement (step over).
+    ///
+    /// This executes the current statement and stops at the next statement
+    /// in the same scope, treating procedure calls as single steps.
+    ///
+    /// # Errors
+    ///
+    /// - Returns `ConnectionError` if no runtime connection is attached
+    /// - Returns `SessionError` if the program is not in a pausable state
+    ///
+    /// # Note
+    ///
+    /// Stepping from `NotStarted` state is allowed, but typically the runtime
+    /// should send a `Ready` event first (which transitions to `Paused` state).
+    /// The runtime will handle the case where the program isn't ready yet.
     pub fn step_over(&mut self) -> DebugResult<ExecutionState> {
-        // TODO: Implement step over
+        // Validate state transition
+        match self.state {
+            ExecutionState::NotStarted | ExecutionState::Paused | ExecutionState::Stepping => {}
+            ExecutionState::Running => {
+                return Err(DebugError::SessionError {
+                    message: "Cannot step while running. Pause first.".to_string(),
+                });
+            }
+            ExecutionState::Completed | ExecutionState::Error => {
+                return Err(DebugError::SessionError {
+                    message: format!(
+                        "Cannot step program in {:?} state",
+                        self.state
+                    ),
+                });
+            }
+        }
+
+        // Send command to runtime if connected
+        if let Some(conn) = &mut self.connection {
+            conn.send_command(&DebugCommand::StepOver)
+                .map_err(|e| DebugError::ConnectionError {
+                    message: format!("Failed to send STEP_OVER command: {}", e),
+                })?;
+        } else {
+            return Err(DebugError::ConnectionError {
+                message: "No runtime connection attached. Call attach_connection() first.".to_string(),
+            });
+        }
+
         self.state = ExecutionState::Stepping;
         Ok(self.state)
     }
 
     /// Steps into a function/sub call.
+    ///
+    /// This executes the current statement and stops at the first statement
+    /// inside any called procedure.
+    ///
+    /// # Errors
+    ///
+    /// - Returns `ConnectionError` if no runtime connection is attached
+    /// - Returns `SessionError` if the program is not in a pausable state
+    ///
+    /// # Note
+    ///
+    /// Stepping from `NotStarted` state is allowed, but typically the runtime
+    /// should send a `Ready` event first (which transitions to `Paused` state).
+    /// The runtime will handle the case where the program isn't ready yet.
     pub fn step_into(&mut self) -> DebugResult<ExecutionState> {
-        // TODO: Implement step into
+        // Validate state transition
+        match self.state {
+            ExecutionState::NotStarted | ExecutionState::Paused | ExecutionState::Stepping => {}
+            ExecutionState::Running => {
+                return Err(DebugError::SessionError {
+                    message: "Cannot step while running. Pause first.".to_string(),
+                });
+            }
+            ExecutionState::Completed | ExecutionState::Error => {
+                return Err(DebugError::SessionError {
+                    message: format!(
+                        "Cannot step program in {:?} state",
+                        self.state
+                    ),
+                });
+            }
+        }
+
+        // Send command to runtime if connected
+        if let Some(conn) = &mut self.connection {
+            conn.send_command(&DebugCommand::StepInto)
+                .map_err(|e| DebugError::ConnectionError {
+                    message: format!("Failed to send STEP_INTO command: {}", e),
+                })?;
+        } else {
+            return Err(DebugError::ConnectionError {
+                message: "No runtime connection attached. Call attach_connection() first.".to_string(),
+            });
+        }
+
         self.state = ExecutionState::Stepping;
         Ok(self.state)
     }
 
     /// Steps out of the current function/sub.
+    ///
+    /// This continues execution until the current procedure returns,
+    /// then stops at the statement after the call.
+    ///
+    /// # Errors
+    ///
+    /// - Returns `ConnectionError` if no runtime connection is attached
+    /// - Returns `SessionError` if the program is not in a pausable state
+    ///
+    /// # Note
+    ///
+    /// Stepping from `NotStarted` state is allowed, but typically the runtime
+    /// should send a `Ready` event first (which transitions to `Paused` state).
+    /// The runtime will handle the case where the program isn't ready yet.
     pub fn step_out(&mut self) -> DebugResult<ExecutionState> {
-        // TODO: Implement step out
+        // Validate state transition
+        match self.state {
+            ExecutionState::NotStarted | ExecutionState::Paused | ExecutionState::Stepping => {}
+            ExecutionState::Running => {
+                return Err(DebugError::SessionError {
+                    message: "Cannot step while running. Pause first.".to_string(),
+                });
+            }
+            ExecutionState::Completed | ExecutionState::Error => {
+                return Err(DebugError::SessionError {
+                    message: format!(
+                        "Cannot step program in {:?} state",
+                        self.state
+                    ),
+                });
+            }
+        }
+
+        // Send command to runtime if connected
+        if let Some(conn) = &mut self.connection {
+            conn.send_command(&DebugCommand::StepOut)
+                .map_err(|e| DebugError::ConnectionError {
+                    message: format!("Failed to send STEP_OUT command: {}", e),
+                })?;
+        } else {
+            return Err(DebugError::ConnectionError {
+                message: "No runtime connection attached. Call attach_connection() first.".to_string(),
+            });
+        }
+
         self.state = ExecutionState::Stepping;
         Ok(self.state)
     }
 
     /// Stops debugging and terminates the program.
+    ///
+    /// If no connection is attached, this simply updates the internal state
+    /// to `Completed` (useful if the program never started).
+    ///
+    /// # Errors
+    ///
+    /// - Returns `ConnectionError` if a connection exists but the terminate command fails
     pub fn stop(&mut self) -> DebugResult<ExecutionState> {
-        // TODO: Implement actual stop
+        // Send command to runtime if connected
+        if let Some(conn) = &mut self.connection {
+            conn.send_command(&DebugCommand::Terminate)
+                .map_err(|e| DebugError::ConnectionError {
+                    message: format!("Failed to send TERMINATE command: {}", e),
+                })?;
+        } else {
+            // If not connected, we can still update state (program might not have started)
+            self.state = ExecutionState::Completed;
+            self.current_location = None;
+            return Ok(self.state);
+        }
+
         self.state = ExecutionState::Completed;
         self.current_location = None;
         Ok(self.state)
+    }
+
+    /// Processes events from the debuggee runtime.
+    ///
+    /// This should be called periodically (e.g., in an event loop) to handle
+    /// events like breakpoint hits, step completions, and program termination.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(Some(event))` if an event was received, `Ok(None)` if no
+    /// event is available, or an error if communication failed.
+    pub fn process_events(&mut self) -> Result<Option<DebugEvent>, DebugError> {
+        let conn = match &mut self.connection {
+            Some(c) => c,
+            None => return Ok(None), // No connection, no events
+        };
+
+        match conn.try_receive_event() {
+            Ok(Some(event)) => {
+                self.handle_event(event.clone())?;
+                Ok(Some(event))
+            }
+            Ok(None) => Ok(None),
+            Err(e) => Err(DebugError::ConnectionError {
+                message: format!("Failed to receive event: {}", e),
+            }),
+        }
+    }
+
+    /// Handles a debug event from the runtime.
+    ///
+    /// Updates internal state based on the event (e.g., updates current location
+    /// when stopped, transitions to Completed on termination).
+    fn handle_event(&mut self, event: DebugEvent) -> DebugResult<()> {
+        match event {
+            DebugEvent::Ready => {
+                self.state = ExecutionState::Paused;
+            }
+            DebugEvent::Stopped {
+                reason: _,
+                line,
+                file,
+            } => {
+                self.state = ExecutionState::Paused;
+                self.current_location = Some(SourceLocation::new(
+                    PathBuf::from(file),
+                    line as usize,
+                    1, // Column will be updated when we have more precise location info
+                ));
+            }
+            DebugEvent::Terminated => {
+                self.state = ExecutionState::Completed;
+                self.current_location = None;
+            }
+            DebugEvent::Location {
+                line,
+                file,
+                procedure: _,
+            } => {
+                self.current_location = Some(SourceLocation::new(
+                    PathBuf::from(file),
+                    line as usize,
+                    1,
+                ));
+            }
+            DebugEvent::Error { message: _ } => {
+                // Runtime error occurred - transition to Error state
+                self.state = ExecutionState::Error;
+            }
+            _ => {
+                // Other events (ProcedureEnter, ProcedureExit, VariableValue, Output)
+                // don't change execution state, just provide information
+            }
+        }
+        Ok(())
     }
 }
 
@@ -606,7 +944,7 @@ PRINT x
     #[test]
     fn test_source_location_from_span() {
         let source = "DIM x AS INTEGER\nPRINT x";
-        let span = Span::new(17, 24); // "PRINT x"
+        let span = Span::new(17, 24, 2); // "PRINT x"
         let loc = SourceLocation::from_span(PathBuf::from("test.bas"), source, &span);
 
         assert_eq!(loc.line, 2);

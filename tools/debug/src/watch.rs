@@ -5,15 +5,42 @@
 //!
 //! - **Watch expression parsing**: Parse BASIC variable references
 //! - **Watch management**: Add, remove, enable/disable watches
-//! - **Expression evaluation**: (Stub) Evaluate expressions in context
+//! - **Expression evaluation**: Evaluate expressions with runtime state access
 //!
 //! Watch expressions can be:
 //! - Simple variables: `x`, `counter%`
-//! - Array elements: `arr(1, 2)`
+//! - Array elements: `arr(1, 2)`, `matrix(i, j)`
 //! - UDT members: `player.x`, `enemies(i).health`
-//! - Complex expressions: `a + b`, `LEN(s$)` (future)
+//! - Nested access: `arr(1).member.field`
+//!
+//! ## Runtime State Access
+//!
+//! Evaluation requires a runtime state provider that implements the [`RuntimeState`]
+//! trait. The [`CallStack`] type implements this trait, allowing variable values
+//! to be read from the current call stack frames.
+//!
+//! ## Example
+//!
+//! ```no_run
+//! use qb64fresh_debug::{WatchManager, CallStack, DebugSymbols, DebugScopeId, FrameId};
+//!
+//! let mut manager = WatchManager::new();
+//! let id = manager.add("x");
+//!
+//! // Evaluate with runtime state
+//! let symbols = DebugSymbols::new();
+//! let call_stack = CallStack::new();
+//! manager.evaluate_all(&symbols, DebugScopeId::GLOBAL, FrameId::MAIN, &call_stack);
+//!
+//! // Get result
+//! if let Some(watch) = manager.get(id) {
+//!     if let Some(result) = &watch.last_value {
+//!         println!("Value: {}", result.display());
+//!     }
+//! }
+//! ```
 
-use crate::frames::FrameId;
+use crate::frames::{CallStack, FrameId};
 use crate::symbols::{DebugScopeId, DebugSymbols, DebugType};
 use crate::values::DebugValue;
 use std::collections::HashMap;
@@ -212,6 +239,59 @@ impl WatchExpression {
     }
 }
 
+/// Trait for accessing runtime variable values during debugging.
+///
+/// This trait abstracts the mechanism for looking up variable values
+/// from the running program's state. Implementations can read from
+/// memory, debug info, or mock data for testing.
+pub trait RuntimeState {
+    /// Looks up a variable value by name in the given scope.
+    ///
+    /// Returns `Some(value)` if the variable exists and can be read,
+    /// or `None` if the variable is not found or unavailable.
+    fn lookup_variable(&self, name: &str, scope: DebugScopeId) -> Option<DebugValue>;
+}
+
+impl RuntimeState for CallStack {
+    /// Looks up a variable value from the call stack.
+    ///
+    /// Searches through frames starting from the current frame, continuing
+    /// through all parent scopes up to global scope. This matches the behavior
+    /// of `DebugSymbols::lookup_variable` which searches parent scopes recursively.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Variable name to look up (case-insensitive)
+    /// * `scope` - Starting scope ID (currently unused, searches all frames)
+    ///
+    /// # Returns
+    ///
+    /// `Some(DebugValue)` if found in any frame, `None` otherwise.
+    fn lookup_variable(&self, name: &str, _scope: DebugScopeId) -> Option<DebugValue> {
+        // Search through frames from innermost (current) to outermost (main/global)
+        // This naturally follows the scope hierarchy
+        for frame in self.iter() {
+            // Check locals in this frame
+            for local in &frame.locals {
+                if local.name.eq_ignore_ascii_case(name) {
+                    return Some(local.value.clone());
+                }
+            }
+
+            // Check arguments in this frame
+            for arg in &frame.arguments {
+                if arg.name.eq_ignore_ascii_case(name) {
+                    return Some(arg.value.clone());
+                }
+            }
+        }
+
+        // Note: Global variables should be in the outermost frame (main frame)
+        // If not found in any frame, the variable is not available
+        None
+    }
+}
+
 /// An array index expression.
 #[derive(Debug, Clone)]
 pub enum IndexExpr {
@@ -249,13 +329,46 @@ impl IndexExpr {
         None
     }
 
-    /// Evaluates this index to a concrete value (stub).
-    pub fn evaluate(&self, _symbols: &DebugSymbols, _scope: DebugScopeId) -> Option<i64> {
+    /// Evaluates this index to a concrete integer value.
+    ///
+    /// For literal indices, returns the value directly.
+    /// For variable indices, looks up the variable value and converts it to i64.
+    ///
+    /// # Arguments
+    ///
+    /// * `symbols` - Debug symbols for type information
+    /// * `scope` - Current scope ID
+    /// * `runtime` - Runtime state for variable value lookup
+    ///
+    /// # Returns
+    ///
+    /// `Some(i64)` if the index can be evaluated, `None` otherwise.
+    pub fn evaluate<R: RuntimeState>(
+        &self,
+        symbols: &DebugSymbols,
+        scope: DebugScopeId,
+        runtime: &R,
+    ) -> Option<i64> {
         match self {
             IndexExpr::Literal(n) => Some(*n),
-            IndexExpr::Variable(_name) => {
-                // TODO: Look up variable value in runtime state
-                None
+            IndexExpr::Variable(name) => {
+                // Look up variable value in runtime state
+                let value = runtime.lookup_variable(name, scope)?;
+
+                // Convert to i64 based on value type
+                match value {
+                    DebugValue::Integer(n) => Some(n),
+                    DebugValue::UnsignedInteger(n) => {
+                        // Clamp to i64::MAX if value exceeds signed range
+                        if n > i64::MAX as u64 {
+                            None
+                        } else {
+                            Some(n as i64)
+                        }
+                    }
+                    DebugValue::Float(f) => Some(f as i64),
+                    _ => None, // String, array, UDT, etc. cannot be used as index
+                }
             }
         }
     }
@@ -367,39 +480,277 @@ impl WatchManager {
 
     /// Evaluates all enabled watches in the given context.
     ///
-    /// Note: This is a stub. Actual evaluation requires runtime state.
-    pub fn evaluate_all(&mut self, _symbols: &DebugSymbols, _scope: DebugScopeId, _frame: FrameId) {
-        for watch in self.watches.values_mut() {
-            if watch.enabled {
-                // TODO: Implement actual evaluation with runtime state
-                watch.last_value = Some(WatchResult::error("Runtime not connected"));
+    /// Uses the provided runtime state to look up variable values.
+    ///
+    /// # Arguments
+    ///
+    /// * `symbols` - Debug symbols for type information
+    /// * `scope` - Current scope ID
+    /// * `frame` - Current frame ID (for scope resolution)
+    /// * `runtime` - Runtime state for variable value lookup
+    pub fn evaluate_all<R: RuntimeState>(
+        &mut self,
+        symbols: &DebugSymbols,
+        scope: DebugScopeId,
+        _frame: FrameId,
+        runtime: &R,
+    ) {
+        // Collect watch IDs and expressions to avoid borrowing issues
+        let watch_data: Vec<(WatchId, String, Option<WatchExpression>)> = self
+            .watches
+            .iter()
+            .filter(|(_, w)| w.enabled)
+            .map(|(id, w)| (*id, w.expression.clone(), w.parsed.clone()))
+            .collect();
+
+        // Evaluate each watch
+        for (id, expr, parsed) in watch_data {
+            let result = Self::evaluate_internal_static(
+                &expr,
+                parsed.as_ref(),
+                symbols,
+                scope,
+                runtime,
+            );
+            if let Some(watch) = self.watches.get_mut(&id) {
+                watch.last_value = Some(result);
             }
         }
     }
 
     /// Evaluates a single watch expression.
     ///
-    /// Note: This is a stub. Actual evaluation requires runtime state.
-    pub fn evaluate(
+    /// Uses the provided runtime state to look up variable values.
+    ///
+    /// # Arguments
+    ///
+    /// * `expression` - The expression string to evaluate
+    /// * `symbols` - Debug symbols for type information
+    /// * `scope` - Current scope ID
+    /// * `runtime` - Runtime state for variable value lookup
+    ///
+    /// # Returns
+    ///
+    /// A `WatchResult` containing the evaluated value or an error.
+    pub fn evaluate<R: RuntimeState>(
         &self,
         expression: &str,
         symbols: &DebugSymbols,
         scope: DebugScopeId,
+        runtime: &R,
     ) -> WatchResult {
-        // Try to parse
-        let parsed = match WatchExpression::parse(expression) {
+        let parsed = WatchExpression::parse(expression);
+        self.evaluate_internal(expression, parsed.as_ref(), symbols, scope, runtime)
+    }
+
+    /// Internal evaluation helper that works with an optional parsed expression.
+    fn evaluate_internal<R: RuntimeState>(
+        &self,
+        expression: &str,
+        parsed: Option<&WatchExpression>,
+        symbols: &DebugSymbols,
+        scope: DebugScopeId,
+        runtime: &R,
+    ) -> WatchResult {
+        Self::evaluate_internal_static(expression, parsed, symbols, scope, runtime)
+    }
+
+    /// Static version of evaluate_internal to avoid borrowing issues.
+    fn evaluate_internal_static<R: RuntimeState>(
+        expression: &str,
+        parsed: Option<&WatchExpression>,
+        symbols: &DebugSymbols,
+        scope: DebugScopeId,
+        runtime: &R,
+    ) -> WatchResult {
+        // Parse if not already parsed
+        let parsed = match parsed {
             Some(p) => p,
-            None => return WatchResult::parse_error("Invalid expression syntax"),
+            None => {
+                return match WatchExpression::parse(expression) {
+                    Some(p) => Self::evaluate_expression_static(&p, symbols, scope, runtime),
+                    None => WatchResult::parse_error("Invalid expression syntax"),
+                };
+            }
         };
 
-        // Check if the base variable exists in scope
-        let base_name = parsed.base_name();
-        if symbols.lookup_variable(base_name, scope).is_none() {
-            return WatchResult::not_in_scope();
-        }
+        Self::evaluate_expression_static(parsed, symbols, scope, runtime)
+    }
 
-        // TODO: Implement actual evaluation with runtime state
-        WatchResult::error("Runtime not connected")
+    /// Evaluates a parsed watch expression.
+    #[allow(dead_code)] // May be used by external code
+    fn evaluate_expression<R: RuntimeState>(
+        &self,
+        expr: &WatchExpression,
+        symbols: &DebugSymbols,
+        scope: DebugScopeId,
+        runtime: &R,
+    ) -> WatchResult {
+        Self::evaluate_expression_static(expr, symbols, scope, runtime)
+    }
+
+    /// Static version of evaluate_expression to avoid borrowing issues.
+    fn evaluate_expression_static<R: RuntimeState>(
+        expr: &WatchExpression,
+        symbols: &DebugSymbols,
+        scope: DebugScopeId,
+        runtime: &R,
+    ) -> WatchResult {
+        match expr {
+            WatchExpression::Variable { name } => {
+                // Look up variable in symbols to get type
+                let var_info = match symbols.lookup_variable(name, scope) {
+                    Some(v) => v,
+                    None => return WatchResult::not_in_scope(),
+                };
+
+                // Look up value in runtime state
+                let value = match runtime.lookup_variable(name, scope) {
+                    Some(v) => v,
+                    None => {
+                        return WatchResult::error(format!(
+                            "Variable '{}' not available in runtime state",
+                            name
+                        ));
+                    }
+                };
+
+                WatchResult::value(value, var_info.var_type.clone())
+            }
+            WatchExpression::ArrayElement { name, indices } => {
+                // Look up variable in symbols
+                let var_info = match symbols.lookup_variable(name, scope) {
+                    Some(v) => v,
+                    None => return WatchResult::not_in_scope(),
+                };
+
+                // Get array type
+                let element_type = match &var_info.var_type {
+                    DebugType::Array { element_type, .. } => element_type.as_ref(),
+                    _ => {
+                        return WatchResult::error(format!(
+                            "'{}' is not an array",
+                            name
+                        ));
+                    }
+                };
+
+                // Evaluate all indices
+                let mut evaluated_indices = Vec::new();
+                for idx_expr in indices {
+                    match idx_expr.evaluate(symbols, scope, runtime) {
+                        Some(idx) => evaluated_indices.push(idx),
+                        None => {
+                            return WatchResult::error(format!(
+                                "Could not evaluate array index"
+                            ));
+                        }
+                    }
+                }
+
+                // Look up array value
+                let array_value = match runtime.lookup_variable(name, scope) {
+                    Some(v) => v,
+                    None => {
+                        return WatchResult::error(format!(
+                            "Array '{}' not available in runtime state",
+                            name
+                        ));
+                    }
+                };
+
+                // Access array element
+                match array_value {
+                    DebugValue::Array(arr) => {
+                        match arr.get(&evaluated_indices) {
+                            Some(element_value) => {
+                                WatchResult::value(element_value.clone(), element_type.clone())
+                            }
+                            None => WatchResult::error(format!(
+                                "Array index out of bounds: {:?}",
+                                evaluated_indices
+                            )),
+                        }
+                    }
+                    _ => WatchResult::error(format!("'{}' is not an array value", name)),
+                }
+            }
+            WatchExpression::MemberAccess { base, member } => {
+                // Evaluate base expression first
+                let base_result = Self::evaluate_expression_static(base, symbols, scope, runtime);
+                let (base_value, base_type) = match base_result {
+                    WatchResult::Value { value, var_type } => (value, var_type),
+                    other => return other,
+                };
+
+                // Resolve the base type to find the member type in symbols
+                // For nested member access, we already have the type from the base evaluation
+                // For simple base expressions, get it from symbols (more accurate for UDTs)
+                let resolved_base_type = match base.as_ref() {
+                    WatchExpression::Variable { name } => {
+                        // Get variable type from symbols (preferred for UDT resolution)
+                        symbols
+                            .lookup_variable(name, scope)
+                            .map(|v| v.var_type.clone())
+                            .unwrap_or(base_type)
+                    }
+                    WatchExpression::ArrayElement { name, .. } => {
+                        // For array elements, get the element type from symbols
+                        symbols
+                            .lookup_variable(name, scope)
+                            .and_then(|v| match &v.var_type {
+                                DebugType::Array { element_type, .. } => {
+                                    Some(*element_type.clone())
+                                }
+                                _ => None,
+                            })
+                            .unwrap_or(base_type)
+                    }
+                    WatchExpression::MemberAccess { .. } => {
+                        // For nested member access, use the type from the evaluation result
+                        base_type
+                    }
+                };
+
+                // Access member from UDT value
+                match base_value {
+                    DebugValue::UserDefined(udt) => {
+                        match udt.get_member(member) {
+                            Some(member_value) => {
+                                // Try to get member type from symbols
+                                let member_type = match resolved_base_type {
+                                    DebugType::UserDefined(type_name) => {
+                                        symbols
+                                            .lookup_type(&type_name)
+                                            .and_then(|udt_type| {
+                                                udt_type
+                                                    .members
+                                                    .iter()
+                                                    .find(|m| {
+                                                        m.name.eq_ignore_ascii_case(member)
+                                                    })
+                                                    .map(|m| m.member_type.clone())
+                                            })
+                                            .unwrap_or(DebugType::Unknown)
+                                    }
+                                    _ => DebugType::Unknown,
+                                };
+
+                                WatchResult::value(member_value.clone(), member_type)
+                            }
+                            None => WatchResult::error(format!(
+                                "Member '{}' not found in UDT",
+                                member
+                            )),
+                        }
+                    }
+                    _ => WatchResult::error(format!(
+                        "Cannot access member '{}' on non-UDT value",
+                        member
+                    )),
+                }
+            }
+        }
     }
 }
 

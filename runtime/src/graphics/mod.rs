@@ -134,6 +134,17 @@ pub trait GraphicsBackend {
     /// Get the color of a pixel at the given coordinates.
     fn point(&self, x: i32, y: i32) -> Result<u32, GraphicsError>;
 
+    /// Get the last graphics position (for STEP coordinate resolution).
+    ///
+    /// Returns the position of the last graphics operation (PSET, LINE endpoint, CIRCLE center, etc.).
+    /// This is used to resolve relative coordinates in STEP mode.
+    ///
+    /// # Returns
+    /// A tuple of (x, y) coordinates. Default implementation returns (0, 0).
+    fn get_last_position(&self) -> (i32, i32) {
+        (0, 0)
+    }
+
     /// Draw a line from (x1, y1) to (x2, y2).
     ///
     /// # Arguments
@@ -460,6 +471,41 @@ pub trait GraphicsBackend {
         0 // Default: return black
     }
 
+    /// Get a palette entry for a specific image.
+    ///
+    /// # Arguments
+    /// - `index`: Palette index (0-255)
+    /// - `handle`: Image handle (0 = screen/current destination)
+    ///
+    /// # Returns
+    /// The ARGB color value at the specified palette index for the given image.
+    /// If the image doesn't exist or doesn't support palettes, returns 0.
+    fn get_palette_for_image(&self, index: i32, handle: i32) -> u32 {
+        // Default: fall back to global palette
+        let _ = handle;
+        self.get_palette(index)
+    }
+
+    /// Set a palette entry for a specific image.
+    ///
+    /// # Arguments
+    /// - `index`: Palette index (0-255)
+    /// - `color`: ARGB color value
+    /// - `handle`: Image handle (0 = screen/current destination)
+    ///
+    /// # Errors
+    /// Returns an error if the image doesn't exist or palette operations aren't supported.
+    fn set_palette_for_image(
+        &mut self,
+        index: i32,
+        color: u32,
+        handle: i32,
+    ) -> Result<(), GraphicsError> {
+        // Default: fall back to global palette
+        let _ = handle;
+        self.set_palette(index, color)
+    }
+
     // ============================================================================
     // QB64 Image Buffer Operations
     // ============================================================================
@@ -782,6 +828,33 @@ pub trait GraphicsBackend {
     /// Check if the window is visible.
     fn is_screen_visible(&self) -> bool {
         true // Default: visible
+    }
+
+    /// Set the window title.
+    ///
+    /// # Arguments
+    /// - `title`: Window title string
+    fn set_title(&mut self, _title: &str) {
+        // Default: no-op
+    }
+
+    /// Set the window icon from an image handle.
+    ///
+    /// # Arguments
+    /// - `handle`: Image handle (0 = screen, positive = image buffer)
+    ///
+    /// # Returns
+    /// Previous icon handle, or 0 if not supported
+    fn set_icon(&mut self, _handle: i32) -> i32 {
+        0 // Default: not supported
+    }
+
+    /// Get the current icon handle.
+    ///
+    /// # Returns
+    /// Current icon handle, or 0 if no icon is set
+    fn get_icon(&self) -> i32 {
+        0 // Default: no icon
     }
 
     // ============================================================================

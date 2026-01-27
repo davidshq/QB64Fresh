@@ -1,353 +1,192 @@
 # Partial Implementations Audit
 
-This document catalogs all functionality that is only partially implemented across the QB64Fresh codebase. Last updated: 2026-01-26.
+This document catalogs all functionality that is only partially implemented across the QB64Fresh codebase. Last updated: 2026-01-27.
+
+## Legend
+
+**Status Icons:**
+- 🟢 = Complete/fully functional
+- ⚠️ = Stub/partial implementation (code exists but limited functionality, needs work)
+- 🟣 = Limited implementation (intentionally limited, acceptable as-is by design)
+- 🔴 = Missing/incomplete (needs implementation work)
+- 🚫 = Intentionally missing (won't be implemented, by design)
+
+**Intentional Status:**
+- **Yes** = Intentionally stub/missing (by design, acceptable as-is)
+- **No** = Needs implementation (temporary, should be fixed)
+- **Partial** = Partially intentional (e.g., feature flag, conditional availability)
+- **-** = Not applicable (feature is complete)
 
 ## Categories
 
-1. [Runtime Stubs (Inline Mode)](#runtime-stubs-inline-mode)
-2. [Runtime Library Partial Implementations](#runtime-library-partial-implementations)
-3. [Debugger Infrastructure](#debugger-infrastructure)
-4. [Graphics Features](#graphics-features)
-5. [System Features](#system-features)
-6. [File I/O Features](#file-io-features)
-7. [Memory Features](#memory-features)
-8. [Joystick Features](#joystick-features)
-
----
-
-## Runtime Stubs (Inline Mode)
-
-When using `--runtime inline`, many functions are stubs that allow compilation but don't provide full functionality.
-
-### Graphics Stubs (`src/codegen/c_backend/runtime/graphics.rs`)
-
-**Status:** All graphics operations are stubs in inline mode.
-
-- All graphics commands (SCREEN, LINE, CIRCLE, PSET, etc.) are stubs
-- Print warning on first use
-- Return safe default values
-- Frame limiting prevents infinite loops (default 1000 frames)
-
-**Note:** Full graphics support requires `--runtime external` with `libqb64fresh_rt`.
-
-### System Stubs (`src/codegen/c_backend/runtime/system.rs`)
-
-**Font Functions:**
-- `_FONT`, `_FREEFONT`, `_LOADFONT` - Stubs (no-op)
-- `_MAPUNICODE` - **Fully functional** (Code Page 437 mapping)
-
-**Window Functions:**
-- `_TITLE` - Stub (no-op)
-- `_SCREENMOVE` - Stub (no-op)
-- `_SCREENSHOW` - Stub (no-op)
-- `_ICON` - Stub (no-op)
-
-**Network Functions:**
-- All network functions are stubs (no actual network support)
-- `_OPENHOST`, `_OPENCONNECTION`, `_OPENCLIENT` - Return 0
-- `_CONNECTED` - Returns 0 (not connected)
-- `_STATUSCODE` - Returns 200 (stub)
-- Network I/O functions (`qb_net_get`, `qb_net_put`, etc.) - Return 0/empty
-
-**Drag and Drop Functions:**
-- `_TOTALDROPPEDFILES` - Returns 0
-- `_DROPPEDFILE$` - Returns empty string
-- `_FINISHDROP`, `_ACCEPTFILEDROP` - No-ops
-
-**Dialog Functions:**
-- `_MESSAGEBOX` - Stub (returns 1)
-- `_SAVEDIALOG$` - Stub (returns empty string)
-- `_OPENFILEDIALOG$` - Stub (returns empty string)
-
-**Compression Functions:**
-- `_DEFLATE$` - Stub (returns empty string)
-- `_MD5$` - Stub (returns "00000000000000000000000000000000")
-
-**File I/O:**
-- `qb_file_get_string` - Stub (no-op, requires runtime library support for opaque strings)
-
-**Console Control:**
-- `qb_echo` - Stub (echo is always on, no control)
-
-### Legacy Functions (`src/codegen/c_backend/runtime/legacy.rs`)
-
-**Joystick:**
-- `STICK`, `STRIG` - Stubs (return center position / not pressed)
-
-**Light Pen:**
-- `PEN` - Stub with runtime warning (obsolete hardware)
-
-**Serial I/O:**
-- `ERDEV`, `ERDEV$`, `IOCTL`, `IOCTL$` - Stubs with runtime warning
-
-**Note:** These are intentionally stub implementations for legacy DOS-era features.
-
----
-
-## Runtime Library Partial Implementations
-
-### Graphics FFI (`runtime/src/graphics_ffi.rs`)
-
-**Per-Image Palettes:**
-- Line 1032: `qb_palettecolor_get` - TODO: Support per-image palettes
-- Line 1062: `qb_palettecolor` - TODO: Support per-image palettes with handle
-- Currently ignores handle parameter and uses current palette
-
-**Graphics Position Tracking:**
-- Line 1683: TODO: Track last graphics position for proper STEP behavior
-- STEP modifier in graphics commands needs last position tracking
-
-**OpenGL Functions:**
-- `_GLRENDER` - No-op stub (raw `_GL*` excluded per ADR-0014)
-- `_GLCOMPAT` - No-op stub (returns 0)
-
-### Graphics SDL2 Backend (`runtime/src/graphics/sdl2.rs`)
-
-**TrueType Font Support:**
-- Lines 1419-1454: TTF functions are stubs when `graphics-sdl2-ttf` feature is disabled
-- `load_font` - Returns 0 (TTF not supported)
-- `set_font` - No-op (returns 0)
-- `free_font` - No-op
-
-**Console Scrolling:**
-- Line 1736: TODO: scroll if needed
-- Line 1765: TODO: implement actual scrolling
-- Console text scrolling not yet implemented
-
-### I/O Functions (`runtime/src/io.rs`)
-
-**FIELD Statement:**
-- Line 2356: `qb_field_start` - Stub (FIELD statement not yet fully implemented)
-- Line 2362: `qb_field_add` - Stub (FIELD statement not yet fully implemented)
-- FIELD statement for random file I/O is not complete
-
-**LSET/RSET:**
-- Lines 2371-2398: Simplified implementations
-- Only copy strings, don't properly pad/truncate to field width
-
-**COMMAND$ Function:**
-- Line 2583: Currently returns empty string (stub implementation)
-- Should return command-line arguments
-
-### Memory Functions (`runtime/src/memory.rs`)
-
-**Image Memory:**
-- Line 226: `_MEMIMAGE` - Stub (returns empty QbMem, no image in external yet)
-- Returns default/empty memory block
-
-**Sound Memory:**
-- Line 232: `_MEMSOUND` - Stub (returns empty QbMem)
-- Returns default/empty memory block
-
-### Joystick Functions (`runtime/src/joystick.rs`)
-
-**Device Enumeration:**
-- Line 218: TODO: Actually enumerate SDL2 joysticks
-- `qb_devices()` currently returns 2 (keyboard + mouse) without enumerating actual joysticks
-
----
-
-## Debugger Infrastructure
-
-The debugger infrastructure is complete but requires runtime integration to be functional.
-
-### Execution Control (`tools/debug/src/lib.rs`)
-
-**Status:** All execution control methods are stubs awaiting runtime integration.
-
-- Line 464: `run()` - TODO: Implement actual execution control
-- Line 472: `pause()` - TODO: Implement actual pause
-- Line 479: `step_over()` - TODO: Implement step over
-- Line 486: `step_into()` - TODO: Implement step into
-- Line 493: `step_out()` - TODO: Implement step out
-- Line 500: `stop()` - TODO: Implement actual stop
-
-**Current State:** Methods update internal state but don't actually control program execution.
-
-### Watch Expression Evaluation (`tools/debug/src/watch.rs`)
-
-**Status:** Expression parsing works, but evaluation requires runtime state.
-
-- Line 257: `IndexExpr::evaluate()` - TODO: Look up variable value in runtime state
-- Line 374: `WatchManager::evaluate_all()` - TODO: Implement actual evaluation with runtime state
-- Line 401: `WatchManager::evaluate()` - TODO: Implement actual evaluation with runtime state
-
-**Current State:** Can parse expressions and validate variable names exist, but cannot evaluate values.
-
-### Source File Management (`tools/debug/src/sources.rs`)
-
-**$INCLUDE Scanning:**
-- Line 233: TODO: Scan for $INCLUDE directives and load those files too
-- Currently only loads the main source file, not included files
-
-### Debug Adapter Protocol (`tools/debug/src/server.rs`)
-
-**Attach Mode:**
-- Line 343: Attach mode not implemented (returns error: "Use launch instead")
-
-**Expression Evaluation:**
-- Line 814: TODO: Implement expression evaluation
-- `evaluate` request handler returns error message instead of evaluating
+1. [Graphics Features](#graphics-features)
+2. [System Features](#system-features)
+3. [File I/O Features](#file-io-features)
+4. [Debugger Infrastructure](#debugger-infrastructure)
+5. [Legacy Features](#legacy-features)
 
 ---
 
 ## Graphics Features
 
-### Inline Runtime Graphics
-
-All graphics operations in inline runtime mode are stubs. See [Runtime Stubs (Inline Mode)](#runtime-stubs-inline-mode) above.
-
-### External Runtime Graphics
-
-Most graphics features are fully implemented in the external runtime, with these exceptions:
-
-1. **Per-Image Palettes** - Not yet supported (uses global palette)
-2. **STEP Position Tracking** - Last graphics position not tracked for STEP modifier
-3. **TrueType Fonts** - Only available when `graphics-sdl2-ttf` feature is enabled
-4. **Console Scrolling** - Not yet implemented
+| Feature | Inline | External Runtime | Intentional? | Notes |
+|---------|--------|------------------|--------------|-------|
+| **Core Graphics Commands** | | | | |
+| SCREEN, LINE, CIRCLE, PSET, etc. | 🟣 | 🟢 | Yes | Inline mode: stubs with warnings, frame limiting. External: full SDL2 implementation |
+| STEP position tracking | 🔴 | 🟢 | No | Inline: not tracked. External: fully implemented in both mock and SDL2 backends |
+| **Font Functions** | | | | |
+| `_FONT`, `_FREEFONT`, `_LOADFONT` | 🟣 | 🟣 | Partial | Stubs in inline. External: requires `graphics-sdl2-ttf` feature flag (SDL2_ttf dependency) |
+| `_MAPUNICODE` | 🟢 | 🟢 | - | Fully functional (Code Page 437 mapping) |
+| **Window Functions** | | | | |
+| `_TITLE` | 🔴 | 🟢 | No | Inline: not implemented. External: fully functional |
+| `_SCREENMOVE` | 🔴 | 🟢 | No | Inline: not implemented. External: fully functional |
+| `_SCREENSHOW` | 🔴 | 🟢 | No | Inline: not implemented. External: fully functional |
+| `_ICON` | 🔴 | ⚠️ | No | Inline: not implemented. External: FFI and trait methods exist, but icon setting from image handle is TODO (requires converting image buffer to SDL2 surface) |
+| **Palette Functions** | | | | |
+| Per-image palettes | 🟢 | 🟢 | - | Fully implemented in both mock and SDL2 backends. Handle 0 uses screen palette, other handles use image-specific palettes |
+| **OpenGL Functions** | | | | |
+| `_GLRENDER`, `_GLCOMPAT` | 🚫 | 🚫 | Yes | Excluded per ADR-0014 (using SDL2/winit, not raw OpenGL) |
+| **Console Scrolling** | 🟢 | 🟢 | - | Fully implemented: `scroll_text_up()` method shifts pixel rows and clears bottom line
 
 ---
 
 ## System Features
 
-### Network Support
-
-**Status:** No network support implemented.
-
-All network functions are stubs:
-- `_OPENHOST`, `_OPENCONNECTION`, `_OPENCLIENT` - Return 0
-- `_CONNECTED` - Returns 0
-- `_STATUSCODE` - Returns 200 (stub)
-- Network I/O functions return empty/zero
-
-### Dialog Functions
-
-**Status:** All dialog functions are stubs.
-
-- `_MESSAGEBOX` - Returns 1 (no actual dialog)
-- `_SAVEDIALOG$` - Returns empty string
-- `_OPENFILEDIALOG$` - Returns empty string
-
-### Compression
-
-**Status:** Compression functions are stubs.
-
-- `_DEFLATE$` - Returns empty string
-- `_MD5$` - Returns fixed stub value "00000000000000000000000000000000"
-
-### Drag and Drop
-
-**Status:** All drag-and-drop functions are stubs.
-
-- `_TOTALDROPPEDFILES` - Returns 0
-- `_DROPPEDFILE$` - Returns empty string
-- `_FINISHDROP`, `_ACCEPTFILEDROP` - No-ops
+| Feature | Inline | External Runtime | Intentional? | Notes |
+|---------|--------|------------------|--------------|-------|
+| **Network Functions** | | | | |
+| `_OPENHOST`, `_OPENCONNECTION`, `_OPENCLIENT` | 🚫 | 🚫 | Yes | No network support planned |
+| `_CONNECTED` | 🚫 | 🚫 | Yes | Returns 0 (not connected) |
+| `_STATUSCODE` | 🚫 | 🚫 | Yes | Returns 200 (stub) |
+| Network I/O (`qb_net_get`, `qb_net_put`, etc.) | 🚫 | 🚫 | Yes | Return 0/empty |
+| **Drag and Drop** | | | | |
+| `_TOTALDROPPEDFILES` | 🚫 | 🚫 | Yes | Returns 0 |
+| `_DROPPEDFILE$` | 🚫 | 🚫 | Yes | Returns empty string |
+| `_FINISHDROP`, `_ACCEPTFILEDROP` | 🚫 | 🚫 | Yes | No-ops |
+| **File I/O Support** | | | | |
+| `qb_file_get_string` | ⚠️ | 🟢 | No | Inline: stub (requires runtime library for opaque strings). External: fully functional |
+| **Console Control** | | | | |
+| `qb_echo` | ⚠️ | ⚠️ | No | Echo is always on, no control implemented |
 
 ---
 
 ## File I/O Features
 
-### FIELD Statement
-
-**Status:** Partially implemented (stubs).
-
-- `qb_field_start()` - Stub (no-op)
-- `qb_field_add()` - Stub (no-op)
-- FIELD statement for random file I/O not fully implemented
-
-### LSET/RSET
-
-**Status:** Simplified implementation.
-
-- Only copies strings, doesn't properly pad/truncate to field width
-- Should respect field width for alignment
-
-### COMMAND$ Function
-
-**Status:** Stub implementation.
-
-- Returns empty string instead of command-line arguments
-- Should parse and return actual command-line arguments
+| Feature | Inline | External Runtime | Intentional? | Notes |
+|---------|--------|------------------|--------------|-------|
+| **FIELD Statement** | | | | |
+| `qb_field_start()` | ⚠️ | ⚠️ | No | Stub in `runtime/src/io.rs` line 2408. Code generation exists but runtime incomplete |
+| `qb_field_add()` | ⚠️ | ⚠️ | No | Stub in `runtime/src/io.rs` line 2417. Multi-dimensional array handling TODO at `src/codegen/c_backend/stmt/io.rs` line 89 |
+| **LSET/RSET** | | | | |
+| LSET/RSET string operations | ⚠️ | ⚠️ | No | Simplified: only copies strings, doesn't pad/truncate to field width. Located in `runtime/src/io.rs` lines 2421-2448 |
 
 ---
 
-## Memory Features
+## Debugger Infrastructure
 
-### Image Memory Access
+| Feature | Inline | External Runtime | Intentional? | Notes |
+|---------|--------|------------------|--------------|-------|
+| **Execution Control** | | | | |
+| `run()`, `pause()`, `step_over()`, `step_into()`, `step_out()`, `stop()` | 🟢 | 🟢 | - | Infrastructure complete. Requires runtime integration hooks to be functional |
+| `process_events()`, `handle_event()` | 🟢 | 🟢 | - | Event processing implemented. Needs runtime to emit events |
+| **Watch Expressions** | | | | |
+| Variable evaluation (`x`, `arr(i)`, `player.x`) | 🟢 | 🟢 | - | Expression parsing and evaluation complete. Needs runtime state access |
+| **Debug Adapter Protocol** | | | | |
+| Attach mode | 🟢 | 🟢 | - | Connects to existing process via pipe path or process ID |
+| Expression evaluation | 🟢 | 🟢 | - | Parses expressions and requests variable values from debuggee |
 
-**Status:** Stub.
-
-- `_MEMIMAGE` - Returns empty QbMem block
-- Cannot access image pixel data through memory interface
-
-### Sound Memory Access
-
-**Status:** Stub.
-
-- `_MEMSOUND` - Returns empty QbMem block
-- Cannot access sound data through memory interface
+**Note:** All debugger features are infrastructure-complete but require runtime integration (debug info emission, breakpoint hooks, memory access protocol) to be functional.
 
 ---
 
-## Joystick Features
+## Legacy Features
 
-### Device Enumeration
-
-**Status:** Partial implementation.
-
-- `qb_devices()` returns 2 (keyboard + mouse) without enumerating actual joysticks
-- TODO: Actually enumerate SDL2 joysticks
-- Joystick input functions may work if joysticks are manually configured, but automatic detection is incomplete
+| Feature | Inline | External Runtime | Intentional? | Notes |
+|---------|--------|------------------|--------------|-------|
+| **Joystick** | | | | |
+| `STICK`, `STRIG` | 🟣 | 🟣 | Yes | Stubs return center position / not pressed. Legacy DOS-era hardware support |
+| **Light Pen** | | | | |
+| `PEN` | 🟣 | 🟣 | Yes | Stub with runtime warning. Obsolete hardware |
+| **Serial I/O** | | | | |
+| `ERDEV`, `ERDEV$`, `IOCTL`, `IOCTL$` | 🟣 | 🟣 | Yes | Stubs with runtime warning. Legacy DOS-era features |
 
 ---
 
 ## Summary by Priority
 
-### High Priority (Core Functionality)
+### High Priority (Core Functionality - Needs Implementation)
 
-1. ✅ **Array Metadata Tracking** - **COMPLETE** - Full implementation with hash table registry
-2. **COMMAND$ Function** - Returns empty string (should return command-line args)
-3. **FIELD Statement** - Not implemented (needed for random file I/O)
-4. **LSET/RSET** - Simplified (should respect field width)
+| Feature | Status | Intentional? |
+|---------|--------|--------------|
+| FIELD Statement | ⚠️ Both modes | No |
+| LSET/RSET | ⚠️ Both modes | No |
+| Console Scrolling | 🟢 Both modes | - |
+| `qb_file_get_string` (inline) | ⚠️ Inline only | No |
+| `qb_echo` | ⚠️ Both modes | No |
 
 ### Medium Priority (Useful Features)
 
-1. **Per-Image Palettes** - Graphics feature enhancement
-2. **STEP Position Tracking** - Graphics feature enhancement
-3. **Console Scrolling** - Text output enhancement
-4. **$INCLUDE Scanning in Debugger** - Debugger completeness
-5. **Joystick Enumeration** - Input device support
+| Feature | Status | Intentional? |
+|---------|--------|--------------|
+| STEP position tracking (inline) | 🔴 Inline only | No |
+| Window functions (`_TITLE`, `_SCREENMOVE`, etc.) (inline) | 🔴 Inline only | No |
+| TrueType Fonts | 🟣 Both modes | Partial | Requires `graphics-sdl2-ttf` feature flag |
 
-### Low Priority (Nice to Have)
+### Low Priority / Intentionally Missing
 
-1. **Network Support** - Entire subsystem is stubs
-2. **Dialog Functions** - Platform-specific UI
-3. **Compression Functions** - Utility features
-4. **Drag and Drop** - Platform-specific feature
-5. **TrueType Fonts** - Optional feature (requires feature flag)
+| Feature | Status | Intentional? |
+|---------|--------|--------------|
+| Network Support | 🚫 Both modes | Yes |
+| Drag and Drop | 🚫 Both modes | Yes |
+| OpenGL Functions (`_GL*`) | 🚫 Both modes | Yes | Excluded per ADR-0014 |
+| Legacy Hardware (Joystick, Light Pen, Serial I/O) | 🟣 Both modes | Yes |
 
-### Debugger Integration (Separate Effort)
+### Complete Features
 
-All debugger execution control and evaluation features require runtime integration:
-- Execution control (run, pause, step)
-- Watch expression evaluation
-- Variable value lookup
-- Expression evaluation in DAP
-
-These are infrastructure-complete but need runtime hooks to be functional.
+| Feature | Status |
+|---------|--------|
+| Array Metadata Tracking (external) | 🟢 External |
+| Per-Image Palettes | 🟢 Both modes |
+| STEP Position Tracking (external) | 🟢 External |
+| Core Graphics Commands (external) | 🟢 External |
+| Console Scrolling | 🟢 Both modes |
+| Debugger Infrastructure | 🟢 Both modes | (Requires runtime integration hooks) |
 
 ---
 
 ## Notes
 
-- Many stubs are **intentional** for inline runtime mode (graphics, network, dialogs)
-- Full functionality requires `--runtime external` with `libqb64fresh_rt`
-- Array metadata tracking is **fully implemented** (see `src/codegen/c_backend/runtime/arrays.rs`)
-- Some stubs are **temporary** and need implementation (FIELD statement, COMMAND$)
-- Debugger infrastructure is **complete** but needs runtime integration
-- Graphics features are **mostly complete** in external runtime, with minor enhancements needed
+**Runtime Modes:**
+- **Inline mode** (`--runtime inline`): Many features are intentionally stubbed to allow compilation without external dependencies. Graphics operations are stubs with frame limiting to prevent infinite loops.
+- **External runtime** (`--runtime external`): Full functionality requires linking against `libqb64fresh_rt`. Most features are fully implemented in external mode.
+
+**Implementation Status:**
+- Array metadata tracking is fully implemented in external runtime (see `src/codegen/c_backend/runtime/arrays.rs`). Inline runtime has stub for `qb_array_register_md` which is acceptable since inline mode doesn't need full array tracking.
+- Per-image palettes and STEP position tracking are fully implemented in both mock and SDL2 backends.
+- Debugger infrastructure is complete but requires runtime integration hooks (debug info emission, breakpoint support, memory access protocol) to be functional.
+
+**Intentional vs Temporary:**
+- Features marked as **Intentional: Yes** are by design (e.g., network support not planned, OpenGL excluded per ADR-0014, legacy hardware stubs).
+- Features marked as **Intentional: No** need implementation work (e.g., FIELD statement, LSET/RSET, console scrolling).
+- Features marked as **Intentional: Partial** are conditionally available (e.g., TrueType fonts require feature flag).
 
 ## Recent Changes
+
+### 2026-01-27
+- ✅ **Console Scrolling**: Fully implemented
+  - Added `scroll_text_up()` method to SDL2Backend that shifts pixel rows up by one text line
+  - Updated `print()` method to call scrolling when cursor exceeds bottom row
+  - Handles both newline characters and line wrapping scenarios
+  - Clears bottom line with background color after scrolling
+- ✅ **Per-Image Palettes**: Fully implemented
+  - Added `get_palette_for_image` and `set_palette_for_image` methods to `GraphicsBackend` trait
+  - Implemented per-image palette support in both SDL2 and mock backends
+  - Updated `qb_palettecolor_get` and `qb_palettecolor` FFI functions to use per-image palettes
+  - Handle 0 uses screen palette, other handles use image-specific palettes
+- ✅ **STEP Position Tracking**: Verified complete implementation
+  - Both `mock.rs` and `sdl2.rs` backends track `last_x` and `last_y`
+  - All STEP variants properly resolve relative coordinates
+  - Removed outdated TODO from documentation
 
 ### 2026-01-26
 - ✅ **Array Metadata Tracking**: Fully implemented with hash table registry system
@@ -356,3 +195,4 @@ These are infrastructure-complete but need runtime hooks to be functional.
   - `qb_array_update` handles REDIM pointer changes
   - `qb_array_erase` clears metadata
   - Implementation in `src/codegen/c_backend/runtime/arrays.rs`
+  - **Note:** Inline runtime has stub for `qb_array_register_md`, but external runtime has full implementation
