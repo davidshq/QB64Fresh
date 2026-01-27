@@ -451,12 +451,12 @@ mod tests {
         Statement::new(
             StatementKind::Print {
                 values: vec![crate::ast::PrintItem {
-                    expr: Expr::new(ExprKind::IntegerLiteral(value), Span::new(6, 8)),
+                    expr: Expr::new(ExprKind::IntegerLiteral(value), Span::new(6, 8, 1)),
                     separator: None,
                 }],
                 newline: true,
             },
-            Span::new(0, 8),
+            Span::new(0, 8, 1),
         )
     }
 
@@ -464,9 +464,9 @@ mod tests {
         Statement::new(
             StatementKind::Let {
                 name: name.to_string(),
-                value: Expr::new(ExprKind::IntegerLiteral(value), Span::new(4, 5)),
+                value: Expr::new(ExprKind::IntegerLiteral(value), Span::new(4, 5, 1)),
             },
-            Span::new(0, 5),
+            Span::new(0, 5, 1),
         )
     }
 
@@ -609,17 +609,17 @@ mod tests {
                     }],
                     shared: false,
                 },
-                Span::new(0, 15),
+                Span::new(0, 15, 1),
             ),
             Statement::new(
                 StatementKind::Let {
                     name: "x".to_string(),
                     value: Expr::new(
                         ExprKind::StringLiteral("hello".to_string()),
-                        Span::new(4, 11),
+                        Span::new(4, 11, 1),
                     ),
                 },
-                Span::new(0, 11),
+                Span::new(0, 11, 1),
             ),
         ]);
 

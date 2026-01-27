@@ -300,7 +300,7 @@ mod tests {
     #[test]
     fn test_create_binary_expr() {
         let left = Box::new(Expr::new(ExprKind::IntegerLiteral(1), Span::new(0, 1, 1)));
-        let right = Box::new(Expr::new(ExprKind::IntegerLiteral(2), Span::new(4, 5)));
+        let right = Box::new(Expr::new(ExprKind::IntegerLiteral(2), Span::new(4, 5, 1)));
         let expr = Expr::new(
             ExprKind::Binary {
                 left,

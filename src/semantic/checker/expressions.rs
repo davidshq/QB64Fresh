@@ -251,18 +251,39 @@ impl<'a> TypeChecker<'a> {
         }
 
         // Implicit variable declaration (BASIC allows undeclared variables)
-        let basic_type =
-            type_from_suffix(name).unwrap_or_else(|| self.symbols.default_type_for(name));
+        // Check if variable already exists (from previous implicit creation)
+        let basic_type = if let Some(existing) = self.symbols.lookup_symbol(name) {
+            // Variable already exists - use existing type
+            existing.basic_type.clone()
+        } else {
+            // New variable - infer from suffix or default
+            let inferred =
+                type_from_suffix(name).unwrap_or_else(|| self.symbols.default_type_for(name));
 
-        let symbol = Symbol {
-            name: name.to_string(),
-            kind: SymbolKind::Variable,
-            basic_type: basic_type.clone(),
-            span,
-            is_mutable: true,
+            let symbol = Symbol {
+                name: name.to_string(),
+                kind: SymbolKind::Variable,
+                basic_type: inferred.clone(),
+                span,
+                is_mutable: true,
+            };
+
+            // Create the variable - if it fails, it means there's a duplicate (shouldn't happen
+            // since we checked lookup_symbol, but handle it anyway)
+            if let Err(dup) = self.symbols.define_symbol(symbol) {
+                let (existing, _) = *dup;
+                // Type conflict - variable was defined elsewhere with different type
+                self.errors.push(SemanticError::DuplicateVariable {
+                    name: name.to_string(),
+                    original_span: existing.span,
+                    duplicate_span: span,
+                });
+                // Use existing type for type checking to avoid cascading errors
+                existing.basic_type.clone()
+            } else {
+                inferred
+            }
         };
-
-        let _ = self.symbols.define_symbol(symbol);
 
         TypedExpr::new(TypedExprKind::Variable(name.to_string()), basic_type, span)
     }

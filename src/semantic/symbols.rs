@@ -1191,7 +1191,7 @@ mod tests {
             name: "x".to_string(),
             kind: SymbolKind::Variable,
             basic_type: BasicType::Integer,
-            span: Span::new(0, 1),
+            span: Span::new(0, 1, 1),
             is_mutable: true,
         };
 
@@ -1209,7 +1209,7 @@ mod tests {
             name: "MyVar".to_string(),
             kind: SymbolKind::Variable,
             basic_type: BasicType::String,
-            span: Span::new(0, 5),
+            span: Span::new(0, 5, 1),
             is_mutable: true,
         };
 
@@ -1229,7 +1229,7 @@ mod tests {
             name: "x".to_string(),
             kind: SymbolKind::Variable,
             basic_type: BasicType::Integer,
-            span: Span::new(0, 1),
+            span: Span::new(0, 1, 1),
             is_mutable: true,
         };
 
@@ -1237,7 +1237,7 @@ mod tests {
             name: "X".to_string(), // Same name, different case
             kind: SymbolKind::Variable,
             basic_type: BasicType::Long,
-            span: Span::new(10, 11),
+            span: Span::new(10, 11, 1),
             is_mutable: true,
         };
 
@@ -1256,7 +1256,7 @@ mod tests {
             name: "g".to_string(),
             kind: SymbolKind::Variable,
             basic_type: BasicType::Integer,
-            span: Span::new(0, 1),
+            span: Span::new(0, 1, 1),
             is_mutable: true,
         };
         table.define_symbol(global_var).unwrap();
@@ -1269,7 +1269,7 @@ mod tests {
             name: "l".to_string(),
             kind: SymbolKind::Variable,
             basic_type: BasicType::String,
-            span: Span::new(10, 11),
+            span: Span::new(10, 11, 1),
             is_mutable: true,
         };
         table.define_symbol(local_var).unwrap();
@@ -1297,7 +1297,7 @@ mod tests {
             name: "shared_g".to_string(),
             kind: SymbolKind::Variable,
             basic_type: BasicType::Integer,
-            span: Span::new(0, 8),
+            span: Span::new(0, 8, 1),
             is_mutable: true,
         };
         table.define_symbol(global_var).unwrap();
@@ -1327,7 +1327,7 @@ mod tests {
             kind: ProcedureKind::Sub,
             params: vec![],
             return_type: None,
-            span: Span::new(0, 5),
+            span: Span::new(0, 5, 1),
             is_static: false,
         };
 
@@ -1359,14 +1359,14 @@ mod tests {
         let mut table = SymbolTable::new();
 
         table
-            .define_label("start".to_string(), Span::new(0, 5))
+            .define_label("start".to_string(), Span::new(0, 5, 1))
             .unwrap();
 
         assert!(table.lookup_label("START").is_some());
         assert!(table.lookup_label("start").is_some());
 
         // Duplicate label should fail
-        let result = table.define_label("Start".to_string(), Span::new(10, 15));
+        let result = table.define_label("Start".to_string(), Span::new(10, 15, 1));
         assert!(result.is_err());
     }
 
@@ -1380,7 +1380,7 @@ mod tests {
             name: "name$".to_string(),
             kind: SymbolKind::Variable,
             basic_type: BasicType::String,
-            span: Span::new(0, 5),
+            span: Span::new(0, 5, 1),
             is_mutable: true,
         };
         table.define_symbol(symbol1).unwrap();
@@ -1406,7 +1406,7 @@ mod tests {
             name: "name%".to_string(),
             kind: SymbolKind::Variable,
             basic_type: BasicType::Integer,
-            span: Span::new(10, 15),
+            span: Span::new(10, 15, 1),
             is_mutable: true,
         };
         let result = table.define_symbol(symbol2);
@@ -1424,7 +1424,7 @@ mod tests {
             name: "name".to_string(),
             kind: SymbolKind::Variable,
             basic_type: BasicType::Single,
-            span: Span::new(20, 24),
+            span: Span::new(20, 24, 1),
             is_mutable: true,
         };
         let result = table.define_symbol(symbol3);

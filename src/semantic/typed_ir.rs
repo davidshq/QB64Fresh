@@ -2034,14 +2034,14 @@ mod tests {
 
     #[test]
     fn test_typed_expr_creation() {
-        let expr = TypedExpr::integer(42, Span::new(0, 2));
+        let expr = TypedExpr::integer(42, Span::new(0, 2, 1));
         assert_eq!(expr.basic_type, BasicType::Long);
         assert!(matches!(expr.kind, TypedExprKind::IntegerLiteral(42)));
     }
 
     #[test]
     fn test_convert_to() {
-        let int_expr = TypedExpr::integer(42, Span::new(0, 2));
+        let int_expr = TypedExpr::integer(42, Span::new(0, 2, 1));
         let converted = int_expr.convert_to(BasicType::Double);
 
         assert_eq!(converted.basic_type, BasicType::Double);
@@ -2050,7 +2050,7 @@ mod tests {
 
     #[test]
     fn test_convert_to_same_type() {
-        let int_expr = TypedExpr::integer(42, Span::new(0, 2));
+        let int_expr = TypedExpr::integer(42, Span::new(0, 2, 1));
         let not_converted = int_expr.convert_to(BasicType::Long);
 
         // Should NOT wrap in Convert since types match
@@ -2065,10 +2065,10 @@ mod tests {
         let stmt = TypedStatement::new(
             TypedStatementKind::Assignment {
                 name: "x".to_string(),
-                value: TypedExpr::integer(5, Span::new(4, 5)),
+                value: TypedExpr::integer(5, Span::new(4, 5, 1)),
                 target_type: BasicType::Integer,
             },
-            Span::new(0, 5),
+            Span::new(0, 5, 1),
         );
 
         assert!(matches!(stmt.kind, TypedStatementKind::Assignment { .. }));

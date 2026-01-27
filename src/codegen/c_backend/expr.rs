@@ -1562,7 +1562,7 @@ mod tests {
 
     #[test]
     fn test_emit_string_literal() {
-        let expr = TypedExpr::string("Hello".to_string(), Span::new(0, 7));
+        let expr = TypedExpr::string("Hello".to_string(), Span::new(0, 7, 1));
         let result = emit_expr(&expr, false).unwrap();
         assert_eq!(result, "qb_string_new(\"Hello\")");
     }
@@ -1572,7 +1572,7 @@ mod tests {
         // When both operands are constant, the expression is folded
         let expr = TypedExpr::new(
             TypedExprKind::Binary {
-                left: Box::new(TypedExpr::integer(2, Span::new(0, 1))),
+                left: Box::new(TypedExpr::integer(2, Span::new(0, 1, 1))),
                 op: BinaryOp::Power,
                 right: Box::new(TypedExpr::integer(3, Span::new(4, 5, 1))),
             },
@@ -1591,7 +1591,7 @@ mod tests {
                 left: Box::new(TypedExpr::new(
                     TypedExprKind::Variable("x".to_string()),
                     BasicType::Long,
-                    Span::new(0, 1),
+                    Span::new(0, 1, 1),
                 )),
                 op: BinaryOp::Power,
                 right: Box::new(TypedExpr::integer(3, Span::new(4, 5, 1))),
@@ -1608,9 +1608,9 @@ mod tests {
         // When both operands are constant, the expression is folded
         let expr = TypedExpr::new(
             TypedExprKind::Binary {
-                left: Box::new(TypedExpr::integer(5, Span::new(0, 1))),
+                left: Box::new(TypedExpr::integer(5, Span::new(0, 1, 1))),
                 op: BinaryOp::Eqv,
-                right: Box::new(TypedExpr::integer(3, Span::new(6, 7))),
+                right: Box::new(TypedExpr::integer(3, Span::new(6, 7, 1))),
             },
             BasicType::Long,
             Span::new(0, 7, 1),
@@ -1628,10 +1628,10 @@ mod tests {
                 left: Box::new(TypedExpr::new(
                     TypedExprKind::Variable("x".to_string()),
                     BasicType::Long,
-                    Span::new(0, 1),
+                    Span::new(0, 1, 1),
                 )),
                 op: BinaryOp::Eqv,
-                right: Box::new(TypedExpr::integer(3, Span::new(6, 7))),
+                right: Box::new(TypedExpr::integer(3, Span::new(6, 7, 1))),
             },
             BasicType::Long,
             Span::new(0, 7, 1),
@@ -1645,9 +1645,9 @@ mod tests {
         // When both operands are constant, the expression is folded
         let expr = TypedExpr::new(
             TypedExprKind::Binary {
-                left: Box::new(TypedExpr::integer(5, Span::new(0, 1))),
+                left: Box::new(TypedExpr::integer(5, Span::new(0, 1, 1))),
                 op: BinaryOp::Imp,
-                right: Box::new(TypedExpr::integer(3, Span::new(6, 7))),
+                right: Box::new(TypedExpr::integer(3, Span::new(6, 7, 1))),
             },
             BasicType::Long,
             Span::new(0, 7, 1),
@@ -1665,10 +1665,10 @@ mod tests {
                 left: Box::new(TypedExpr::new(
                     TypedExprKind::Variable("x".to_string()),
                     BasicType::Long,
-                    Span::new(0, 1),
+                    Span::new(0, 1, 1),
                 )),
                 op: BinaryOp::Imp,
-                right: Box::new(TypedExpr::integer(3, Span::new(6, 7))),
+                right: Box::new(TypedExpr::integer(3, Span::new(6, 7, 1))),
             },
             BasicType::Long,
             Span::new(0, 7, 1),

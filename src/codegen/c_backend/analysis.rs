@@ -933,7 +933,7 @@ mod tests {
                 TypedStatementKind::Data {
                     values: vec![TypedDataValue::Integer(4), TypedDataValue::Integer(5)],
                 },
-                Span::new(21, 30),
+                Span::new(21, 30, 1),
             ),
             TypedStatement::new(
                 TypedStatementKind::Label {
@@ -945,7 +945,7 @@ mod tests {
                 TypedStatementKind::Data {
                     values: vec![TypedDataValue::Integer(6)],
                 },
-                Span::new(45, 51),
+                Span::new(45, 51, 1),
             ),
         ]);
 

@@ -66,6 +66,7 @@ impl<'a> TypeChecker<'a> {
         match target {
             ReadTarget::Variable(var_name) => {
                 let var_type = if let Some(symbol) = self.symbols.lookup_symbol(var_name) {
+                    // Variable exists - use existing type
                     symbol.basic_type.clone()
                 } else {
                     // Infer type from suffix or default
@@ -80,9 +81,20 @@ impl<'a> TypeChecker<'a> {
                         span,
                         is_mutable: true,
                     };
-                    let _ = self.symbols.define_symbol(symbol);
-
-                    inferred
+                    // Should never fail since we checked lookup_symbol, but handle it
+                    if let Err(dup) = self.symbols.define_symbol(symbol) {
+                        let (existing, _) = *dup;
+                        // Type conflict - variable was defined elsewhere
+                        self.errors.push(SemanticError::DuplicateVariable {
+                            name: var_name.clone(),
+                            original_span: existing.span,
+                            duplicate_span: span,
+                        });
+                        // Use existing type to avoid cascading errors
+                        existing.basic_type.clone()
+                    } else {
+                        inferred
+                    }
                 };
                 TypedReadTarget::Variable {
                     name: var_name.clone(),

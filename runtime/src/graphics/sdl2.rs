@@ -923,6 +923,7 @@ impl SDL2Backend {
                             new_y as i32,
                             self.turtle.color,
                             false,
+                            false,
                             None,
                         )?;
                     }
@@ -939,6 +940,7 @@ impl SDL2Backend {
                             self.turtle.x as i32,
                             new_y as i32,
                             self.turtle.color,
+                            false,
                             false,
                             None,
                         )?;
@@ -957,6 +959,7 @@ impl SDL2Backend {
                             self.turtle.y as i32,
                             self.turtle.color,
                             false,
+                            false,
                             None,
                         )?;
                     }
@@ -973,6 +976,7 @@ impl SDL2Backend {
                             new_x as i32,
                             self.turtle.y as i32,
                             self.turtle.color,
+                            false,
                             false,
                             None,
                         )?;
@@ -991,6 +995,7 @@ impl SDL2Backend {
                             new_x as i32,
                             new_y as i32,
                             self.turtle.color,
+                            false,
                             false,
                             None,
                         )?;
@@ -1011,6 +1016,7 @@ impl SDL2Backend {
                             new_y as i32,
                             self.turtle.color,
                             false,
+                            false,
                             None,
                         )?;
                     }
@@ -1030,6 +1036,7 @@ impl SDL2Backend {
                             new_y as i32,
                             self.turtle.color,
                             false,
+                            false,
                             None,
                         )?;
                     }
@@ -1048,6 +1055,7 @@ impl SDL2Backend {
                             new_x as i32,
                             new_y as i32,
                             self.turtle.color,
+                            false,
                             false,
                             None,
                         )?;
@@ -1082,6 +1090,7 @@ impl SDL2Backend {
                             new_x as i32,
                             new_y as i32,
                             self.turtle.color,
+                            false,
                             false,
                             None,
                         )?;
@@ -1905,6 +1914,7 @@ impl GraphicsBackend for SDL2Backend {
         y2: i32,
         color: u32,
         filled: bool,
+        is_box: bool,
         style: Option<u16>,
     ) -> Result<(), GraphicsError> {
         if !self.initialized {
@@ -1929,58 +1939,24 @@ impl GraphicsBackend for SDL2Backend {
                     self.set_pixel_blended(px, py, color);
                 }
             }
+        } else if is_box {
+            // Box outline - draw 4 edges
+            let x_min = sx1.min(sx2);
+            let x_max = sx1.max(sx2);
+            let y_min = sy1.min(sy2);
+            let y_max = sy1.max(sy2);
+
+            // Top edge: (x_min, y_min) to (x_max, y_min)
+            self.draw_line_with_style(x_min, y_min, x_max, y_min, color, style);
+            // Right edge: (x_max, y_min) to (x_max, y_max)
+            self.draw_line_with_style(x_max, y_min, x_max, y_max, color, style);
+            // Bottom edge: (x_max, y_max) to (x_min, y_max)
+            self.draw_line_with_style(x_max, y_max, x_min, y_max, color, style);
+            // Left edge: (x_min, y_max) to (x_min, y_min)
+            self.draw_line_with_style(x_min, y_max, x_min, y_min, color, style);
         } else {
-            // When filled=false, we need to distinguish between:
-            // - Plain lines (from qb_gfx_line_step) - style is always None, draw single line
-            // - Box outlines (from qb_gfx_box_step with filled=0) - style may be Some or None
-            //
-            // Key insight: qb_gfx_line_step always passes style=None (converted from 0xFFFF),
-            // while qb_gfx_box_step passes the actual style (or None if 0xFFFF).
-            // However, we can't distinguish them just from style.
-            //
-            // Solution: Check if both dimensions are non-zero. If so, and we have coordinates
-            // that form a rectangle, it's likely a box. But to be safe, we only draw box outlines
-            // when we have a valid box shape AND the coordinates suggest it's meant to be a box.
-            // Since qb_gfx_line_step is for lines and qb_gfx_box_step is for boxes, and both
-            // call this method, we use a heuristic: if both dimensions differ significantly
-            // (forming a rectangle), treat it as a box outline when style is provided.
-            // For safety, if style is None, we draw a line (qb_gfx_line_step case).
-            let is_box = (sx1 != sx2) && (sy1 != sy2);
-
-            if is_box && style.is_some() {
-                // Draw box outline with style pattern
-                // This handles qb_gfx_box_step with style
-                let x_min = sx1.min(sx2);
-                let x_max = sx1.max(sx2);
-                let y_min = sy1.min(sy2);
-                let y_max = sy1.max(sy2);
-
-                // Top edge: (x_min, y_min) to (x_max, y_min)
-                self.draw_line_with_style(x_min, y_min, x_max, y_min, color, style);
-                // Right edge: (x_max, y_min) to (x_max, y_max)
-                self.draw_line_with_style(x_max, y_min, x_max, y_max, color, style);
-                // Bottom edge: (x_max, y_max) to (x_min, y_max)
-                self.draw_line_with_style(x_max, y_max, x_min, y_max, color, style);
-                // Left edge: (x_min, y_max) to (x_min, y_min)
-                self.draw_line_with_style(x_min, y_max, x_min, y_min, color, style);
-            } else if is_box && style.is_none() {
-                // Box outline without style - draw 4 solid lines
-                // This handles qb_gfx_box_step with style=0xFFFF (no style)
-                let x_min = sx1.min(sx2);
-                let x_max = sx1.max(sx2);
-                let y_min = sy1.min(sy2);
-                let y_max = sy1.max(sy2);
-
-                // Top, right, bottom, left edges
-                self.draw_line_with_style(x_min, y_min, x_max, y_min, color, None);
-                self.draw_line_with_style(x_max, y_min, x_max, y_max, color, None);
-                self.draw_line_with_style(x_max, y_max, x_min, y_max, color, None);
-                self.draw_line_with_style(x_min, y_max, x_min, y_min, color, None);
-            } else {
-                // Plain line - single line from (x1,y1) to (x2,y2)
-                // This handles qb_gfx_line_step (always style=None)
-                self.draw_line_with_style(sx1, sy1, sx2, sy2, color, None);
-            }
+            // Plain line - single line from (x1,y1) to (x2,y2)
+            self.draw_line_with_style(sx1, sy1, sx2, sy2, color, style);
         }
 
         // Mark page as dirty for deferred texture upload in display()
@@ -2001,6 +1977,7 @@ impl GraphicsBackend for SDL2Backend {
         y2: i32,
         color: u32,
         filled: bool,
+        is_box: bool,
         step1: bool,
         step2: bool,
         style: Option<u16>,
@@ -2023,7 +2000,7 @@ impl GraphicsBackend for SDL2Backend {
         self.last_gfx_x = final_x2;
         self.last_gfx_y = final_y2;
 
-        self.line(final_x1, final_y1, final_x2, final_y2, color, filled, style)
+        self.line(final_x1, final_y1, final_x2, final_y2, color, filled, is_box, style)
     }
 
     fn circle(
@@ -2339,15 +2316,15 @@ impl GraphicsBackend for SDL2Backend {
 
         // Draw border if specified
         if let Some(bc) = border_color {
-            self.line(x1, y1, x2, y1, bc, false, None)?; // Top
-            self.line(x1, y2, x2, y2, bc, false, None)?; // Bottom
-            self.line(x1, y1, x1, y2, bc, false, None)?; // Left
-            self.line(x2, y1, x2, y2, bc, false, None)?; // Right
+            self.line(x1, y1, x2, y1, bc, false, false, None)?; // Top
+            self.line(x1, y2, x2, y2, bc, false, false, None)?; // Bottom
+            self.line(x1, y1, x1, y2, bc, false, false, None)?; // Left
+            self.line(x2, y1, x2, y2, bc, false, false, None)?; // Right
         }
 
         // Fill viewport if specified
         if let Some(fc) = fill_color {
-            self.line(x1 + 1, y1 + 1, x2 - 1, y2 - 1, fc, true, None)?;
+            self.line(x1 + 1, y1 + 1, x2 - 1, y2 - 1, fc, true, false, None)?;
         }
 
         Ok(())

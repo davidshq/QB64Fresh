@@ -392,7 +392,15 @@ impl<'a> TypeChecker<'a> {
                     span,
                     is_mutable: true,
                 };
-                let _ = self.symbols.define_symbol(symbol);
+                // Duplicate parameters in SUB are errors
+                if let Err(dup) = self.symbols.define_symbol(symbol) {
+                    let (existing, _) = *dup;
+                    self.errors.push(SemanticError::DuplicateVariable {
+                        name: p.name.clone(),
+                        original_span: existing.span,
+                        duplicate_span: span,
+                    });
+                }
 
                 TypedParameter {
                     name: p.name.clone(),
@@ -501,7 +509,15 @@ impl<'a> TypeChecker<'a> {
                     span,
                     is_mutable: true,
                 };
-                let _ = self.symbols.define_symbol(symbol);
+                // Duplicate parameters in FUNCTION are errors
+                if let Err(dup) = self.symbols.define_symbol(symbol) {
+                    let (existing, _) = *dup;
+                    self.errors.push(SemanticError::DuplicateVariable {
+                        name: p.name.clone(),
+                        original_span: existing.span,
+                        duplicate_span: span,
+                    });
+                }
 
                 TypedParameter {
                     name: p.name.clone(),
