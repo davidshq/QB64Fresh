@@ -447,15 +447,15 @@ impl SourceManager {
                 let include_line = stmt.span.line;
 
                 // Resolve the include path
-                let resolved_path = self
-                    .resolve_include(path, parent_path)
-                    .ok_or_else(|| DebugError::ReadError {
+                let resolved_path = self.resolve_include(path, parent_path).ok_or_else(|| {
+                    DebugError::ReadError {
                         path: PathBuf::from(path),
                         source: std::io::Error::new(
                             std::io::ErrorKind::NotFound,
                             format!("Could not resolve $INCLUDE path: {}", path),
                         ),
-                    })?;
+                    }
+                })?;
 
                 // Record the include relationship (always track, even if file already loaded)
                 let include_info = IncludeInfo {
@@ -655,17 +655,11 @@ mod tests {
         // Verify the include relationship
         let main_file_info = manager.get_file(&main_path).unwrap();
         assert_eq!(main_file_info.includes.len(), 1);
-        assert_eq!(
-            main_file_info.includes[0].include_line,
-            2
-        ); // $INCLUDE is on line 2
+        assert_eq!(main_file_info.includes[0].include_line, 2); // $INCLUDE is on line 2
 
         // Verify the included file has the correct parent
         let included_file_info = manager.get_file(&include_path).unwrap();
-        assert_eq!(
-            included_file_info.parent.as_ref(),
-            Some(&main_path)
-        );
+        assert_eq!(included_file_info.parent.as_ref(), Some(&main_path));
 
         // Verify we can access source from both files
         assert_eq!(
@@ -743,10 +737,7 @@ mod tests {
 
         // Verify shared.bas's parent is file_a (first include wins)
         let shared_info = manager.get_file(&shared_path).unwrap();
-        assert_eq!(
-            shared_info.parent.as_ref(),
-            Some(&file_a_path)
-        );
+        assert_eq!(shared_info.parent.as_ref(), Some(&file_a_path));
 
         // Verify main includes both file_a and file_b
         let main_info = manager.get_file(&main_path).unwrap();
@@ -804,17 +795,17 @@ mod tests {
         // Verify both files are loaded (circular includes handled by duplicate check)
         let file_a_info = manager.get_file(&file_a_path).unwrap();
         let file_b_info = manager.get_file(&file_b_path).unwrap();
-        
+
         // Verify both files are accessible
         assert_eq!(file_a_info.get_line(1), Some("DIM a AS INTEGER"));
         assert_eq!(file_b_info.get_line(1), Some("DIM b AS INTEGER"));
-        
+
         // Verify include relationships are tracked in both directions
         assert_eq!(file_a_info.includes.len(), 1);
         assert_eq!(file_b_info.includes.len(), 1);
         assert!(file_a_info.includes[0].resolved_path.as_ref().unwrap() == &file_b_path);
         assert!(file_b_info.includes[0].resolved_path.as_ref().unwrap() == &file_a_path);
-        
+
         // Note: Parent assignment in circular includes depends on load order.
         // The duplicate check prevents infinite loops, which is the critical behavior.
         // The exact parent relationship may vary, but both files should be loaded.

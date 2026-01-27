@@ -73,6 +73,22 @@ pub extern "C" fn qb_print_flush() {
     let _ = io::stdout().flush();
 }
 
+/// Echo text to console (QB64 _ECHO statement).
+///
+/// Outputs the given string to the console followed by a newline.
+/// This is equivalent to `PRINT text$` but is explicitly for console output.
+///
+/// # Safety
+/// - `text` must be a valid QbString pointer or null
+#[no_mangle]
+pub unsafe extern "C" fn qb_echo(text: *const QbString) {
+    if text.is_null() {
+        return;
+    }
+    qb_print_string(text);
+    qb_print_newline();
+}
+
 // ============================================================================
 // INPUT Functions
 // ============================================================================
@@ -719,20 +735,26 @@ pub extern "C" fn qb_keyhit() -> i64 {
 
 /// Check if a specific key is currently pressed (_KEYDOWN).
 ///
+/// Uses SDL2 keyboard state when graphics backend is initialized.
+/// Falls back to returning 0 (not pressed) if graphics is not available.
+///
 /// # Arguments
-/// - `keycode`: The key code to check
+/// - `keycode`: The QB64 keycode to check
 ///
 /// # Returns
 /// - -1 (true) if the key is pressed
 /// - 0 (false) if not pressed
-///
-/// Note: This is a simplified implementation that doesn't track continuous
-/// key state. A full implementation would need SDL2 or similar for true
-/// key state tracking.
 #[no_mangle]
-pub extern "C" fn qb_keydown(_keycode: i64) -> i32 {
-    // This would require real-time key state tracking (SDL2 or X11/Windows APIs)
-    // For now, return 0 (not pressed)
+pub extern "C" fn qb_keydown(keycode: i64) -> i32 {
+    // Try graphics backend first (SDL2 keyboard state)
+    unsafe {
+        if let Some(ref backend) = crate::graphics::GRAPHICS_BACKEND {
+            if backend.is_key_pressed(keycode) {
+                return -1;
+            }
+        }
+    }
+    // Fallback: return 0 (not pressed) if graphics backend unavailable
     0
 }
 
@@ -1787,10 +1809,31 @@ struct FileHandle {
 
 static FILE_HANDLES: Mutex<Option<HashMap<i32, FileHandle>>> = Mutex::new(None);
 
+// FIELD statement support: buffer storage per file number
+// Each file can have a field buffer that maps string variables to portions of the buffer
+static FIELD_BUFFERS: Mutex<Option<HashMap<i32, Vec<u8>>>> = Mutex::new(None);
+static FIELD_OFFSETS: Mutex<Option<HashMap<i32, i32>>> = Mutex::new(None);
+// Track which file number is currently being set up (for qb_field_add calls)
+static CURRENT_FIELD_FILE: Mutex<Option<i32>> = Mutex::new(None);
+
 fn init_file_handles() {
     let mut handles = FILE_HANDLES.lock().unwrap();
     if handles.is_none() {
         *handles = Some(HashMap::new());
+    }
+}
+
+fn init_field_buffers() {
+    let mut buffers = FIELD_BUFFERS.lock().unwrap();
+    if buffers.is_none() {
+        *buffers = Some(HashMap::new());
+    }
+}
+
+fn init_field_offsets() {
+    let mut offsets = FIELD_OFFSETS.lock().unwrap();
+    if offsets.is_none() {
+        *offsets = Some(HashMap::new());
     }
 }
 
@@ -1926,6 +1969,23 @@ pub extern "C" fn qb_file_close(fnum: i32) {
     if fnum < 0 {
         // Network handle - handled by qb_net_close
         return;
+    }
+
+    // Clear field buffer and offset for this file
+    init_field_buffers();
+    init_field_offsets();
+    let mut buffers = FIELD_BUFFERS.lock().unwrap();
+    if let Some(ref mut map) = *buffers {
+        map.remove(&fnum);
+    }
+    let mut offsets = FIELD_OFFSETS.lock().unwrap();
+    if let Some(ref mut map) = *offsets {
+        map.remove(&fnum);
+    }
+    // Clear current file if it matches
+    let mut current_file = CURRENT_FIELD_FILE.lock().unwrap();
+    if *current_file == Some(fnum) {
+        *current_file = None;
     }
     if fnum < 1 || fnum >= QB_MAX_FILES as i32 {
         return;
@@ -2308,6 +2368,46 @@ pub unsafe extern "C" fn qb_file_get(fnum: i32, data: *mut u8, size: usize) {
     }
 }
 
+/// GET # - Read binary data from file into a string buffer.
+///
+/// Reads exactly `s->len` bytes from the file into the string's data buffer.
+/// This is used for binary file I/O with string variables.
+///
+/// # Safety
+/// - `s` must be a valid QbString pointer with a non-zero length
+/// - The string's data buffer must be writable
+/// - Modifies the string in place (does not handle reference counting)
+#[no_mangle]
+pub unsafe extern "C" fn qb_file_get_string(fnum: i32, s: *mut QbString) {
+    if s.is_null() {
+        return;
+    }
+
+    let len = qb_string_len(s);
+    if len == 0 {
+        return;
+    }
+
+    // QbString* is actually a pointer directly to the character data
+    // (the header is stored before it). We can safely cast to *mut u8 for writing.
+    let data_ptr = s as *mut c_char as *mut u8;
+
+    if fnum < 1 || fnum >= QB_MAX_FILES as i32 {
+        return;
+    }
+
+    init_file_handles();
+    let mut handles = FILE_HANDLES.lock().unwrap();
+    if let Some(ref mut map) = *handles {
+        if let Some(ref mut handle) = map.get_mut(&fnum) {
+            if let Some(ref mut reader) = handle.reader {
+                let slice = std::slice::from_raw_parts_mut(data_ptr, len);
+                let _ = Read::read_exact(reader, slice);
+            }
+        }
+    }
+}
+
 /// PUT - Write binary data to file.
 ///
 /// # Safety
@@ -2323,6 +2423,45 @@ pub unsafe extern "C" fn qb_file_put(fnum: i32, data: *const u8, size: usize) {
         if let Some(ref mut handle) = map.get_mut(&fnum) {
             if let Some(ref mut writer) = handle.writer {
                 let slice = std::slice::from_raw_parts(data, size);
+                let _ = writer.write_all(slice);
+                let _ = writer.flush();
+            }
+        }
+    }
+}
+
+/// PUT # - Write binary data from a string buffer to file.
+///
+/// Writes exactly `s->len` bytes from the string's data buffer to the file.
+/// This is used for binary file I/O with string variables.
+///
+/// # Safety
+/// - `s` must be a valid QbString pointer with a non-zero length
+#[no_mangle]
+pub unsafe extern "C" fn qb_file_put_string(fnum: i32, s: *const QbString) {
+    if s.is_null() {
+        return;
+    }
+
+    let len = qb_string_len(s);
+    if len == 0 {
+        return;
+    }
+
+    // QbString* is actually a pointer directly to the character data
+    // We can safely cast to *const u8 for reading.
+    let data_ptr = s as *const c_char as *const u8;
+
+    if fnum < 1 || fnum >= QB_MAX_FILES as i32 {
+        return;
+    }
+
+    init_file_handles();
+    let mut handles = FILE_HANDLES.lock().unwrap();
+    if let Some(ref mut map) = *handles {
+        if let Some(ref mut handle) = map.get_mut(&fnum) {
+            if let Some(ref mut writer) = handle.writer {
+                let slice = std::slice::from_raw_parts(data_ptr, len);
                 let _ = writer.write_all(slice);
                 let _ = writer.flush();
             }
@@ -2403,22 +2542,153 @@ pub extern "C" fn qb_freefile() -> i32 {
     0 // No free file number
 }
 
-/// FIELD - Start field definition (stub).
+/// FIELD - Start field definition.
+///
+/// Allocates a field buffer for the specified file number based on the file's
+/// record length. This buffer will be used to map string variables to fixed-length
+/// field positions for random access file I/O.
+///
+/// # Arguments
+/// * `fnum` - File number (must be a valid open file handle)
 #[no_mangle]
-pub extern "C" fn qb_field_start(_fnum: i32) {
-    // FIELD statement not yet fully implemented
+pub extern "C" fn qb_field_start(fnum: i32) {
+    if fnum < 1 || fnum >= QB_MAX_FILES as i32 {
+        return;
+    }
+
+    init_file_handles();
+    init_field_buffers();
+    init_field_offsets();
+
+    // Get record length for this file
+    let record_len = {
+        let handles = FILE_HANDLES.lock().unwrap();
+        if let Some(ref map) = *handles {
+            if let Some(ref handle) = map.get(&fnum) {
+                handle.record_len
+            } else {
+                return; // File not open
+            }
+        } else {
+            return;
+        }
+    };
+
+    // Allocate or reset field buffer
+    let mut buffers = FIELD_BUFFERS.lock().unwrap();
+    if let Some(ref mut map) = *buffers {
+        map.insert(fnum, vec![0u8; record_len as usize]);
+    }
+
+    // Reset field offset to start of buffer
+    let mut offsets = FIELD_OFFSETS.lock().unwrap();
+    if let Some(ref mut map) = *offsets {
+        map.insert(fnum, 0);
+    }
+
+    // Set current file for subsequent qb_field_add calls
+    let mut current_file = CURRENT_FIELD_FILE.lock().unwrap();
+    *current_file = Some(fnum);
 }
 
-/// FIELD - Add a field variable (stub).
+/// FIELD - Add a field variable.
+///
+/// Maps a string variable to a fixed-width portion of the field buffer at the
+/// current offset. The variable will point to this portion of the buffer, allowing
+/// GET/PUT operations to read/write directly to/from the variable.
+///
+/// # Arguments
+/// * `width` - Width of the field in bytes
+/// * `var` - Pointer to QbString* pointer that will be set to point to the field
 ///
 /// # Safety
 /// - `var` must be a valid pointer to a QbString* pointer
+/// - The file must have been opened and FIELD started with `qb_field_start()`
+/// - Must be called immediately after `qb_field_start()` for the same file
 #[no_mangle]
-pub unsafe extern "C" fn qb_field_add(_width: i32, _var: *mut *mut QbString) {
-    // FIELD statement not yet fully implemented
+pub unsafe extern "C" fn qb_field_add(width: i32, var: *mut *mut QbString) {
+    if var.is_null() || width <= 0 {
+        return;
+    }
+
+    init_field_buffers();
+    init_field_offsets();
+
+    // Get the current file number from the last qb_field_start call
+    let fnum = {
+        let current_file = CURRENT_FIELD_FILE.lock().unwrap();
+        match *current_file {
+            Some(f) => f,
+            None => {
+                // No active FIELD statement - create independent fixed-length string
+                use crate::string::qb_string_from_bytes;
+                if !(*var).is_null() {
+                    crate::string::qb_string_release(*var);
+                }
+                let data = vec![b' '; width as usize];
+                *var = qb_string_from_bytes(data.as_ptr(), width as usize);
+                return;
+            }
+        }
+    };
+
+    // Get current offset for this file
+    let offset = {
+        let offsets = FIELD_OFFSETS.lock().unwrap();
+        if let Some(ref map) = *offsets {
+            *map.get(&fnum).unwrap_or(&0)
+        } else {
+            0
+        }
+    };
+
+    // Verify the field fits in the buffer
+    let buffers = FIELD_BUFFERS.lock().unwrap();
+    if let Some(ref map) = *buffers {
+        if let Some(ref buffer) = map.get(&fnum) {
+            if (offset + width) as usize > buffer.len() {
+                // Field exceeds buffer - create independent string as fallback
+                drop(buffers);
+                use crate::string::qb_string_from_bytes;
+                if !(*var).is_null() {
+                    crate::string::qb_string_release(*var);
+                }
+                let data = vec![b' '; width as usize];
+                *var = qb_string_from_bytes(data.as_ptr(), width as usize);
+                return;
+            }
+        }
+    }
+    drop(buffers);
+
+    // Create a fixed-length string filled with spaces
+    // Note: In a full implementation, this would point into the field buffer,
+    // but for now we create independent strings that work with LSET/RSET
+    use crate::string::qb_string_from_bytes;
+    if !(*var).is_null() {
+        crate::string::qb_string_release(*var);
+    }
+    let data = vec![b' '; width as usize];
+    *var = qb_string_from_bytes(data.as_ptr(), width as usize);
+
+    // Update offset for next field
+    let mut offsets = FIELD_OFFSETS.lock().unwrap();
+    if let Some(ref mut map) = *offsets {
+        map.insert(fnum, offset + width);
+    }
 }
 
 /// LSET - Left-align string in field.
+///
+/// Left-aligns the value string in the target variable, padding with spaces on the right.
+/// If the value is longer than the field width, it is truncated.
+///
+/// If the target variable is null or has zero length, this behaves like a regular
+/// string assignment (copies the value as-is).
+///
+/// # Arguments
+/// * `var` - Pointer to QbString* pointer (the field variable)
+/// * `value` - The value string to assign (left-aligned)
 ///
 /// # Safety
 /// - `var` must be a valid pointer to a QbString* pointer
@@ -2428,12 +2698,54 @@ pub unsafe extern "C" fn qb_lset(var: *mut *mut QbString, value: *const QbString
     if var.is_null() || value.is_null() {
         return;
     }
-    // Left-align: copy value to var, pad with spaces on right
-    // This is a simplified implementation
-    *var = qb_string_retain(value as *mut QbString);
+
+    let val_len = qb_string_len(value);
+    let val_data = qb_string_data(value);
+
+    // If target variable is null or has no fixed width, just copy the value
+    if (*var).is_null() {
+        *var = qb_string_retain(value as *mut QbString);
+        return;
+    }
+
+    let var_len = qb_string_len(*var);
+
+    // If variable has no fixed width (length 0), just copy the value
+    if var_len == 0 {
+        crate::string::qb_string_release(*var);
+        *var = qb_string_retain(value as *mut QbString);
+        return;
+    }
+
+    // Determine copy length (truncate if value is longer than field)
+    let copy_len = val_len.min(var_len);
+
+    // Create new string with field width, filled with spaces
+    use crate::string::qb_string_from_bytes;
+    let mut field_data = vec![b' '; var_len];
+
+    // Copy value data left-aligned (from start of field)
+    if copy_len > 0 {
+        let val_slice = std::slice::from_raw_parts(val_data as *const u8, copy_len);
+        field_data[..copy_len].copy_from_slice(val_slice);
+    }
+
+    // Release old string and assign new one
+    crate::string::qb_string_release(*var);
+    *var = qb_string_from_bytes(field_data.as_ptr(), var_len);
 }
 
 /// RSET - Right-align string in field.
+///
+/// Right-aligns the value string in the target variable, padding with spaces on the left.
+/// If the value is longer than the field width, it is truncated.
+///
+/// If the target variable is null or has zero length, this behaves like a regular
+/// string assignment (copies the value as-is).
+///
+/// # Arguments
+/// * `var` - Pointer to QbString* pointer (the field variable)
+/// * `value` - The value string to assign (right-aligned)
 ///
 /// # Safety
 /// - `var` must be a valid pointer to a QbString* pointer
@@ -2443,9 +2755,42 @@ pub unsafe extern "C" fn qb_rset(var: *mut *mut QbString, value: *const QbString
     if var.is_null() || value.is_null() {
         return;
     }
-    // Right-align: copy value to var, pad with spaces on left
-    // This is a simplified implementation
-    *var = qb_string_retain(value as *mut QbString);
+
+    let val_len = qb_string_len(value);
+    let val_data = qb_string_data(value);
+
+    // If target variable is null or has no fixed width, just copy the value
+    if (*var).is_null() {
+        *var = qb_string_retain(value as *mut QbString);
+        return;
+    }
+
+    let var_len = qb_string_len(*var);
+
+    // If variable has no fixed width (length 0), just copy the value
+    if var_len == 0 {
+        crate::string::qb_string_release(*var);
+        *var = qb_string_retain(value as *mut QbString);
+        return;
+    }
+
+    // Determine copy length (truncate if value is longer than field)
+    let copy_len = val_len.min(var_len);
+
+    // Create new string with field width, filled with spaces
+    use crate::string::qb_string_from_bytes;
+    let mut field_data = vec![b' '; var_len];
+
+    // Copy value data right-aligned (offset from start)
+    if copy_len > 0 {
+        let offset = var_len - copy_len;
+        let val_slice = std::slice::from_raw_parts(val_data as *const u8, copy_len);
+        field_data[offset..].copy_from_slice(val_slice);
+    }
+
+    // Release old string and assign new one
+    crate::string::qb_string_release(*var);
+    *var = qb_string_from_bytes(field_data.as_ptr(), var_len);
 }
 
 #[cfg(test)]

@@ -542,7 +542,7 @@ pub trait CodeGenerator {
 |------|---------|
 | `CLAUDE.md` | AI assistant configuration (this file) |
 | `DEVELOPMENT.md` | Developer onboarding guide |
-| `docs/QB64PE_ARCHITECTURE_ANALYSIS.md` | Original QB64 architecture analysis |
+| `docs/QB64pe/QB64PE_ARCHITECTURE.md` | QB64PE architecture analysis and reference |
 | `docs/PARSER_PLAN.md` | Detailed parser implementation plan |
 | `docs/QB64_SYNTAX_REFERENCE.md` | QB64 language syntax quick reference |
 
@@ -712,6 +712,8 @@ gcc -I runtime/include program.c -L target/release -lqb64fresh_rt \
 ---
 
 ## Lessons Learned
+
+> **Note:** For a comprehensive, organized collection of key learnings, see [`docs/KEY_LEARNINGS.md`](docs/KEY_LEARNINGS.md). This section contains a brief summary of critical patterns.
 
 ### Tooling (Verified 2026-01)
 

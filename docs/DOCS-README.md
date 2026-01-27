@@ -96,7 +96,7 @@ See [adrs/README.md](adrs/README.md) for the complete index. Key decisions:
 
 | Document | Description |
 |----------|-------------|
-| [ThingsToDo/RUNTIME_IMPLEMENTATION_PLAN.md](ThingsToDo/RUNTIME_IMPLEMENTATION_PLAN.md) | Runtime implementation roadmap and status |
+| [ThingsToDo/PARTIAL_IMPLEMENTATIONS.md](ThingsToDo/PARTIAL_IMPLEMENTATIONS.md) | Partial implementations audit & runtime implementation plan |
 | [ThingsToDo/RUNTIME_ARCHITECTURE_PERSPECTIVES.md](ThingsToDo/RUNTIME_ARCHITECTURE_PERSPECTIVES.md) | Runtime architecture considerations and trade-offs |
 | [ThingsToDo/TESTING_INFRASTRUCTURE_PLAN.md](ThingsToDo/TESTING_INFRASTRUCTURE_PLAN.md) | Testing infrastructure plans and improvements |
 | [ThingsToDo/INSTALLER_PLAN.md](ThingsToDo/INSTALLER_PLAN.md) | Distribution and installer planning |
@@ -158,7 +158,7 @@ docs/
 │   └── QUICKBASIC_4.5_OTHER_SOURCE_CONTENT.md
 │
 ├── ThingsToDo/                 # Planning and future work
-│   ├── RUNTIME_IMPLEMENTATION_PLAN.md
+│   ├── PARTIAL_IMPLEMENTATIONS.md
 │   ├── RUNTIME_ARCHITECTURE_PERSPECTIVES.md
 │   ├── TESTING_INFRASTRUCTURE_PLAN.md
 │   ├── INSTALLER_PLAN.md

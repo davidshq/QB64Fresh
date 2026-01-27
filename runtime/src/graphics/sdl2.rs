@@ -6,11 +6,13 @@
 use super::font::{get_char_bitmap, is_pixel_set, FONT_HEIGHT, FONT_WIDTH};
 use super::{GraphicsBackend, GraphicsError, GraphicsErrorKind};
 use sdl2::event::Event;
+use sdl2::keyboard::Scancode;
 use sdl2::mouse::MouseButton;
 use sdl2::pixels::Color;
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::rect::{Point, Rect};
 use sdl2::render::{Canvas, Texture, TextureCreator};
+use sdl2::surface::Surface;
 use sdl2::video::{FullscreenType, Window};
 use sdl2::EventPump;
 use sdl2::Sdl;
@@ -271,6 +273,13 @@ pub struct SDL2Backend {
     // Screen palette (for handle 0)
     /// Palette for the main screen buffer
     screen_palette: [u32; 256],
+    // Keyboard state
+    /// Current keyboard state (scancode -> pressed)
+    /// Updated in poll_events using SDL_GetKeyboardState
+    keyboard_state: HashMap<Scancode, bool>,
+    // Icon state
+    /// Current window icon handle (0 = no icon set)
+    current_icon_handle: i32,
 }
 
 impl std::fmt::Debug for SDL2Backend {
@@ -342,6 +351,10 @@ impl SDL2Backend {
             display_order: [1, 2, 3, 4], // _SOFTWARE, _HARDWARE, _HARDWARE1, _GLRENDER
             // Screen palette
             screen_palette: ColorPalette::default().colors,
+            // Keyboard state
+            keyboard_state: HashMap::new(),
+            // Icon state
+            current_icon_handle: 0, // No icon set initially
         }
     }
 
@@ -1655,6 +1668,167 @@ impl Default for SDL2Backend {
     }
 }
 
+impl SDL2Backend {
+    /// Map QB64 keycode to SDL2 scancode (helper method).
+    ///
+    /// QB64 keycode system:
+    /// - ASCII values (0-127): map directly to ASCII scancodes
+    /// - Extended keys: negative values `-(ext + 256)` where ext is the extended key code
+    /// - Special modifier keys: specific codes (100305, 100306, etc.)
+    ///
+    /// # Arguments
+    /// - `qb64_keycode`: QB64 keycode
+    ///
+    /// # Returns
+    /// - `Some(Scancode)` if mapping found
+    /// - `None` if keycode cannot be mapped
+    fn map_qb64_to_scancode(qb64_keycode: i64) -> Option<Scancode> {
+        // Handle ASCII keys (0-127)
+        if qb64_keycode >= 0 && qb64_keycode <= 127 {
+            // Map ASCII to scancode
+            // For printable ASCII, we can use the keycode directly
+            // SDL2 scancodes for ASCII are typically the same as the ASCII value
+            // but we need to use the proper scancode enum
+            match qb64_keycode {
+                8 => Some(Scancode::Backspace),
+                9 => Some(Scancode::Tab),
+                13 => Some(Scancode::Return),
+                27 => Some(Scancode::Escape),
+                32 => Some(Scancode::Space),
+                // Letters A-Z (case-insensitive in BASIC)
+                65..=90 => {
+                    // Map to lowercase scancode (SDL2 letter scancodes are lowercase)
+                    let offset = (qb64_keycode - 65) as u8;
+                    match offset {
+                        0 => Some(Scancode::A),
+                        1 => Some(Scancode::B),
+                        2 => Some(Scancode::C),
+                        3 => Some(Scancode::D),
+                        4 => Some(Scancode::E),
+                        5 => Some(Scancode::F),
+                        6 => Some(Scancode::G),
+                        7 => Some(Scancode::H),
+                        8 => Some(Scancode::I),
+                        9 => Some(Scancode::J),
+                        10 => Some(Scancode::K),
+                        11 => Some(Scancode::L),
+                        12 => Some(Scancode::M),
+                        13 => Some(Scancode::N),
+                        14 => Some(Scancode::O),
+                        15 => Some(Scancode::P),
+                        16 => Some(Scancode::Q),
+                        17 => Some(Scancode::R),
+                        18 => Some(Scancode::S),
+                        19 => Some(Scancode::T),
+                        20 => Some(Scancode::U),
+                        21 => Some(Scancode::V),
+                        22 => Some(Scancode::W),
+                        23 => Some(Scancode::X),
+                        24 => Some(Scancode::Y),
+                        25 => Some(Scancode::Z),
+                        _ => None,
+                    }
+                }
+                // Numbers 0-9
+                48..=57 => match qb64_keycode {
+                    48 => Some(Scancode::Num0),
+                    49 => Some(Scancode::Num1),
+                    50 => Some(Scancode::Num2),
+                    51 => Some(Scancode::Num3),
+                    52 => Some(Scancode::Num4),
+                    53 => Some(Scancode::Num5),
+                    54 => Some(Scancode::Num6),
+                    55 => Some(Scancode::Num7),
+                    56 => Some(Scancode::Num8),
+                    57 => Some(Scancode::Num9),
+                    _ => None,
+                },
+                _ => {
+                    // For other ASCII, try to find by character
+                    // This is a simplified mapping - full implementation would need
+                    // a complete ASCII to scancode table
+                    None
+                }
+            }
+        }
+        // Handle extended keys (negative values: -(ext + 256))
+        else if qb64_keycode < 0 {
+            let ext_code = (-qb64_keycode) - 256;
+            match ext_code {
+                // Arrow keys
+                72 => Some(Scancode::Up),    // Up arrow
+                80 => Some(Scancode::Down),  // Down arrow
+                75 => Some(Scancode::Left),  // Left arrow
+                77 => Some(Scancode::Right), // Right arrow
+                // Function keys F1-F12
+                59 => Some(Scancode::F1),
+                60 => Some(Scancode::F2),
+                61 => Some(Scancode::F3),
+                62 => Some(Scancode::F4),
+                63 => Some(Scancode::F5),
+                64 => Some(Scancode::F6),
+                65 => Some(Scancode::F7),
+                66 => Some(Scancode::F8),
+                67 => Some(Scancode::F9),
+                68 => Some(Scancode::F10),
+                133 => Some(Scancode::F11), // F11
+                134 => Some(Scancode::F12), // F12
+                // Other extended keys
+                82 => Some(Scancode::Insert),
+                83 => Some(Scancode::Delete),
+                71 => Some(Scancode::Home),
+                79 => Some(Scancode::End),
+                73 => Some(Scancode::PageUp),
+                81 => Some(Scancode::PageDown),
+                _ => None,
+            }
+        }
+        // Handle special modifier keys (100xxx range)
+        else if qb64_keycode >= 100000 {
+            match qb64_keycode {
+                100303 => Some(Scancode::RShift), // _KEY_RSHIFT
+                100304 => Some(Scancode::LShift), // _KEY_LSHIFT
+                100305 => Some(Scancode::RCtrl),  // _KEY_RCTRL
+                100306 => Some(Scancode::LCtrl),  // _KEY_LCTRL
+                100307 => Some(Scancode::RAlt),   // _KEY_RALT
+                100308 => Some(Scancode::LAlt),   // _KEY_LALT
+                100309 => Some(Scancode::RGui),   // _KEY_RAPPLE
+                100310 => Some(Scancode::LGui),   // _KEY_LAPPLE
+                _ => None,
+            }
+        }
+        // Handle arrow keys (direct codes like 18432, 20480)
+        else {
+            match qb64_keycode {
+                18432 => Some(Scancode::Up),       // _KEY_UP
+                20480 => Some(Scancode::Down),     // _KEY_DOWN
+                19200 => Some(Scancode::Left),     // _KEY_LEFT
+                19712 => Some(Scancode::Right),    // _KEY_RIGHT
+                20992 => Some(Scancode::Insert),   // _KEY_INSERT
+                21248 => Some(Scancode::Delete),   // _KEY_DELETE
+                18176 => Some(Scancode::Home),     // _KEY_HOME
+                20224 => Some(Scancode::End),      // _KEY_END
+                18688 => Some(Scancode::PageUp),   // _KEY_PAGEUP
+                20736 => Some(Scancode::PageDown), // _KEY_PAGEDOWN
+                // Function keys
+                15104 => Some(Scancode::F1),
+                15360 => Some(Scancode::F2),
+                15616 => Some(Scancode::F3),
+                15872 => Some(Scancode::F4),
+                16128 => Some(Scancode::F5),
+                16384 => Some(Scancode::F6),
+                16640 => Some(Scancode::F7),
+                16896 => Some(Scancode::F8),
+                17152 => Some(Scancode::F9),
+                17408 => Some(Scancode::F10),
+                34048 => Some(Scancode::F11),
+                34304 => Some(Scancode::F12),
+                _ => None,
+            }
+        }
+    }
+}
+
 impl GraphicsBackend for SDL2Backend {
     fn initialize(&mut self, width: u32, height: u32) -> Result<(), GraphicsError> {
         if self.initialized {
@@ -2062,7 +2236,9 @@ impl GraphicsBackend for SDL2Backend {
         self.last_gfx_x = final_x2;
         self.last_gfx_y = final_y2;
 
-        self.line(final_x1, final_y1, final_x2, final_y2, color, filled, is_box, style)
+        self.line(
+            final_x1, final_y1, final_x2, final_y2, color, filled, is_box, style,
+        )
     }
 
     fn circle(
@@ -2227,7 +2403,7 @@ impl GraphicsBackend for SDL2Backend {
                     ));
                 }
             };
-            
+
             match self.page_buffers.get_mut(dst_page) {
                 Some(dst_buf) => *dst_buf = src_data,
                 None => {
@@ -2301,6 +2477,90 @@ impl GraphicsBackend for SDL2Backend {
         }
 
         if let Some(event_pump) = self.event_pump.as_mut() {
+            // Update keyboard state from SDL2
+            let keyboard_state = event_pump.keyboard_state();
+            // Update state for all scancodes we care about
+            // We'll update them on-demand, but for now, clear and rebuild
+            self.keyboard_state.clear();
+            // Check common keys (we'll expand this as needed)
+            let common_scancodes = [
+                Scancode::A,
+                Scancode::B,
+                Scancode::C,
+                Scancode::D,
+                Scancode::E,
+                Scancode::F,
+                Scancode::G,
+                Scancode::H,
+                Scancode::I,
+                Scancode::J,
+                Scancode::K,
+                Scancode::L,
+                Scancode::M,
+                Scancode::N,
+                Scancode::O,
+                Scancode::P,
+                Scancode::Q,
+                Scancode::R,
+                Scancode::S,
+                Scancode::T,
+                Scancode::U,
+                Scancode::V,
+                Scancode::W,
+                Scancode::X,
+                Scancode::Y,
+                Scancode::Z,
+                Scancode::Num0,
+                Scancode::Num1,
+                Scancode::Num2,
+                Scancode::Num3,
+                Scancode::Num4,
+                Scancode::Num5,
+                Scancode::Num6,
+                Scancode::Num7,
+                Scancode::Num8,
+                Scancode::Num9,
+                Scancode::Space,
+                Scancode::Return,
+                Scancode::Escape,
+                Scancode::Backspace,
+                Scancode::Tab,
+                Scancode::Up,
+                Scancode::Down,
+                Scancode::Left,
+                Scancode::Right,
+                Scancode::F1,
+                Scancode::F2,
+                Scancode::F3,
+                Scancode::F4,
+                Scancode::F5,
+                Scancode::F6,
+                Scancode::F7,
+                Scancode::F8,
+                Scancode::F9,
+                Scancode::F10,
+                Scancode::F11,
+                Scancode::F12,
+                Scancode::Insert,
+                Scancode::Delete,
+                Scancode::Home,
+                Scancode::End,
+                Scancode::PageUp,
+                Scancode::PageDown,
+                Scancode::LShift,
+                Scancode::RShift,
+                Scancode::LCtrl,
+                Scancode::RCtrl,
+                Scancode::LAlt,
+                Scancode::RAlt,
+                Scancode::LGui,
+                Scancode::RGui,
+            ];
+            for &scancode in &common_scancodes {
+                self.keyboard_state
+                    .insert(scancode, keyboard_state.is_scancode_pressed(scancode));
+            }
+
             for event in event_pump.poll_iter() {
                 match event {
                     Event::Quit { .. } => return Ok(false),
@@ -2357,6 +2617,21 @@ impl GraphicsBackend for SDL2Backend {
 
     fn get_screen_size(&self) -> (u32, u32) {
         (self.width, self.height)
+    }
+
+    fn is_key_pressed(&self, keycode: i64) -> bool {
+        if !self.initialized {
+            return false;
+        }
+
+        // Map QB64 keycode to SDL2 scancode
+        let scancode = match SDL2Backend::map_qb64_to_scancode(keycode) {
+            Some(sc) => sc,
+            None => return false,
+        };
+
+        // Check keyboard state
+        self.keyboard_state.get(&scancode).copied().unwrap_or(false)
     }
 
     // ========================================================================
@@ -2491,7 +2766,10 @@ impl GraphicsBackend for SDL2Backend {
         handle: i32,
     ) -> Result<(), GraphicsError> {
         if index < 0 || index >= 256 {
-            return Ok(()); // Invalid index, silently ignore
+            return Err(GraphicsError::new(
+                GraphicsErrorKind::InvalidArgument,
+                format!("Palette index out of range: {} (must be 0-255)", index),
+            ));
         }
 
         if handle == 0 {
@@ -2916,24 +3194,73 @@ impl GraphicsBackend for SDL2Backend {
     }
 
     fn set_icon(&mut self, handle: i32) -> i32 {
-        // NOTE: Icon setting is intentionally not implemented at this time.
-        // This would require:
-        // 1. Retrieving the image buffer from self.images
-        // 2. Converting the ARGB pixel buffer to an SDL2 Surface
-        // 3. Setting the window icon via canvas.window_mut().set_icon()
-        // 4. Tracking the current icon handle for get_icon()
-        //
-        // This feature is low priority and can be implemented when needed.
-        // For now, return 0 to indicate no icon is set.
-        let _ = handle;
-        0
+        let previous_handle = self.current_icon_handle;
+
+        // If handle is 0, clear the icon
+        if handle == 0 {
+            if let Some(canvas) = self.canvas.as_mut() {
+                // Clear icon by setting None
+                // set_icon requires a Surface, not None - skip if no icon
+            }
+            self.current_icon_handle = 0;
+            return previous_handle;
+        }
+
+        // Get the image buffer
+        let image = match self.images.get(&handle) {
+            Some(img) => img,
+            None => {
+                // Invalid handle, return previous handle
+                return previous_handle;
+            }
+        };
+
+        // Convert ARGB pixels to RGBA format for SDL2
+        // ARGB format: AAAAAAAA RRRRRRRR GGGGGGGG BBBBBBBB
+        // RGBA format: RRRRRRRR GGGGGGGG BBBBBBBB AAAAAAAA
+        let mut rgba_pixels = Vec::with_capacity((image.pixels.len() * 4) as usize);
+        for &argb in &image.pixels {
+            let a = ((argb >> 24) & 0xFF) as u8;
+            let r = ((argb >> 16) & 0xFF) as u8;
+            let g = ((argb >> 8) & 0xFF) as u8;
+            let b = (argb & 0xFF) as u8;
+            rgba_pixels.push(r);
+            rgba_pixels.push(g);
+            rgba_pixels.push(b);
+            rgba_pixels.push(a);
+        }
+
+        // Create SDL2 Surface from pixel data
+        // Note: from_data borrows the pixel buffer, but set_icon takes ownership
+        // We need to ensure the surface is created and used before the buffer is dropped
+        if let Some(canvas) = self.canvas.as_mut() {
+            // Create surface from RGBA pixel data
+            // The surface will reference the pixel buffer, so we need to keep it alive
+            match Surface::from_data(
+                &mut rgba_pixels,
+                image.width,
+                image.height,
+                (image.width * 4) as u32, // Pitch = width * 4 bytes per pixel
+                PixelFormatEnum::RGBA32,
+            ) {
+                Ok(surface) => {
+                    // Set the window icon (takes ownership of the surface)
+                    canvas.window_mut().set_icon(&surface);
+                    self.current_icon_handle = handle;
+                    // Surface is dropped here, but SDL2 should have copied the data
+                }
+                Err(e) => {
+                    // Surface creation failed, log error but don't crash
+                    eprintln!("Failed to create icon surface: {}", e);
+                }
+            }
+        }
+
+        previous_handle
     }
 
     fn get_icon(&self) -> i32 {
-        // NOTE: Icon retrieval is intentionally not implemented at this time.
-        // This would require tracking the current icon handle set by set_icon().
-        // Returns 0 to indicate no icon is currently set.
-        0
+        self.current_icon_handle
     }
 
     // ========================================================================
@@ -3131,7 +3458,9 @@ impl GraphicsBackend for SDL2Backend {
     #[cfg(feature = "freetype")]
     fn load_font_with_options(&mut self, path: &str, size: u16, options: u32) -> i64 {
         use crate::font_manager::FONT_MANAGER;
-        let mut fm = FONT_MANAGER.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut fm = FONT_MANAGER
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         fm.load_font(path, size, options)
     }
 
@@ -3160,7 +3489,9 @@ impl GraphicsBackend for SDL2Backend {
         }
 
         // Use FreeType font rendering
-        let mut fm = FONT_MANAGER.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut fm = FONT_MANAGER
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Some(font) = fm.get_font_mut(current_font) {
             let mut px = x;
             let baseline = font.baseline;
@@ -3201,7 +3532,9 @@ impl GraphicsBackend for SDL2Backend {
             return self.get_print_width(text);
         }
 
-        let mut fm = FONT_MANAGER.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut fm = FONT_MANAGER
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         fm.get_text_width(current_font, text)
     }
 
@@ -3218,7 +3551,9 @@ impl GraphicsBackend for SDL2Backend {
             return self.get_font_height() as i64;
         }
 
-        let fm = FONT_MANAGER.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let fm = FONT_MANAGER
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         fm.get_font_height(handle).unwrap_or(16) as i64
     }
 
@@ -3240,7 +3575,9 @@ impl GraphicsBackend for SDL2Backend {
             return self.get_font_height() as i64;
         }
 
-        let fm = FONT_MANAGER.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let fm = FONT_MANAGER
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         fm.get_font_height(current_font).unwrap_or(16) as i64
     }
 
@@ -3266,7 +3603,9 @@ impl GraphicsBackend for SDL2Backend {
                 .collect();
         }
 
-        let mut fm = FONT_MANAGER.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut fm = FONT_MANAGER
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         fm.get_char_positions(current_font, text)
     }
 

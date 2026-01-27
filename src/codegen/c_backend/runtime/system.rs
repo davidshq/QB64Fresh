@@ -265,7 +265,7 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
     )?;
     writeln_code!(
         output,
-        "int32_t qb_echo(int32_t state) {{ (void)state; return 0; }}"
+        "void qb_echo(qb_string* text) {{ if (text) {{ qb_print_string(text); qb_print_newline(); }} }}"
     )?;
     writeln_code!(
         output,

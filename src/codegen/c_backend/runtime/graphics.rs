@@ -163,7 +163,10 @@ pub(super) fn emit_graphics_stubs(output: &mut String) -> Result<(), CodeGenErro
         "            _qb_gfx_frame_count++; /* Only print once */"
     )?;
     writeln_code!(output, "        }}")?;
-    writeln_code!(output, "        exit(0); /* Exit to prevent infinite loop */")?;
+    writeln_code!(
+        output,
+        "        exit(0); /* Exit to prevent infinite loop */"
+    )?;
     writeln_code!(output, "    }}")?;
     writeln_code!(output, "    return 0;")?;
     writeln_code!(output, "}}")?;

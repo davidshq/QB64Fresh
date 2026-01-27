@@ -133,6 +133,7 @@ void qb_cls(void);
 void qb_locate(int32_t row, int32_t col);
 void qb_color(int32_t foreground, int32_t background);
 void qb_color_reset(void);
+void qb_echo(const QbString* text);
 
 /* Keyboard */
 QbString* qb_inkey(void);
@@ -240,7 +241,9 @@ void qb_file_line_input(int32_t fnum, QbString** s);
 void qb_file_seek(int32_t fnum, int64_t pos);
 void qb_file_seek_record(int32_t fnum, int64_t rec);
 void qb_file_get(int32_t fnum, void* data, size_t size);
+void qb_file_get_string(int32_t fnum, QbString* s);
 void qb_file_put(int32_t fnum, const void* data, size_t size);
+void qb_file_put_string(int32_t fnum, const QbString* s);
 
 /* File status functions */
 int32_t qb_eof(int32_t fnum);

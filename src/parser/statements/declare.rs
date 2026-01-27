@@ -376,9 +376,7 @@ impl<'a> Parser<'a> {
 
     /// Returns the current token's span (for error reporting).
     pub(in crate::parser) fn current_span(&self) -> Span {
-        self.peek()
-            .map(|t| t.span)
-            .unwrap_or(Span::new(0, 0, 1))
+        self.peek().map(|t| t.span).unwrap_or(Span::new(0, 0, 1))
     }
 
     /// Helper to check if we're at the end of a statement.

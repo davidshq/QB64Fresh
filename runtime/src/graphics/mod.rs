@@ -648,6 +648,25 @@ pub trait GraphicsBackend {
     /// Hide the mouse cursor.
     fn hide_mouse(&mut self) {}
 
+    // ============================================================================
+    // Keyboard Input
+    // ============================================================================
+
+    /// Check if a key is currently pressed (_KEYDOWN).
+    ///
+    /// # Arguments
+    /// - `keycode`: QB64 keycode to check
+    ///
+    /// # Returns
+    /// - `true` if the key is pressed
+    /// - `false` if not pressed or keycode cannot be mapped
+    ///
+    /// # Default Implementation
+    /// Returns `false` - backends that support keyboard input should override this.
+    fn is_key_pressed(&self, _keycode: i64) -> bool {
+        false
+    }
+
     /// Show the mouse cursor.
     fn show_mouse(&mut self) {}
 

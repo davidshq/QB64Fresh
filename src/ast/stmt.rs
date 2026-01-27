@@ -470,7 +470,12 @@ pub enum StatementKind {
     },
 
     /// `CALL SubName(args)` or `SubName args`
-    Call { name: String, args: Vec<Expr> },
+    Call {
+        /// Name of the SUB to call.
+        name: String,
+        /// Arguments passed to the SUB.
+        args: Vec<Expr>,
+    },
 
     /// Expression used as a statement (e.g., function call with no return value used)
     Expression(Expr),
@@ -1955,15 +1960,28 @@ pub enum InputTarget {
     /// Simple variable: `x`
     Variable(String),
     /// Array element: `arr(i)` or `arr(i, j)`
-    ArrayElement { name: String, indices: Vec<Expr> },
+    ArrayElement {
+        /// Array variable name.
+        name: String,
+        /// Index expressions for each dimension.
+        indices: Vec<Expr>,
+    },
     /// Array element field access: `arr(i).field` or `arr(i).field.subfield`
     ArrayElementField {
+        /// Array variable name.
         name: String,
+        /// Index expressions for each dimension.
         indices: Vec<Expr>,
+        /// Field path (e.g., ["x", "y"] for `arr(i).x.y`).
         fields: Vec<String>,
     },
     /// Simple UDT field access: `udt.field`
-    Field { name: String, fields: Vec<String> },
+    Field {
+        /// UDT variable name.
+        name: String,
+        /// Field path (e.g., ["x", "y"] for `udt.x.y`).
+        fields: Vec<String>,
+    },
 }
 
 /// Variable declaration in COMMON statement.
@@ -2021,20 +2039,31 @@ pub struct DimVariable {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeSpec {
     // Standard QBasic types
+    /// 16-bit signed integer.
     Integer,
+    /// 32-bit signed integer.
     Long,
+    /// 32-bit floating point.
     Single,
+    /// 64-bit floating point.
     Double,
+    /// Variable-length string.
     String,
     /// Fixed-length string: `STRING * n`
     FixedString(usize),
 
     // QB64 extended types
+    /// 8-bit unsigned integer.
     Byte,
+    /// Single bit (0 or 1).
     Bit,
+    /// 64-bit signed integer.
     Integer64,
+    /// Alias for Single (32-bit float).
     Float,
+    /// Memory offset type.
     Offset,
+    /// Unsigned variant of the wrapped type.
     Unsigned(Box<TypeSpec>),
     /// _MEM - Memory block descriptor
     Mem,
@@ -2076,19 +2105,35 @@ pub enum CaseMatch {
     /// Single value: `CASE 1`
     Single(Expr),
     /// Range: `CASE 1 TO 10`
-    Range { from: Expr, to: Expr },
+    Range {
+        /// Lower bound of the range.
+        from: Expr,
+        /// Upper bound of the range.
+        to: Expr,
+    },
     /// Comparison: `CASE IS > 5`
-    Comparison { op: CaseCompareOp, value: Expr },
+    Comparison {
+        /// Comparison operator.
+        op: CaseCompareOp,
+        /// Value to compare against.
+        value: Expr,
+    },
 }
 
 /// Comparison operators allowed in CASE IS.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CaseCompareOp {
+    /// `=`
     Equal,
+    /// `<>`
     NotEqual,
+    /// `<`
     LessThan,
+    /// `<=`
     LessEqual,
+    /// `>`
     GreaterThan,
+    /// `>=`
     GreaterEqual,
 }
 
@@ -2104,10 +2149,15 @@ pub struct DoCondition {
 /// Exit statement type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExitType {
+    /// `EXIT FOR`
     For,
+    /// `EXIT WHILE`
     While,
+    /// `EXIT DO`
     Do,
+    /// `EXIT SUB`
     Sub,
+    /// `EXIT FUNCTION`
     Function,
 }
 
@@ -2130,11 +2180,19 @@ pub enum ReadTarget {
     /// Simple variable: `READ x`
     Variable(String),
     /// Array element: `READ arr(i, j)`
-    ArrayElement { name: String, indices: Vec<Expr> },
+    ArrayElement {
+        /// Array variable name.
+        name: String,
+        /// Index expressions for each dimension.
+        indices: Vec<Expr>,
+    },
     /// UDT array element field: `READ arr(i).field`
     ArrayFieldElement {
+        /// Array variable name.
         name: String,
+        /// Index expressions for each dimension.
         indices: Vec<Expr>,
+        /// Field name to access.
         field: String,
     },
 }

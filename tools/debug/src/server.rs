@@ -355,18 +355,16 @@ impl DapServer {
             .map(String::from)
             .or_else(|| {
                 // Fallback: try processId to construct pipe path
-                args.get("processId")
-                    .and_then(|v| v.as_u64())
-                    .map(|pid| {
-                        #[cfg(unix)]
-                        {
-                            format!("{}/qb64fresh_debug_{}", std::env::temp_dir().display(), pid)
-                        }
-                        #[cfg(windows)]
-                        {
-                            format!("\\\\.\\pipe\\qb64fresh_debug_{}", pid)
-                        }
-                    })
+                args.get("processId").and_then(|v| v.as_u64()).map(|pid| {
+                    #[cfg(unix)]
+                    {
+                        format!("{}/qb64fresh_debug_{}", std::env::temp_dir().display(), pid)
+                    }
+                    #[cfg(windows)]
+                    {
+                        format!("\\\\.\\pipe\\qb64fresh_debug_{}", pid)
+                    }
+                })
             })
             .ok_or_else(|| {
                 DapServerError::InvalidMessage(
@@ -906,10 +904,7 @@ impl DapServer {
         }
 
         // Get frame ID from arguments (defaults to 0 = top of stack)
-        let frame_id = args
-            .get("frameId")
-            .and_then(|f| f.as_i64())
-            .unwrap_or(0) as u32;
+        let frame_id = args.get("frameId").and_then(|f| f.as_i64()).unwrap_or(0) as u32;
 
         // Check if debugee is connected
         if self.command_sender.is_none() || self.event_receiver.is_none() {
@@ -936,104 +931,99 @@ impl DapServer {
         let var_name = parsed.base_name().to_string();
 
         // Check if we have the variable in cached variables first
-        let (result, var_type) = if let Some(cached_var) = self
-            .cached_variables
-            .iter()
-            .find(|v| v.name == var_name)
-        {
-            // Return cached value
-            (cached_var.value.clone(), cached_var.var_type.clone())
-        } else {
-            // Request the variable value from the debugee
-            self.send_to_debugee(DebugCommand::GetVariable {
-                name: var_name.clone(),
-                frame: frame_id,
-            });
+        let (result, var_type) =
+            if let Some(cached_var) = self.cached_variables.iter().find(|v| v.name == var_name) {
+                // Return cached value
+                (cached_var.value.clone(), cached_var.var_type.clone())
+            } else {
+                // Request the variable value from the debugee
+                self.send_to_debugee(DebugCommand::GetVariable {
+                    name: var_name.clone(),
+                    frame: frame_id,
+                });
 
-            // Store pending request
-            self.pending_var_request = Some(var_name.clone());
+                // Store pending request
+                self.pending_var_request = Some(var_name.clone());
 
-            // Try to receive the variable value event with a short timeout
-            // We need to consume events from the channel, but we'll process them properly
-            // to avoid missing important events like STOPPED or TERMINATED
-            let mut found = false;
-            let mut result_value = String::new();
-            let mut result_type = "unknown".to_string();
+                // Try to receive the variable value event with a short timeout
+                // We need to consume events from the channel, but we'll process them properly
+                // to avoid missing important events like STOPPED or TERMINATED
+                let mut found = false;
+                let mut result_value = String::new();
+                let mut result_type = "unknown".to_string();
 
-            // Try multiple times to get the response (with small delays)
-            // Limit to 20 attempts (200ms total) to avoid blocking too long
-            if let Some(receiver) = &self.event_receiver {
-                for _ in 0..20 {
-                    // First check if it's already in cache
-                    if let Some(cached_var) = self
-                        .cached_variables
-                        .iter()
-                        .find(|v| v.name == var_name)
-                    {
-                        result_value = cached_var.value.clone();
-                        result_type = cached_var.var_type.clone();
-                        found = true;
-                        break;
-                    }
+                // Try multiple times to get the response (with small delays)
+                // Limit to 20 attempts (200ms total) to avoid blocking too long
+                if let Some(receiver) = &self.event_receiver {
+                    for _ in 0..20 {
+                        // First check if it's already in cache
+                        if let Some(cached_var) =
+                            self.cached_variables.iter().find(|v| v.name == var_name)
+                        {
+                            result_value = cached_var.value.clone();
+                            result_type = cached_var.var_type.clone();
+                            found = true;
+                            break;
+                        }
 
-                    // Collect available events
-                    let events: Vec<DebugEvent> = receiver.try_iter().collect();
+                        // Collect available events
+                        let events: Vec<DebugEvent> = receiver.try_iter().collect();
 
-                    // Process events to find our VariableValue and handle others
-                    for event in events {
-                        match &event {
-                            DebugEvent::VariableValue {
-                                name,
-                                var_type,
-                                value,
-                            } if name == &var_name => {
-                                // Found our variable!
-                                result_value = value.clone();
-                                result_type = var_type.clone();
-                                found = true;
-                                // Cache it (process_debugee_events will also cache, but that's okay)
-                                self.cached_variables.push(TrackedVariable {
-                                    name: name.clone(),
-                                    var_type: result_type.clone(),
-                                    value: result_value.clone(),
-                                });
-                                break;
-                            }
-                            // For other events, we should process them, but we don't have writer access here
-                            // They'll be handled by process_debugee_events after this function returns
-                            // However, we've already consumed them, so they won't be available
-                            // This is a limitation - we could store them for later processing
-                            _ => {
-                                // Other events - we've consumed them but can't process without writer
-                                // This is a known limitation: events consumed during evaluate won't be
-                                // processed by process_debugee_events. In practice, this should be rare
-                                // since evaluate is typically called when stopped.
+                        // Process events to find our VariableValue and handle others
+                        for event in events {
+                            match &event {
+                                DebugEvent::VariableValue {
+                                    name,
+                                    var_type,
+                                    value,
+                                } if name == &var_name => {
+                                    // Found our variable!
+                                    result_value = value.clone();
+                                    result_type = var_type.clone();
+                                    found = true;
+                                    // Cache it (process_debugee_events will also cache, but that's okay)
+                                    self.cached_variables.push(TrackedVariable {
+                                        name: name.clone(),
+                                        var_type: result_type.clone(),
+                                        value: result_value.clone(),
+                                    });
+                                    break;
+                                }
+                                // For other events, we should process them, but we don't have writer access here
+                                // They'll be handled by process_debugee_events after this function returns
+                                // However, we've already consumed them, so they won't be available
+                                // This is a limitation - we could store them for later processing
+                                _ => {
+                                    // Other events - we've consumed them but can't process without writer
+                                    // This is a known limitation: events consumed during evaluate won't be
+                                    // processed by process_debugee_events. In practice, this should be rare
+                                    // since evaluate is typically called when stopped.
+                                }
                             }
                         }
-                    }
 
-                    if found {
-                        break;
-                    }
+                        if found {
+                            break;
+                        }
 
-                    // Small delay before next attempt
-                    thread::sleep(std::time::Duration::from_millis(10));
+                        // Small delay before next attempt
+                        thread::sleep(std::time::Duration::from_millis(10));
+                    }
                 }
-            }
 
-            // Clear pending request
-            self.pending_var_request = None;
+                // Clear pending request
+                self.pending_var_request = None;
 
-            if found {
-                (result_value, result_type)
-            } else {
-                // Variable not found or not yet available
-                (
-                    format!("<variable '{}' not available>", var_name),
-                    "unknown".to_string(),
-                )
-            }
-        };
+                if found {
+                    (result_value, result_type)
+                } else {
+                    // Variable not found or not yet available
+                    (
+                        format!("<variable '{}' not available>", var_name),
+                        "unknown".to_string(),
+                    )
+                }
+            };
 
         let body = serde_json::json!({
             "result": result,
@@ -1151,10 +1141,8 @@ impl DapServer {
                     value,
                 } => {
                     // Cache the variable value (replace if already exists to avoid duplicates)
-                    if let Some(existing) = self
-                        .cached_variables
-                        .iter_mut()
-                        .find(|v| v.name == name)
+                    if let Some(existing) =
+                        self.cached_variables.iter_mut().find(|v| v.name == name)
                     {
                         existing.var_type = var_type;
                         existing.value = value;

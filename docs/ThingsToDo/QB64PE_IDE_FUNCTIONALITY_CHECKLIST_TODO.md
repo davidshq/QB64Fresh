@@ -370,6 +370,6 @@ QB64Fresh uses a modern Rust-based architecture instead of the monolithic BASIC 
 
 ---
 
-_Document updated to track QB64Fresh implementation status. Last updated: 2026-01-26._
+_Document updated to track QB64Fresh implementation status. Last updated: 2026-01-27._
 
 **Note:** Completed items (☑) are moved to `docs/archive/IDE-FUNCTIONALITY-COMPLETED.md` to keep this checklist focused on pending work.

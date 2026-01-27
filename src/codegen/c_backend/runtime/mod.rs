@@ -674,15 +674,13 @@ pub(in crate::codegen) fn emit_header_with_debug(
             writeln_code!(output, "    exit(code);")?;
             writeln_code!(output, "}}")?;
             writeln_code!(output)?;
-            // qb_echo - ECHO statement (console output control)
-            // ECHO ON/OFF controls whether INPUT prompts are displayed
-            // Stub implementation - echo is always on for now
-            writeln_code!(output, "void qb_echo(int32_t flag) {{")?;
-            writeln_code!(output, "    (void)flag;")?;
-            writeln_code!(
-                output,
-                "    // ECHO control not yet implemented in runtime library"
-            )?;
+            // qb_echo - ECHO statement (console output)
+            // Outputs text to the console (similar to PRINT but explicitly for console)
+            writeln_code!(output, "void qb_echo(qb_string* text) {{")?;
+            writeln_code!(output, "    if (text) {{")?;
+            writeln_code!(output, "        qb_print_string(text);")?;
+            writeln_code!(output, "        qb_print_newline();")?;
+            writeln_code!(output, "    }}")?;
             writeln_code!(output, "}}")?;
             writeln_code!(output)?;
             // qb_sgn - SGN function

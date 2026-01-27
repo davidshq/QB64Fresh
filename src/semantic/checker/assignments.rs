@@ -101,19 +101,29 @@ impl<'a> TypeChecker<'a> {
             }
         };
 
-        // Check type compatibility
-        if !typed_value.basic_type.is_convertible_to(&target_type) {
-            self.errors.push(SemanticError::TypeMismatch {
-                expected: target_type.to_string(),
-                found: typed_value.basic_type.to_string(),
-                span: value.span,
-            });
-        }
+        // Check type compatibility and wrap in Convert node if needed
+        let final_value =
+            if target_type == BasicType::Unknown || typed_value.basic_type == BasicType::Unknown {
+                // Unknown is used for error recovery - don't create Convert nodes
+                typed_value
+            } else if !typed_value.basic_type.is_convertible_to(&target_type) {
+                self.errors.push(SemanticError::TypeMismatch {
+                    expected: target_type.to_string(),
+                    found: typed_value.basic_type.to_string(),
+                    span: value.span,
+                });
+                typed_value
+            } else if typed_value.basic_type != target_type {
+                // Types are convertible but different - wrap in Convert node
+                typed_value.convert_to(target_type.clone())
+            } else {
+                typed_value
+            };
 
         TypedStatement::new(
             TypedStatementKind::Assignment {
                 name: resolved_name,
-                value: typed_value,
+                value: final_value,
                 target_type,
             },
             span,
@@ -155,22 +165,30 @@ impl<'a> TypeChecker<'a> {
         // Resolve the field type by walking through the UDT definition chain
         let field_type = self.resolve_field_chain_type(&object_type, &fields);
 
-        // Check type compatibility
-        if field_type != BasicType::Unknown
-            && !typed_value.basic_type.is_convertible_to(&field_type)
-        {
-            self.errors.push(SemanticError::TypeMismatch {
-                expected: field_type.to_string(),
-                found: typed_value.basic_type.to_string(),
-                span: value.span,
-            });
-        }
+        // Check type compatibility and wrap in Convert node if needed
+        let final_value =
+            if field_type == BasicType::Unknown || typed_value.basic_type == BasicType::Unknown {
+                // Unknown is used for error recovery - don't create Convert nodes
+                typed_value
+            } else if !typed_value.basic_type.is_convertible_to(&field_type) {
+                self.errors.push(SemanticError::TypeMismatch {
+                    expected: field_type.to_string(),
+                    found: typed_value.basic_type.to_string(),
+                    span: value.span,
+                });
+                typed_value
+            } else if typed_value.basic_type != field_type {
+                // Types are convertible but different - wrap in Convert node
+                typed_value.convert_to(field_type.clone())
+            } else {
+                typed_value
+            };
 
         TypedStatement::new(
             TypedStatementKind::FieldAssignment {
                 name: object_name.to_string(),
                 fields,
-                value: typed_value,
+                value: final_value,
                 field_type,
             },
             span,
@@ -286,20 +304,30 @@ impl<'a> TypeChecker<'a> {
         // Check the value
         let typed_value = self.check_expr(value);
 
-        // Type compatibility check
-        if !typed_value.basic_type.is_convertible_to(&element_type) {
-            self.errors.push(SemanticError::TypeMismatch {
-                expected: element_type.to_string(),
-                found: typed_value.basic_type.to_string(),
-                span: value.span,
-            });
-        }
+        // Type compatibility check and wrap in Convert node if needed
+        let final_value =
+            if element_type == BasicType::Unknown || typed_value.basic_type == BasicType::Unknown {
+                // Unknown is used for error recovery - don't create Convert nodes
+                typed_value
+            } else if !typed_value.basic_type.is_convertible_to(&element_type) {
+                self.errors.push(SemanticError::TypeMismatch {
+                    expected: element_type.to_string(),
+                    found: typed_value.basic_type.to_string(),
+                    span: value.span,
+                });
+                typed_value
+            } else if typed_value.basic_type != element_type {
+                // Types are convertible but different - wrap in Convert node
+                typed_value.convert_to(element_type.clone())
+            } else {
+                typed_value
+            };
 
         TypedStatement::new(
             TypedStatementKind::ArrayAssignment {
                 name: resolved_name,
                 indices: typed_indices,
-                value: typed_value,
+                value: final_value,
                 dimensions,
                 element_type,
             },
@@ -341,22 +369,30 @@ impl<'a> TypeChecker<'a> {
         // Check the value
         let typed_value = self.check_expr(value);
 
-        // Type compatibility check
-        if field_type != BasicType::Unknown
-            && !typed_value.basic_type.is_convertible_to(&field_type)
-        {
-            self.errors.push(SemanticError::TypeMismatch {
-                expected: field_type.to_string(),
-                found: typed_value.basic_type.to_string(),
-                span: value.span,
-            });
-        }
+        // Type compatibility check and wrap in Convert node if needed
+        let final_value =
+            if field_type == BasicType::Unknown || typed_value.basic_type == BasicType::Unknown {
+                // Unknown is used for error recovery - don't create Convert nodes
+                typed_value
+            } else if !typed_value.basic_type.is_convertible_to(&field_type) {
+                self.errors.push(SemanticError::TypeMismatch {
+                    expected: field_type.to_string(),
+                    found: typed_value.basic_type.to_string(),
+                    span: value.span,
+                });
+                typed_value
+            } else if typed_value.basic_type != field_type {
+                // Types are convertible but different - wrap in Convert node
+                typed_value.convert_to(field_type.clone())
+            } else {
+                typed_value
+            };
 
         TypedStatement::new(
             TypedStatementKind::FieldAssignment {
                 name: resolved_name,
                 fields: fields.to_vec(),
-                value: typed_value,
+                value: final_value,
                 field_type,
             },
             span,
@@ -439,23 +475,31 @@ impl<'a> TypeChecker<'a> {
         // Check the value
         let typed_value = self.check_expr(value);
 
-        // Type compatibility check - now that we have proper field type resolution
-        if field_type != BasicType::Unknown
-            && !typed_value.basic_type.is_convertible_to(&field_type)
-        {
-            self.errors.push(SemanticError::TypeMismatch {
-                expected: field_type.to_string(),
-                found: typed_value.basic_type.to_string(),
-                span: value.span,
-            });
-        }
+        // Type compatibility check and wrap in Convert node if needed
+        let final_value =
+            if field_type == BasicType::Unknown || typed_value.basic_type == BasicType::Unknown {
+                // Unknown is used for error recovery - don't create Convert nodes
+                typed_value
+            } else if !typed_value.basic_type.is_convertible_to(&field_type) {
+                self.errors.push(SemanticError::TypeMismatch {
+                    expected: field_type.to_string(),
+                    found: typed_value.basic_type.to_string(),
+                    span: value.span,
+                });
+                typed_value
+            } else if typed_value.basic_type != field_type {
+                // Types are convertible but different - wrap in Convert node
+                typed_value.convert_to(field_type.clone())
+            } else {
+                typed_value
+            };
 
         TypedStatement::new(
             TypedStatementKind::ArrayFieldAssignment {
                 name: resolved_name,
                 indices: typed_indices,
                 fields: fields.to_vec(),
-                value: typed_value,
+                value: final_value,
                 dimensions,
                 element_type,
                 field_type,

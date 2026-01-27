@@ -36,7 +36,11 @@ impl<'a> Parser<'a> {
                         .unwrap_or("EOF".to_string()),
                     self.peek()
                         .map(|t| t.span)
-                        .unwrap_or_else(|| crate::ast::Span { start: 0, end: 0, line: 1 }),
+                        .unwrap_or_else(|| crate::ast::Span {
+                            start: 0,
+                            end: 0,
+                            line: 1,
+                        }),
                 ));
                 return Err(());
             }
@@ -537,7 +541,11 @@ impl<'a> Parser<'a> {
                     .unwrap_or("EOF".to_string()),
                 self.peek()
                     .map(|t| t.span)
-                    .unwrap_or_else(|| crate::ast::Span { start: 0, end: 0, line: 1 }),
+                    .unwrap_or_else(|| crate::ast::Span {
+                        start: 0,
+                        end: 0,
+                        line: 1,
+                    }),
             ));
             return Err(());
         };
