@@ -187,8 +187,7 @@ impl StmtEmitter {
         }
 
         // Extract line number from span
-        // The span contains byte offsets; we need to get the source file name
-        let line = stmt.span.start; // This is actually byte offset, but we'll use it for now
+        let line = stmt.span.line;
         let file = self
             .debug_source_file
             .as_deref()
@@ -196,8 +195,6 @@ impl StmtEmitter {
 
         let indent = self.indent_str();
 
-        // For now, use byte offset as line (the runtime can compute actual line number)
-        // TODO: Store actual line numbers during parsing
         writeln_code!(
             output,
             "{}qb_dbg_line({}, {});",
@@ -511,7 +508,7 @@ impl StmtEmitter {
                 };
                 writeln_code!(
                     output,
-                    "{}qb_input_string({}, &{});",
+                    "{}qb_input_string({}, &{}, 0);",
                     indent,
                     prompt_arg,
                     target_code
@@ -1524,7 +1521,7 @@ impl StmtEmitter {
                 step2,
                 color,
                 box_style,
-                style: _, // TODO: implement line style pattern support
+                style,
             } => {
                 let x2_code = emit_expr(x2, self.no_shell)?;
                 let y2_code = emit_expr(y2, self.no_shell)?;
@@ -1550,47 +1547,59 @@ impl StmtEmitter {
                 // step1 = 0 (first point is absolute), step2 = whether endpoint is relative
                 let step2_flag = if *step2 { "1" } else { "0" };
 
+                // Style pattern: 16-bit value, 0xFFFF means no style (solid)
+                // Only valid with box outlines (B), ignored for filled boxes (BF) and plain lines
+                let style_code = if let Some(s) = style {
+                    // Cast to uint16_t to ensure proper type
+                    format!("(uint16_t)({})", emit_expr(s, self.no_shell)?)
+                } else {
+                    "0xFFFF".to_string() // No style = solid line
+                };
+
                 match box_style {
                     None => {
-                        // Plain line: qb_gfx_line_step(x1, y1, x2, y2, color, step1, step2)
+                        // Plain line: style is ignored, but we pass it anyway for API consistency
                         writeln_code!(
                             output,
-                            "{}qb_gfx_line_step((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (uint32_t){}, 0, {});",
+                            "{}qb_gfx_line_step((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (uint32_t){}, 0, {}, {});",
                             indent,
                             x1_code,
                             y1_code,
                             x2_code,
                             y2_code,
                             color_code,
-                            step2_flag
+                            step2_flag,
+                            style_code
                         )?;
                     }
                     Some(false) => {
-                        // Box (outline): qb_gfx_box_step(x1, y1, x2, y2, color, filled, step1, step2)
+                        // Box (outline): style pattern applies
                         writeln_code!(
                             output,
-                            "{}qb_gfx_box_step((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (uint32_t){}, 0, 0, {});",
+                            "{}qb_gfx_box_step((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (uint32_t){}, 0, 0, {}, {});",
                             indent,
                             x1_code,
                             y1_code,
                             x2_code,
                             y2_code,
                             color_code,
-                            step2_flag
+                            step2_flag,
+                            style_code
                         )?;
                     }
                     Some(true) => {
-                        // Filled box: qb_gfx_box_step(x1, y1, x2, y2, color, filled, step1, step2)
+                        // Filled box: style is ignored, but we pass it anyway for API consistency
                         writeln_code!(
                             output,
-                            "{}qb_gfx_box_step((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (uint32_t){}, 1, 0, {});",
+                            "{}qb_gfx_box_step((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (uint32_t){}, 1, 0, {}, {});",
                             indent,
                             x1_code,
                             y1_code,
                             x2_code,
                             y2_code,
                             color_code,
-                            step2_flag
+                            step2_flag,
+                            style_code
                         )?;
                     }
                 }

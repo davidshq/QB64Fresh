@@ -34,7 +34,7 @@ impl super::StmtEmitter {
     /// * `indent` - The indentation string to use for generated code
     /// * `prompt` - Optional prompt string to display before input
     /// * `show_question_mark` - Whether to append "? " to the prompt
-    /// * `same_line` - Whether to keep cursor on same line after input (stored but not used)
+    /// * `same_line` - Whether to keep cursor on same line after input (no newline printed)
     /// * `targets` - The variables/array elements to receive input values
     /// * `output` - The string buffer to write generated code to
     ///
@@ -52,10 +52,8 @@ impl super::StmtEmitter {
     ) -> Result<(), CodeGenError> {
         use TypedInputTarget::*;
 
-        // Note: same_line is currently stored but not used in codegen
-        // The runtime would need to be updated to support this behavior
-        // (keep cursor on same line after input instead of moving to new line)
-        let _ = same_line;
+        // Convert same_line boolean to C int (1 = true, 0 = false)
+        let same_line_int = if same_line { 1 } else { 0 };
 
         let full_prompt = match prompt {
             Some(p) => {
@@ -74,6 +72,7 @@ impl super::StmtEmitter {
             }
         };
 
+        let num_targets = targets.len();
         for (i, target) in targets.iter().enumerate() {
             let (target_code, var_type) = match target {
                 Variable { name, basic_type } => (c_identifier(name), basic_type.clone()),
@@ -126,29 +125,40 @@ impl super::StmtEmitter {
                 "NULL".to_string()
             };
 
+            // Only the last input should print a newline (if same_line is false).
+            // All intermediate inputs should suppress newline (same_line = 1).
+            let target_same_line = if i == num_targets - 1 {
+                same_line_int
+            } else {
+                1 // Suppress newline for intermediate inputs
+            };
+
             if var_type.is_string() {
                 writeln_code!(
                     output,
-                    "{}qb_input_string({}, &{});",
+                    "{}qb_input_string({}, &{}, {});",
                     indent,
                     prompt_arg,
-                    target_code
+                    target_code,
+                    target_same_line
                 )?;
             } else if var_type.is_float() {
                 writeln_code!(
                     output,
-                    "{}qb_input_float({}, &{});",
+                    "{}qb_input_float({}, &{}, {});",
                     indent,
                     prompt_arg,
-                    target_code
+                    target_code,
+                    target_same_line
                 )?;
             } else {
                 writeln_code!(
                     output,
-                    "{}qb_input_int({}, &{});",
+                    "{}qb_input_int({}, &{}, {});",
                     indent,
                     prompt_arg,
-                    target_code
+                    target_code,
+                    target_same_line
                 )?;
             }
         }

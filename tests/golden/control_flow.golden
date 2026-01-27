@@ -594,14 +594,35 @@ void qb_icon(void) { }
 void qb_icon1(int32_t handle) { (void)handle; }
 void qb_icon2(int32_t handle, qb_string* cmd) { (void)handle; (void)cmd; }
 
-void qb_sub_environ(qb_string* env) { (void)env; }
+void qb_sub_environ(qb_string* env) {
+    if (!env || !env->data) return;
+    const char* env_str = env->data;
+
+    // Parse 'name=value' format
+    char* eq = strchr(env_str, '=');
+    if (!eq || eq == env_str) return; // Invalid format (no '=' or name is empty)
+
+    // Allocate buffer for 'name=value' (putenv requires persistent string)
+    size_t total_len = strlen(env_str);
+    char* env_buf = (char*)malloc(total_len + 1);
+    if (!env_buf) return;
+    strcpy(env_buf, env_str);
+
+    // Use putenv (works on both Windows and Unix)
+#ifdef _WIN32
+    _putenv(env_buf);
+#else
+    putenv(env_buf); // Note: putenv takes ownership of the string
+#endif
+    // Don't free env_buf - putenv takes ownership
+}
 
 int32_t qb_inclerrorline(void) { return 0; }
 qb_string* qb_inclerrorfile(void) { return qb_string_new(""); }
 int32_t qb_exit_state(void) { return 0; }
 int32_t qb_statuscode(int32_t handle) { (void)handle; return 0; }
 
-int32_t qb_net_openhost(qb_string* port) { (void)port; return 0; }
+int64_t qb_net_openhost(int64_t port) { (void)port; return 0; }
 int32_t qb_net_openconnection(int32_t host) { (void)host; return 0; }
 int32_t qb_net_openclient(qb_string* addr) { (void)addr; return 0; }
 int32_t qb_net_connected(int32_t handle) { (void)handle; return 0; }
@@ -3191,6 +3212,10 @@ void qb_maptriangle_ex(double sx1, double sy1, double sx2, double sy2, double sx
     (void)src_handle; (void)dest_handle; (void)smooth; (void)seamless;
 }
 
+/* OpenGL stubs */
+void qb_glrender(int32_t mode) { (void)mode; }
+int32_t qb_glcompat(void) { return 0; }
+
 /* Legacy BASIC Functions */
 
 static int qb_lpos_value = 1;  // Printer column position
@@ -3816,8 +3841,16 @@ static int _gosub_sp = 0;
 int32_t x = 0;
 
 int main(int argc, char** argv) {
+    /* Initialize command-line arguments */
     qb_init_args(argc, argv);
+    /* Initialize start directory */
     qb_init_startdir();
+    if (_qb_err != 0) {
+        fprintf(stderr, "Error: Failed to initialize start directory (error code %d)\n", _qb_err);
+        fflush(stderr);
+        return 1;
+    }
+    /* Initialize VGA palette */
     _qb_init_palette();
     static uint32_t _qb_strig_event_id = 0;
 

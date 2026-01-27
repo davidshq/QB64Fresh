@@ -115,7 +115,15 @@ pub(super) fn emit_graphics_stubs(output: &mut String) -> Result<(), CodeGenErro
     )?;
     writeln_code!(
         output,
+        "int qb_gfx_line_step(int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color, int step1, int step2, uint16_t style) {{ (void)x1; (void)y1; (void)x2; (void)y2; (void)color; (void)step1; (void)step2; (void)style; return 0; }}"
+    )?;
+    writeln_code!(
+        output,
         "int qb_gfx_box(int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color, int filled) {{ (void)x1; (void)y1; (void)x2; (void)y2; (void)color; (void)filled; return 0; }}"
+    )?;
+    writeln_code!(
+        output,
+        "int qb_gfx_box_step(int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color, int filled, int step1, int step2, uint16_t style) {{ (void)x1; (void)y1; (void)x2; (void)y2; (void)color; (void)filled; (void)step1; (void)step2; (void)style; return 0; }}"
     )?;
     writeln_code!(
         output,
@@ -128,9 +136,35 @@ pub(super) fn emit_graphics_stubs(output: &mut String) -> Result<(), CodeGenErro
     writeln_code!(output)?;
 
     // Display
+    // Note: Frame counter is checked here to prevent infinite loops even if
+    // programs only call DISPLAY without checking _SCREENEXISTS or _POLLEVENTS
     writeln_code!(output, "int qb_gfx_display(void) {{")?;
     writeln_code!(output, "    _qb_gfx_init_max_frames();")?;
     writeln_code!(output, "    _qb_gfx_frame_count++;")?;
+    writeln_code!(
+        output,
+        "    if (_qb_gfx_frame_count >= _qb_gfx_max_frames) {{"
+    )?;
+    writeln_code!(
+        output,
+        "        if (_qb_gfx_frame_count == _qb_gfx_max_frames) {{"
+    )?;
+    writeln_code!(
+        output,
+        "            fprintf(stderr, \"Note: Stub graphics reached %d frames in DISPLAY, exiting to prevent infinite loop.\\n\", _qb_gfx_max_frames);"
+    )?;
+    writeln_code!(
+        output,
+        "            fprintf(stderr, \"      Set QB64FRESH_MAX_FRAMES environment variable to change limit.\\n\");"
+    )?;
+    writeln_code!(output, "            fflush(stderr);")?;
+    writeln_code!(
+        output,
+        "            _qb_gfx_frame_count++; /* Only print once */"
+    )?;
+    writeln_code!(output, "        }}")?;
+    writeln_code!(output, "        exit(0); /* Exit to prevent infinite loop */")?;
+    writeln_code!(output, "    }}")?;
     writeln_code!(output, "    return 0;")?;
     writeln_code!(output, "}}")?;
     writeln_code!(output)?;

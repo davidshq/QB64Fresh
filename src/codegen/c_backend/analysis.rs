@@ -917,7 +917,7 @@ mod tests {
                 TypedStatementKind::Label {
                     name: "myLabel".to_string(),
                 },
-                Span::new(0, 8),
+                Span::new(0, 8, 1),
             ),
             TypedStatement::new(
                 TypedStatementKind::Data {
@@ -927,7 +927,7 @@ mod tests {
                         TypedDataValue::Integer(3),
                     ],
                 },
-                Span::new(9, 20),
+                Span::new(9, 20, 1),
             ),
             TypedStatement::new(
                 TypedStatementKind::Data {
@@ -939,7 +939,7 @@ mod tests {
                 TypedStatementKind::Label {
                     name: "anotherLabel".to_string(),
                 },
-                Span::new(31, 44),
+                Span::new(31, 44, 1),
             ),
             TypedStatement::new(
                 TypedStatementKind::Data {
@@ -972,7 +972,7 @@ mod tests {
                     TypedDataValue::Float(3.14),
                 ],
             },
-            Span::new(0, 30),
+            Span::new(0, 30, 1),
         )]);
 
         let data_pool = collect_data_values(&program);

@@ -1,3 +1,5 @@
+#![warn(missing_docs)]
+
 //! # QB64Fresh
 //!
 //! A modern BASIC compiler compatible with QBasic/QuickBASIC and QB64 extensions.

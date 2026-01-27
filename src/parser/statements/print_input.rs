@@ -218,7 +218,7 @@ impl<'a> Parser<'a> {
 
         if self.check(&TokenKind::StringLiteral) {
             let token = self.advance().expect("prompt string");
-            let prompt_span: Span = token.span.clone().into();
+            let prompt_span: Span = token.span;
             prompt = Some(token.text[1..token.text.len() - 1].to_string());
 
             if self.match_token(&TokenKind::Semicolon) {

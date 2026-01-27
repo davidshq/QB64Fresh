@@ -293,10 +293,12 @@ pub(super) fn emit_print_functions(output: &mut String) -> Result<(), CodeGenErr
 ///
 /// These functions handle the QB64 INPUT statement semantics, including
 /// displaying prompts and parsing user input into the appropriate types.
+/// The `same_line` parameter controls whether a newline is printed after input
+/// (0 = print newline, non-zero = keep cursor on same line).
 pub(super) fn emit_input_functions(output: &mut String) -> Result<(), CodeGenError> {
     writeln_code!(
         output,
-        "void qb_input_string(const char* prompt, qb_string** var) {{"
+        "void qb_input_string(const char* prompt, qb_string** var, int same_line) {{"
     )?;
     writeln_code!(output, "    char buffer[1024];")?;
     writeln_code!(output, "    if (prompt) printf(\"%s\", prompt);")?;
@@ -309,24 +311,27 @@ pub(super) fn emit_input_functions(output: &mut String) -> Result<(), CodeGenErr
     writeln_code!(output, "        if (*var) qb_string_free(*var);")?;
     writeln_code!(output, "        *var = qb_string_new(buffer);")?;
     writeln_code!(output, "    }}")?;
+    writeln_code!(output, "    if (same_line == 0) printf(\"\\n\");")?;
     writeln_code!(output, "}}")?;
     writeln_code!(output)?;
 
     writeln_code!(
         output,
-        "void qb_input_int(const char* prompt, int32_t* var) {{"
+        "void qb_input_int(const char* prompt, int32_t* var, int same_line) {{"
     )?;
     writeln_code!(output, "    if (prompt) printf(\"%s\", prompt);")?;
     writeln_code!(output, "    scanf(\"%d\", var);")?;
+    writeln_code!(output, "    if (same_line == 0) printf(\"\\n\");")?;
     writeln_code!(output, "}}")?;
     writeln_code!(output)?;
 
     writeln_code!(
         output,
-        "void qb_input_float(const char* prompt, double* var) {{"
+        "void qb_input_float(const char* prompt, double* var, int same_line) {{"
     )?;
     writeln_code!(output, "    if (prompt) printf(\"%s\", prompt);")?;
     writeln_code!(output, "    scanf(\"%lf\", var);")?;
+    writeln_code!(output, "    if (same_line == 0) printf(\"\\n\");")?;
     writeln_code!(output, "}}")?;
     writeln_code!(output)?;
     Ok(())

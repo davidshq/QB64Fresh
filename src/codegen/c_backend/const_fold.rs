@@ -720,7 +720,7 @@ mod tests {
         TypedExpr {
             kind: TypedExprKind::IntegerLiteral(v),
             basic_type: BasicType::Long,
-            span: Span::new(0, 1),
+            span: Span::new(0, 1, 1),
         }
     }
 
@@ -729,7 +729,7 @@ mod tests {
         TypedExpr {
             kind: TypedExprKind::FloatLiteral(v),
             basic_type: BasicType::Double,
-            span: Span::new(0, 1),
+            span: Span::new(0, 1, 1),
         }
     }
 
@@ -737,7 +737,7 @@ mod tests {
         TypedExpr {
             kind: TypedExprKind::StringLiteral(v.to_string()),
             basic_type: BasicType::String,
-            span: Span::new(0, 1),
+            span: Span::new(0, 1, 1),
         }
     }
 
@@ -749,7 +749,7 @@ mod tests {
                 right: Box::new(right),
             },
             basic_type: BasicType::Long,
-            span: Span::new(0, 1),
+            span: Span::new(0, 1, 1),
         }
     }
 
@@ -761,7 +761,7 @@ mod tests {
                 params: vec![],
             },
             basic_type: BasicType::Long,
-            span: Span::new(0, 1),
+            span: Span::new(0, 1, 1),
         }
     }
 

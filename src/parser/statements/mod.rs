@@ -270,7 +270,7 @@ impl<'a> Parser<'a> {
             TokenKind::Error => {
                 let text = token.text.trim().to_uppercase();
                 if text == "$CONSOLE" {
-                    let span: Span = token.span.clone().into();
+                    let span: Span = token.span;
                     self.advance();
                     return Ok(Statement::new(
                         StatementKind::MetaConsole { only: false },
@@ -278,14 +278,14 @@ impl<'a> Parser<'a> {
                     ));
                 }
                 if let Some(rest) = text.strip_prefix("$CONSOLE:") {
-                    let span: Span = token.span.clone().into();
+                    let span: Span = token.span;
                     let arg = rest.trim();
                     let only = arg.eq_ignore_ascii_case("ONLY");
                     self.advance();
                     return Ok(Statement::new(StatementKind::MetaConsole { only }, span));
                 }
                 // Not a $CONSOLE, fall through to error
-                let span: Span = token.span.clone().into();
+                let span: Span = token.span;
                 self.errors.push(ParseError::InvalidStatement {
                     span,
                     message: format!("unexpected token {:?}", token.kind),
@@ -295,7 +295,7 @@ impl<'a> Parser<'a> {
             }
 
             _ => {
-                let span: Span = token.span.clone().into();
+                let span: Span = token.span;
                 self.errors.push(ParseError::InvalidStatement {
                     span,
                     message: format!("unexpected token {:?}", token.kind),

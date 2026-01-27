@@ -79,11 +79,20 @@ pub extern "C" fn qb_print_flush() {
 
 /// Read a line of input into a string variable.
 ///
+/// # Arguments
+/// * `prompt` - Optional prompt string to display before input (can be null)
+/// * `var` - Pointer to QbString pointer that will receive the input
+/// * `same_line` - If true, cursor stays on same line after input (no newline printed)
+///
 /// # Safety
 /// - `prompt` can be null (no prompt) or a valid C string
 /// - `var` must be a valid pointer to a QbString pointer
 #[no_mangle]
-pub unsafe extern "C" fn qb_input_string(prompt: *const c_char, var: *mut *mut QbString) {
+pub unsafe extern "C" fn qb_input_string(
+    prompt: *const c_char,
+    var: *mut *mut QbString,
+    same_line: i32,
+) {
     // Print prompt if provided
     if !prompt.is_null() {
         let prompt_str = std::ffi::CStr::from_ptr(prompt);
@@ -110,15 +119,25 @@ pub unsafe extern "C" fn qb_input_string(prompt: *const c_char, var: *mut *mut Q
         // Create new string
         *var = qb_string_from_bytes(line.as_ptr(), line.len());
     }
+
+    // Print newline unless same_line is true
+    if same_line == 0 {
+        println!();
+    }
 }
 
 /// Read an integer from input.
+///
+/// # Arguments
+/// * `prompt` - Optional prompt string to display before input (can be null)
+/// * `var` - Pointer to i32 that will receive the input
+/// * `same_line` - If true, cursor stays on same line after input (no newline printed)
 ///
 /// # Safety
 /// - `prompt` can be null or a valid C string
 /// - `var` must be a valid pointer to an i32
 #[no_mangle]
-pub unsafe extern "C" fn qb_input_int(prompt: *const c_char, var: *mut i32) {
+pub unsafe extern "C" fn qb_input_int(prompt: *const c_char, var: *mut i32, same_line: i32) {
     if !prompt.is_null() {
         let prompt_str = std::ffi::CStr::from_ptr(prompt);
         print!("{}", prompt_str.to_string_lossy());
@@ -128,6 +147,11 @@ pub unsafe extern "C" fn qb_input_int(prompt: *const c_char, var: *mut i32) {
     let mut line = String::new();
     if io::stdin().lock().read_line(&mut line).is_ok() {
         *var = line.trim().parse().unwrap_or(0);
+    }
+
+    // Print newline unless same_line is true
+    if same_line == 0 {
+        println!();
     }
 }
 
@@ -152,11 +176,16 @@ pub unsafe extern "C" fn qb_input_long(prompt: *const c_char, var: *mut i64) {
 
 /// Read a floating-point number from input.
 ///
+/// # Arguments
+/// * `prompt` - Optional prompt string to display before input (can be null)
+/// * `var` - Pointer to f64 that will receive the input
+/// * `same_line` - If true, cursor stays on same line after input (no newline printed)
+///
 /// # Safety
 /// - `prompt` can be null or a valid C string
 /// - `var` must be a valid pointer to a f64
 #[no_mangle]
-pub unsafe extern "C" fn qb_input_float(prompt: *const c_char, var: *mut f64) {
+pub unsafe extern "C" fn qb_input_float(prompt: *const c_char, var: *mut f64, same_line: i32) {
     if !prompt.is_null() {
         let prompt_str = std::ffi::CStr::from_ptr(prompt);
         print!("{}", prompt_str.to_string_lossy());
@@ -166,6 +195,11 @@ pub unsafe extern "C" fn qb_input_float(prompt: *const c_char, var: *mut f64) {
     let mut line = String::new();
     if io::stdin().lock().read_line(&mut line).is_ok() {
         *var = line.trim().parse().unwrap_or(0.0);
+    }
+
+    // Print newline unless same_line is true
+    if same_line == 0 {
+        println!();
     }
 }
 
@@ -201,8 +235,8 @@ pub unsafe extern "C" fn qb_input_single(prompt: *const c_char, var: *mut f32) {
 /// - `var` must be a valid pointer to a QbString pointer
 #[no_mangle]
 pub unsafe extern "C" fn qb_line_input(prompt: *const c_char, var: *mut *mut QbString) {
-    // Same as qb_input_string for now
-    qb_input_string(prompt, var);
+    // LINE INPUT always prints a newline after input (same_line = 0)
+    qb_input_string(prompt, var, 0);
 }
 
 // ============================================================================
@@ -1156,7 +1190,6 @@ pub unsafe extern "C" fn qb_dir(spec: *const QbString) -> *mut QbString {
 // Networking Functions (Phase 5)
 // ============================================================================
 
-use std::io::Read as IoRead;
 use std::net::{TcpListener, TcpStream};
 
 /// Buffered stream wrapper for network connections.

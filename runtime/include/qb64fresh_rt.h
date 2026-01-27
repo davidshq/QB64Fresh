@@ -121,10 +121,10 @@ void qb_print_space(void);
 void qb_print_flush(void);
 
 /* Input functions */
-void qb_input_string(const char* prompt, QbString** var);
-void qb_input_int(const char* prompt, int32_t* var);
+void qb_input_string(const char* prompt, QbString** var, int same_line);
+void qb_input_int(const char* prompt, int32_t* var, int same_line);
 void qb_input_long(const char* prompt, int64_t* var);
-void qb_input_float(const char* prompt, double* var);
+void qb_input_float(const char* prompt, double* var, int same_line);
 void qb_input_single(const char* prompt, float* var);
 void qb_line_input(const char* prompt, QbString** var);
 
@@ -384,9 +384,9 @@ int qb_gfx_pset(int32_t x, int32_t y, uint32_t color);
 int qb_gfx_pset_step(int32_t x, int32_t y, uint32_t color, int step);
 uint32_t qb_gfx_point(int32_t x, int32_t y);
 int qb_gfx_line(int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color);
-int qb_gfx_line_step(int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color, int step1, int step2);
+int qb_gfx_line_step(int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color, int step1, int step2, uint16_t style);
 int qb_gfx_box(int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color, int filled);
-int qb_gfx_box_step(int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color, int filled, int step1, int step2);
+int qb_gfx_box_step(int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color, int filled, int step1, int step2, uint16_t style);
 int qb_gfx_circle(int32_t x, int32_t y, int32_t radius, uint32_t color, int filled);
 int qb_gfx_circle_step(int32_t x, int32_t y, int32_t radius, uint32_t color, int filled, int step);
 int qb_gfx_paint(int32_t x, int32_t y, uint32_t color, int32_t boundary_color);

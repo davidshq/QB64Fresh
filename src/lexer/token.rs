@@ -16,20 +16,22 @@
 use logos::Logos;
 use std::fmt;
 
+use crate::ast::Span;
+
 /// A token with its location in the source code.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     /// The kind of token
     pub kind: TokenKind,
-    /// Byte offset where this token starts in the source
-    pub span: std::ops::Range<usize>,
+    /// Source location span (byte offsets and line number)
+    pub span: Span,
     /// The original text of the token (useful for identifiers, literals)
     pub text: String,
 }
 
 impl Token {
     /// Create a new token with the given kind, span, and text.
-    pub fn new(kind: TokenKind, span: std::ops::Range<usize>, text: impl Into<String>) -> Self {
+    pub fn new(kind: TokenKind, span: Span, text: impl Into<String>) -> Self {
         Self {
             kind,
             span,

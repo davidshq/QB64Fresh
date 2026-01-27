@@ -1555,7 +1555,7 @@ mod tests {
 
     #[test]
     fn test_emit_integer_literal() {
-        let expr = TypedExpr::integer(42, Span::new(0, 2));
+        let expr = TypedExpr::integer(42, Span::new(0, 2, 1));
         let result = emit_expr(&expr, false).unwrap();
         assert_eq!(result, "42LL");
     }
@@ -1574,10 +1574,10 @@ mod tests {
             TypedExprKind::Binary {
                 left: Box::new(TypedExpr::integer(2, Span::new(0, 1))),
                 op: BinaryOp::Power,
-                right: Box::new(TypedExpr::integer(3, Span::new(4, 5))),
+                right: Box::new(TypedExpr::integer(3, Span::new(4, 5, 1))),
             },
             BasicType::Double,
-            Span::new(0, 5),
+            Span::new(0, 5, 1),
         );
         let result = emit_expr(&expr, false).unwrap();
         assert_eq!(result, "8LL"); // 2^3 = 8, folded at compile time
@@ -1594,10 +1594,10 @@ mod tests {
                     Span::new(0, 1),
                 )),
                 op: BinaryOp::Power,
-                right: Box::new(TypedExpr::integer(3, Span::new(4, 5))),
+                right: Box::new(TypedExpr::integer(3, Span::new(4, 5, 1))),
             },
             BasicType::Double,
-            Span::new(0, 5),
+            Span::new(0, 5, 1),
         );
         let result = emit_expr(&expr, false).unwrap();
         assert_eq!(result, "pow(x, 3LL)");
@@ -1613,7 +1613,7 @@ mod tests {
                 right: Box::new(TypedExpr::integer(3, Span::new(6, 7))),
             },
             BasicType::Long,
-            Span::new(0, 7),
+            Span::new(0, 7, 1),
         );
         let result = emit_expr(&expr, false).unwrap();
         // EQV: !(5 XOR 3) = !6 = -7 (bitwise NOT)
@@ -1634,7 +1634,7 @@ mod tests {
                 right: Box::new(TypedExpr::integer(3, Span::new(6, 7))),
             },
             BasicType::Long,
-            Span::new(0, 7),
+            Span::new(0, 7, 1),
         );
         let result = emit_expr(&expr, false).unwrap();
         assert_eq!(result, "(~(x ^ 3LL))");
@@ -1650,7 +1650,7 @@ mod tests {
                 right: Box::new(TypedExpr::integer(3, Span::new(6, 7))),
             },
             BasicType::Long,
-            Span::new(0, 7),
+            Span::new(0, 7, 1),
         );
         let result = emit_expr(&expr, false).unwrap();
         // IMP: (!5) OR 3 = -6 OR 3 = -5
@@ -1671,7 +1671,7 @@ mod tests {
                 right: Box::new(TypedExpr::integer(3, Span::new(6, 7))),
             },
             BasicType::Long,
-            Span::new(0, 7),
+            Span::new(0, 7, 1),
         );
         let result = emit_expr(&expr, false).unwrap();
         assert_eq!(result, "((~x) | 3LL)");

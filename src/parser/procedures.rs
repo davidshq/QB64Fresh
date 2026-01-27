@@ -337,7 +337,7 @@ impl<'a> Parser<'a> {
                     let len_token = self.expect(&TokenKind::IntegerLiteral, "string length")?;
                     // Extract values before borrowing self again
                     let len_text = len_token.text.clone();
-                    let len_span = len_token.span.clone().into();
+                    let len_span = len_token.span;
                     let len: usize = match len_text.parse() {
                         Ok(n) => n,
                         Err(_) => {
@@ -381,7 +381,7 @@ impl<'a> Parser<'a> {
                 TypeSpec::UserDefined(name)
             }
             _ => {
-                let span = token.span.clone().into();
+                let span = token.span;
                 self.errors.push(ParseError::syntax(
                     format!("expected type name, found {:?}", token.kind),
                     span,

@@ -936,7 +936,7 @@ mod tests {
                         value: ConstValue::Integer(value),
                     },
                     basic_type: crate::semantic::types::BasicType::Long,
-                    span: crate::ast::Span::new(0, 0),
+                    span: crate::ast::Span::new(0, 0, 1),
                     is_mutable: false,
                 };
                 let _ = symbols.define_symbol(sym);
