@@ -642,12 +642,12 @@ mod tests {
         let program = TypedProgram::new(vec![TypedStatement::new(
             TypedStatementKind::Print {
                 items: vec![TypedPrintItem {
-                    expr: TypedExpr::string("Hello".to_string(), Span::new(6, 13)),
+                    expr: TypedExpr::string("Hello".to_string(), Span::new(6, 13, 1)),
                     separator: None,
                 }],
                 newline: true,
             },
-            Span::new(0, 13),
+            Span::new(0, 13, 1),
         )]);
 
         let backend = CBackend::new();
@@ -683,7 +683,7 @@ mod tests {
                 TypedStatementKind::Label {
                     name: "testLabel".to_string(),
                 },
-                Span::new(0, 10),
+                Span::new(0, 10, 1),
             ),
             TypedStatement::new(
                 TypedStatementKind::Data {
@@ -698,7 +698,7 @@ mod tests {
                 TypedStatementKind::Restore {
                     label: Some("testLabel".to_string()),
                 },
-                Span::new(21, 36),
+                Span::new(21, 36, 1),
             ),
         ]);
 

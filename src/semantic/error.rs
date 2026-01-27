@@ -40,8 +40,8 @@ use thiserror::Error;
 /// use qb64fresh::semantic::error::SemanticError;
 /// use qb64fresh::ast::Span;
 ///
-/// let err = SemanticError::undefined_variable("count", Span::new(10, 15));
-/// assert_eq!(err.span(), Span::new(10, 15));
+/// let err = SemanticError::undefined_variable("count", Span::new(10, 15, 1));
+/// assert_eq!(err.span(), Span::new(10, 15, 1));
 /// ```
 #[derive(Debug, Error, Clone)]
 pub enum SemanticError {
@@ -60,7 +60,12 @@ pub enum SemanticError {
     /// PRINT counter   ' Error: undefined variable `counter`
     /// ```
     #[error("undefined variable `{name}`")]
-    UndefinedVariable { name: String, span: Span },
+    UndefinedVariable {
+        /// The name of the undefined variable.
+        name: String,
+        /// Source location where the variable was referenced.
+        span: Span,
+    },
 
     /// Reference to a label that doesn't exist.
     ///
@@ -73,7 +78,12 @@ pub enum SemanticError {
     /// GOTO finish     ' Error: undefined label `finish`
     /// ```
     #[error("undefined label `{name}`")]
-    UndefinedLabel { name: String, span: Span },
+    UndefinedLabel {
+        /// The name of the undefined label.
+        name: String,
+        /// Source location where the label was referenced.
+        span: Span,
+    },
 
     /// Call to a SUB or FUNCTION that hasn't been defined.
     ///
@@ -86,7 +96,12 @@ pub enum SemanticError {
     /// CALL ProcessData   ' Error: undefined procedure `ProcessData`
     /// ```
     #[error("undefined procedure `{name}`")]
-    UndefinedProcedure { name: String, span: Span },
+    UndefinedProcedure {
+        /// The name of the undefined SUB or FUNCTION.
+        name: String,
+        /// Source location where the procedure was called.
+        span: Span,
+    },
 
     /// Variable declared more than once in the same scope.
     ///
@@ -600,13 +615,13 @@ mod tests {
 
     #[test]
     fn test_error_span() {
-        let err = SemanticError::undefined_variable("x", Span::new(10, 11));
-        assert_eq!(err.span(), Span::new(10, 11));
+        let err = SemanticError::undefined_variable("x", Span::new(10, 11, 1));
+        assert_eq!(err.span(), Span::new(10, 11, 1));
     }
 
     #[test]
     fn test_type_mismatch_message() {
-        let err = SemanticError::type_mismatch("INTEGER", "STRING", Span::new(0, 5));
+        let err = SemanticError::type_mismatch("INTEGER", "STRING", Span::new(0, 5, 1));
         assert!(err.to_string().contains("INTEGER"));
         assert!(err.to_string().contains("STRING"));
     }
@@ -615,10 +630,10 @@ mod tests {
     fn test_duplicate_variable_spans() {
         let err = SemanticError::DuplicateVariable {
             name: "x".to_string(),
-            original_span: Span::new(0, 5),
-            duplicate_span: Span::new(10, 15),
+            original_span: Span::new(0, 5, 1),
+            duplicate_span: Span::new(10, 15, 1),
         };
         // Primary span should be the duplicate
-        assert_eq!(err.span(), Span::new(10, 15));
+        assert_eq!(err.span(), Span::new(10, 15, 1));
     }
 }

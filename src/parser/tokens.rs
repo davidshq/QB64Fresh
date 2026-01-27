@@ -97,7 +97,7 @@ impl<'a> Parser<'a> {
             Ok(self.advance().expect("advance after check"))
         } else {
             let (found, span) = if let Some(token) = self.peek() {
-                (format!("{:?}", token.kind), token.span.clone().into())
+                (format!("{:?}", token.kind), token.span)
             } else {
                 self.errors.push(ParseError::eof(expected_desc));
                 return Err(());
@@ -249,12 +249,14 @@ impl<'a> Parser<'a> {
 
     /// Creates a span from start to current position.
     pub(super) fn span_from(&self, start: usize) -> Span {
-        let end = self
-            .tokens
-            .get(self.current.saturating_sub(1))
+        let last_token = self.tokens.get(self.current.saturating_sub(1));
+        let end = last_token
             .map(|t| t.span.end)
             .unwrap_or(start);
-        Span::new(start, end)
+        let line = last_token
+            .map(|t| t.span.line)
+            .unwrap_or(1);
+        Span::new(start, end, line)
     }
 
     /// Advances and returns the start position of the consumed token.
@@ -380,7 +382,7 @@ impl<'a> Parser<'a> {
             Ok(self.advance().expect("advance after is_name_token check"))
         } else {
             let (found, span) = if let Some(token) = self.peek() {
-                (format!("{:?}", token.kind), token.span.clone().into())
+                (format!("{:?}", token.kind), token.span)
             } else {
                 self.errors.push(ParseError::eof(expected_desc));
                 return Err(());

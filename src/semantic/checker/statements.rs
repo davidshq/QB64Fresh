@@ -1976,7 +1976,7 @@ impl<'a> TypeChecker<'a> {
                 return_type: return_type.clone(),
             },
             basic_type: return_type.clone(),
-            span: Span::new(0, 0), // External functions don't have source location
+            span: Span::new(0, 0, 1), // External functions don't have source location
             is_mutable: false,
         });
 
@@ -2107,15 +2107,18 @@ impl<'a> TypeChecker<'a> {
     /// This enables `DECLARE LIBRARY "header.h"` to automatically import function
     /// signatures from the header, reducing the need for manual declarations.
     ///
+    /// Also processes constants (#define) and structs (struct/typedef struct) from the
+    /// header file, adding them to the symbol table as CONST and TYPE definitions.
+    ///
     /// # Arguments
     /// - `header_path`: Path to the header file (relative to CWD or absolute)
-    /// - `span`: Source span for error reporting
+    /// - `span`: Source span for error reporting and symbol definitions
     ///
     /// # Returns
     /// Vector of ExternalDeclaration parsed from the header file.
     /// Returns empty vector if the file cannot be read or parsed.
     #[cfg(feature = "header-parsing")]
-    fn parse_header_file(&mut self, header_path: &str, _span: Span) -> Vec<ExternalDeclaration> {
+    fn parse_header_file(&mut self, header_path: &str, span: Span) -> Vec<ExternalDeclaration> {
         use crate::header_parser::{Platform, parse_header_full};
         use std::fs;
 
@@ -2139,8 +2142,15 @@ impl<'a> TypeChecker<'a> {
             declarations.push(self.c_function_to_external_decl(&func));
         }
 
-        // Note: result.constants and result.structs could also be processed here
-        // to define CONST values and TYPE structures, but that's a future enhancement.
+        // Process constants from C header (#define directives)
+        for constant in &result.constants {
+            self.process_c_constant(constant, span);
+        }
+
+        // Process structs from C header (struct/typedef struct definitions)
+        for struct_def in &result.structs {
+            self.process_c_struct(struct_def, span);
+        }
 
         declarations
     }
@@ -2184,6 +2194,115 @@ impl<'a> TypeChecker<'a> {
             params,
             return_type,
             is_function,
+        }
+    }
+
+    /// Processes a C constant from a header file and adds it to the symbol table.
+    ///
+    /// Converts C `#define` constants (e.g., `#define MAX_PATH 260`) into BASIC
+    /// CONST definitions that can be used in the program.
+    ///
+    /// # Arguments
+    /// - `constant`: The C constant from the header parser
+    /// - `span`: Source span for the symbol definition
+    #[cfg(feature = "header-parsing")]
+    fn process_c_constant(
+        &mut self,
+        constant: &crate::header_parser::CConstant,
+        span: Span,
+    ) {
+        use crate::header_parser::ConstantValue as CConstantValue;
+        use crate::semantic::symbols::{ConstValue, Symbol, SymbolKind};
+
+        // Skip constants with empty names (shouldn't happen, but be defensive)
+        if constant.name.is_empty() {
+            return;
+        }
+
+        // Convert C constant value to BASIC ConstValue and determine type
+        let (const_value, basic_type) = match &constant.value {
+            CConstantValue::Integer(n) => {
+                let cv = ConstValue::Integer(*n);
+                // Choose smallest type that fits
+                let bt = if *n >= i16::MIN as i64 && *n <= i16::MAX as i64 {
+                    BasicType::Integer
+                } else if *n >= i32::MIN as i64 && *n <= i32::MAX as i64 {
+                    BasicType::Long
+                } else {
+                    BasicType::Integer64
+                };
+                (cv, bt)
+            }
+            CConstantValue::Float(f) => (ConstValue::Float(*f), BasicType::Double),
+            CConstantValue::String(s) => (ConstValue::String(s.clone()), BasicType::String),
+            CConstantValue::Expression(_) => {
+                // For expressions we can't evaluate, skip them
+                // (they would require a full C expression evaluator)
+                return;
+            }
+        };
+
+        // Create the symbol
+        let symbol = Symbol {
+            name: constant.name.clone(),
+            kind: SymbolKind::Constant {
+                value: const_value,
+            },
+            basic_type,
+            span,
+            is_mutable: false,
+        };
+
+        // Add to symbol table (ignore duplicates - user can override with manual CONST)
+        if let Err(_err) = self.symbols.define_symbol(symbol) {
+            // Constant already exists - this is fine, user may have defined it manually
+            // or it may be defined in multiple headers. We don't error on this.
+        }
+    }
+
+    /// Processes a C struct from a header file and adds it to the symbol table.
+    ///
+    /// Converts C struct definitions (e.g., `struct Point { int x; int y; }`) into
+    /// BASIC TYPE definitions that can be used in the program.
+    ///
+    /// # Arguments
+    /// - `struct_def`: The C struct from the header parser
+    /// - `span`: Source span for the type definition
+    #[cfg(feature = "header-parsing")]
+    fn process_c_struct(
+        &mut self,
+        struct_def: &crate::header_parser::CStruct,
+        span: Span,
+    ) {
+        use crate::semantic::symbols::{UserTypeDefinition, UserTypeMember};
+
+        // Skip structs with empty names (shouldn't happen, but be defensive)
+        if struct_def.name.is_empty() {
+            return;
+        }
+
+        // Convert C struct members to BASIC type members
+        let members: Vec<UserTypeMember> = struct_def
+            .members
+            .iter()
+            .map(|m| UserTypeMember {
+                name: m.name.clone(),
+                basic_type: m.typ.clone(),
+            })
+            .collect();
+
+        // Create the user type definition
+        let user_type = UserTypeDefinition {
+            name: struct_def.name.clone(),
+            members,
+            span,
+            custom_type: true, // C structs are C-compatible by definition
+        };
+
+        // Add to symbol table (ignore duplicates - user can override with manual TYPE)
+        if let Err(_existing) = self.symbols.define_user_type(user_type) {
+            // Type already exists - this is fine, user may have defined it manually
+            // or it may be defined in multiple headers. We don't error on this.
         }
     }
 }

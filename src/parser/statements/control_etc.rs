@@ -179,7 +179,7 @@ impl<'a> Parser<'a> {
                 }
             }
             _ => {
-                let span: Span = token.span.clone().into();
+                let span: Span = token.span;
                 self.errors.push(ParseError::syntax(
                     format!("expected label or line number, found {:?}", token.kind),
                     span,
@@ -235,7 +235,7 @@ impl<'a> Parser<'a> {
                 ExitType::Function
             }
             _ => {
-                let span: Span = token.span.clone().into();
+                let span: Span = token.span;
                 self.errors.push(ParseError::syntax(
                     format!(
                         "expected FOR, WHILE, DO, SUB, or FUNCTION after EXIT, found {:?}",
@@ -697,7 +697,7 @@ impl<'a> Parser<'a> {
             };
 
             if token.kind != TokenKind::IntegerLiteral {
-                let span: Span = token.span.clone().into();
+                let span: Span = token.span;
                 self.errors.push(ParseError::syntax(
                     "OPTION BASE requires 0 or 1".to_string(),
                     span,
@@ -800,7 +800,7 @@ impl<'a> Parser<'a> {
         // The last argument is the address
         let address = all_args.pop().unwrap_or_else(|| {
             // If no arguments, create a dummy zero address
-            Expr::new(ExprKind::IntegerLiteral(0), Span::new(start, start))
+            Expr::new(ExprKind::IntegerLiteral(0), Span::new(start, start, 1))
         });
 
         let span = self.span_from(start);
@@ -845,7 +845,7 @@ impl<'a> Parser<'a> {
     /// Parses a comment (').
     pub(in crate::parser) fn parse_comment(&mut self) -> Result<Statement, ()> {
         let token = self.advance().expect("comment");
-        let span: Span = token.span.clone().into();
+        let span: Span = token.span;
         let text = token.text[1..].to_string(); // Remove leading '
         Ok(Statement::new(StatementKind::Comment(text), span))
     }
@@ -853,7 +853,7 @@ impl<'a> Parser<'a> {
     /// Parses a REM comment.
     pub(in crate::parser) fn parse_rem_comment(&mut self) -> Result<Statement, ()> {
         let token = self.advance().expect("REM comment");
-        let span: Span = token.span.clone().into();
+        let span: Span = token.span;
         // Remove "REM" prefix (case insensitive)
         let text = if token.text.len() > 3 {
             token.text[3..].trim_start().to_string()

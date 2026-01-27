@@ -172,7 +172,11 @@ fn main() {
             for err in &errors {
                 // Compute line number from span if available
                 if let Some(span) = err.span() {
-                    let line = source[..span.start].chars().filter(|&c| c == '\n').count() + 1;
+                    let line = if span.start <= source.len() {
+                        source[..span.start].chars().filter(|&c| c == '\n').count() + 1
+                    } else {
+                        1 // Fallback if span is out of bounds
+                    };
                     eprintln!("  line {}: {}", line, err);
                 } else {
                     eprintln!("  {}", err);
@@ -202,7 +206,11 @@ fn main() {
             for err in &errors {
                 // Compute line number from span
                 let span = err.span();
-                let line = source[..span.start].chars().filter(|&c| c == '\n').count() + 1;
+                let line = if span.start <= source.len() {
+                    source[..span.start].chars().filter(|&c| c == '\n').count() + 1
+                } else {
+                    1 // Fallback if span is out of bounds
+                };
                 eprintln!("  line {}: {}", line, err);
             }
             std::process::exit(1);

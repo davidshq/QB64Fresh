@@ -43,6 +43,7 @@ mod token;
 pub use token::{Token, TokenKind};
 
 use logos::Logos;
+use crate::ast::Span;
 
 /// The lexer for QB64Fresh BASIC source code.
 ///
@@ -117,7 +118,7 @@ impl<'source> Lexer<'source> {
     /// ```
     pub fn next_token(&mut self) -> Option<Token> {
         let kind = self.inner.next()?;
-        let span = self.inner.span();
+        let byte_span = self.inner.span();
         let text = self.inner.slice().to_string();
 
         let token_kind = match kind {
@@ -125,7 +126,27 @@ impl<'source> Lexer<'source> {
             Err(()) => TokenKind::Error, // Unrecognized character
         };
 
+        // Compute line number from byte offset
+        let line = Self::line_number_at_offset(self.source, byte_span.start);
+        let span = Span::new(byte_span.start, byte_span.end, line);
+
         Some(Token::new(token_kind, span, text))
+    }
+
+    /// Compute the 1-indexed line number at the given byte offset in the source.
+    ///
+    /// Counts newlines (`\n`) up to (but not including) the offset.
+    fn line_number_at_offset(source: &str, offset: usize) -> usize {
+        // Clamp offset to source length to avoid panics
+        let clamped_offset = offset.min(source.len());
+        
+        // Count newlines in the prefix up to the offset
+        // Line numbers are 1-indexed, so we start at 1 and add 1 for each newline
+        source[..clamped_offset]
+            .chars()
+            .filter(|&c| c == '\n')
+            .count()
+            + 1
     }
 
     /// Collect all remaining tokens into a vector.
@@ -182,12 +203,16 @@ mod tests {
     fn test_token_spans() {
         let tokens = lex("PRINT 42");
 
-        // PRINT should span bytes 0..5
-        assert_eq!(tokens[0].span, 0..5);
+        // PRINT should span bytes 0..5, line 1
+        assert_eq!(tokens[0].span.start, 0);
+        assert_eq!(tokens[0].span.end, 5);
+        assert_eq!(tokens[0].span.line, 1);
         assert_eq!(tokens[0].text, "PRINT");
 
-        // 42 should span bytes 6..8
-        assert_eq!(tokens[1].span, 6..8);
+        // 42 should span bytes 6..8, line 1
+        assert_eq!(tokens[1].span.start, 6);
+        assert_eq!(tokens[1].span.end, 8);
+        assert_eq!(tokens[1].span.line, 1);
         assert_eq!(tokens[1].text, "42");
     }
 
@@ -210,6 +235,11 @@ mod tests {
                 &TokenKind::IntegerLiteral,
             ]
         );
+
+        // Check line numbers
+        assert_eq!(tokens[0].span.line, 1); // x on line 1
+        assert_eq!(tokens[3].span.line, 1); // newline on line 1
+        assert_eq!(tokens[4].span.line, 2); // y on line 2
     }
 
     #[test]

@@ -376,7 +376,7 @@ pub extern "C" fn qb_gfx_point(x: i32, y: i32) -> u32 {
 pub extern "C" fn qb_gfx_line(x1: i32, y1: i32, x2: i32, y2: i32, color: u32) -> c_int {
     unsafe {
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
-            match backend.line(x1, y1, x2, y2, color, false) {
+            match backend.line(x1, y1, x2, y2, color, false, None) {
                 Ok(()) => 0,
                 Err(_) => 1,
             }
@@ -407,10 +407,16 @@ pub extern "C" fn qb_gfx_line_step(
     color: u32,
     step1: c_int,
     step2: c_int,
+    style: u16,
 ) -> c_int {
     unsafe {
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
-            match backend.line_step(x1, y1, x2, y2, color, false, step1 != 0, step2 != 0) {
+            let style_opt = if style == 0xFFFF {
+                None // 0xFFFF means no style (solid line)
+            } else {
+                Some(style)
+            };
+            match backend.line_step(x1, y1, x2, y2, color, false, step1 != 0, step2 != 0, style_opt) {
                 Ok(()) => 0,
                 Err(_) => 1,
             }
@@ -429,10 +435,17 @@ pub extern "C" fn qb_gfx_line_step(
 /// - `filled`: 0 for outline, non-zero for filled
 /// - `step1`: If non-zero, first corner is relative to last graphics point
 /// - `step2`: If non-zero, second corner is relative to resolved first corner
+/// - `style`: Style pattern (16-bit, 0xFFFF = no style/solid line)
 ///
 /// # Returns
 /// - `0` on success
 /// - Non-zero on failure
+///
+/// # Style Pattern
+/// The style parameter is a 16-bit value where each bit represents whether to draw a pixel.
+/// Bit 15 (MSB) is the first pixel, bit 0 (LSB) is the last. The pattern repeats.
+/// Only applies to box outlines (filled boxes ignore style).
+/// Use 0xFFFF for solid lines (default behavior when style is not specified).
 #[no_mangle]
 pub extern "C" fn qb_gfx_box_step(
     x1: i32,
@@ -443,10 +456,18 @@ pub extern "C" fn qb_gfx_box_step(
     filled: c_int,
     step1: c_int,
     step2: c_int,
+    style: u16,
 ) -> c_int {
     unsafe {
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
-            match backend.line_step(x1, y1, x2, y2, color, filled != 0, step1 != 0, step2 != 0) {
+            let style_opt = if style == 0xFFFF {
+                None // 0xFFFF means no style (solid line)
+            } else {
+                Some(style)
+            };
+            // For boxes, always pass style (even if None) so line() knows it's a box outline
+            // The filled parameter distinguishes filled boxes from outlines
+            match backend.line_step(x1, y1, x2, y2, color, filled != 0, step1 != 0, step2 != 0, style_opt) {
                 Ok(()) => 0,
                 Err(_) => 1,
             }
@@ -478,7 +499,7 @@ pub extern "C" fn qb_gfx_box(
 ) -> c_int {
     unsafe {
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
-            match backend.line(x1, y1, x2, y2, color, filled != 0) {
+            match backend.line(x1, y1, x2, y2, color, filled != 0, None) {
                 Ok(()) => 0,
                 Err(_) => 1,
             }

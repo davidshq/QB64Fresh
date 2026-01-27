@@ -54,15 +54,23 @@ pub enum ExprKind {
     ///
     /// Examples: `1 + 2`, `x * y`, `a > b`, `flag AND mask`
     Binary {
+        /// Left-hand side expression.
         left: Box<Expr>,
+        /// Binary operator (+, -, *, /, =, <>, >, <, >=, <=, AND, OR, XOR, etc.).
         op: BinaryOp,
+        /// Right-hand side expression.
         right: Box<Expr>,
     },
 
     /// Unary operation: `op operand`
     ///
     /// Examples: `-x`, `NOT flag`
-    Unary { op: UnaryOp, operand: Box<Expr> },
+    Unary {
+        /// Unary operator (-, +, NOT).
+        op: UnaryOp,
+        /// Operand expression.
+        operand: Box<Expr>,
+    },
 
     /// Parenthesized expression: `(expr)`
     ///
@@ -72,7 +80,12 @@ pub enum ExprKind {
     /// Function call: `FunctionName(arg1, arg2, ...)`
     ///
     /// Also used for array indexing since syntax is identical: `array(index)`
-    FunctionCall { name: String, args: Vec<Expr> },
+    FunctionCall {
+        /// Function or array name.
+        name: String,
+        /// Argument expressions (or array indices).
+        args: Vec<Expr>,
+    },
 
     /// Field access on a user-defined type: `object.field`
     ///
@@ -280,13 +293,13 @@ mod tests {
 
     #[test]
     fn test_create_integer_literal() {
-        let expr = Expr::new(ExprKind::IntegerLiteral(42), Span::new(0, 2));
+        let expr = Expr::new(ExprKind::IntegerLiteral(42), Span::new(0, 2, 1));
         assert!(matches!(expr.kind, ExprKind::IntegerLiteral(42)));
     }
 
     #[test]
     fn test_create_binary_expr() {
-        let left = Box::new(Expr::new(ExprKind::IntegerLiteral(1), Span::new(0, 1)));
+        let left = Box::new(Expr::new(ExprKind::IntegerLiteral(1), Span::new(0, 1, 1)));
         let right = Box::new(Expr::new(ExprKind::IntegerLiteral(2), Span::new(4, 5)));
         let expr = Expr::new(
             ExprKind::Binary {
@@ -294,7 +307,7 @@ mod tests {
                 op: BinaryOp::Add,
                 right,
             },
-            Span::new(0, 5),
+            Span::new(0, 5, 1),
         );
         assert!(matches!(
             expr.kind,

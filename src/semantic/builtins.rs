@@ -1727,7 +1727,7 @@ impl SemanticAnalyzer {
                 })
                 .collect(),
             return_type: Some(return_type),
-            span: crate::ast::Span::new(0, 0),
+            span: crate::ast::Span::new(0, 0, 1),
             is_static: false,
         };
         let _ = self.symbols.define_procedure(entry);
@@ -1755,7 +1755,7 @@ impl SemanticAnalyzer {
                 })
                 .collect(),
             return_type: Some(return_type),
-            span: crate::ast::Span::new(0, 0),
+            span: crate::ast::Span::new(0, 0, 1),
             is_static: false,
         };
         let _ = self.symbols.define_procedure(entry);
@@ -1777,7 +1777,7 @@ impl SemanticAnalyzer {
                 })
                 .collect(),
             return_type: None, // SUBs have no return type
-            span: crate::ast::Span::new(0, 0),
+            span: crate::ast::Span::new(0, 0, 1),
             is_static: false,
         };
         let _ = self.symbols.define_procedure(entry);
@@ -1803,7 +1803,7 @@ impl SemanticAnalyzer {
                 })
                 .collect(),
             return_type: None, // SUBs have no return type
-            span: crate::ast::Span::new(0, 0),
+            span: crate::ast::Span::new(0, 0, 1),
             is_static: false,
         };
         let _ = self.symbols.define_procedure(entry);
@@ -1821,7 +1821,7 @@ impl SemanticAnalyzer {
                 value: ConstValue::Integer(-1),
             },
             basic_type: BasicType::Long,
-            span: crate::ast::Span::new(0, 0),
+            span: crate::ast::Span::new(0, 0, 1),
             is_mutable: false,
         };
         let _ = self.symbols.define_symbol(true_symbol);
@@ -1833,7 +1833,7 @@ impl SemanticAnalyzer {
                 value: ConstValue::Integer(0),
             },
             basic_type: BasicType::Long,
-            span: crate::ast::Span::new(0, 0),
+            span: crate::ast::Span::new(0, 0, 1),
             is_mutable: false,
         };
         let _ = self.symbols.define_symbol(false_symbol);
@@ -1845,7 +1845,7 @@ impl SemanticAnalyzer {
                 value: ConstValue::Integer(0),
             },
             basic_type: BasicType::Long,
-            span: crate::ast::Span::new(0, 0),
+            span: crate::ast::Span::new(0, 0, 1),
             is_mutable: false,
         };
         let _ = self.symbols.define_symbol(none_symbol);
@@ -1868,7 +1868,7 @@ impl SemanticAnalyzer {
                     value: ConstValue::Integer(value),
                 },
                 basic_type: BasicType::Long,
-                span: crate::ast::Span::new(0, 0),
+                span: crate::ast::Span::new(0, 0, 1),
                 is_mutable: false,
             };
             let _ = self.symbols.define_symbol(symbol);
@@ -1925,7 +1925,7 @@ impl SemanticAnalyzer {
                     value: ConstValue::String(value.to_string()),
                 },
                 basic_type: BasicType::String,
-                span: crate::ast::Span::new(0, 0),
+                span: crate::ast::Span::new(0, 0, 1),
                 is_mutable: false,
             };
             let _ = self.symbols.define_symbol(symbol);
@@ -2019,7 +2019,7 @@ impl SemanticAnalyzer {
                     value: ConstValue::Integer(value),
                 },
                 basic_type: BasicType::Long,
-                span: crate::ast::Span::new(0, 0),
+                span: crate::ast::Span::new(0, 0, 1),
                 is_mutable: false,
             };
             let _ = self.symbols.define_symbol(symbol);
@@ -2101,7 +2101,7 @@ impl SemanticAnalyzer {
                     value: ConstValue::Integer(value),
                 },
                 basic_type: BasicType::Long,
-                span: crate::ast::Span::new(0, 0),
+                span: crate::ast::Span::new(0, 0, 1),
                 is_mutable: false,
             };
             let _ = self.symbols.define_symbol(symbol);
@@ -2175,7 +2175,7 @@ impl SemanticAnalyzer {
                     value: ConstValue::Integer(value),
                 },
                 basic_type: BasicType::Long,
-                span: crate::ast::Span::new(0, 0),
+                span: crate::ast::Span::new(0, 0, 1),
                 is_mutable: false,
             };
             let _ = self.symbols.define_symbol(symbol);

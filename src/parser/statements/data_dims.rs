@@ -413,7 +413,7 @@ impl<'a> Parser<'a> {
             }
             TokenKind::StringLiteral => {
                 if negate {
-                    let span: Span = token.span.clone().into();
+                    let span: Span = token.span;
                     self.errors.push(ParseError::syntax(
                         "cannot negate a string in DATA statement".to_string(),
                         span,
@@ -664,7 +664,7 @@ impl<'a> Parser<'a> {
                 "_BIT"
             }
             _ => {
-                let span: Span = token.span.clone().into();
+                let span: Span = token.span;
                 self.errors.push(ParseError::syntax(
                     format!("expected type name, found {:?}", token.kind),
                     span,
@@ -688,7 +688,7 @@ impl<'a> Parser<'a> {
             let start_text = start_token.text.to_uppercase();
 
             if start_text.len() != 1 || !start_text.chars().next().unwrap().is_ascii_alphabetic() {
-                let span: Span = start_token.span.clone().into();
+                let span: Span = start_token.span;
                 self.errors.push(ParseError::syntax(
                     "expected single letter for DEF range".to_string(),
                     span,
@@ -704,7 +704,7 @@ impl<'a> Parser<'a> {
                 let end_text = end_token.text.to_uppercase();
 
                 if end_text.len() != 1 || !end_text.chars().next().unwrap().is_ascii_alphabetic() {
-                    let span: Span = end_token.span.clone().into();
+                    let span: Span = end_token.span;
                     self.errors.push(ParseError::syntax(
                         "expected single letter for DEF range end".to_string(),
                         span,

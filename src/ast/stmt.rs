@@ -59,7 +59,12 @@ pub enum StatementKind {
     /// `[LET] variable = expression`
     ///
     /// Assignment statement. The LET keyword is optional in modern BASIC.
-    Let { name: String, value: Expr },
+    Let {
+        /// Variable name.
+        name: String,
+        /// Expression to assign.
+        value: Expr,
+    },
 
     /// `variable.field = expression` or `variable.field.subfield = expression`
     ///
@@ -264,25 +269,40 @@ pub enum StatementKind {
     },
 
     /// `GOTO label` or `GOTO lineNumber`
-    Goto { target: String },
+    Goto {
+        /// Target label or line number.
+        target: String,
+    },
 
     /// `GOSUB label` or `GOSUB lineNumber`
-    Gosub { target: String },
+    Gosub {
+        /// Target label or line number.
+        target: String,
+    },
 
     /// `RETURN` - Return from GOSUB
     Return,
 
     /// `EXIT FOR`, `EXIT WHILE`, `EXIT DO`, `EXIT SUB`, `EXIT FUNCTION`
-    Exit { exit_type: ExitType },
+    Exit {
+        /// Type of exit (FOR, WHILE, DO, SUB, FUNCTION).
+        exit_type: ExitType,
+    },
 
     /// `END [exit_code]` - End program execution with optional exit code
-    End { exit_code: Option<Expr> },
+    End {
+        /// Optional exit code expression.
+        exit_code: Option<Expr>,
+    },
 
     /// `STOP` - Stop execution (for debugging)
     Stop,
 
     /// `SYSTEM [exit_code]` - Exit program immediately with optional exit code
-    System { exit_code: Option<Expr> },
+    System {
+        /// Optional exit code expression.
+        exit_code: Option<Expr>,
+    },
 
     /// `SLEEP [seconds]` - Pause execution
     Sleep {
@@ -389,31 +409,41 @@ pub enum StatementKind {
     /// `RANDOMIZE [seed]` or `RANDOMIZE TIMER`
     ///
     /// Seeds the random number generator. If no argument, prompts user for seed.
-    /// RANDOMIZE [seed] - Initialize random number generator.
-    /// If seed is None, implementation may prompt user or use a default.
     /// TIMER is just a function call in the seed expression (e.g., RANDOMIZE TIMER).
     Randomize {
-        /// Seed expression. None means no seed provided.
+        /// Seed expression. None means no seed provided (implementation may prompt user or use a default).
         seed: Option<Expr>,
     },
 
     /// Label definition: `labelName:`
-    Label { name: String },
+    Label {
+        /// Label name.
+        name: String,
+    },
 
     /// `SUB name [(parameters)] ... END SUB`
     SubDefinition {
+        /// Subroutine name.
         name: String,
+        /// Parameter list.
         params: Vec<Parameter>,
+        /// Subroutine body statements.
         body: Vec<Statement>,
+        /// Whether this is a STATIC SUB (variables persist between calls).
         is_static: bool,
     },
 
     /// `FUNCTION name [(parameters)] ... END FUNCTION`
     FunctionDefinition {
+        /// Function name.
         name: String,
+        /// Parameter list.
         params: Vec<Parameter>,
+        /// Optional return type specification (if not specified, inferred from name suffix).
         return_type: Option<TypeSpec>,
+        /// Function body statements.
         body: Vec<Statement>,
+        /// Whether this is a STATIC FUNCTION (variables persist between calls).
         is_static: bool,
     },
 
@@ -2253,7 +2283,7 @@ mod tests {
                 values: vec![],
                 newline: true,
             },
-            Span::new(0, 5),
+            Span::new(0, 5, 1),
         );
         assert!(matches!(
             stmt.kind,

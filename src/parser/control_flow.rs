@@ -35,8 +35,8 @@ impl<'a> Parser<'a> {
                         .map(|t| format!("{:?}", t.kind))
                         .unwrap_or("EOF".to_string()),
                     self.peek()
-                        .map(|t| t.span.clone().into())
-                        .unwrap_or_else(|| crate::ast::Span { start: 0, end: 0 }),
+                        .map(|t| t.span)
+                        .unwrap_or_else(|| crate::ast::Span { start: 0, end: 0, line: 1 }),
                 ));
                 return Err(());
             }
@@ -222,13 +222,13 @@ impl<'a> Parser<'a> {
         if self.check(&TokenKind::IntegerLiteral) {
             let token = self.advance().expect("line number");
             let target = format!("_line_{}", token.text);
-            let span: Span = token.span.clone().into();
+            let span: Span = token.span;
             return Ok(Statement::new(StatementKind::Goto { target }, span));
         }
         if self.check(&TokenKind::FloatLiteral) {
             let token = self.advance().expect("float line number");
             let target = format!("_line_{}", token.text.replace('.', "_"));
-            let span: Span = token.span.clone().into();
+            let span: Span = token.span;
             return Ok(Statement::new(StatementKind::Goto { target }, span));
         }
 
@@ -422,7 +422,7 @@ impl<'a> Parser<'a> {
 
         // Extract values before borrowing self again
         let token_kind = token.kind.clone();
-        let token_span: Span = token.span.clone().into();
+        let token_span: Span = token.span;
 
         let op = match &token_kind {
             TokenKind::Equals => CaseCompareOp::Equal,
@@ -536,8 +536,8 @@ impl<'a> Parser<'a> {
                     .map(|t| format!("{:?}", t.kind))
                     .unwrap_or("EOF".to_string()),
                 self.peek()
-                    .map(|t| t.span.clone().into())
-                    .unwrap_or_else(|| crate::ast::Span { start: 0, end: 0 }),
+                    .map(|t| t.span)
+                    .unwrap_or_else(|| crate::ast::Span { start: 0, end: 0, line: 1 }),
             ));
             return Err(());
         };

@@ -73,7 +73,7 @@ impl<'a> Parser<'a> {
             TokenKind::BinaryLiteral => self.parse_binary_literal(),
             TokenKind::StringLiteral => self.parse_string_literal(),
             TokenKind::UnterminatedString => {
-                let span = token.span.clone().into();
+                let span = token.span;
                 self.advance(); // Consume the unterminated string token
                 self.errors.push(ParseError::UnterminatedString { span });
                 Err(())
@@ -173,7 +173,7 @@ impl<'a> Parser<'a> {
             _ if self.is_name_token() => self.parse_identifier_or_call(),
 
             _ => {
-                let span = token.span.clone().into();
+                let span = token.span;
                 self.errors.push(ParseError::InvalidExpression {
                     span,
                     message: format!("unexpected token {:?}", token.kind),
@@ -196,7 +196,7 @@ impl<'a> Parser<'a> {
 
         // Extract values we need before borrowing self again
         let op_kind = op_token.kind.clone();
-        let op_span: Span = op_token.span.clone().into();
+        let op_span: Span = op_token.span;
 
         let op = match Self::token_to_binary_op(&op_kind) {
             Some(o) => o,
@@ -233,7 +233,7 @@ impl<'a> Parser<'a> {
     /// Parses an integer literal.
     fn parse_integer_literal(&mut self) -> Result<Expr, ()> {
         let token = self.advance().expect("integer literal token");
-        let span: Span = token.span.clone().into();
+        let span: Span = token.span;
 
         // Strip optional type suffix before parsing
         let text = token.text.trim_end_matches(['%', '&', '!', '#']);
@@ -251,7 +251,7 @@ impl<'a> Parser<'a> {
     /// Parses a floating-point literal.
     fn parse_float_literal(&mut self) -> Result<Expr, ()> {
         let token = self.advance().expect("float literal token");
-        let span: Span = token.span.clone().into();
+        let span: Span = token.span;
 
         // Strip optional type suffix (! for SINGLE, # for DOUBLE) before parsing
         let text = token.text.trim_end_matches(['!', '#']);
@@ -270,7 +270,7 @@ impl<'a> Parser<'a> {
     /// Parses a hexadecimal literal (&HFF, &HE0~%%, etc.).
     fn parse_hex_literal(&mut self) -> Result<Expr, ()> {
         let token = self.advance().expect("hex literal token");
-        let span: Span = token.span.clone().into();
+        let span: Span = token.span;
 
         // Skip the &H prefix, find where hex digits end (type suffix starts)
         let after_prefix = &token.text[2..];
@@ -292,7 +292,7 @@ impl<'a> Parser<'a> {
     /// Parses an octal literal (&O77, &O377~%%, etc.).
     fn parse_octal_literal(&mut self) -> Result<Expr, ()> {
         let token = self.advance().expect("octal literal token");
-        let span: Span = token.span.clone().into();
+        let span: Span = token.span;
 
         // Skip the &O prefix, find where octal digits end (type suffix starts)
         let after_prefix = &token.text[2..];
@@ -314,7 +314,7 @@ impl<'a> Parser<'a> {
     /// Parses a binary literal (&B1010, &B11111111~%%, etc.).
     fn parse_binary_literal(&mut self) -> Result<Expr, ()> {
         let token = self.advance().expect("binary literal token");
-        let span: Span = token.span.clone().into();
+        let span: Span = token.span;
 
         // Skip the &B prefix, find where binary digits end (type suffix starts)
         let after_prefix = &token.text[2..];
@@ -342,7 +342,7 @@ impl<'a> Parser<'a> {
     /// single literal quote character.
     fn parse_string_literal(&mut self) -> Result<Expr, ()> {
         let token = self.advance().expect("string literal token");
-        let span: Span = token.span.clone().into();
+        let span: Span = token.span;
 
         // Remove surrounding quotes and handle doubled-quote escape (QBasic style)
         let text = &token.text;
@@ -363,7 +363,7 @@ impl<'a> Parser<'a> {
     fn parse_identifier_or_call(&mut self) -> Result<Expr, ()> {
         let token = self.advance().expect("identifier token");
         let name = token.text.to_string();
-        let start_span: Span = token.span.clone().into();
+        let start_span: Span = token.span;
 
         // Check for function call (identifier followed by parenthesis)
         let mut expr = if self.check(&TokenKind::LeftParen) {

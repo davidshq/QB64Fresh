@@ -215,12 +215,15 @@ impl GraphicsBackend for MockBackend {
         y2: i32,
         color: u32,
         filled: bool,
+        style: Option<u16>,
     ) -> Result<(), GraphicsError> {
         if !self.initialized {
             return Err(GraphicsError::not_initialized());
         }
+        // Store style in operations for testing (we'll need to update MockOperation enum)
         self.operations
             .push(MockOperation::Line(x1, y1, x2, y2, color, filled));
+        let _ = style; // Store if needed for testing
         Ok(())
     }
 
@@ -278,6 +281,7 @@ impl GraphicsBackend for MockBackend {
         filled: bool,
         step1: bool,
         step2: bool,
+        style: Option<u16>,
     ) -> Result<(), GraphicsError> {
         let (final_x1, final_y1) = if step1 {
             (self.last_gfx_x + x1, self.last_gfx_y + y1)
@@ -291,7 +295,7 @@ impl GraphicsBackend for MockBackend {
         };
         self.last_gfx_x = final_x2;
         self.last_gfx_y = final_y2;
-        self.line(final_x1, final_y1, final_x2, final_y2, color, filled)
+        self.line(final_x1, final_y1, final_x2, final_y2, color, filled, style)
     }
 
     fn circle_step(

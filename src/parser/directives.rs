@@ -22,7 +22,7 @@ impl<'a> Parser<'a> {
     /// `$INCLUDE: 'path/to/file.bas'`
     pub(super) fn parse_include_directive(&mut self) -> Result<Statement, ()> {
         let token = self.advance().expect("$INCLUDE directive");
-        let span: Span = token.span.clone().into();
+        let span: Span = token.span;
 
         // Extract the path from the directive text
         // Format: $INCLUDE: 'path'
@@ -51,7 +51,7 @@ impl<'a> Parser<'a> {
     /// Handles `$IF`, `$ELSEIF`, `$ELSE`, `$END IF`, and other meta-commands.
     pub(super) fn parse_meta_command(&mut self) -> Result<Statement, ()> {
         let token = self.advance().expect("meta-command token");
-        let span: Span = token.span.clone().into();
+        let span: Span = token.span;
         let text = token.text.to_string();
 
         // Extract command name (after the $)
@@ -295,7 +295,7 @@ impl<'a> Parser<'a> {
     /// Delegates to the existing conditional block parsing logic.
     pub(super) fn parse_meta_if(&mut self) -> Result<Statement, ()> {
         let token = self.advance().expect("$IF token");
-        let span: Span = token.span.clone().into();
+        let span: Span = token.span;
         self.parse_conditional_block(span)
     }
 
@@ -380,7 +380,7 @@ impl<'a> Parser<'a> {
     /// - `$CONSOLE:ONLY` runs as console-only (no graphics window)
     pub(super) fn parse_meta_console(&mut self, only: bool) -> Result<Statement, ()> {
         let token = self.advance().expect("$CONSOLE token");
-        let span: Span = token.span.clone().into();
+        let span: Span = token.span;
 
         Ok(Statement::new(StatementKind::MetaConsole { only }, span))
     }
@@ -390,7 +390,7 @@ impl<'a> Parser<'a> {
     /// Hides the graphics window on program startup.
     pub(super) fn parse_meta_screenhide(&mut self) -> Result<Statement, ()> {
         let token = self.advance().expect("$SCREENHIDE token");
-        let span: Span = token.span.clone().into();
+        let span: Span = token.span;
 
         Ok(Statement::new(StatementKind::MetaScreenHide, span))
     }
@@ -400,7 +400,7 @@ impl<'a> Parser<'a> {
     /// Shows the graphics window on program startup (default behavior).
     pub(super) fn parse_meta_screenshow(&mut self) -> Result<Statement, ()> {
         let token = self.advance().expect("$SCREENSHOW token");
-        let span: Span = token.span.clone().into();
+        let span: Span = token.span;
 
         Ok(Statement::new(StatementKind::MetaScreenShow, span))
     }
@@ -408,7 +408,7 @@ impl<'a> Parser<'a> {
     /// Parses a `$RESIZE:ON` or `$RESIZE:OFF` directive.
     pub(super) fn parse_meta_resize(&mut self, enabled: bool) -> Result<Statement, ()> {
         let token = self.advance().expect("$RESIZE token");
-        let span: Span = token.span.clone().into();
+        let span: Span = token.span;
 
         Ok(Statement::new(StatementKind::MetaResize { enabled }, span))
     }
@@ -416,7 +416,7 @@ impl<'a> Parser<'a> {
     /// Parses a `$RESIZE:STRETCH` directive.
     pub(super) fn parse_meta_resize_stretch(&mut self) -> Result<Statement, ()> {
         let token = self.advance().expect("$RESIZE:STRETCH token");
-        let span: Span = token.span.clone().into();
+        let span: Span = token.span;
 
         Ok(Statement::new(StatementKind::MetaResizeStretch, span))
     }
@@ -424,7 +424,7 @@ impl<'a> Parser<'a> {
     /// Parses a `$RESIZE:SMOOTH` directive.
     pub(super) fn parse_meta_resize_smooth(&mut self) -> Result<Statement, ()> {
         let token = self.advance().expect("$RESIZE:SMOOTH token");
-        let span: Span = token.span.clone().into();
+        let span: Span = token.span;
 
         Ok(Statement::new(StatementKind::MetaResizeSmooth, span))
     }
@@ -432,7 +432,7 @@ impl<'a> Parser<'a> {
     /// Parses a `$STATIC` directive.
     pub(super) fn parse_meta_static(&mut self) -> Result<Statement, ()> {
         let token = self.advance().expect("$STATIC token");
-        let span: Span = token.span.clone().into();
+        let span: Span = token.span;
 
         Ok(Statement::new(StatementKind::MetaStatic, span))
     }
@@ -440,7 +440,7 @@ impl<'a> Parser<'a> {
     /// Parses a `$DYNAMIC` directive.
     pub(super) fn parse_meta_dynamic(&mut self) -> Result<Statement, ()> {
         let token = self.advance().expect("$DYNAMIC token");
-        let span: Span = token.span.clone().into();
+        let span: Span = token.span;
 
         Ok(Statement::new(StatementKind::MetaDynamic, span))
     }
@@ -448,7 +448,7 @@ impl<'a> Parser<'a> {
     /// Parses a `$DEBUG` directive.
     pub(super) fn parse_meta_debug(&mut self) -> Result<Statement, ()> {
         let token = self.advance().expect("$DEBUG token");
-        let span: Span = token.span.clone().into();
+        let span: Span = token.span;
 
         Ok(Statement::new(StatementKind::MetaDebug, span))
     }
@@ -456,7 +456,7 @@ impl<'a> Parser<'a> {
     /// Parses a `$INCLUDEONCE` directive.
     pub(super) fn parse_meta_includeonce(&mut self) -> Result<Statement, ()> {
         let token = self.advance().expect("$INCLUDEONCE token");
-        let span: Span = token.span.clone().into();
+        let span: Span = token.span;
 
         Ok(Statement::new(StatementKind::MetaIncludeOnce, span))
     }
@@ -464,7 +464,7 @@ impl<'a> Parser<'a> {
     /// Parses a `$EXEICON:'filename'` directive.
     pub(super) fn parse_meta_exeicon(&mut self) -> Result<Statement, ()> {
         let token = self.advance().expect("$EXEICON token");
-        let span: Span = token.span.clone().into();
+        let span: Span = token.span;
 
         // Extract filename from the token text (e.g., "$EXEICON:'icon.ico'")
         let text = &token.text;
@@ -487,7 +487,7 @@ impl<'a> Parser<'a> {
     /// Parses a `$VERSIONINFO:key=value` directive.
     pub(super) fn parse_meta_versioninfo(&mut self) -> Result<Statement, ()> {
         let token = self.advance().expect("$VERSIONINFO token");
-        let span: Span = token.span.clone().into();
+        let span: Span = token.span;
 
         // Extract key and value from the token text (e.g., "$VERSIONINFO:CompanyName=My Company")
         let text = &token.text;
@@ -513,7 +513,7 @@ impl<'a> Parser<'a> {
     /// Parses a `$ERROR message` directive.
     pub(super) fn parse_meta_error(&mut self) -> Result<Statement, ()> {
         let token = self.advance().expect("$ERROR token");
-        let span: Span = token.span.clone().into();
+        let span: Span = token.span;
 
         // Extract message from the token text (e.g., "$ERROR This is an error message")
         let text = &token.text;
@@ -532,7 +532,7 @@ impl<'a> Parser<'a> {
     /// Parses a `$EMBED:'filename'` directive.
     pub(super) fn parse_meta_embed(&mut self) -> Result<Statement, ()> {
         let token = self.advance().expect("$EMBED token");
-        let span: Span = token.span.clone().into();
+        let span: Span = token.span;
 
         // Extract filename from the token text (e.g., "$EMBED:'icon.png'")
         let text = &token.text;
@@ -552,7 +552,7 @@ impl<'a> Parser<'a> {
     /// Parses a `$MIDISOUNDFONT:'file.sf2'` directive.
     pub(super) fn parse_meta_midisoundfont(&mut self) -> Result<Statement, ()> {
         let token = self.advance().expect("$MIDISOUNDFONT token");
-        let span: Span = token.span.clone().into();
+        let span: Span = token.span;
 
         // Extract filename from the token text (e.g., "$MIDISOUNDFONT:'soundfont.sf2'")
         let text = &token.text;
@@ -575,7 +575,7 @@ impl<'a> Parser<'a> {
     /// Parses a `$UNSTABLE:feature` directive.
     pub(super) fn parse_meta_unstable(&mut self) -> Result<Statement, ()> {
         let token = self.advance().expect("$UNSTABLE token");
-        let span: Span = token.span.clone().into();
+        let span: Span = token.span;
 
         // Extract feature name from the token text (e.g., "$UNSTABLE:http")
         let text = &token.text;
@@ -594,7 +594,7 @@ impl<'a> Parser<'a> {
     /// Parses a `$FORMAT` directive.
     pub(super) fn parse_meta_format(&mut self) -> Result<Statement, ()> {
         let token = self.advance().expect("$FORMAT token");
-        let span: Span = token.span.clone().into();
+        let span: Span = token.span;
 
         Ok(Statement::new(StatementKind::MetaFormat, span))
     }
@@ -602,7 +602,7 @@ impl<'a> Parser<'a> {
     /// Parses a `$USELIBRARY:'library'` directive.
     pub(super) fn parse_meta_uselibrary(&mut self) -> Result<Statement, ()> {
         let token = self.advance().expect("$USELIBRARY token");
-        let span: Span = token.span.clone().into();
+        let span: Span = token.span;
 
         // Extract library from the token text (e.g., "$USELIBRARY:'opengl32'")
         let text = &token.text;
