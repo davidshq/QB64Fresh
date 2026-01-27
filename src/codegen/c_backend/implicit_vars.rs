@@ -722,7 +722,7 @@ mod tests {
                 value: TypedExpr::integer(42, Span::new(4, 6, 1)),
                 target_type: BasicType::Long,
             },
-            Span::new(0, 6),
+            Span::new(0, 6, 1),
         )];
 
         let locals = collect_implicit_locals(
@@ -750,7 +750,7 @@ mod tests {
                 value: TypedExpr::integer(1, Span::new(8, 9, 1)),
                 target_type: BasicType::Long,
             },
-            Span::new(0, 9),
+            Span::new(0, 9, 1),
         )];
 
         let locals = collect_implicit_locals(
@@ -776,7 +776,7 @@ mod tests {
         let body = vec![TypedStatement::new(
             TypedStatementKind::Assignment {
                 name: "param1".to_string(),
-                value: TypedExpr::integer(10, Span::new(10, 12)),
+                value: TypedExpr::integer(10, Span::new(10, 12, 1)),
                 target_type: BasicType::Long,
             },
             Span::new(0, 12, 1),

@@ -700,7 +700,15 @@ impl<'a> TypeChecker<'a> {
                             span: stmt.span,
                             is_mutable: true,
                         };
-                        let _ = self.symbols.define_symbol(symbol);
+                        // Report duplicate variable errors for COMMON statements
+                        if let Err(duplicate) = self.symbols.define_symbol(symbol) {
+                            let (existing, new) = *duplicate;
+                            self.errors.push(SemanticError::DuplicateVariable {
+                                name: v.name.clone(),
+                                original_span: existing.span,
+                                duplicate_span: new.span,
+                            });
+                        }
 
                         TypedCommonVariable {
                             name: v.name.clone(),
@@ -1966,19 +1974,67 @@ impl<'a> TypeChecker<'a> {
         let c_name = decl.alias.clone().unwrap_or_else(|| base_name.clone());
 
         // Register the function in the symbol table
-        // Note: We use define_symbol which may fail if symbol already exists,
-        // but we'll ignore duplicates for external functions (they can be redeclared)
-        let _ = self.symbols.define_symbol(Symbol {
+        // External functions can be redeclared, but only if they have the same signature
+        let new_symbol = Symbol {
             name: base_name.clone(),
             kind: SymbolKind::ExternalFunction {
                 c_name: c_name.clone(),
-                params: param_types,
+                params: param_types.clone(),
                 return_type: return_type.clone(),
             },
             basic_type: return_type.clone(),
             span: Span::new(0, 0, 1), // External functions don't have source location
             is_mutable: false,
-        });
+        };
+
+        match self.symbols.define_symbol(new_symbol) {
+            Ok(_) => {
+                // Successfully defined
+            }
+            Err(duplicate) => {
+                // Check if the duplicate is also an external function with the same signature
+                let (existing, new) = *duplicate;
+                // We know `new.kind` is ExternalFunction because we just created it
+                match &existing.kind {
+                    SymbolKind::ExternalFunction {
+                        c_name: existing_c_name,
+                        params: existing_params,
+                        return_type: existing_return,
+                    } => {
+                        // Both are external functions - check if signatures match
+                        // Extract new function details (we know it's ExternalFunction)
+                        if let SymbolKind::ExternalFunction {
+                            c_name: new_c_name,
+                            params: new_params,
+                            return_type: new_return,
+                        } = &new.kind
+                        {
+                            if existing_c_name == new_c_name
+                                && existing_params == new_params
+                                && existing_return == new_return
+                            {
+                                // Same signature - allow redeclaration (ignore the error)
+                            } else {
+                                // Different signature - report duplicate variable error
+                                self.errors.push(SemanticError::DuplicateVariable {
+                                    name: base_name.clone(),
+                                    original_span: existing.span,
+                                    duplicate_span: new.span,
+                                });
+                            }
+                        }
+                    }
+                    _ => {
+                        // Existing symbol is not an external function - report error
+                        self.errors.push(SemanticError::DuplicateVariable {
+                            name: base_name.clone(),
+                            original_span: existing.span,
+                            duplicate_span: new.span,
+                        });
+                    }
+                }
+            }
+        }
 
         TypedExternalDeclaration {
             name: base_name,
@@ -2253,10 +2309,45 @@ impl<'a> TypeChecker<'a> {
             is_mutable: false,
         };
 
-        // Add to symbol table (ignore duplicates - user can override with manual CONST)
-        if let Err(_err) = self.symbols.define_symbol(symbol) {
-            // Constant already exists - this is fine, user may have defined it manually
-            // or it may be defined in multiple headers. We don't error on this.
+        // Add to symbol table
+        // Allow duplicates for constants: user can override with manual CONST,
+        // or constants may be defined in multiple headers
+        //
+        // Note: `define_symbol` only returns errors for duplicate symbols (it returns
+        // `Box<(Symbol, Symbol)>` containing the existing and new symbols).
+        // There are no other error types, so it's safe to handle all errors as duplicates.
+        match self.symbols.define_symbol(symbol.clone()) {
+            Ok(_) => {
+                // Successfully defined
+            }
+            Err(duplicate) => {
+                // `define_symbol` only fails for duplicate symbols, so this is always a duplicate
+                let (existing, new) = *duplicate;
+                // Check if the existing symbol is also a constant
+                match &existing.kind {
+                    SymbolKind::Constant { value: existing_val } => {
+                        // Both are constants - check if values match
+                        // We know `new.kind` is Constant because we just created it
+                        if let SymbolKind::Constant { value: new_val } = &new.kind {
+                            if existing_val == new_val {
+                                // Same constant value - allow redeclaration (ignore)
+                            } else {
+                                // Different values - user override or header conflict
+                                // Allow it (user/manual definition takes precedence)
+                            }
+                        }
+                    }
+                    _ => {
+                        // Existing symbol is not a constant - this is a conflict
+                        // Report duplicate variable error
+                        self.errors.push(SemanticError::DuplicateVariable {
+                            name: constant.name.clone(),
+                            original_span: existing.span,
+                            duplicate_span: new.span,
+                        });
+                    }
+                }
+            }
         }
     }
 
@@ -2299,10 +2390,34 @@ impl<'a> TypeChecker<'a> {
             custom_type: true, // C structs are C-compatible by definition
         };
 
-        // Add to symbol table (ignore duplicates - user can override with manual TYPE)
-        if let Err(_existing) = self.symbols.define_user_type(user_type) {
-            // Type already exists - this is fine, user may have defined it manually
-            // or it may be defined in multiple headers. We don't error on this.
+        // Add to symbol table
+        // Allow duplicates for types: user can override with manual TYPE,
+        // or types may be defined in multiple headers
+        //
+        // Note: `define_user_type` only returns errors for duplicate types (it returns
+        // the existing `UserTypeDefinition`). There are no other error types, so it's
+        // safe to handle all errors as duplicates.
+        match self.symbols.define_user_type(user_type.clone()) {
+            Ok(_) => {
+                // Successfully defined
+            }
+            Err(existing) => {
+                // `define_user_type` only fails for duplicate types, so this is always a duplicate
+                // Check if it's the same definition
+                if existing.members == user_type.members
+                    && existing.custom_type == user_type.custom_type
+                {
+                    // Same type definition - allow redeclaration (ignore)
+                } else {
+                    // Different type definition - this is a conflict
+                    // Report duplicate type error
+                    self.errors.push(SemanticError::DuplicateType {
+                        name: struct_def.name.clone(),
+                        original_span: existing.span,
+                        duplicate_span: user_type.span,
+                    });
+                }
+            }
         }
     }
 }

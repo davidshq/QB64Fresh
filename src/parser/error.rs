@@ -42,7 +42,7 @@ use thiserror::Error;
 /// use qb64fresh::ast::Span;
 ///
 /// // Create an error for a missing keyword
-/// let err = ParseError::unexpected("THEN", "END", Span::new(10, 13));
+/// let err = ParseError::unexpected("THEN", "END", Span::new(10, 13, 1));
 /// assert!(err.span().is_some());
 /// ```
 #[derive(Debug, Error, Clone)]
@@ -366,8 +366,8 @@ mod tests {
 
     #[test]
     fn test_error_span() {
-        let err = ParseError::unexpected("THEN", "ELSE", Span::new(10, 14));
-        assert_eq!(err.span(), Some(Span::new(10, 14)));
+        let err = ParseError::unexpected("THEN", "ELSE", Span::new(10, 14, 1));
+        assert_eq!(err.span(), Some(Span::new(10, 14, 1)));
     }
 
     #[test]
@@ -379,7 +379,7 @@ mod tests {
 
     #[test]
     fn test_syntax_error() {
-        let err = ParseError::syntax("invalid operator", Span::new(0, 5));
+        let err = ParseError::syntax("invalid operator", Span::new(0, 5, 1));
         assert!(err.to_string().contains("invalid operator"));
     }
 }

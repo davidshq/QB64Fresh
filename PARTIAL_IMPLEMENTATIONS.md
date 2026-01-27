@@ -1,6 +1,6 @@
 # Partial Implementations Audit
 
-This document catalogs all functionality that is only partially implemented across the QB64Fresh codebase. Generated on 2026-01-26.
+This document catalogs all functionality that is only partially implemented across the QB64Fresh codebase. Last updated: 2026-01-26.
 
 ## Categories
 
@@ -62,13 +62,6 @@ When using `--runtime inline`, many functions are stubs that allow compilation b
 **Compression Functions:**
 - `_DEFLATE$` - Stub (returns empty string)
 - `_MD5$` - Stub (returns "00000000000000000000000000000000")
-
-**Array Metadata:**
-- `qb_array_register` - Stub (no-op, doesn't track array bounds)
-- `qb_array_register_md` - Stub (no-op, doesn't track multi-dimensional arrays)
-- `qb_ubound` - Stub (returns 0)
-- `qb_ubound2` - Stub (returns 0)
-- `qb_lbound` - Stub (returns 0)
 
 **File I/O:**
 - `qb_file_get_string` - Stub (no-op, requires runtime library support for opaque strings)
@@ -312,7 +305,7 @@ All network functions are stubs:
 
 ### High Priority (Core Functionality)
 
-1. **Array Metadata Tracking** - UBOUND/LBOUND return 0 (stubs)
+1. ✅ **Array Metadata Tracking** - **COMPLETE** - Full implementation with hash table registry
 2. **COMMAND$ Function** - Returns empty string (should return command-line args)
 3. **FIELD Statement** - Not implemented (needed for random file I/O)
 4. **LSET/RSET** - Simplified (should respect field width)
@@ -349,6 +342,17 @@ These are infrastructure-complete but need runtime hooks to be functional.
 
 - Many stubs are **intentional** for inline runtime mode (graphics, network, dialogs)
 - Full functionality requires `--runtime external` with `libqb64fresh_rt`
-- Some stubs are **temporary** and need implementation (array metadata, FIELD statement)
+- Array metadata tracking is **fully implemented** (see `src/codegen/c_backend/runtime/arrays.rs`)
+- Some stubs are **temporary** and need implementation (FIELD statement, COMMAND$)
 - Debugger infrastructure is **complete** but needs runtime integration
 - Graphics features are **mostly complete** in external runtime, with minor enhancements needed
+
+## Recent Changes
+
+### 2026-01-26
+- ✅ **Array Metadata Tracking**: Fully implemented with hash table registry system
+  - `qb_array_register` / `qb_array_register_md` track array bounds
+  - `qb_ubound` / `qb_ubound2` and `qb_lbound` / `qb_lbound2` now return correct values
+  - `qb_array_update` handles REDIM pointer changes
+  - `qb_array_erase` clears metadata
+  - Implementation in `src/codegen/c_backend/runtime/arrays.rs`

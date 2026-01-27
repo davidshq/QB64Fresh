@@ -372,8 +372,17 @@ impl SemanticAnalyzer {
         };
 
         // For DECLARE, we don't error on duplicates - the actual definition
-        // will be registered later and should match
-        let _ = self.symbols.define_procedure(entry);
+        // will be registered later and should match. However, if there are
+        // multiple DECLARE statements for the same procedure, that's an error.
+        if let Err(existing) = self.symbols.define_procedure(entry.clone()) {
+            // Only error if both are DECLARE statements (not a DECLARE followed by definition)
+            // Since we're in register_declared_sub, this is a duplicate DECLARE
+            self.errors.push(SemanticError::DuplicateProcedure {
+                name: entry.name.clone(),
+                original_span: existing.span,
+                duplicate_span: entry.span,
+            });
+        }
     }
 
     /// Registers a DECLARE FUNCTION in the symbol table.
@@ -418,8 +427,18 @@ impl SemanticAnalyzer {
             is_static: false,
         };
 
-        // For DECLARE, we don't error on duplicates
-        let _ = self.symbols.define_procedure(entry);
+        // For DECLARE, we don't error on duplicates - the actual definition
+        // will be registered later and should match. However, if there are
+        // multiple DECLARE statements for the same procedure, that's an error.
+        if let Err(existing) = self.symbols.define_procedure(entry.clone()) {
+            // Only error if both are DECLARE statements (not a DECLARE followed by definition)
+            // Since we're in register_declared_function, this is a duplicate DECLARE
+            self.errors.push(SemanticError::DuplicateProcedure {
+                name: entry.name.clone(),
+                original_span: existing.span,
+                duplicate_span: entry.span,
+            });
+        }
     }
 
     /// Registers an external function/sub from DECLARE LIBRARY.
@@ -457,6 +476,13 @@ impl SemanticAnalyzer {
             is_static: false,
         };
 
-        let _ = self.symbols.define_procedure(entry);
+        // Duplicate DECLARE LIBRARY declarations should be reported as errors
+        if let Err(existing) = self.symbols.define_procedure(entry.clone()) {
+            self.errors.push(SemanticError::DuplicateProcedure {
+                name: entry.name.clone(),
+                original_span: existing.span,
+                duplicate_span: entry.span,
+            });
+        }
     }
 }

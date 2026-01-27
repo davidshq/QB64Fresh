@@ -119,7 +119,7 @@ mod tests {
 
     #[test]
     fn test_error_with_span() {
-        let err = CodeGenError::unsupported("feature").with_span(Span::new(10, 20));
+        let err = CodeGenError::unsupported("feature").with_span(Span::new(10, 20, 1));
         assert!(err.to_string().contains("10..20"));
     }
 

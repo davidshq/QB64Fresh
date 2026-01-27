@@ -376,7 +376,7 @@ pub extern "C" fn qb_gfx_point(x: i32, y: i32) -> u32 {
 pub extern "C" fn qb_gfx_line(x1: i32, y1: i32, x2: i32, y2: i32, color: u32) -> c_int {
     unsafe {
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
-            match backend.line(x1, y1, x2, y2, color, false, None) {
+            match backend.line(x1, y1, x2, y2, color, false, false, None) {
                 Ok(()) => 0,
                 Err(_) => 1,
             }
@@ -416,7 +416,7 @@ pub extern "C" fn qb_gfx_line_step(
             } else {
                 Some(style)
             };
-            match backend.line_step(x1, y1, x2, y2, color, false, step1 != 0, step2 != 0, style_opt) {
+            match backend.line_step(x1, y1, x2, y2, color, false, false, step1 != 0, step2 != 0, style_opt) {
                 Ok(()) => 0,
                 Err(_) => 1,
             }
@@ -465,9 +465,10 @@ pub extern "C" fn qb_gfx_box_step(
             } else {
                 Some(style)
             };
-            // For boxes, always pass style (even if None) so line() knows it's a box outline
-            // The filled parameter distinguishes filled boxes from outlines
-            match backend.line_step(x1, y1, x2, y2, color, filled != 0, step1 != 0, step2 != 0, style_opt) {
+            // For boxes, pass is_box=true when filled=0 (box outline), is_box=false when filled!=0 (filled box)
+            // The is_box parameter explicitly distinguishes box outlines from plain lines
+            let is_box = filled == 0; // Box outline (not filled) should be treated as a box
+            match backend.line_step(x1, y1, x2, y2, color, filled != 0, is_box, step1 != 0, step2 != 0, style_opt) {
                 Ok(()) => 0,
                 Err(_) => 1,
             }
@@ -499,7 +500,9 @@ pub extern "C" fn qb_gfx_box(
 ) -> c_int {
     unsafe {
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
-            match backend.line(x1, y1, x2, y2, color, filled != 0, None) {
+            // For boxes, pass is_box=true when filled=0 (box outline), is_box=false when filled!=0 (filled box)
+            let is_box = filled == 0; // Box outline (not filled) should be treated as a box
+            match backend.line(x1, y1, x2, y2, color, filled != 0, is_box, None) {
                 Ok(()) => 0,
                 Err(_) => 1,
             }

@@ -177,15 +177,15 @@ mod tests {
     use crate::semantic::symbols::{Symbol, SymbolKind};
 
     fn make_int_expr(val: i64) -> Expr {
-        Expr::new(ExprKind::IntegerLiteral(val), Span::new(0, 1))
+        Expr::new(ExprKind::IntegerLiteral(val), Span::new(0, 1, 1))
     }
 
     fn make_str_expr(val: &str) -> Expr {
-        Expr::new(ExprKind::StringLiteral(val.to_string()), Span::new(0, 1))
+        Expr::new(ExprKind::StringLiteral(val.to_string()), Span::new(0, 1, 1))
     }
 
     fn make_ident_expr(name: &str) -> Expr {
-        Expr::new(ExprKind::Identifier(name.to_string()), Span::new(0, 1))
+        Expr::new(ExprKind::Identifier(name.to_string()), Span::new(0, 1, 1))
     }
 
     #[test]
@@ -198,7 +198,7 @@ mod tests {
             StatementKind::Const {
                 definitions: vec![("X".to_string(), make_int_expr(42))],
             },
-            Span::new(0, 10),
+            Span::new(0, 10, 1),
         );
 
         let _typed = checker.check_statement(&stmt);
@@ -217,7 +217,7 @@ mod tests {
             name: "someVar".to_string(),
             kind: SymbolKind::Variable,
             basic_type: BasicType::Long,
-            span: Span::new(0, 7),
+            span: Span::new(0, 7, 1),
             is_mutable: true,
         });
 
@@ -228,7 +228,7 @@ mod tests {
             StatementKind::Const {
                 definitions: vec![("X".to_string(), make_ident_expr("someVar"))],
             },
-            Span::new(0, 15),
+            Span::new(0, 15, 1),
         );
 
         let _typed = checker.check_statement(&stmt);
@@ -261,11 +261,11 @@ mod tests {
                             op: BinaryOp::Add,
                             right: Box::new(make_int_expr(2)),
                         },
-                        Span::new(0, 5),
+                        Span::new(0, 5, 1),
                     ),
                 )],
             },
-            Span::new(0, 15),
+            Span::new(0, 15, 1),
         );
 
         let _typed = checker.check_statement(&stmt);
@@ -287,7 +287,7 @@ mod tests {
                 value: crate::semantic::symbols::ConstValue::Integer(10),
             },
             basic_type: BasicType::Long,
-            span: Span::new(0, 10),
+            span: Span::new(0, 10, 1),
             is_mutable: false,
         });
 
@@ -298,7 +298,7 @@ mod tests {
             StatementKind::Const {
                 definitions: vec![("B".to_string(), make_ident_expr("A"))],
             },
-            Span::new(0, 10),
+            Span::new(0, 10, 1),
         );
 
         let _typed = checker.check_statement(&stmt);
@@ -327,7 +327,7 @@ mod tests {
                 }],
                 shared: false,
             },
-            Span::new(0, 15),
+            Span::new(0, 15, 1),
         );
 
         let typed = checker.check_statement(&stmt);
@@ -366,14 +366,14 @@ mod tests {
                                 op: BinaryOp::Add,
                                 right: Box::new(make_int_expr(5)),
                             },
-                            Span::new(0, 5),
+                            Span::new(0, 5, 1),
                         ),
                     }],
                     type_spec: Some(crate::ast::TypeSpec::Integer),
                 }],
                 shared: false,
             },
-            Span::new(0, 20),
+            Span::new(0, 20, 1),
         );
 
         let typed = checker.check_statement(&stmt);
@@ -409,7 +409,7 @@ mod tests {
                 }],
                 shared: false,
             },
-            Span::new(0, 20),
+            Span::new(0, 20, 1),
         );
 
         let typed = checker.check_statement(&stmt);
@@ -439,7 +439,7 @@ mod tests {
             name: "size".to_string(),
             kind: SymbolKind::Variable,
             basic_type: BasicType::Long,
-            span: Span::new(0, 4),
+            span: Span::new(0, 4, 1),
             is_mutable: true,
         });
 
@@ -458,7 +458,7 @@ mod tests {
                 }],
                 shared: false,
             },
-            Span::new(0, 15),
+            Span::new(0, 15, 1),
         );
 
         let _typed = checker.check_statement(&stmt);
@@ -492,7 +492,7 @@ mod tests {
                 op: BinaryOp::Add,
                 right: Box::new(make_int_expr(2)),
             },
-            Span::new(0, 5),
+            Span::new(0, 5, 1),
         );
 
         let typed = checker.check_expr(&expr);
@@ -511,7 +511,7 @@ mod tests {
                 op: BinaryOp::Add,
                 right: Box::new(make_str_expr(" world")),
             },
-            Span::new(0, 15),
+            Span::new(0, 15, 1),
         );
 
         let typed = checker.check_expr(&expr);
@@ -532,7 +532,7 @@ mod tests {
                 op: BinaryOp::Subtract,
                 right: Box::new(make_int_expr(42)),
             },
-            Span::new(0, 10),
+            Span::new(0, 10, 1),
         );
 
         let _typed = checker.check_expr(&expr);
@@ -549,7 +549,7 @@ mod tests {
         let mut checker = TypeChecker::new(&mut symbols);
 
         // Reference to undeclared variable should implicitly declare it
-        let expr = Expr::new(ExprKind::Identifier("x".to_string()), Span::new(0, 1));
+        let expr = Expr::new(ExprKind::Identifier("x".to_string()), Span::new(0, 1, 1));
 
         let typed = checker.check_expr(&expr);
         // Default type is SINGLE
@@ -565,7 +565,7 @@ mod tests {
         let mut symbols = SymbolTable::new();
         let mut checker = TypeChecker::new(&mut symbols);
 
-        let expr = Expr::new(ExprKind::Identifier("name$".to_string()), Span::new(0, 5));
+        let expr = Expr::new(ExprKind::Identifier("name$".to_string()), Span::new(0, 5, 1));
 
         let typed = checker.check_expr(&expr);
         assert_eq!(typed.basic_type, BasicType::String);
@@ -586,7 +586,7 @@ mod tests {
                 body: vec![],
                 next_variable: Some("j".to_string()), // Mismatched!
             },
-            Span::new(0, 20),
+            Span::new(0, 20, 1),
         );
 
         let _typed = checker.check_statement(&stmt);
@@ -615,7 +615,7 @@ mod tests {
                 body: vec![],
                 next_variable: Some("i".to_string()), // Matches
             },
-            Span::new(0, 20),
+            Span::new(0, 20, 1),
         );
 
         let _typed = checker.check_statement(&stmt);
@@ -640,7 +640,7 @@ mod tests {
                 body: vec![],
                 next_variable: Some("COUNTER".to_string()), // Different case
             },
-            Span::new(0, 20),
+            Span::new(0, 20, 1),
         );
 
         let _typed = checker.check_statement(&stmt);
@@ -664,7 +664,7 @@ mod tests {
             StatementKind::CloseFile {
                 file_nums: vec![make_int_expr(1)],
             },
-            Span::new(0, 10),
+            Span::new(0, 10, 1),
         );
 
         let _typed = checker.check_statement(&stmt);
@@ -692,7 +692,7 @@ mod tests {
                 file_num: make_int_expr(1),
                 record_len: None,
             },
-            Span::new(0, 30),
+            Span::new(0, 30, 1),
         );
 
         let _typed = checker.check_statement(&stmt);
@@ -717,7 +717,7 @@ mod tests {
             StatementKind::OnErrorGoto {
                 target: "errorHandler".to_string(),
             },
-            Span::new(0, 25),
+            Span::new(0, 25, 1),
         );
 
         let _typed = checker.check_statement(&stmt);
@@ -739,7 +739,7 @@ mod tests {
             StatementKind::ErrorStmt {
                 code: make_int_expr(53),
             },
-            Span::new(0, 10),
+            Span::new(0, 10, 1),
         );
 
         let _typed = checker.check_statement(&stmt);
@@ -765,7 +765,7 @@ mod tests {
                 selector: make_int_expr(1),
                 targets: vec!["label1".to_string(), "label2".to_string()],
             },
-            Span::new(0, 30),
+            Span::new(0, 30, 1),
         );
 
         let _typed = checker.check_statement(&stmt);
@@ -787,7 +787,7 @@ mod tests {
                 selector: make_int_expr(2),
                 targets: vec!["sub1".to_string(), "sub2".to_string()],
             },
-            Span::new(0, 25),
+            Span::new(0, 25, 1),
         );
 
         let _typed = checker.check_statement(&stmt);
@@ -825,10 +825,10 @@ mod tests {
                         op: BinaryOp::Multiply,
                         right: Box::new(make_int_expr(2)),
                     },
-                    Span::new(0, 5),
+                    Span::new(0, 5, 1),
                 ),
             },
-            Span::new(0, 25),
+            Span::new(0, 25, 1),
         );
 
         let _typed = checker.check_statement(&stmt);
@@ -867,7 +867,7 @@ mod tests {
                     },
                 ],
             },
-            Span::new(0, 15),
+            Span::new(0, 15, 1),
         );
 
         let _typed = checker.check_statement(&stmt);
@@ -899,7 +899,7 @@ mod tests {
                     type_spec: None,
                 }],
             },
-            Span::new(0, 15),
+            Span::new(0, 15, 1),
         );
 
         let _typed = checker.check_statement(&stmt);
@@ -931,7 +931,7 @@ mod tests {
                     type_spec: None,
                 }],
             },
-            Span::new(0, 25),
+            Span::new(0, 25, 1),
         );
 
         let _typed = checker.check_statement(&stmt);

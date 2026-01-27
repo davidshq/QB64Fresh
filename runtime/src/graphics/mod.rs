@@ -141,12 +141,13 @@ pub trait GraphicsBackend {
     /// - `x2`, `y2`: End coordinates
     /// - `color`: Line color
     /// - `filled`: Whether to fill (for box drawing)
+    /// - `is_box`: If true, treat as box outline (draw 4 edges). If false, draw single line.
     /// - `style`: Optional 16-bit style pattern for box outlines (ignored for filled boxes and plain lines)
     ///
     /// # Style Pattern
     /// The style pattern is a 16-bit value where each bit represents whether to draw a pixel.
     /// Bit 15 (MSB) is the first pixel, bit 0 (LSB) is the last. The pattern repeats.
-    /// Only applies to box outlines (`filled=false` with box coordinates).
+    /// Only applies to box outlines (`filled=false` with `is_box=true`).
     fn line(
         &mut self,
         x1: i32,
@@ -155,6 +156,7 @@ pub trait GraphicsBackend {
         y2: i32,
         color: u32,
         filled: bool,
+        is_box: bool,
         style: Option<u16>,
     ) -> Result<(), GraphicsError>;
 
@@ -218,6 +220,7 @@ pub trait GraphicsBackend {
     /// - `x2`, `y2`: End coordinates
     /// - `color`: Line color
     /// - `filled`: Whether to fill (for box drawing)
+    /// - `is_box`: If true, treat as box outline (draw 4 edges). If false, draw single line.
     /// - `step1`: If true, start coordinates are relative
     /// - `step2`: If true, end coordinates are relative to resolved start
     /// - `style`: Optional 16-bit style pattern for box outlines (ignored for filled boxes and plain lines)
@@ -229,13 +232,14 @@ pub trait GraphicsBackend {
         y2: i32,
         color: u32,
         filled: bool,
+        is_box: bool,
         step1: bool,
         step2: bool,
         style: Option<u16>,
     ) -> Result<(), GraphicsError> {
         // Default: ignore step flags, just use absolute coordinates
         let _ = (step1, step2);
-        self.line(x1, y1, x2, y2, color, filled, style)
+        self.line(x1, y1, x2, y2, color, filled, is_box, style)
     }
 
     /// Draw a circle with optional STEP mode.

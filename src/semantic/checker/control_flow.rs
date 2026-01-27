@@ -252,8 +252,10 @@ impl<'a> TypeChecker<'a> {
 
         // Determine loop variable type
         let var_type = if let Some(sym) = self.symbols.lookup_symbol(variable) {
+            // Variable exists - use existing type
             sym.basic_type.clone()
         } else {
+            // Infer type from start and end expressions
             let t = typed_start
                 .basic_type
                 .common_type(&typed_end.basic_type)
@@ -265,8 +267,20 @@ impl<'a> TypeChecker<'a> {
                 span,
                 is_mutable: true,
             };
-            let _ = self.symbols.define_symbol(symbol);
-            t
+            // Should never fail since we checked lookup_symbol, but handle it
+            if let Err(dup) = self.symbols.define_symbol(symbol) {
+                let (existing, _) = *dup;
+                // Type conflict - variable was defined elsewhere
+                self.errors.push(SemanticError::DuplicateVariable {
+                    name: variable.to_string(),
+                    original_span: existing.span,
+                    duplicate_span: span,
+                });
+                // Use existing type to avoid cascading errors
+                existing.basic_type.clone()
+            } else {
+                t
+            }
         };
 
         // Check body with increased FOR depth

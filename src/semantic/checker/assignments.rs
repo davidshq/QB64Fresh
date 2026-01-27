@@ -70,6 +70,7 @@ impl<'a> TypeChecker<'a> {
         // When a symbol is found via suffix fallback (e.g., `x$` matches `x AS STRING`),
         // use the symbol's declared name for consistent C code generation.
         let (resolved_name, target_type) = if let Some(symbol) = self.symbols.lookup_scalar(name) {
+            // Variable exists - use existing type
             (symbol.name.clone(), symbol.basic_type.clone())
         } else {
             // New variable, infer from suffix or default
@@ -84,9 +85,20 @@ impl<'a> TypeChecker<'a> {
                 span,
                 is_mutable: true,
             };
-            let _ = self.symbols.define_symbol(symbol);
-
-            (name.to_string(), inferred)
+            // Should never fail since we checked lookup_scalar, but handle it
+            if let Err(dup) = self.symbols.define_symbol(symbol) {
+                let (existing, _) = *dup;
+                // Type conflict - variable was defined elsewhere
+                self.errors.push(SemanticError::DuplicateVariable {
+                    name: name.to_string(),
+                    original_span: existing.span,
+                    duplicate_span: span,
+                });
+                // Use existing type to avoid cascading errors
+                (existing.name.clone(), existing.basic_type.clone())
+            } else {
+                (name.to_string(), inferred)
+            }
         };
 
         // Check type compatibility
@@ -621,6 +633,7 @@ impl<'a> TypeChecker<'a> {
             .map(|target| match target {
                 InputTarget::Variable(name) => {
                     let var_type = if let Some(symbol) = self.symbols.lookup_symbol(name) {
+                        // Variable exists - use existing type
                         symbol.basic_type.clone()
                     } else {
                         // Infer type from suffix or default
@@ -633,8 +646,20 @@ impl<'a> TypeChecker<'a> {
                             span,
                             is_mutable: true,
                         };
-                        let _ = self.symbols.define_symbol(symbol);
-                        inferred
+                        // Should never fail since we checked lookup_symbol, but handle it
+                        if let Err(dup) = self.symbols.define_symbol(symbol) {
+                            let (existing, _) = *dup;
+                            // Type conflict - variable was defined elsewhere
+                            self.errors.push(SemanticError::DuplicateVariable {
+                                name: name.clone(),
+                                original_span: existing.span,
+                                duplicate_span: span,
+                            });
+                            // Use existing type to avoid cascading errors
+                            existing.basic_type.clone()
+                        } else {
+                            inferred
+                        }
                     };
                     TypedInputTarget::Variable {
                         name: name.clone(),
@@ -753,7 +778,17 @@ impl<'a> TypeChecker<'a> {
         // LINE INPUT always reads into a string
         let typed_target = match target {
             InputTarget::Variable(name) => {
-                if self.symbols.lookup_symbol(name).is_none() {
+                if let Some(existing) = self.symbols.lookup_symbol(name) {
+                    // Variable exists - check for type conflict (LINE INPUT requires STRING)
+                    if !existing.basic_type.is_string() {
+                        self.errors.push(SemanticError::TypeMismatch {
+                            expected: "STRING".to_string(),
+                            found: existing.basic_type.to_string(),
+                            span,
+                        });
+                    }
+                } else {
+                    // Create new variable as STRING
                     let symbol = Symbol {
                         name: name.clone(),
                         kind: SymbolKind::Variable,
@@ -761,7 +796,15 @@ impl<'a> TypeChecker<'a> {
                         span,
                         is_mutable: true,
                     };
-                    let _ = self.symbols.define_symbol(symbol);
+                    // Should never fail since we checked lookup_symbol, but handle it
+                    if let Err(dup) = self.symbols.define_symbol(symbol) {
+                        let (existing, _) = *dup;
+                        self.errors.push(SemanticError::DuplicateVariable {
+                            name: name.clone(),
+                            original_span: existing.span,
+                            duplicate_span: span,
+                        });
+                    }
                 }
                 TypedInputTarget::Variable {
                     name: name.clone(),

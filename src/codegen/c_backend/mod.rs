@@ -663,10 +663,10 @@ mod tests {
         let program = TypedProgram::new(vec![TypedStatement::new(
             TypedStatementKind::Assignment {
                 name: "x".to_string(),
-                value: TypedExpr::integer(42, Span::new(4, 6)),
+                value: TypedExpr::integer(42, Span::new(4, 6, 1)),
                 target_type: BasicType::Long,
             },
-            Span::new(0, 6),
+            Span::new(0, 6, 1),
         )]);
 
         let backend = CBackend::new();
@@ -692,7 +692,7 @@ mod tests {
                         crate::semantic::typed_ir::TypedDataValue::Integer(2),
                     ],
                 },
-                Span::new(11, 20),
+                Span::new(11, 20, 1),
             ),
             TypedStatement::new(
                 TypedStatementKind::Restore {
