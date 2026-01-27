@@ -42,8 +42,8 @@ mod token;
 
 pub use token::{Token, TokenKind};
 
-use logos::Logos;
 use crate::ast::Span;
+use logos::Logos;
 
 /// The lexer for QB64Fresh BASIC source code.
 ///
@@ -139,7 +139,7 @@ impl<'source> Lexer<'source> {
     fn line_number_at_offset(source: &str, offset: usize) -> usize {
         // Clamp offset to source length to avoid panics
         let clamped_offset = offset.min(source.len());
-        
+
         // Count newlines in the prefix up to the offset
         // Line numbers are 1-indexed, so we start at 1 and add 1 for each newline
         source[..clamped_offset]

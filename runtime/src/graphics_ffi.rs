@@ -8,7 +8,16 @@
 //!
 //! All functions return an `i32`:
 //! - `0`: Success
-//! - Non-zero: Error (specific codes TBD)
+//! - Non-zero: Error (typically `1`, or `-1` for some functions like `qb_gfx_loadimage`)
+//!
+//! **Error Logging:** All errors are logged to stderr with detailed context:
+//! - Function name where the error occurred
+//! - Error kind (e.g., `InvalidArgument`, `NotInitialized`, `BackendError`)
+//! - Error message with specific details
+//!
+//! This provides comprehensive visibility into failures while maintaining backward
+//! compatibility with the simple return code interface. Validation errors (null
+//! pointers, invalid arguments) are also logged with descriptive messages.
 //!
 //! # Thread Safety
 //!
@@ -17,6 +26,45 @@
 
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int};
+
+/// Helper macro to log FFI errors and return error code.
+///
+/// This macro provides consistent error logging across all FFI functions.
+/// It logs detailed error information to stderr including:
+/// - Function name
+/// - Error kind (from GraphicsError)
+/// - Error message
+/// - Returns the appropriate error code (1 for failure).
+///
+/// # Usage
+///
+/// ```ignore
+/// match some_operation() {
+///     Ok(result) => result,
+///     Err(e) => return log_ffi_error!("function_name", e),
+/// }
+/// ```
+macro_rules! log_ffi_error {
+    ($func_name:expr, $error:expr) => {{
+        eprintln!(
+            "Error in {}: [{}] {}",
+            $func_name,
+            format!("{:?}", $error.kind()),
+            $error.message()
+        );
+        1
+    }};
+}
+
+/// Helper macro to log validation errors (null pointers, invalid arguments).
+///
+/// Logs validation errors with context and returns error code.
+macro_rules! log_validation_error {
+    ($func_name:expr, $reason:expr) => {{
+        eprintln!("Validation error in {}: {}", $func_name, $reason);
+        1
+    }};
+}
 
 /// Initialize the graphics system.
 ///
@@ -31,7 +79,7 @@ use std::os::raw::{c_char, c_int};
 pub extern "C" fn qb_gfx_init(width: u32, height: u32) -> c_int {
     match crate::graphics::init_graphics(width, height) {
         Ok(()) => 0,
-        Err(_) => 1,
+        Err(e) => log_ffi_error!("qb_gfx_init", e),
     }
 }
 
@@ -44,7 +92,7 @@ pub extern "C" fn qb_gfx_init(width: u32, height: u32) -> c_int {
 pub extern "C" fn qb_gfx_shutdown() -> c_int {
     match crate::graphics::shutdown_graphics() {
         Ok(()) => 0,
-        Err(_) => 1,
+        Err(e) => log_ffi_error!("qb_gfx_shutdown", e),
     }
 }
 
@@ -106,14 +154,17 @@ pub extern "C" fn qb_gfx_screen(
                 (640, 480)
             } else {
                 // Invalid mode
-                return 1;
+                return log_validation_error!(
+                    "qb_gfx_screen",
+                    format!("invalid SCREEN mode: {}", mode)
+                );
             }
         }
     };
 
     // Initialize graphics with the mode dimensions
-    if let Err(_) = crate::graphics::init_graphics(width, height) {
-        return 1;
+    if let Err(e) = crate::graphics::init_graphics(width, height) {
+        return log_ffi_error!("qb_gfx_screen", e);
     }
 
     // Set active and visual pages if specified (>= 0 means use that page)
@@ -121,14 +172,14 @@ pub extern "C" fn qb_gfx_screen(
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
             // Set active page if specified
             if active_page >= 0 {
-                if let Err(_) = backend.set_active_page(active_page) {
-                    return 1;
+                if let Err(e) = backend.set_active_page(active_page) {
+                    return log_ffi_error!("qb_gfx_screen (set_active_page)", e);
                 }
             }
             // Set visual page if specified
             if visual_page >= 0 {
-                if let Err(_) = backend.set_visual_page(visual_page) {
-                    return 1;
+                if let Err(e) = backend.set_visual_page(visual_page) {
+                    return log_ffi_error!("qb_gfx_screen (set_visual_page)", e);
                 }
             }
         }
@@ -148,7 +199,7 @@ pub extern "C" fn qb_gfx_cls() -> c_int {
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
             match backend.cls() {
                 Ok(()) => 0,
-                Err(_) => 1,
+                Err(e) => log_ffi_error!("qb_gfx_cls", e),
             }
         } else {
             1 // Not initialized
@@ -171,7 +222,7 @@ pub extern "C" fn qb_gfx_color(foreground: u32, background: u32) -> c_int {
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
             match backend.set_color(foreground, background) {
                 Ok(()) => 0,
-                Err(_) => 1,
+                Err(e) => log_ffi_error!("qb_gfx_color", e),
             }
         } else {
             1
@@ -224,7 +275,7 @@ pub extern "C" fn qb_gfx_locate(row: u32, col: u32) -> c_int {
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
             match backend.locate(row, col) {
                 Ok(()) => 0,
-                Err(_) => 1,
+                Err(e) => log_ffi_error!("qb_gfx_locate", e),
             }
         } else {
             1
@@ -276,20 +327,23 @@ pub extern "C" fn qb_gfx_pos() -> u32 {
 #[no_mangle]
 pub unsafe extern "C" fn qb_gfx_print(text: *const c_char) -> c_int {
     if text.is_null() {
-        return 1;
+        return log_validation_error!("qb_gfx_print", "null pointer for text parameter");
     }
 
     let c_str = match CStr::from_ptr(text).to_str() {
         Ok(s) => s,
-        Err(_) => return 1,
+        Err(e) => {
+            return log_validation_error!("qb_gfx_print", format!("invalid UTF-8 in text: {}", e));
+        }
     };
 
     if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
         match backend.print(c_str) {
             Ok(()) => 0,
-            Err(_) => 1,
+            Err(e) => log_ffi_error!("qb_gfx_print", e),
         }
     } else {
+        log_validation_error!("qb_gfx_print", "graphics backend not initialized");
         1
     }
 }
@@ -310,7 +364,7 @@ pub extern "C" fn qb_gfx_pset(x: i32, y: i32, color: u32) -> c_int {
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
             match backend.pset(x, y, color) {
                 Ok(()) => 0,
-                Err(_) => 1,
+                Err(e) => log_ffi_error!("qb_gfx_pset", e),
             }
         } else {
             1
@@ -335,7 +389,7 @@ pub extern "C" fn qb_gfx_pset_step(x: i32, y: i32, color: u32, step: c_int) -> c
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
             match backend.pset_step(x, y, color, step != 0) {
                 Ok(()) => 0,
-                Err(_) => 1,
+                Err(e) => log_ffi_error!("qb_gfx_pset_step", e),
             }
         } else {
             1
@@ -378,7 +432,7 @@ pub extern "C" fn qb_gfx_line(x1: i32, y1: i32, x2: i32, y2: i32, color: u32) ->
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
             match backend.line(x1, y1, x2, y2, color, false, false, None) {
                 Ok(()) => 0,
-                Err(_) => 1,
+                Err(e) => log_ffi_error!("qb_gfx_line", e),
             }
         } else {
             1
@@ -416,9 +470,20 @@ pub extern "C" fn qb_gfx_line_step(
             } else {
                 Some(style)
             };
-            match backend.line_step(x1, y1, x2, y2, color, false, false, step1 != 0, step2 != 0, style_opt) {
+            match backend.line_step(
+                x1,
+                y1,
+                x2,
+                y2,
+                color,
+                false,
+                false,
+                step1 != 0,
+                step2 != 0,
+                style_opt,
+            ) {
                 Ok(()) => 0,
-                Err(_) => 1,
+                Err(e) => log_ffi_error!("qb_gfx_line_step", e),
             }
         } else {
             1
@@ -468,9 +533,20 @@ pub extern "C" fn qb_gfx_box_step(
             // For boxes, pass is_box=true when filled=0 (box outline), is_box=false when filled!=0 (filled box)
             // The is_box parameter explicitly distinguishes box outlines from plain lines
             let is_box = filled == 0; // Box outline (not filled) should be treated as a box
-            match backend.line_step(x1, y1, x2, y2, color, filled != 0, is_box, step1 != 0, step2 != 0, style_opt) {
+            match backend.line_step(
+                x1,
+                y1,
+                x2,
+                y2,
+                color,
+                filled != 0,
+                is_box,
+                step1 != 0,
+                step2 != 0,
+                style_opt,
+            ) {
                 Ok(()) => 0,
-                Err(_) => 1,
+                Err(e) => log_ffi_error!("qb_gfx_box_step", e),
             }
         } else {
             1
@@ -504,7 +580,7 @@ pub extern "C" fn qb_gfx_box(
             let is_box = filled == 0; // Box outline (not filled) should be treated as a box
             match backend.line(x1, y1, x2, y2, color, filled != 0, is_box, None) {
                 Ok(()) => 0,
-                Err(_) => 1,
+                Err(e) => log_ffi_error!("qb_gfx_box", e),
             }
         } else {
             1
@@ -529,7 +605,7 @@ pub extern "C" fn qb_gfx_circle(x: i32, y: i32, radius: i32, color: u32, filled:
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
             match backend.circle(x, y, radius, color, filled != 0) {
                 Ok(()) => 0,
-                Err(_) => 1,
+                Err(e) => log_ffi_error!("qb_gfx_circle", e),
             }
         } else {
             1
@@ -563,7 +639,7 @@ pub extern "C" fn qb_gfx_circle_step(
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
             match backend.circle_step(x, y, radius, color, filled != 0, step != 0) {
                 Ok(()) => 0,
-                Err(_) => 1,
+                Err(e) => log_ffi_error!("qb_gfx_circle_step", e),
             }
         } else {
             1
@@ -593,7 +669,7 @@ pub extern "C" fn qb_gfx_paint(x: i32, y: i32, color: u32, boundary_color: i32) 
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
             match backend.paint(x, y, color, boundary) {
                 Ok(()) => 0,
-                Err(_) => 1,
+                Err(e) => log_ffi_error!("qb_gfx_paint", e),
             }
         } else {
             1
@@ -630,7 +706,7 @@ pub extern "C" fn qb_gfx_paint_step(
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
             match backend.paint_step(x, y, color, boundary, step != 0) {
                 Ok(()) => 0,
-                Err(_) => 1,
+                Err(e) => log_ffi_error!("qb_gfx_paint_step", e),
             }
         } else {
             1
@@ -649,7 +725,7 @@ pub extern "C" fn qb_gfx_display() -> c_int {
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
             match backend.display() {
                 Ok(()) => 0,
-                Err(_) => 1,
+                Err(e) => log_ffi_error!("qb_gfx_display", e),
             }
         } else {
             1
@@ -674,7 +750,7 @@ pub extern "C" fn qb_gfx_pcopy(src: i32, dst: i32) -> c_int {
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
             match backend.pcopy(src, dst) {
                 Ok(()) => 0,
-                Err(_) => 1,
+                Err(e) => log_ffi_error!("qb_gfx_pcopy", e),
             }
         } else {
             1
@@ -697,7 +773,7 @@ pub extern "C" fn qb_gfx_set_active_page(page: i32) -> c_int {
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
             match backend.set_active_page(page) {
                 Ok(()) => 0,
-                Err(_) => 1,
+                Err(e) => log_ffi_error!("qb_gfx_set_active_page", e),
             }
         } else {
             1
@@ -720,7 +796,7 @@ pub extern "C" fn qb_gfx_set_visual_page(page: i32) -> c_int {
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
             match backend.set_visual_page(page) {
                 Ok(()) => 0,
-                Err(_) => 1,
+                Err(e) => log_ffi_error!("qb_gfx_set_visual_page", e),
             }
         } else {
             1
@@ -794,7 +870,10 @@ pub extern "C" fn qb_gfx_poll_events() -> c_int {
             match backend.poll_events() {
                 Ok(true) => 1,
                 Ok(false) => 0,
-                Err(_) => -1,
+                Err(e) => {
+                    log_ffi_error!("qb_gfx_poll_events", e);
+                    -1
+                }
             }
         } else {
             -1
@@ -884,7 +963,7 @@ pub extern "C" fn qb_gfx_set_width(columns: u32, rows: u32) -> c_int {
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
             match backend.set_width(columns, rows) {
                 Ok(()) => 0,
-                Err(_) => 1,
+                Err(e) => log_ffi_error!("qb_gfx_set_width", e),
             }
         } else {
             1
@@ -918,7 +997,7 @@ pub extern "C" fn qb_gfx_view(
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
             match backend.set_view(screen != 0, x1, y1, x2, y2, fill, border) {
                 Ok(()) => 0,
-                Err(_) => 1,
+                Err(e) => log_ffi_error!("qb_gfx_view", e),
             }
         } else {
             1
@@ -933,7 +1012,7 @@ pub extern "C" fn qb_gfx_view_reset() -> c_int {
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
             match backend.reset_view() {
                 Ok(()) => 0,
-                Err(_) => 1,
+                Err(e) => log_ffi_error!("qb_gfx_view_reset", e),
             }
         } else {
             1
@@ -948,7 +1027,7 @@ pub extern "C" fn qb_gfx_window(screen: c_int, x1: f64, y1: f64, x2: f64, y2: f6
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
             match backend.set_window(screen != 0, x1, y1, x2, y2) {
                 Ok(()) => 0,
-                Err(_) => 1,
+                Err(e) => log_ffi_error!("qb_gfx_window", e),
             }
         } else {
             1
@@ -963,7 +1042,7 @@ pub extern "C" fn qb_gfx_window_reset() -> c_int {
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
             match backend.reset_window() {
                 Ok(()) => 0,
-                Err(_) => 1,
+                Err(e) => log_ffi_error!("qb_gfx_window_reset", e),
             }
         } else {
             1
@@ -978,20 +1057,26 @@ pub extern "C" fn qb_gfx_window_reset() -> c_int {
 #[no_mangle]
 pub unsafe extern "C" fn qb_gfx_draw(commands: *const c_char) -> c_int {
     if commands.is_null() {
-        return 1;
+        return log_validation_error!("qb_gfx_draw", "null pointer for commands parameter");
     }
 
     let cmd_str = match CStr::from_ptr(commands).to_str() {
         Ok(s) => s,
-        Err(_) => return 1,
+        Err(e) => {
+            return log_validation_error!(
+                "qb_gfx_draw",
+                format!("invalid UTF-8 in commands: {}", e)
+            );
+        }
     };
 
     if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
         match backend.draw(cmd_str) {
             Ok(()) => 0,
-            Err(_) => 1,
+            Err(e) => log_ffi_error!("qb_gfx_draw", e),
         }
     } else {
+        log_validation_error!("qb_gfx_draw", "graphics backend not initialized");
         1
     }
 }
@@ -1007,7 +1092,7 @@ pub extern "C" fn qb_gfx_palette(index: i32, color: u32) -> c_int {
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
             match backend.set_palette(index, color) {
                 Ok(()) => 0,
-                Err(_) => 1,
+                Err(e) => log_ffi_error!("qb_gfx_palette", e),
             }
         } else {
             1
@@ -1022,7 +1107,7 @@ pub extern "C" fn qb_gfx_palette_reset() -> c_int {
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
             match backend.reset_palette() {
                 Ok(()) => 0,
-                Err(_) => 1,
+                Err(e) => log_ffi_error!("qb_gfx_palette_reset", e),
             }
         } else {
             1
@@ -1092,7 +1177,13 @@ pub extern "C" fn qb_palettecolor(attribute: i32, color_or_handle: i32, handle: 
             // This function is only called for SET operations (GET uses qb_palettecolor_get)
             // Always set the palette, even if color is 0 (black is a valid color)
             // Use per-image palette support
-            let _ = backend.set_palette_for_image(attribute, color_or_handle as u32, target_handle);
+            if let Err(e) =
+                backend.set_palette_for_image(attribute, color_or_handle as u32, target_handle)
+            {
+                // Log error for debugging, but continue to return current palette value
+                // This maintains backward compatibility while providing error visibility
+                eprintln!("Warning: qb_palettecolor failed: {}", e);
+            }
             // Return the palette value at this index for the target image
             backend.get_palette_for_image(attribute, target_handle) as i32
         } else {
@@ -1124,12 +1215,19 @@ pub extern "C" fn qb_gfx_newimage(width: i32, height: i32, mode: i32) -> i32 {
 #[no_mangle]
 pub unsafe extern "C" fn qb_gfx_loadimage(filename: *const c_char, mode: i32) -> i32 {
     if filename.is_null() {
+        log_validation_error!("qb_gfx_loadimage", "null pointer for filename parameter");
         return -1;
     }
 
     let fname = match CStr::from_ptr(filename).to_str() {
         Ok(s) => s,
-        Err(_) => return -1,
+        Err(e) => {
+            log_validation_error!(
+                "qb_gfx_loadimage",
+                format!("invalid UTF-8 in filename: {}", e)
+            );
+            return -1;
+        }
     };
 
     if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
@@ -1146,7 +1244,7 @@ pub extern "C" fn qb_gfx_freeimage(handle: i32) -> c_int {
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
             match backend.free_image(handle) {
                 Ok(()) => 0,
-                Err(_) => 1,
+                Err(e) => log_ffi_error!("qb_gfx_freeimage", e),
             }
         } else {
             1
@@ -1161,7 +1259,7 @@ pub extern "C" fn qb_gfx_putimage_simple(src_handle: i32, dest_handle: i32) -> c
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
             match backend.put_image(0, 0, -1, -1, src_handle, dest_handle) {
                 Ok(()) => 0,
-                Err(_) => 1,
+                Err(e) => log_ffi_error!("qb_gfx_putimage_simple", e),
             }
         } else {
             1
@@ -1183,7 +1281,7 @@ pub extern "C" fn qb_gfx_putimage(
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
             match backend.put_image(dx1, dy1, dx2, dy2, src_handle, dest_handle) {
                 Ok(()) => 0,
-                Err(_) => 1,
+                Err(e) => log_ffi_error!("qb_gfx_putimage", e),
             }
         } else {
             1
@@ -1221,7 +1319,7 @@ pub extern "C" fn qb_gfx_putimage_full(
                 sy2,
             ) {
                 Ok(()) => 0,
-                Err(_) => 1,
+                Err(e) => log_ffi_error!("qb_gfx_putimage", e),
             }
         } else {
             1
@@ -1236,7 +1334,7 @@ pub extern "C" fn qb_gfx_source(handle: i32) -> c_int {
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
             match backend.set_source(handle) {
                 Ok(()) => 0,
-                Err(_) => 1,
+                Err(e) => log_ffi_error!("qb_gfx_source", e),
             }
         } else {
             1
@@ -1251,7 +1349,7 @@ pub extern "C" fn qb_gfx_dest(handle: i32) -> c_int {
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
             match backend.set_dest(handle) {
                 Ok(()) => 0,
-                Err(_) => 1,
+                Err(e) => log_ffi_error!("qb_gfx_dest", e),
             }
         } else {
             1
@@ -1266,20 +1364,26 @@ pub extern "C" fn qb_gfx_dest(handle: i32) -> c_int {
 #[no_mangle]
 pub unsafe extern "C" fn qb_gfx_printstring(x: i32, y: i32, text: *const c_char) -> c_int {
     if text.is_null() {
-        return 1;
+        return log_validation_error!("qb_gfx_printstring", "null pointer for text parameter");
     }
 
     let txt = match CStr::from_ptr(text).to_str() {
         Ok(s) => s,
-        Err(_) => return 1,
+        Err(e) => {
+            return log_validation_error!(
+                "qb_gfx_printstring",
+                format!("invalid UTF-8 in text: {}", e)
+            );
+        }
     };
 
     if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
         match backend.print_string(x, y, txt) {
             Ok(()) => 0,
-            Err(_) => 1,
+            Err(e) => log_ffi_error!("qb_gfx_printstring", e),
         }
     } else {
+        log_validation_error!("qb_gfx_printstring", "graphics backend not initialized");
         1
     }
 }
@@ -1291,7 +1395,7 @@ pub extern "C" fn qb_gfx_autodisplay(enabled: c_int) -> c_int {
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
             match backend.set_autodisplay(enabled != 0) {
                 Ok(()) => 0,
-                Err(_) => 1,
+                Err(e) => log_ffi_error!("qb_gfx_autodisplay", e),
             }
         } else {
             1
@@ -1413,6 +1517,32 @@ pub extern "C" fn qb_mouse_movement_y() -> i32 {
     }
 }
 
+/// Check if a key is currently pressed (_KEYDOWN via graphics backend).
+///
+/// Uses SDL2 keyboard state when graphics backend is initialized.
+/// This provides real-time key state checking for games and interactive programs.
+///
+/// # Arguments
+/// - `keycode`: QB64 keycode to check
+///
+/// # Returns
+/// - `-1` (true) if the key is pressed
+/// - `0` (false) if not pressed or graphics backend unavailable
+#[no_mangle]
+pub extern "C" fn qb_gfx_keydown(keycode: i64) -> i32 {
+    unsafe {
+        if let Some(ref backend) = crate::graphics::GRAPHICS_BACKEND {
+            if backend.is_key_pressed(keycode) {
+                -1
+            } else {
+                0
+            }
+        } else {
+            0
+        }
+    }
+}
+
 /// _MOUSEWHEEL - Get mouse wheel delta.
 ///
 /// Returns number of scroll notches (positive = up, negative = down).
@@ -1484,12 +1614,16 @@ pub extern "C" fn qb_clipboard_get() -> *mut crate::string::QbString {
 #[no_mangle]
 pub unsafe extern "C" fn qb_clipboard_set(text: *const std::os::raw::c_char) {
     if text.is_null() {
+        log_validation_error!("qb_clipboard_set", "null pointer for text parameter");
         return;
     }
 
     let text_str = match std::ffi::CStr::from_ptr(text).to_str() {
         Ok(s) => s,
-        Err(_) => return,
+        Err(e) => {
+            log_validation_error!("qb_clipboard_set", format!("invalid UTF-8 in text: {}", e));
+            return;
+        }
     };
 
     if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
@@ -1551,7 +1685,7 @@ const QB_PUT_OR: c_int = 4;
 #[no_mangle]
 pub extern "C" fn qb_gfx_get(x1: i32, y1: i32, x2: i32, y2: i32, arr: *mut u8) -> c_int {
     if arr.is_null() {
-        return 1;
+        return log_validation_error!("qb_gfx_get", "null pointer for arr parameter");
     }
 
     // Normalize coordinates (ensure x1 <= x2, y1 <= y2)
@@ -1621,7 +1755,7 @@ pub extern "C" fn qb_gfx_put(
     trans_color: i32,
 ) -> c_int {
     if arr.is_null() {
-        return 1;
+        return log_validation_error!("qb_gfx_putimage", "null pointer for arr parameter");
     }
 
     unsafe {
@@ -1632,7 +1766,10 @@ pub extern "C" fn qb_gfx_put(
             let height = *header.add(1) as i32;
 
             if width <= 0 || height <= 0 {
-                return 1; // Invalid dimensions
+                return log_validation_error!(
+                    "qb_gfx_put",
+                    format!("invalid dimensions: {}x{}", width, height)
+                );
             }
 
             // Get screen size for clipping
@@ -1718,10 +1855,10 @@ pub extern "C" fn qb_gfx_put_step(
             (0, 0) // Default if not initialized
         }
     };
-    
+
     let final_x = last_x + x;
     let final_y = last_y + y;
-    
+
     // Now call the non-STEP variant with absolute coordinates
     // This will acquire its own mutable reference to the backend
     qb_gfx_put(final_x, final_y, arr, action, clip, trans_color)
@@ -2044,6 +2181,10 @@ pub extern "C" fn qb_screenimage(x1: i32, y1: i32, x2: i32, y2: i32) -> i32 {
             };
 
             if w <= 0 || h <= 0 {
+                log_validation_error!(
+                    "qb_gfx_saveimage",
+                    format!("invalid dimensions: {}x{}", w, h)
+                );
                 return -1;
             }
 

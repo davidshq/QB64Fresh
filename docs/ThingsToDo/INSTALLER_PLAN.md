@@ -2,7 +2,7 @@
 
 **Status:** Plan  
 **Created:** 2026-01-24  
-**Updated:** 2026-01-26
+**Updated:** 2026-01-27
 
 This document outlines a plan to distribute QB64Fresh so that **users do not need Rust** to use the compiler, and to provide installers that handle QB64Fresh binaries plus the C toolchain.
 

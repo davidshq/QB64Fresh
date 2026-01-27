@@ -76,7 +76,9 @@ pub enum BasicType {
     UserDefined(std::string::String),
     /// Array with element type and dimension count
     Array {
+        /// Type of each array element.
         element_type: Box<BasicType>,
+        /// Number of dimensions (1 for `arr()`, 2 for `arr(,)`, etc.).
         dimensions: usize,
     },
 

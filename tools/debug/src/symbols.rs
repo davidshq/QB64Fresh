@@ -438,11 +438,7 @@ impl DebugSymbols {
                 } else {
                     let first = body.first().unwrap();
                     let last = body.last().unwrap();
-                    Some(Span::new(
-                        first.span.start,
-                        last.span.end,
-                        first.span.line,
-                    ))
+                    Some(Span::new(first.span.start, last.span.end, first.span.line))
                 };
 
                 // Add procedure
@@ -510,11 +506,7 @@ impl DebugSymbols {
                 } else {
                     let first = body.first().unwrap();
                     let last = body.last().unwrap();
-                    Some(Span::new(
-                        first.span.start,
-                        last.span.end,
-                        first.span.line,
-                    ))
+                    Some(Span::new(first.span.start, last.span.end, first.span.line))
                 };
 
                 // Return type

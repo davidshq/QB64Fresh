@@ -2,7 +2,7 @@
 
 **Purpose:** Assessment and implementation plan for adding OpenGL (`_GL`) command support to QB64Fresh  
 **Created:** 2026-01-22  
-**Updated:** 2026-01-26  
+**Updated:** 2026-01-27  
 **Status:** Planning/Assessment — *Raw `_GL*` is intentionally excluded per [ADR-0014](../adrs/ADR-0014-scope-and-excluded-features.md).*
 
 ---

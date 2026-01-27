@@ -250,12 +250,8 @@ impl<'a> Parser<'a> {
     /// Creates a span from start to current position.
     pub(super) fn span_from(&self, start: usize) -> Span {
         let last_token = self.tokens.get(self.current.saturating_sub(1));
-        let end = last_token
-            .map(|t| t.span.end)
-            .unwrap_or(start);
-        let line = last_token
-            .map(|t| t.span.line)
-            .unwrap_or(1);
+        let end = last_token.map(|t| t.span.end).unwrap_or(start);
+        let line = last_token.map(|t| t.span.line).unwrap_or(1);
         Span::new(start, end, line)
     }
 

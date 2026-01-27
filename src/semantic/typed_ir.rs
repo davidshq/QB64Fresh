@@ -56,14 +56,19 @@ pub enum TypedExprKind {
 
     /// Binary operation with typed operands.
     Binary {
+        /// Left operand expression.
         left: Box<TypedExpr>,
+        /// Binary operator.
         op: BinaryOp,
+        /// Right operand expression.
         right: Box<TypedExpr>,
     },
 
     /// Unary operation with typed operand.
     Unary {
+        /// Unary operator.
         op: UnaryOp,
+        /// Operand expression.
         operand: Box<TypedExpr>,
     },
 
@@ -76,7 +81,9 @@ pub enum TypedExprKind {
     /// for BYREF argument passing. For built-in functions, params is empty
     /// (all built-in args are BYVAL).
     FunctionCall {
+        /// Function name.
         name: String,
+        /// Typed argument expressions.
         args: Vec<TypedExpr>,
         /// Parameter info for BYREF handling (empty for built-in functions).
         params: Vec<TypedParameter>,
@@ -88,7 +95,9 @@ pub enum TypedExprKind {
     /// bounds of each dimension, which is needed for calculating the
     /// linear index in row-major order.
     ArrayAccess {
+        /// Array variable name.
         name: String,
+        /// Typed index expressions for each dimension.
         indices: Vec<TypedExpr>,
         /// Dimension bounds for index calculation (empty for 1D arrays).
         dimensions: Vec<TypedArrayDimension>,
@@ -100,6 +109,7 @@ pub enum TypedExprKind {
     /// arrays as arguments to SUB/FUNCTION. This is different from
     /// `arr(i)` which accesses a single element.
     ArrayRef {
+        /// Array variable name.
         name: String,
         /// The element type of the array.
         element_type: BasicType,
@@ -111,7 +121,9 @@ pub enum TypedExprKind {
     ///
     /// The inner expression's type is converted to `to_type`.
     Convert {
+        /// Expression to convert.
         expr: Box<TypedExpr>,
+        /// Target type for the conversion.
         to_type: BasicType,
     },
 
@@ -272,7 +284,9 @@ pub struct TypedStatement {
 pub enum TypedStatementKind {
     /// Variable assignment with target type.
     Assignment {
+        /// Variable name being assigned to.
         name: String,
+        /// Typed expression being assigned.
         value: TypedExpr,
         /// The type of the target variable (for codegen to emit conversion).
         target_type: BasicType,
@@ -280,8 +294,11 @@ pub enum TypedStatementKind {
 
     /// Array element assignment with target type.
     ArrayAssignment {
+        /// Array variable name.
         name: String,
+        /// Typed index expressions for each dimension.
         indices: Vec<TypedExpr>,
+        /// Typed expression being assigned.
         value: TypedExpr,
         /// Dimension info for linear index calculation.
         dimensions: Vec<TypedArrayDimension>,
@@ -291,10 +308,13 @@ pub enum TypedStatementKind {
 
     /// Array field assignment (UDT member in array).
     ArrayFieldAssignment {
+        /// Array variable name.
         name: String,
+        /// Typed index expressions for each dimension.
         indices: Vec<TypedExpr>,
         /// Field access chain.
         fields: Vec<String>,
+        /// Typed expression being assigned.
         value: TypedExpr,
         /// Dimension info for linear index calculation.
         dimensions: Vec<TypedArrayDimension>,
@@ -344,7 +364,9 @@ pub enum TypedStatementKind {
 
     /// PRINT statement with typed items.
     Print {
+        /// Items to print (expressions, semicolons, commas).
         items: Vec<TypedPrintItem>,
+        /// Whether to print a newline at the end.
         newline: bool,
     },
 
@@ -360,7 +382,9 @@ pub enum TypedStatementKind {
 
     /// INPUT statement with typed targets.
     Input {
+        /// Optional prompt string to display.
         prompt: Option<String>,
+        /// Whether to show "? " after the prompt.
         show_question_mark: bool,
         /// Keep cursor on same line after input (leading semicolon).
         same_line: bool,
@@ -370,76 +394,114 @@ pub enum TypedStatementKind {
 
     /// LINE INPUT statement.
     LineInput {
+        /// Optional prompt string to display.
         prompt: Option<String>,
+        /// Target variable to read the line into.
         target: TypedInputTarget,
     },
 
     /// IF/ELSEIF/ELSE statement.
     If {
+        /// Condition expression for the IF branch.
         condition: TypedExpr,
+        /// Statements in the THEN branch.
         then_branch: Vec<TypedStatement>,
+        /// ELSEIF branches: (condition, statements).
         elseif_branches: Vec<(TypedExpr, Vec<TypedStatement>)>,
+        /// Optional ELSE branch statements.
         else_branch: Option<Vec<TypedStatement>>,
     },
 
     /// SELECT CASE statement.
     SelectCase {
+        /// Expression to test against case values.
         test_expr: TypedExpr,
+        /// List of CASE clauses to match.
         cases: Vec<TypedCaseClause>,
+        /// Optional CASE ELSE branch statements.
         case_else: Option<Vec<TypedStatement>>,
     },
 
     /// SELECT EVERYCASE statement (QB64).
     /// Evaluates ALL matching cases, not just the first one.
     SelectEveryCase {
+        /// Expression to test against case values.
         test_expr: TypedExpr,
+        /// List of CASE clauses to match.
         cases: Vec<TypedCaseClause>,
+        /// Optional CASE ELSE branch statements.
         case_else: Option<Vec<TypedStatement>>,
     },
 
     /// FOR/NEXT loop.
     For {
+        /// Loop variable name.
         variable: String,
+        /// Type of the loop variable.
         var_type: BasicType,
+        /// Starting value expression.
         start: TypedExpr,
+        /// Ending value expression.
         end: TypedExpr,
+        /// Optional step value expression (defaults to 1 if None).
         step: Option<TypedExpr>,
+        /// Loop body statements.
         body: Vec<TypedStatement>,
     },
 
     /// WHILE/WEND loop.
     While {
+        /// Loop condition expression (must evaluate to boolean).
         condition: TypedExpr,
+        /// Loop body statements.
         body: Vec<TypedStatement>,
     },
 
     /// DO/LOOP.
     DoLoop {
+        /// Optional condition checked before loop body (DO WHILE/UNTIL).
         pre_condition: Option<TypedDoCondition>,
+        /// Loop body statements.
         body: Vec<TypedStatement>,
+        /// Optional condition checked after loop body (LOOP WHILE/UNTIL).
         post_condition: Option<TypedDoCondition>,
     },
 
     /// GOTO statement.
-    Goto { target: String },
+    Goto {
+        /// Label name to jump to.
+        target: String,
+    },
 
     /// GOSUB statement.
-    Gosub { target: String },
+    Gosub {
+        /// Label name to call as subroutine.
+        target: String,
+    },
 
     /// RETURN statement.
     Return,
 
     /// EXIT statement.
-    Exit { exit_type: ExitType },
+    Exit {
+        /// Type of exit (FOR, DO, SUB, FUNCTION, etc.).
+        exit_type: ExitType,
+    },
 
     /// END statement with optional exit code.
-    End { exit_code: Option<TypedExpr> },
+    End {
+        /// Optional exit code expression (integer).
+        exit_code: Option<TypedExpr>,
+    },
 
     /// STOP statement.
     Stop,
 
     /// SYSTEM statement (exit immediately) with optional exit code.
-    System { exit_code: Option<TypedExpr> },
+    System {
+        /// Optional exit code expression (integer).
+        exit_code: Option<TypedExpr>,
+    },
 
     /// SLEEP statement (pause execution).
     Sleep {
@@ -481,25 +543,37 @@ pub enum TypedStatementKind {
     /// SUB procedure call.
     /// `params` contains the parameter definitions so codegen knows which are byref.
     Call {
+        /// Name of the SUB procedure to call.
         name: String,
+        /// Argument expressions passed to the procedure.
         args: Vec<TypedExpr>,
+        /// Parameter definitions (for codegen to determine byref/byval).
         params: Vec<TypedParameter>,
     },
 
     /// SUB definition.
     SubDefinition {
+        /// Name of the SUB procedure.
         name: String,
+        /// Parameter definitions.
         params: Vec<TypedParameter>,
+        /// Procedure body statements.
         body: Vec<TypedStatement>,
+        /// Whether this is a STATIC SUB (preserves variable values between calls).
         is_static: bool,
     },
 
     /// FUNCTION definition.
     FunctionDefinition {
+        /// Name of the FUNCTION.
         name: String,
+        /// Parameter definitions.
         params: Vec<TypedParameter>,
+        /// Return type of the function.
         return_type: BasicType,
+        /// Function body statements.
         body: Vec<TypedStatement>,
+        /// Whether this is a STATIC FUNCTION (preserves variable values between calls).
         is_static: bool,
     },
 
@@ -566,7 +640,10 @@ pub enum TypedStatementKind {
     },
 
     /// Label definition.
-    Label { name: String },
+    Label {
+        /// Label name.
+        name: String,
+    },
 
     /// Comment (preserved for documentation).
     Comment(String),
@@ -1817,24 +1894,39 @@ pub struct TypedMember {
 #[derive(Debug, Clone)]
 pub enum TypedInputTarget {
     /// Simple variable: `x`
-    Variable { name: String, basic_type: BasicType },
+    Variable {
+        /// Variable name.
+        name: String,
+        /// Variable type.
+        basic_type: BasicType,
+    },
     /// Array element: `arr(i)` or `arr(i, j)`
     ArrayElement {
+        /// Array variable name.
         name: String,
+        /// Index expressions for each dimension.
         indices: Vec<TypedExpr>,
+        /// Type of the array element.
         element_type: BasicType,
     },
     /// Array element field access: `arr(i).field`
     ArrayElementField {
+        /// Array variable name.
         name: String,
+        /// Index expressions for each dimension.
         indices: Vec<TypedExpr>,
+        /// Field names (for nested field access like `arr(i).player.x`).
         fields: Vec<String>,
+        /// Type of the accessed field.
         field_type: BasicType,
     },
     /// Simple UDT field access: `udt.field`
     Field {
+        /// Variable name.
         name: String,
+        /// Field names (for nested field access like `player.position.x`).
         fields: Vec<String>,
+        /// Type of the accessed field.
         field_type: BasicType,
     },
 }
@@ -1845,18 +1937,30 @@ pub enum TypedInputTarget {
 #[derive(Debug, Clone)]
 pub enum TypedReadTarget {
     /// Simple variable: `READ x`
-    Variable { name: String, basic_type: BasicType },
+    Variable {
+        /// Variable name.
+        name: String,
+        /// Variable type.
+        basic_type: BasicType,
+    },
     /// Array element: `READ arr(i, j)`
     ArrayElement {
+        /// Array variable name.
         name: String,
+        /// Index expressions for each dimension.
         indices: Vec<TypedExpr>,
+        /// Type of the array element.
         basic_type: BasicType,
     },
     /// UDT array element field: `READ arr(i).field`
     ArrayFieldElement {
+        /// Array variable name.
         name: String,
+        /// Index expressions for each dimension.
         indices: Vec<TypedExpr>,
+        /// Field name to access.
         field: String,
+        /// Type of the accessed field.
         basic_type: BasicType,
     },
 }
@@ -1914,10 +2018,17 @@ pub enum TypedCaseMatch {
     /// Single value: `CASE 1`
     Single(TypedExpr),
     /// Range: `CASE 1 TO 10`
-    Range { from: TypedExpr, to: TypedExpr },
+    Range {
+        /// Start of the range (inclusive).
+        from: TypedExpr,
+        /// End of the range (inclusive).
+        to: TypedExpr,
+    },
     /// Comparison: `CASE IS > 5`
     Comparison {
+        /// Comparison operator.
         op: TypedCaseCompareOp,
+        /// Value to compare against.
         value: TypedExpr,
     },
 }
@@ -1925,11 +2036,17 @@ pub enum TypedCaseMatch {
 /// Comparison operators for CASE IS.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TypedCaseCompareOp {
+    /// `CASE IS = value`
     Equal,
+    /// `CASE IS <> value`
     NotEqual,
+    /// `CASE IS < value`
     LessThan,
+    /// `CASE IS <= value`
     LessEqual,
+    /// `CASE IS > value`
     GreaterThan,
+    /// `CASE IS >= value`
     GreaterEqual,
 }
 

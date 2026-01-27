@@ -116,6 +116,7 @@ pub enum SemanticError {
     /// ```
     #[error("variable `{name}` already defined")]
     DuplicateVariable {
+        /// Name of the duplicate variable.
         name: String,
         /// Location of the original declaration.
         original_span: Span,
@@ -137,8 +138,11 @@ pub enum SemanticError {
     /// ```
     #[error("label `{name}` already defined")]
     DuplicateLabel {
+        /// Name of the duplicate label.
         name: String,
+        /// Location of the original declaration.
         original_span: Span,
+        /// Location of the duplicate declaration.
         duplicate_span: Span,
     },
 
@@ -157,8 +161,11 @@ pub enum SemanticError {
     /// ```
     #[error("procedure `{name}` already defined")]
     DuplicateProcedure {
+        /// Name of the duplicate procedure.
         name: String,
+        /// Location of the original declaration.
         original_span: Span,
+        /// Location of the duplicate declaration.
         duplicate_span: Span,
     },
 
@@ -179,8 +186,11 @@ pub enum SemanticError {
     /// ```
     #[error("TYPE `{name}` already defined")]
     DuplicateType {
+        /// Name of the duplicate TYPE.
         name: String,
+        /// Location of the original declaration.
         original_span: Span,
+        /// Location of the duplicate declaration.
         duplicate_span: Span,
     },
 
@@ -200,8 +210,11 @@ pub enum SemanticError {
     /// ```
     #[error("type mismatch: expected {expected}, found {found}")]
     TypeMismatch {
+        /// Expected type name.
         expected: String,
+        /// Found type name.
         found: String,
+        /// Location of the type mismatch.
         span: Span,
     },
 
@@ -218,8 +231,11 @@ pub enum SemanticError {
     /// ```
     #[error("cannot convert {from} to {to}")]
     InvalidConversion {
+        /// Source type name.
         from: String,
+        /// Target type name.
         to: String,
+        /// Location of the conversion.
         span: Span,
     },
 
@@ -235,9 +251,13 @@ pub enum SemanticError {
     /// ```
     #[error("operator `{op}` cannot be applied to types {left_type} and {right_type}")]
     InvalidBinaryOp {
+        /// Operator symbol (e.g., "+", "-", "*").
         op: String,
+        /// Type of the left operand.
         left_type: String,
+        /// Type of the right operand.
         right_type: String,
+        /// Location of the operator.
         span: Span,
     },
 
@@ -252,8 +272,11 @@ pub enum SemanticError {
     /// ```
     #[error("operator `{op}` cannot be applied to type {operand_type}")]
     InvalidUnaryOp {
+        /// Operator symbol (e.g., "-", "NOT").
         op: String,
+        /// Type of the operand.
         operand_type: String,
+        /// Location of the operator.
         span: Span,
     },
 
@@ -272,10 +295,15 @@ pub enum SemanticError {
     /// ```
     #[error("function `{name}` called with {found} arguments, expected {expected_min}{}", if *.expected_min == *.expected_max { "".to_string() } else { format!(" to {}", .expected_max) })]
     ArgumentCountMismatch {
+        /// Name of the function or SUB.
         name: String,
+        /// Minimum number of arguments required.
         expected_min: usize,
+        /// Maximum number of arguments allowed.
         expected_max: usize,
+        /// Number of arguments provided.
         found: usize,
+        /// Location of the function call.
         span: Span,
     },
 
@@ -296,8 +324,11 @@ pub enum SemanticError {
     ArgumentTypeMismatch {
         /// 1-based argument position.
         position: usize,
+        /// Expected type name.
         expected: String,
+        /// Found type name.
         found: String,
+        /// Location of the argument.
         span: Span,
     },
 
@@ -314,8 +345,11 @@ pub enum SemanticError {
     /// ```
     #[error("_IIF true and false parts have incompatible types: {true_type} vs {false_type}")]
     IifTypeMismatch {
+        /// Type of the true branch value.
         true_type: String,
+        /// Type of the false branch value.
         false_type: String,
+        /// Location of the _IIF expression.
         span: Span,
     },
 
@@ -331,7 +365,12 @@ pub enum SemanticError {
     /// CALL myVar         ' Error: cannot call `myVar` - it is not a procedure
     /// ```
     #[error("cannot call `{name}` - it is not a procedure")]
-    NotCallable { name: String, span: Span },
+    NotCallable {
+        /// Name of the non-callable item.
+        name: String,
+        /// Location of the call attempt.
+        span: Span,
+    },
 
     /// SUB used in an expression where a return value is expected.
     ///
@@ -347,7 +386,12 @@ pub enum SemanticError {
     /// x = DoWork         ' Error: SUB `DoWork` does not return a value
     /// ```
     #[error("SUB `{name}` does not return a value")]
-    SubUsedAsFunction { name: String, span: Span },
+    SubUsedAsFunction {
+        /// Name of the SUB being used incorrectly.
+        name: String,
+        /// Location where the SUB is used as a function.
+        span: Span,
+    },
 
     // ========================================================================
     // Control Flow Errors
@@ -362,7 +406,12 @@ pub enum SemanticError {
     /// EXIT FOR           ' Error: EXIT FOR outside of FOR
     /// ```
     #[error("EXIT {exit_type} outside of {exit_type}")]
-    ExitOutsideLoop { exit_type: String, span: Span },
+    ExitOutsideLoop {
+        /// Type of EXIT statement (e.g., "FOR", "DO", "SUB").
+        exit_type: String,
+        /// Location of the EXIT statement.
+        span: Span,
+    },
 
     /// CONTINUE statement used outside its corresponding loop.
     ///
@@ -374,7 +423,12 @@ pub enum SemanticError {
     /// CONTINUE FOR       ' Error: CONTINUE FOR outside of FOR loop
     /// ```
     #[error("CONTINUE {loop_type} outside of {loop_type} loop")]
-    ContinueOutsideLoop { loop_type: String, span: Span },
+    ContinueOutsideLoop {
+        /// Type of CONTINUE statement (e.g., "FOR", "DO").
+        loop_type: String,
+        /// Location of the CONTINUE statement.
+        span: Span,
+    },
 
     /// RETURN statement outside of a GOSUB routine or FUNCTION.
     ///
@@ -386,7 +440,10 @@ pub enum SemanticError {
     /// RETURN             ' Error: RETURN outside of GOSUB or FUNCTION
     /// ```
     #[error("RETURN outside of GOSUB or FUNCTION")]
-    ReturnOutsideContext { span: Span },
+    ReturnOutsideContext {
+        /// Location of the RETURN statement.
+        span: Span,
+    },
 
     /// NEXT variable doesn't match the FOR loop variable.
     ///
@@ -401,9 +458,13 @@ pub enum SemanticError {
     /// ```
     #[error("FOR loop variable `{expected}` does not match NEXT variable `{found}`")]
     ForNextMismatch {
+        /// Variable name from the FOR statement.
         expected: String,
+        /// Variable name from the NEXT statement.
         found: String,
+        /// Location of the FOR statement.
         for_span: Span,
+        /// Location of the NEXT statement.
         next_span: Span,
     },
 
@@ -422,7 +483,12 @@ pub enum SemanticError {
     /// PRINT x(1)         ' Error: `x` is not an array
     /// ```
     #[error("`{name}` is not an array")]
-    NotAnArray { name: String, span: Span },
+    NotAnArray {
+        /// Name of the variable that was indexed.
+        name: String,
+        /// Location of the array access.
+        span: Span,
+    },
 
     /// Array accessed with wrong number of subscripts.
     ///
@@ -436,9 +502,13 @@ pub enum SemanticError {
     /// ```
     #[error("array `{name}` indexed with {found} dimensions, expected {expected}")]
     ArrayDimensionMismatch {
+        /// Name of the array variable.
         name: String,
+        /// Expected number of dimensions.
         expected: usize,
+        /// Number of dimensions provided.
         found: usize,
+        /// Location of the array access.
         span: Span,
     },
 
@@ -453,7 +523,12 @@ pub enum SemanticError {
     /// PRINT arr("five")  ' Error: array index must be numeric, found STRING
     /// ```
     #[error("array index must be numeric, found {found}")]
-    NonNumericIndex { found: String, span: Span },
+    NonNumericIndex {
+        /// Type of the index expression.
+        found: String,
+        /// Location of the array access.
+        span: Span,
+    },
 
     // ========================================================================
     // Constant Errors
@@ -470,7 +545,12 @@ pub enum SemanticError {
     /// PI = 3.0           ' Error: cannot assign to constant `PI`
     /// ```
     #[error("cannot assign to constant `{name}`")]
-    AssignmentToConst { name: String, span: Span },
+    AssignmentToConst {
+        /// Name of the constant being assigned to.
+        name: String,
+        /// Location of the assignment.
+        span: Span,
+    },
 
     /// CONST initializer is not a compile-time constant expression.
     ///
@@ -484,7 +564,10 @@ pub enum SemanticError {
     /// CONST Y = x + 1    ' Error: CONST value must be a compile-time constant
     /// ```
     #[error("CONST value must be a compile-time constant")]
-    NonConstantExpression { span: Span },
+    NonConstantExpression {
+        /// Location of the non-constant expression.
+        span: Span,
+    },
 
     // ========================================================================
     // SHARED Errors
@@ -500,7 +583,10 @@ pub enum SemanticError {
     /// SHARED globalVar   ' Error: SHARED can only be used inside SUB or FUNCTION
     /// ```
     #[error("SHARED can only be used inside SUB or FUNCTION")]
-    SharedOutsideProcedure { span: Span },
+    SharedOutsideProcedure {
+        /// Location of the SHARED statement.
+        span: Span,
+    },
 
     /// SHARED references a variable that doesn't exist at module level.
     ///
@@ -515,7 +601,12 @@ pub enum SemanticError {
     /// END SUB
     /// ```
     #[error("SHARED variable `{name}` not defined at module level")]
-    SharedVariableNotFound { name: String, span: Span },
+    SharedVariableNotFound {
+        /// Name of the variable referenced in SHARED.
+        name: String,
+        /// Location of the SHARED statement.
+        span: Span,
+    },
 
     // ========================================================================
     // OPTION Errors
@@ -531,7 +622,12 @@ pub enum SemanticError {
     /// OPTION BASE 5      ' Error: OPTION BASE must be 0 or 1, found 5
     /// ```
     #[error("OPTION BASE must be 0 or 1, found {value}")]
-    InvalidOptionBase { value: i64, span: Span },
+    InvalidOptionBase {
+        /// Invalid BASE value provided.
+        value: i64,
+        /// Location of the OPTION BASE statement.
+        span: Span,
+    },
 
     // ========================================================================
     // Unimplemented Feature Errors
@@ -548,7 +644,12 @@ pub enum SemanticError {
     /// PRINT FRE(0)    ' Error: Command not implemented
     /// ```
     #[error("Command not implemented: `{name}`")]
-    CommandNotImplemented { name: String, span: Span },
+    CommandNotImplemented {
+        /// Name of the unimplemented command.
+        name: String,
+        /// Location of the command.
+        span: Span,
+    },
 }
 
 impl SemanticError {

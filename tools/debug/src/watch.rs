@@ -505,13 +505,8 @@ impl WatchManager {
 
         // Evaluate each watch
         for (id, expr, parsed) in watch_data {
-            let result = Self::evaluate_internal_static(
-                &expr,
-                parsed.as_ref(),
-                symbols,
-                scope,
-                runtime,
-            );
+            let result =
+                Self::evaluate_internal_static(&expr, parsed.as_ref(), symbols, scope, runtime);
             if let Some(watch) = self.watches.get_mut(&id) {
                 watch.last_value = Some(result);
             }
@@ -628,10 +623,7 @@ impl WatchManager {
                 let element_type = match &var_info.var_type {
                     DebugType::Array { element_type, .. } => element_type.as_ref(),
                     _ => {
-                        return WatchResult::error(format!(
-                            "'{}' is not an array",
-                            name
-                        ));
+                        return WatchResult::error(format!("'{}' is not an array", name));
                     }
                 };
 
@@ -641,9 +633,7 @@ impl WatchManager {
                     match idx_expr.evaluate(symbols, scope, runtime) {
                         Some(idx) => evaluated_indices.push(idx),
                         None => {
-                            return WatchResult::error(format!(
-                                "Could not evaluate array index"
-                            ));
+                            return WatchResult::error(format!("Could not evaluate array index"));
                         }
                     }
                 }
@@ -661,17 +651,15 @@ impl WatchManager {
 
                 // Access array element
                 match array_value {
-                    DebugValue::Array(arr) => {
-                        match arr.get(&evaluated_indices) {
-                            Some(element_value) => {
-                                WatchResult::value(element_value.clone(), element_type.clone())
-                            }
-                            None => WatchResult::error(format!(
-                                "Array index out of bounds: {:?}",
-                                evaluated_indices
-                            )),
+                    DebugValue::Array(arr) => match arr.get(&evaluated_indices) {
+                        Some(element_value) => {
+                            WatchResult::value(element_value.clone(), element_type.clone())
                         }
-                    }
+                        None => WatchResult::error(format!(
+                            "Array index out of bounds: {:?}",
+                            evaluated_indices
+                        )),
+                    },
                     _ => WatchResult::error(format!("'{}' is not an array value", name)),
                 }
             }
@@ -719,29 +707,24 @@ impl WatchManager {
                             Some(member_value) => {
                                 // Try to get member type from symbols
                                 let member_type = match resolved_base_type {
-                                    DebugType::UserDefined(type_name) => {
-                                        symbols
-                                            .lookup_type(&type_name)
-                                            .and_then(|udt_type| {
-                                                udt_type
-                                                    .members
-                                                    .iter()
-                                                    .find(|m| {
-                                                        m.name.eq_ignore_ascii_case(member)
-                                                    })
-                                                    .map(|m| m.member_type.clone())
-                                            })
-                                            .unwrap_or(DebugType::Unknown)
-                                    }
+                                    DebugType::UserDefined(type_name) => symbols
+                                        .lookup_type(&type_name)
+                                        .and_then(|udt_type| {
+                                            udt_type
+                                                .members
+                                                .iter()
+                                                .find(|m| m.name.eq_ignore_ascii_case(member))
+                                                .map(|m| m.member_type.clone())
+                                        })
+                                        .unwrap_or(DebugType::Unknown),
                                     _ => DebugType::Unknown,
                                 };
 
                                 WatchResult::value(member_value.clone(), member_type)
                             }
-                            None => WatchResult::error(format!(
-                                "Member '{}' not found in UDT",
-                                member
-                            )),
+                            None => {
+                                WatchResult::error(format!("Member '{}' not found in UDT", member))
+                            }
                         }
                     }
                     _ => WatchResult::error(format!(

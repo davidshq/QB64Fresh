@@ -306,7 +306,9 @@ impl GraphicsBackend for MockBackend {
         };
         self.last_gfx_x = final_x2;
         self.last_gfx_y = final_y2;
-        self.line(final_x1, final_y1, final_x2, final_y2, color, filled, is_box, style)
+        self.line(
+            final_x1, final_y1, final_x2, final_y2, color, filled, is_box, style,
+        )
     }
 
     fn circle_step(
@@ -423,30 +425,27 @@ impl GraphicsBackend for MockBackend {
         }
 
         // Get or create palette for this handle
-        let palette = self
-            .image_palettes
-            .entry(handle)
-            .or_insert_with(|| {
-                // Initialize with default EGA/VGA palette
-                let mut colors = [0xFF000000u32; 256];
-                colors[0] = 0xFF000000; // Black
-                colors[1] = 0xFF0000AA; // Blue
-                colors[2] = 0xFF00AA00; // Green
-                colors[3] = 0xFF00AAAA; // Cyan
-                colors[4] = 0xFFAA0000; // Red
-                colors[5] = 0xFFAA00AA; // Magenta
-                colors[6] = 0xFFAA5500; // Brown
-                colors[7] = 0xFFAAAAAA; // Light gray
-                colors[8] = 0xFF555555; // Dark gray
-                colors[9] = 0xFF5555FF; // Light blue
-                colors[10] = 0xFF55FF55; // Light green
-                colors[11] = 0xFF55FFFF; // Light cyan
-                colors[12] = 0xFFFF5555; // Light red
-                colors[13] = 0xFFFF55FF; // Light magenta
-                colors[14] = 0xFFFFFF55; // Yellow
-                colors[15] = 0xFFFFFFFF; // White
-                colors
-            });
+        let palette = self.image_palettes.entry(handle).or_insert_with(|| {
+            // Initialize with default EGA/VGA palette
+            let mut colors = [0xFF000000u32; 256];
+            colors[0] = 0xFF000000; // Black
+            colors[1] = 0xFF0000AA; // Blue
+            colors[2] = 0xFF00AA00; // Green
+            colors[3] = 0xFF00AAAA; // Cyan
+            colors[4] = 0xFFAA0000; // Red
+            colors[5] = 0xFFAA00AA; // Magenta
+            colors[6] = 0xFFAA5500; // Brown
+            colors[7] = 0xFFAAAAAA; // Light gray
+            colors[8] = 0xFF555555; // Dark gray
+            colors[9] = 0xFF5555FF; // Light blue
+            colors[10] = 0xFF55FF55; // Light green
+            colors[11] = 0xFF55FFFF; // Light cyan
+            colors[12] = 0xFFFF5555; // Light red
+            colors[13] = 0xFFFF55FF; // Light magenta
+            colors[14] = 0xFFFFFF55; // Yellow
+            colors[15] = 0xFFFFFFFF; // White
+            colors
+        });
 
         palette[index as usize] = color;
         Ok(())

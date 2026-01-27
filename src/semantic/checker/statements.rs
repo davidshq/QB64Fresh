@@ -2262,11 +2262,7 @@ impl<'a> TypeChecker<'a> {
     /// - `constant`: The C constant from the header parser
     /// - `span`: Source span for the symbol definition
     #[cfg(feature = "header-parsing")]
-    fn process_c_constant(
-        &mut self,
-        constant: &crate::header_parser::CConstant,
-        span: Span,
-    ) {
+    fn process_c_constant(&mut self, constant: &crate::header_parser::CConstant, span: Span) {
         use crate::header_parser::ConstantValue as CConstantValue;
         use crate::semantic::symbols::{ConstValue, Symbol, SymbolKind};
 
@@ -2301,9 +2297,7 @@ impl<'a> TypeChecker<'a> {
         // Create the symbol
         let symbol = Symbol {
             name: constant.name.clone(),
-            kind: SymbolKind::Constant {
-                value: const_value,
-            },
+            kind: SymbolKind::Constant { value: const_value },
             basic_type,
             span,
             is_mutable: false,
@@ -2325,7 +2319,9 @@ impl<'a> TypeChecker<'a> {
                 let (existing, new) = *duplicate;
                 // Check if the existing symbol is also a constant
                 match &existing.kind {
-                    SymbolKind::Constant { value: existing_val } => {
+                    SymbolKind::Constant {
+                        value: existing_val,
+                    } => {
                         // Both are constants - check if values match
                         // We know `new.kind` is Constant because we just created it
                         if let SymbolKind::Constant { value: new_val } = &new.kind {
@@ -2360,11 +2356,7 @@ impl<'a> TypeChecker<'a> {
     /// - `struct_def`: The C struct from the header parser
     /// - `span`: Source span for the type definition
     #[cfg(feature = "header-parsing")]
-    fn process_c_struct(
-        &mut self,
-        struct_def: &crate::header_parser::CStruct,
-        span: Span,
-    ) {
+    fn process_c_struct(&mut self, struct_def: &crate::header_parser::CStruct, span: Span) {
         use crate::semantic::symbols::{UserTypeDefinition, UserTypeMember};
 
         // Skip structs with empty names (shouldn't happen, but be defensive)

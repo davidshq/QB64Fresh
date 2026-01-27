@@ -1,12 +1,8 @@
-# QB64Fresh Runtime Implementation Plan
+# Partial Implementations Audit & Runtime Implementation Plan
 
-This document outlines the runtime implementation for QB64Fresh. It describes the **dual-runtime architecture**, the **actual layout** of both runtimes, and a **phase roadmap** toward QB64pe feature parity.
+This document catalogs all functionality that is only partially implemented across the QB64Fresh codebase and provides a comprehensive overview of the runtime implementation status. Last updated: 2026-01-27 (verified against current codebase - 2026-01-27).
 
-*Last updated: 2026-01-26*
-
-For per-function status and will-not-implement: [STUB_FUNCTIONS_FULL.md](../archive/STUB_FUNCTIONS_FULL.md). Phase tables include a **vs QB64pe** column for feature parity; parity counts as ✓ when QB64pe implements and we do (any runtime), or when **neither** implements it (e.g. will-not-implement / stub-only on both).
-
----
+For per-function status and will-not-implement: [STUB_FUNCTIONS_FULL.md](../archive/STUB_FUNCTIONS_FULL.md).
 
 ## Dual-Runtime Architecture
 
@@ -22,15 +18,34 @@ QB64Fresh supports two runtime modes, selected via `--runtime` when emitting C:
 
 See [RUNTIME_ARCHITECTURE_PERSPECTIVES.md](RUNTIME_ARCHITECTURE_PERSPECTIVES.md) for trade-offs, conformance, and when to use each mode.
 
----
-
-## Current Implementation Status (2026-01-26)
+## Current Implementation Status (2026-01-27)
 
 - **~409 of 419** built-in functions/subs fully implemented (~97.6%); see [STUB_FUNCTIONS_FULL.md](../archive/STUB_FUNCTIONS_FULL.md).
 - **~7** legacy/event stubs (ERDEV, ON COM, ON UEVENT, ON SIGNAL, etc.) and **~3** obsolete (e.g. PEN) are **will-not-implement** (stub-only).
 - **Joystick:** Full in external runtime (STICK, STRIG, _DEVICES, _AXIS, _BUTTON, ON STRIG, STRIG ON/OFF/STOP); inline uses stubs (127/0) — hardware requires SDL2.
+- **Test Coverage:** 1,500+ tests total (405 unit, 727 integration, 210 runtime, 10 golden, 19 property-based, 27 execution)
+- **QB64pe Compatibility:** 99.1% (114/115 test files passing)
 
----
+## Legend
+
+**Status Icons:**
+- 🟢 = Complete/fully functional
+- ⚠️ = Stub/partial implementation (code exists but limited functionality, needs work)
+- 🟣 = Limited implementation (intentionally limited, acceptable as-is by design)
+- 🔴 = Missing/incomplete (needs implementation work)
+- 🚫 = Intentionally missing (won't be implemented, by design)
+
+**Intentional Status:**
+- **Yes** = Intentionally stub/missing (by design, acceptable as-is)
+- **No** = Needs implementation (temporary, should be fixed)
+- **Partial** = Partially intentional (e.g., feature flag, conditional availability)
+- **-** = Not applicable (feature is complete)
+
+**vs QB64pe (parity):**
+- **✓** = Parity: QB64pe has it and we have it (inline and/or external), or **QB64pe does not implement it and we don't (or we match their non‑implementation)**.
+- **~** = Partial: QB64pe has full impl and we have only stub in both modes (or we're close but not equivalent).
+- **✗** = No parity: QB64pe has it and we don't (or only a non‑equivalent stub).
+- **—** = N/A or unknown QB64pe behavior.
 
 ## Architecture Overview
 
@@ -88,26 +103,92 @@ runtime/src/
 
 **C API contract:** [runtime/include/qb64fresh_rt.h](../../runtime/include/qb64fresh_rt.h)
 
----
+## Categories
 
-## Implementation Status Legend
-
-**Status:** [x] = done; [~] = stub in inline and/or partial; [ ] = not implemented. External runtime is often [x] where inline is [~]; see [STUB_FUNCTIONS_FULL.md](../archive/STUB_FUNCTIONS_FULL.md) for the full catalog.
-
-**vs QB64pe (parity):**
-
-| Symbol | Meaning |
-|--------|---------|
-| **✓** | Parity: QB64pe has it and we have it (inline and/or external), or **QB64pe does not implement it and we don’t (or we match their non‑implementation)**. |
-| **~** | Partial: QB64pe has full impl and we have only stub in both modes (or we’re close but not equivalent). |
-| **✗** | No parity: QB64pe has it and we don’t (or only a non‑equivalent stub). |
-| **—** | N/A or unknown QB64pe behavior. |
+1. [Graphics Features](#graphics-features)
+2. [System Features](#system-features)
+3. [File I/O Features](#file-io-features)
+4. [Debugger Infrastructure](#debugger-infrastructure)
+5. [Legacy Features](#legacy-features)
+6. [Phase-by-Phase Implementation Status](#phase-by-phase-implementation-status)
 
 ---
 
-## Phase 1: Core Essentials
+## Graphics Features
 
-### 1.1 Memory Management
+| Feature | Inline | External Runtime | Intentional? | Notes |
+|---------|--------|------------------|--------------|-------|
+| **Core Graphics Commands** | | | | |
+| SCREEN, LINE, CIRCLE, PSET, etc. | 🟣 | 🟢 | Yes | Inline mode: stubs with warnings, frame limiting. External: full SDL2 implementation |
+| STEP position tracking | 🟣 | 🟢 | Yes | Inline: not tracked (no-op). External: fully implemented in both mock and SDL2 backends (tracks `last_x` and `last_y`). Inline mode has no graphics window, so STEP tracking is not needed |
+| **Font Functions** | | | | |
+| `_FONT`, `_FREEFONT`, `_LOADFONT` | 🟣 | 🟣 | Partial | Stubs in inline. External: requires `graphics-sdl2-ttf` feature flag (SDL2_ttf dependency) |
+| `_MAPUNICODE` | 🟢 | 🟢 | - | Fully functional (Code Page 437 mapping) |
+| **Window Functions** | | | | |
+| `_TITLE` | 🟣 | 🟢 | Yes | Inline: not implemented (no-op). External: fully functional via `set_title()` in SDL2 backend. UI-only feature - no window in inline mode |
+| `_SCREENMOVE` | 🟣 | 🟢 | Yes | Inline: not implemented (no-op). External: fully functional via `screen_move()` in SDL2 backend. UI-only feature - no window in inline mode |
+| `_SCREENSHOW` | 🟣 | 🟢 | Yes | Inline: not implemented (no-op). External: fully functional via `screen_show()` in SDL2 backend. UI-only feature - no window in inline mode |
+| `_ICON` | 🟣 | 🟢 | - | Inline: not implemented (no-op). External: fully implemented - converts image buffer ARGB pixels to SDL2 Surface RGBA format and sets window icon |
+| **Palette Functions** | | | | |
+| Per-image palettes | 🟢 | 🟢 | - | Fully implemented in both mock and SDL2 backends. Handle 0 uses screen palette, other handles use image-specific palettes |
+| **OpenGL Functions** | | | | |
+| `_GLRENDER`, `_GLCOMPAT` | 🚫 | 🚫 | Yes | Excluded per ADR-0014 (using SDL2/winit, not raw OpenGL) |
+| **Console Scrolling** | 🟣 | 🟢 | No | Inline: not implemented (no graphics window). External: fully implemented via `scroll_text_up()` method in SDL2Backend that shifts pixel rows and clears bottom line
+
+---
+
+## System Features
+
+| Feature | Inline | External Runtime | Intentional? | Notes |
+|---------|--------|------------------|--------------|-------|
+| **Network Functions** | | | | |
+| `_OPENHOST`, `_OPENCONNECTION`, `_OPENCLIENT` | 🟣 | 🟣 | Partial | Implemented in external runtime but API differs from QB64pe (see [Phase 6: Networking](#phase-6-networking)). Inline: stubs |
+| `_CONNECTED` | 🟣 | 🟣 | Partial | Implemented in external runtime. Inline: stub returns 0 |
+| `_STATUSCODE` | 🚫 | 🚫 | Yes | Returns 200 (stub) |
+| Network I/O (`qb_net_get`, `qb_net_put`, etc.) | 🟣 | 🟣 | Partial | Implemented in external runtime. Inline: stubs return 0/empty |
+| **Drag and Drop** | | | | |
+| `_TOTALDROPPEDFILES` | 🚫 | 🚫 | Yes | Returns 0 |
+| `_DROPPEDFILE$` | 🚫 | 🚫 | Yes | Returns empty string |
+| `_FINISHDROP`, `_ACCEPTFILEDROP` | 🚫 | 🚫 | Yes | No-ops |
+| **Console Control** | | | | |
+| `qb_echo` | ✅ | ✅ | Yes | Implemented. Outputs text to console followed by newline |
+
+---
+
+## File I/O Features
+
+| Feature | Inline | External Runtime | Intentional? | Notes |
+|---------|--------|------------------|--------------|-------|
+| **FIELD Statement** | | | | |
+| `qb_field_start()` | 🟢 | 🟢 | - | Fully implemented in `runtime/src/io.rs`. Allocates field buffer based on file record length |
+| `qb_field_add()` | 🟢 | 🟢 | - | Fully implemented in `runtime/src/io.rs`. Creates fixed-length strings for field variables |
+| **LSET/RSET** | | | | |
+| LSET/RSET string operations | 🟢 | 🟢 | - | Fully implemented in `runtime/src/io.rs`. Properly pads/truncates strings to field width with left/right alignment |
+
+---
+
+## Debugger Infrastructure
+
+| Feature | Inline | External Runtime | Intentional? | Notes |
+|---------|--------|------------------|--------------|-------|
+| **Execution Control** | | | | |
+| `run()`, `pause()`, `step_over()`, `step_into()`, `step_out()`, `stop()` | 🟢 | 🟢 | - | Infrastructure complete. Requires runtime integration hooks to be functional |
+| `process_events()`, `handle_event()` | 🟢 | 🟢 | - | Event processing implemented. Needs runtime to emit events |
+| **Watch Expressions** | | | | |
+| Variable evaluation (`x`, `arr(i)`, `player.x`) | 🟢 | 🟢 | - | Expression parsing and evaluation complete. Needs runtime state access |
+| **Debug Adapter Protocol** | | | | |
+| Attach mode | 🟢 | 🟢 | - | Connects to existing process via pipe path or process ID |
+| Expression evaluation | 🟢 | 🟢 | - | Parses expressions and requests variable values from debuggee |
+
+**Note:** All debugger features are infrastructure-complete but require runtime integration (debug info emission, breakpoint hooks, memory access protocol) to be functional.
+
+---
+
+## Phase-by-Phase Implementation Status
+
+### Phase 1: Core Essentials
+
+#### 1.1 Memory Management
 
 **Inline:** `src/codegen/c_backend/runtime/memory.rs` — full implementation for core ops; typed get/put/fill; `_MEMELEMENT`. `_MEMIMAGE` and `_MEMSOUND` return empty (stub).  
 **External:** `_MEM*` in `qb64fresh_rt.h` and `runtime/src/memory.rs` (qb_mem, qb_memnew, qb_memfree, qb_memget, qb_memput, qb_memcopy, qb_memfill, qb_offset, qb_mem_of, qb_memexists, qb_memelement, qb_memimage, qb_memsound). Typed helpers (qb_memget_byte, etc.) exist only in inline; codegen uses the generic names.
@@ -126,7 +207,7 @@ runtime/src/
 | `_MEMSOUND(handle)` | [~] | ~ | Stub (returns empty) |
 | `_MEMIMAGE(handle)` | [~] | ~ | Stub (returns empty) |
 
-### 1.2 String System
+#### 1.2 String System
 
 **External:** `runtime/src/string.rs`  
 **Inline:** `src/codegen/c_backend/runtime/strings.rs`
@@ -154,7 +235,7 @@ runtime/src/
 | `OCT$(num)` | [x] | ✓ | Number to octal (qb_oct) |
 | `_BIN$(num)` | [x] | ✓ | Number to binary (qb_bin) |
 
-### 1.3 Math Functions
+#### 1.3 Math Functions
 
 **External:** `runtime/src/math.rs`  
 **Inline:** `src/codegen/c_backend/runtime/math.rs`
@@ -188,7 +269,7 @@ runtime/src/
 | `_D2R(x)` | [x] | ✓ | Degrees to radians |
 | `_R2D(x)` | [x] | ✓ | Radians to degrees |
 
-### 1.4 File I/O
+#### 1.4 File I/O
 
 **External:** `runtime/src/io.rs` (file operations; KILL, NAME, CHDIR, MKDIR, RMDIR, _FILEEXISTS, _DIREXISTS).  
 **Inline:** `src/codegen/c_backend/runtime/file.rs` (OPEN, PRINT #, WRITE #, GET, PUT, etc.); `src/codegen/c_backend/runtime/system.rs` (KILL, NAME, CHDIR, MKDIR, RMDIR, _FILEEXISTS, _DIREXISTS).
@@ -219,16 +300,14 @@ runtime/src/
 
 **Note (external):** `qb_chdir`, `qb_mkdir`, `qb_rmdir`, and `qb_dir_exists` are declared in `runtime/include/qb64fresh_rt.h` and implemented in `runtime/src/io.rs`.
 
----
-
-## Phase 2: Graphics System
+### Phase 2: Graphics System
 
 **External:** `runtime/src/graphics/` (GraphicsBackend trait, SDL2Backend, MockBackend), `runtime/src/graphics_ffi.rs`  
 **Inline:** `src/codegen/c_backend/runtime/graphics.rs` (stubs; `QB64FRESH_MAX_FRAMES` frame limiting, default 1000 frames)
 
 See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), and stub behavior.
 
-### 2.1 Screen Management
+#### 2.1 Screen Management
 
 | Function | Status | vs QB64pe | Description |
 |----------|--------|-----------|-------------|
@@ -248,7 +327,7 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 | `_DESKTOPWIDTH` | [~] | ✓ | Desktop width |
 | `_DESKTOPHEIGHT` | [~] | ✓ | Desktop height |
 
-### 2.2 Drawing Primitives
+#### 2.2 Drawing Primitives
 
 | Function | Status | vs QB64pe | Description |
 |----------|--------|-----------|-------------|
@@ -263,7 +342,7 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 | `VIEW (x1,y1)-(x2,y2)` | [~] | ✓ | Set viewport |
 | `WINDOW (x1,y1)-(x2,y2)` | [~] | ✓ | World coordinates |
 
-### 2.3 Color and Image Operations
+#### 2.3 Color and Image Operations
 
 | Function | Status | vs QB64pe | Description |
 |----------|--------|-----------|-------------|
@@ -274,7 +353,7 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 | `GET (x1,y1)-(x2,y2), array` | [~] | ✓ | Capture to array |
 | `PUT (x, y), array, action` | [~] | ✓ | Draw from array |
 
-### 2.4 Text and Fonts
+#### 2.4 Text and Fonts
 
 **External:** `runtime/src/font_ffi.rs`, `runtime/src/font_manager.rs` (optional FreeType via `graphics-sdl2-freetype` feature)
 
@@ -287,11 +366,9 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 | `_LOADFONT`, `_FONT`, `_FREEFONT` | [~] | ✓ | Font load/set/free |
 | `_FONTHEIGHT`, `_FONTWIDTH`, `_PRINTWIDTH` | [~] | ✓ | Font metrics |
 
----
+### Phase 3: Input System
 
-## Phase 3: Input System
-
-### 3.1 Keyboard
+#### 3.1 Keyboard
 
 **External:** `runtime/src/io.rs` (keyboard functions: qb_inkey, qb_keyhit, qb_keydown, qb_keyclear)  
 **Inline:** `src/codegen/c_backend/runtime/keyboard.rs`
@@ -305,7 +382,7 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 | `_KEYDOWN(code)` | [x] | ✓ | Check if key pressed |
 | `_KEYCLEAR` | [x] | ✓ | Clear keyboard buffer |
 
-### 3.2 Mouse
+#### 3.2 Mouse
 
 **External:** `runtime/src/graphics_ffi.rs` (qb_mouse_* functions); **full** in external runtime via SDL2.  
 **Inline:** stubs in `src/codegen/c_backend/runtime/graphics.rs` (return 0/defaults).
@@ -319,7 +396,7 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 | `_MOUSESHOW`, `_MOUSEHIDE` | [x] ext / [~] inline | ✓ | Cursor visibility |
 | `_MOUSEMOVE x, y` | [x] ext / [~] inline | ✓ | Move cursor |
 
-### 3.3 Game Controller
+#### 3.3 Game Controller
 
 **External:** `runtime/src/joystick.rs` (full).  
 **Inline:** Stubs (STICK/STRIG return 127/0).
@@ -331,9 +408,7 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 | `_DEVICES`, `_DEVICE$(n)` | [x] ext / [~] inline | ✓ | Device count/name (qb_devices; _DEVICE$ in header/io) |
 | `_AXIS(n)`, `_BUTTON(n)` | [x] ext / [~] inline | ✓ | Axis/button (qb_axis, qb_button in `runtime/include/qb64fresh_rt.h`) |
 
----
-
-## Phase 4: Audio System
+### Phase 4: Audio System
 
 **External:** `runtime/src/audio/` (AudioBackend trait, RodioBackend, MockBackend), `runtime/src/audio_ffi.rs` (Rodio) — **full**.  
 **Inline:** `src/codegen/c_backend/runtime/audio.rs` (stubs; no-op implementations).
@@ -348,14 +423,12 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 | `_SNDLOOP`, `_SNDVOL`, `_SNDBAL` | [x] ext / [~] inline | ✓ | Loop, volume, balance |
 | `_SNDPLAYING`, `_SNDLEN`, `_SNDGETPOS`, `_SNDSETPOS` | [x] ext / [~] inline | ✓ | Queries |
 
----
-
-## Phase 5: System Integration
+### Phase 5: System Integration
 
 **Inline:** `src/codegen/c_backend/runtime/system.rs`, `src/codegen/c_backend/runtime/timing.rs`, `src/codegen/c_backend/runtime/error.rs`  
 **External:** `runtime/src/io.rs` (env, command, shell), `runtime/src/dialogs.rs` (native dialogs via rfd crate)
 
-### 5.1 Timing
+#### 5.1 Timing
 
 | Function | Status | vs QB64pe | Description |
 |----------|--------|-----------|-------------|
@@ -366,7 +439,7 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 | `DATE$` | [x] | ✓ | Current date |
 | `TIME$` | [x] | ✓ | Current time |
 
-### 5.2 Environment and Shell
+#### 5.2 Environment and Shell
 
 | Function | Status | vs QB64pe | Description |
 |----------|--------|-----------|-------------|
@@ -378,7 +451,7 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 | `SHELL cmd$` | [x] | ✓ | Execute (no return) |
 | `SYSTEM`, `END` | [x] | ✓ | Exit program |
 
-### 5.3 Dialogs and Clipboard
+#### 5.3 Dialogs and Clipboard
 
 **External:** `runtime/src/dialogs.rs` (rfd crate for native dialogs); clipboard in `runtime/src/graphics_ffi.rs` (qb_clipboard_get/set). **Full** in external.
 
@@ -389,7 +462,7 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 | `_SELECTFOLDERDIALOG$` | [x] ext / [~] inline | ✓ | Folder dialog |
 | `_CLIPBOARD$` | [x] ext / [~] inline | ✓ | Get/set clipboard (qb_clipboard_get/set) |
 
-### 5.4 Error Handling
+#### 5.4 Error Handling
 
 **Inline:** `src/codegen/c_backend/runtime/error.rs`
 
@@ -401,9 +474,7 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 | `_ERRORMESSAGE$` | [x] | ✓ | Error message (qb_errormessage; error.rs) |
 | `ERROR n` | [x] | ✓ | Generate error |
 
----
-
-## Phase 6: Networking
+### Phase 6: Networking
 
 **External:** `runtime/src/io.rs` implements `qb_net_*`; `runtime/include/qb64fresh_rt.h` declares `qb_net_openhost`, `qb_net_openconnection`, `qb_net_openclient`, `qb_net_connected`, `qb_net_close`, `qb_net_get`, `qb_net_put`, `qb_net_get_string`, `qb_net_put_string`, `qb_net_eof`, `qb_net_lof`.  
 **Inline:** `src/codegen/c_backend/runtime/system.rs` emits stubs.
@@ -431,8 +502,6 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 | Dialogs | `rfd` | Native file/folder/message dialogs |
 | Time | `std::time`, `chrono` (if needed) | TIMER, DATE$, TIME$ |
 
----
-
 ## Implementation Order (Suggested)
 
 1. **Core I/O (done for bootstrap):** Strings, console I/O, file I/O, keyboard, math. ✅
@@ -442,8 +511,6 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 5. **Input (done in external):** Mouse, game controller/joystick (STICK, STRIG, _DEVICES, _AXIS, _BUTTON, ON STRIG). ✅
 6. **System (done in external):** Dialogs, clipboard. **Networking:** `qb_net_*` implemented in `runtime/src/io.rs` and declared in `runtime/include/qb64fresh_rt.h`. **Directory ops:** `qb_chdir`, `qb_mkdir`, `qb_rmdir`, `qb_dir_exists` in header and `io.rs`. ✅
 
----
-
 ## Success Criteria
 
 1. **Bootstrap:** QB64pe compiles itself with QB64Fresh and runs to completion (resolve startup/IDE init hang; see [RUNTIME_ARCHITECTURE_PERSPECTIVES.md](RUNTIME_ARCHITECTURE_PERSPECTIVES.md)).
@@ -452,11 +519,55 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 4. **Feature parity:** All QB64pe functions either implemented or explicitly documented as stub/unsupported; see [STUB_FUNCTIONS_FULL.md](../archive/STUB_FUNCTIONS_FULL.md).
 5. **Performance:** Comparable to QB64pe for typical programs.
 
----
-
 ## Related Documentation
 
 - [RUNTIME_ARCHITECTURE_PERSPECTIVES.md](RUNTIME_ARCHITECTURE_PERSPECTIVES.md) — dual-runtime trade-offs, when to use each, action items
 - [../GRAPHICS.md](../GRAPHICS.md) — graphics architecture, inline stubs, `QB64FRESH_MAX_FRAMES`, SDL2/Mock backends
 - [runtime/include/qb64fresh_rt.h](../../runtime/include/qb64fresh_rt.h) — C API contract for external runtime (all FFI function declarations)
 - [STUB_FUNCTIONS_FULL.md](../archive/STUB_FUNCTIONS_FULL.md) — full function catalog, implemented and will-not-implement
+
+---
+
+## Legacy Features
+
+| Feature | Inline | External Runtime | Intentional? | Notes |
+|---------|--------|------------------|--------------|-------|
+| **Light Pen** | | | | |
+| `PEN` | 🟣 | 🟣 | Yes | Stub with runtime warning. Obsolete hardware |
+| **Serial I/O** | | | | |
+| `ERDEV`, `ERDEV$`, `IOCTL`, `IOCTL$` | 🟣 | 🟣 | Yes | Stubs with runtime warning. Legacy DOS-era features |
+
+**Note:** Joystick support (STICK, STRIG, _DEVICES, _AXIS, _BUTTON) is fully implemented in external runtime via SDL2. See [Phase 3.3: Game Controller](#33-game-controller) for details.
+
+---
+
+## Notes
+
+**Runtime Modes:**
+- **Inline mode** (`--runtime inline`): Many features are intentionally stubbed to allow compilation without external dependencies. Graphics operations are stubs with frame limiting to prevent infinite loops.
+- **External runtime** (`--runtime external`): Full functionality requires linking against `libqb64fresh_rt`. Most features are fully implemented in external mode.
+
+**Implementation Status:**
+- Array metadata tracking is fully implemented in external runtime (see `src/codegen/c_backend/runtime/arrays.rs`). Inline runtime has stub for `qb_array_register_md` which is acceptable since inline mode doesn't need full array tracking.
+- Debugger infrastructure is complete but requires runtime integration hooks (debug info emission, breakpoint support, memory access protocol) to be functional.
+
+**Intentional vs Temporary:**
+- Features marked as **Intentional: Yes** are by design (e.g., OpenGL excluded per ADR-0014, legacy hardware stubs).
+- Features marked as **Intentional: No** need implementation work (e.g., console scrolling in inline mode).
+- Features marked as **Intentional: Partial** are conditionally available (e.g., TrueType fonts require feature flag, networking has API differences from QB64pe).
+
+## Recent Changes
+
+### 2026-01-27
+- ✅ **FIELD Statement**: Fully implemented (see [File I/O Features](#file-io-features))
+- ✅ **LSET/RSET**: Fully implemented (see [File I/O Features](#file-io-features))
+- ✅ **Graphics Features**: Console Scrolling, Per-Image Palettes, STEP Position Tracking, and Window Functions verified/implemented (see [Graphics Features](#graphics-features))
+
+### 2026-01-26
+- ✅ **Array Metadata Tracking**: Fully implemented with hash table registry system
+  - `qb_array_register` / `qb_array_register_md` track array bounds
+  - `qb_ubound` / `qb_ubound2` and `qb_lbound` / `qb_lbound2` now return correct values
+  - `qb_array_update` handles REDIM pointer changes
+  - `qb_array_erase` clears metadata
+  - Implementation in `src/codegen/c_backend/runtime/arrays.rs`
+  - **Note:** Inline runtime has stub for `qb_array_register_md`, but external runtime has full implementation

@@ -565,7 +565,10 @@ mod tests {
         let mut symbols = SymbolTable::new();
         let mut checker = TypeChecker::new(&mut symbols);
 
-        let expr = Expr::new(ExprKind::Identifier("name$".to_string()), Span::new(0, 5, 1));
+        let expr = Expr::new(
+            ExprKind::Identifier("name$".to_string()),
+            Span::new(0, 5, 1),
+        );
 
         let typed = checker.check_expr(&expr);
         assert_eq!(typed.basic_type, BasicType::String);

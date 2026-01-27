@@ -531,10 +531,7 @@ impl Debugger {
             }
             ExecutionState::Completed | ExecutionState::Error => {
                 return Err(DebugError::SessionError {
-                    message: format!(
-                        "Cannot run program in {:?} state",
-                        self.state
-                    ),
+                    message: format!("Cannot run program in {:?} state", self.state),
                 });
             }
             _ => {} // Valid states: NotStarted, Paused, Stepping
@@ -542,13 +539,15 @@ impl Debugger {
 
         // Send command to runtime if connected
         if let Some(conn) = &mut self.connection {
-            conn.send_command(&DebugCommand::Continue)
-                .map_err(|e| DebugError::ConnectionError {
+            conn.send_command(&DebugCommand::Continue).map_err(|e| {
+                DebugError::ConnectionError {
                     message: format!("Failed to send CONTINUE command: {}", e),
-                })?;
+                }
+            })?;
         } else {
             return Err(DebugError::ConnectionError {
-                message: "No runtime connection attached. Call attach_connection() first.".to_string(),
+                message: "No runtime connection attached. Call attach_connection() first."
+                    .to_string(),
             });
         }
 
@@ -581,7 +580,8 @@ impl Debugger {
                 })?;
         } else {
             return Err(DebugError::ConnectionError {
-                message: "No runtime connection attached. Call attach_connection() first.".to_string(),
+                message: "No runtime connection attached. Call attach_connection() first."
+                    .to_string(),
             });
         }
 
@@ -615,23 +615,22 @@ impl Debugger {
             }
             ExecutionState::Completed | ExecutionState::Error => {
                 return Err(DebugError::SessionError {
-                    message: format!(
-                        "Cannot step program in {:?} state",
-                        self.state
-                    ),
+                    message: format!("Cannot step program in {:?} state", self.state),
                 });
             }
         }
 
         // Send command to runtime if connected
         if let Some(conn) = &mut self.connection {
-            conn.send_command(&DebugCommand::StepOver)
-                .map_err(|e| DebugError::ConnectionError {
+            conn.send_command(&DebugCommand::StepOver).map_err(|e| {
+                DebugError::ConnectionError {
                     message: format!("Failed to send STEP_OVER command: {}", e),
-                })?;
+                }
+            })?;
         } else {
             return Err(DebugError::ConnectionError {
-                message: "No runtime connection attached. Call attach_connection() first.".to_string(),
+                message: "No runtime connection attached. Call attach_connection() first."
+                    .to_string(),
             });
         }
 
@@ -665,23 +664,22 @@ impl Debugger {
             }
             ExecutionState::Completed | ExecutionState::Error => {
                 return Err(DebugError::SessionError {
-                    message: format!(
-                        "Cannot step program in {:?} state",
-                        self.state
-                    ),
+                    message: format!("Cannot step program in {:?} state", self.state),
                 });
             }
         }
 
         // Send command to runtime if connected
         if let Some(conn) = &mut self.connection {
-            conn.send_command(&DebugCommand::StepInto)
-                .map_err(|e| DebugError::ConnectionError {
+            conn.send_command(&DebugCommand::StepInto).map_err(|e| {
+                DebugError::ConnectionError {
                     message: format!("Failed to send STEP_INTO command: {}", e),
-                })?;
+                }
+            })?;
         } else {
             return Err(DebugError::ConnectionError {
-                message: "No runtime connection attached. Call attach_connection() first.".to_string(),
+                message: "No runtime connection attached. Call attach_connection() first."
+                    .to_string(),
             });
         }
 
@@ -715,10 +713,7 @@ impl Debugger {
             }
             ExecutionState::Completed | ExecutionState::Error => {
                 return Err(DebugError::SessionError {
-                    message: format!(
-                        "Cannot step program in {:?} state",
-                        self.state
-                    ),
+                    message: format!("Cannot step program in {:?} state", self.state),
                 });
             }
         }
@@ -731,7 +726,8 @@ impl Debugger {
                 })?;
         } else {
             return Err(DebugError::ConnectionError {
-                message: "No runtime connection attached. Call attach_connection() first.".to_string(),
+                message: "No runtime connection attached. Call attach_connection() first."
+                    .to_string(),
             });
         }
 
@@ -750,10 +746,11 @@ impl Debugger {
     pub fn stop(&mut self) -> DebugResult<ExecutionState> {
         // Send command to runtime if connected
         if let Some(conn) = &mut self.connection {
-            conn.send_command(&DebugCommand::Terminate)
-                .map_err(|e| DebugError::ConnectionError {
+            conn.send_command(&DebugCommand::Terminate).map_err(|e| {
+                DebugError::ConnectionError {
                     message: format!("Failed to send TERMINATE command: {}", e),
-                })?;
+                }
+            })?;
         } else {
             // If not connected, we can still update state (program might not have started)
             self.state = ExecutionState::Completed;
@@ -823,11 +820,8 @@ impl Debugger {
                 file,
                 procedure: _,
             } => {
-                self.current_location = Some(SourceLocation::new(
-                    PathBuf::from(file),
-                    line as usize,
-                    1,
-                ));
+                self.current_location =
+                    Some(SourceLocation::new(PathBuf::from(file), line as usize, 1));
             }
             DebugEvent::Error { message: _ } => {
                 // Runtime error occurred - transition to Error state
