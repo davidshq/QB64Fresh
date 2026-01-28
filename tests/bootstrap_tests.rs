@@ -785,4 +785,61 @@ mod regression_tests {
             output.code
         );
     }
+
+    /// Regression: String temp pool overflow tracking.
+    /// Bug: String temp pool overflowed without proper tracking when main pool was full,
+    /// causing 39.8GB memory usage. Fix: commit 5c4d469 - Added overflow tracking.
+    #[test]
+    fn string_temp_pool_overflow_tracking() {
+        // Create a program that generates many temp strings
+        // This tests that overflow tracking mechanism exists in generated code
+        let source = r#"
+            DIM i AS INTEGER
+            DIM s$ AS STRING
+            ' Create many string operations to potentially fill temp pool
+            FOR i = 1 TO 1000
+                s$ = "test" + STR$(i) + "more" + STR$(i * 2)
+                s$ = LEFT$(s$, 10) + RIGHT$(s$, 5)
+            NEXT i
+        "#;
+
+        let tokens = lex(source);
+        let mut parser = Parser::new(&tokens);
+        let program = parser.parse().expect("Should parse");
+
+        let mut analyzer = SemanticAnalyzer::new();
+        let typed = analyzer.analyze(&program).expect("Should analyze");
+
+        let backend = CBackend::with_runtime_mode(RuntimeMode::Inline);
+        let output = backend.generate(&typed).expect("Should generate");
+
+        // Verify overflow tracking mechanism exists in generated code
+        // The fix added overflow pool tracking when main pool is full
+        assert!(
+            output.code.contains("_qbs_tmp_overflow"),
+            "Generated code should include overflow tracking array: {}",
+            output.code
+        );
+
+        // Verify overflow tracking variables exist
+        assert!(
+            output.code.contains("_qbs_tmp_overflow_count"),
+            "Generated code should include overflow count variable"
+        );
+
+        // Verify qbs_tmp_base_get returns packed uint64_t with both bases
+        assert!(
+            output.code.contains("overflow_base << 32") || output.code.contains("base >> 32"),
+            "Generated code should pack/unpack overflow base in uint64_t"
+        );
+
+        // Verify cleanup handles overflow pool
+        assert!(
+            output
+                .code
+                .contains("_qbs_tmp_overflow_count > overflow_base"),
+            "Generated code should cleanup overflow strings: {}",
+            output.code
+        );
+    }
 }
