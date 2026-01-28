@@ -179,6 +179,20 @@ pub(super) fn emit_expr(
                 ));
             }
 
+            // Special case: LBOUND with 1 argument (array) uses qb_lbound
+            // Don't convert fixed-length strings - pass array pointer directly
+            if upper_name == "LBOUND" && args.len() == 1 {
+                let arg_code = emit_expr(&args[0], no_shell, variable_renames, param_names)?;
+                // For fixed-length strings, unwrap qb_str_from_c() if present
+                // LBOUND needs the raw array pointer, not a converted string
+                let unwrapped = if arg_code.starts_with("qb_str_from_c(") {
+                    unwrap_qb_str_from_c(&arg_code)
+                } else {
+                    arg_code
+                };
+                return Ok(format!("qb_lbound({})", unwrapped));
+            }
+
             // Special case: LBOUND with 2 arguments (array, dimension) uses qb_lbound2
             if upper_name == "LBOUND" && args.len() == 2 {
                 let args_code: Result<Vec<_>, _> = args
@@ -369,19 +383,24 @@ pub(super) fn emit_expr(
                 }
             }
 
-            // Special case: _SAVEFILEDIALOG$ with different argument counts
+            // Special case: _SAVEFILEDIALOG$ expects const char* arguments, not QbString*
             if upper_name == "_SAVEFILEDIALOG$" {
-                let args_code: Result<Vec<_>, _> = args
-                    .iter()
-                    .map(|e| emit_expr(e, no_shell, variable_renames, param_names))
-                    .collect();
-                let args_str = args_code?.join(", ");
-                return match args.len() {
-                    2 => Ok(format!("qb_savefiledialog({})", args_str)),
-                    3 => Ok(format!("qb_savefiledialog3({})", args_str)),
-                    4 => Ok(format!("qb_savefiledialog4({})", args_str)),
-                    _ => Ok(format!("qb_savefiledialog({})", args_str)),
-                };
+                let mut args_codes = Vec::new();
+                for arg in args.iter() {
+                    let arg_code = emit_expr(arg, no_shell, variable_renames, param_names)?;
+                    // Convert QbString* to const char* using qb_string_data()
+                    let arg_data = if arg_code.starts_with("qb_str_from_c(") {
+                        // Fixed-length string - unwrap and use directly (it's already const char*)
+                        unwrap_qb_str_from_c(&arg_code)
+                    } else {
+                        // Dynamic string - use qb_string_data() to get const char*
+                        format!("qb_string_data({})", arg_code)
+                    };
+                    args_codes.push(arg_data);
+                }
+                let args_str = args_codes.join(", ");
+                // qb_savefiledialog takes 4 const char* arguments: title, initial_dir, default_name, filter
+                return Ok(format!("qb_savefiledialog({})", args_str));
             }
 
             // Special case: _OPENFILEDIALOG$ with different argument counts
@@ -583,6 +602,21 @@ pub(super) fn emit_expr(
                     format!("qb_string_data({})", cmd_code)
                 };
                 return Ok(format!("qb_shell({})", cmd_data));
+            }
+
+            // Special case: _OPENHOST expects const char* connection string, not QbString*
+            if upper_name == "_OPENHOST" {
+                // _OPENHOST takes 1 string argument (connection string like "TCP/IP:port")
+                let conn_code = emit_expr(&args[0], no_shell, variable_renames, param_names)?;
+                // Convert QbString* to const char* using qb_string_data()
+                let conn_data = if conn_code.starts_with("qb_str_from_c(") {
+                    // Fixed-length string - unwrap and use directly (it's already const char*)
+                    unwrap_qb_str_from_c(&conn_code)
+                } else {
+                    // Dynamic string - use qb_string_data() to get const char*
+                    format!("qb_string_data({})", conn_code)
+                };
+                return Ok(format!("qb_net_openhost({})", conn_data));
             }
 
             let c_name = c_function_name(name);
@@ -1034,13 +1068,14 @@ fn emit_array_access(
     variable_renames: &std::collections::HashMap<String, String>,
     param_names: &std::collections::HashSet<String>,
 ) -> Result<String, CodeGenError> {
-    let mut c_name = c_identifier(name);
+    let c_name = c_identifier(name);
 
-    // Array access always refers to the local array variable, not a parameter.
-    // If the variable was renamed to avoid shadowing, use the renamed version.
-    if let Some(renamed) = variable_renames.get(&c_name) {
-        c_name = renamed.clone();
-    }
+    // Array access always uses the original array name, not a renamed scalar.
+    // In BASIC's dual namespace, arrays and scalars can coexist with the same name.
+    // When there's a collision, we rename the scalar (e.g., c_str -> c_str_scalar),
+    // but arrays keep their original name (c_str). So array accesses should NOT
+    // use the rename - they should use the original name.
+    // Note: We don't check variable_renames here because renames are only for scalars.
 
     // Collect index codes, casting to int64_t to ensure integer subscripts
     // (C requires integer array subscripts, but BASIC allows any numeric type)

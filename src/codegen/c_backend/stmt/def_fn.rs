@@ -99,17 +99,17 @@ impl super::StmtEmitter {
         writeln_code!(output, "    {} {} = {};", c_return_type, return_var, init)?;
 
         // Set return variable for EXIT FUNCTION
-        let old_ret_var = self.current_func_ret_var.take();
-        self.current_func_ret_var = Some(return_var.clone());
+        let old_ret_var = self.procedure.current_func_ret_var.take();
+        self.procedure.current_func_ret_var = Some(return_var.clone());
 
         // Emit body statements
-        let old_indent = self.indent;
-        self.indent = 1;
+        let old_indent = self.codegen.indent;
+        self.codegen.indent = 1;
         for stmt in body {
             self.emit_stmt(stmt, output)?;
         }
-        self.indent = old_indent;
-        self.current_func_ret_var = old_ret_var;
+        self.codegen.indent = old_indent;
+        self.procedure.current_func_ret_var = old_ret_var;
 
         // Return the result
         writeln_code!(output, "    return {};", return_var)?;

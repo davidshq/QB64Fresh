@@ -422,6 +422,69 @@ for s in &result.structs {
 
 ---
 
+## Architecture
+
+The header parser follows a traditional lexer → parser pipeline:
+
+```
+C Header Source → Lexer → Tokens → Parser → HeaderParseResult
+```
+
+### Components
+
+1. **Lexer (`lexer.rs`):**
+   - Tokenizes C source into basic tokens (identifiers, operators, literals, etc.)
+   - Handles preprocessor directives (`#define`, `#ifdef`, `#ifndef`, `#if`, `#else`, `#endif`)
+   - Supports C literals (integers, floats, strings, character literals)
+   - Returns `Vec<Token>` for parser consumption
+
+2. **Parser (`parser.rs`):**
+   - Extracts function declarations with parameter types
+   - Parses `#define` constants (simple values, not function-like macros)
+   - Parses `struct` and `typedef struct` definitions
+   - Handles conditional compilation via `PreprocessorState` stack
+   - Maps C types to BASIC types via `c_type_to_basic()`
+
+3. **Platform Support (`mod.rs`):**
+   - `Platform` enum (Windows, Linux, macOS)
+   - Platform-specific macro definitions (e.g., `WIN32`, `__linux__`)
+   - Automatic platform detection via `Platform::current()`
+
+### Integration with Compiler
+
+The header parser is integrated into the semantic checker (`src/semantic/checker/statements.rs`):
+
+1. **Parser Phase:** `DECLARE LIBRARY "header.h"` statements are parsed normally
+2. **Semantic Phase:** When a header file path is detected, the semantic checker:
+   - Reads the header file content
+   - Calls `parse_header_full()` with the current platform
+   - Processes extracted functions, constants, and structs
+   - Registers them as external symbols in the symbol table
+3. **Code Generation:** External functions are emitted as `extern` declarations in generated C
+
+### Design Decisions
+
+1. **Simplified Parsing:** The parser intentionally skips complex C features:
+   - Function-like macros (`#define FOO(x) ...`)
+   - Complex preprocessor expressions (only handles `#ifdef`/`#ifndef` with simple macro names)
+   - Nested structs, unions, bit fields
+   - This keeps the parser maintainable while covering 90% of common header files
+
+2. **Platform Abstraction:** Platform detection is compile-time (`#[cfg]`) but parsing is runtime, allowing cross-compilation scenarios
+
+3. **Type Mapping:** C types are mapped to BASIC types conservatively:
+   - `char*` → `STRING`
+   - `int`/`long` → `LONG`
+   - `void*` → `_OFFSET`
+   - Unknown types default to `LONG` (safe fallback)
+
+### Future Enhancements
+
+- Support for more complex preprocessor expressions
+- Better error messages for unsupported constructs
+- Support for `typedef` aliases (currently only `typedef struct`)
+- Integration with C preprocessor for full macro expansion
+
 ## Files
 
 | File | Description |

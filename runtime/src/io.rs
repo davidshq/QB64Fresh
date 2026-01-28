@@ -1342,10 +1342,35 @@ fn next_net_handle() -> i64 {
 /// Returns a negative handle on success, 0 on failure.
 ///
 /// # Arguments
-/// - `port`: The port number to listen on
+/// - `connection_string`: Connection string like "TCP/IP:portNumber" or just port number as string
 #[no_mangle]
-pub extern "C" fn qb_net_openhost(port: i64) -> i64 {
+pub extern "C" fn qb_net_openhost(connection_string: *const libc::c_char) -> i64 {
     init_net_handles();
+
+    // Parse connection string (e.g., "TCP/IP:8080" -> extract port 8080)
+    let c_str = unsafe {
+        if connection_string.is_null() {
+            return 0;
+        }
+        std::ffi::CStr::from_ptr(connection_string)
+    };
+    let conn_str = match c_str.to_str() {
+        Ok(s) => s,
+        Err(_) => return 0,
+    };
+
+    // Extract port number from connection string
+    // Format: "TCP/IP:portNumber" or just "portNumber"
+    let port_str = if let Some(colon_pos) = conn_str.rfind(':') {
+        &conn_str[colon_pos + 1..]
+    } else {
+        conn_str
+    };
+
+    let port: i64 = match port_str.parse() {
+        Ok(p) => p,
+        Err(_) => return 0,
+    };
 
     let addr = format!("0.0.0.0:{}", port);
     match TcpListener::bind(&addr) {

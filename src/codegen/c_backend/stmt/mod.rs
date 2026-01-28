@@ -56,19 +56,43 @@ pub(super) struct LoopContext {
     pub loop_type: ExitType,
 }
 
-/// State required for statement emission.
-///
-/// This is passed through recursive statement emission to track
-/// indentation, loop context, and label generation.
-pub(super) struct StmtEmitter {
+/// Code generation state (labeling, indentation, emitted labels).
+#[derive(Clone)]
+pub(super) struct CodeGenState {
     /// Counter for generating unique labels.
     pub label_counter: u32,
     /// Current indentation level.
     pub indent: usize,
-    /// Stack of loop labels for EXIT statements.
-    pub loop_stack: Vec<LoopContext>,
-    /// Map of DATA labels to their indices (for RESTORE with label).
-    pub data_label_indices: HashMap<String, usize>,
+    /// Labels already emitted (to skip duplicates from ambiguous parsing).
+    pub emitted_labels: std::collections::HashSet<String>,
+}
+
+impl CodeGenState {
+    /// Creates a new code generation state.
+    fn new() -> Self {
+        Self {
+            label_counter: 0,
+            indent: 0,
+            emitted_labels: std::collections::HashSet::new(),
+        }
+    }
+
+    /// Generates a unique label name.
+    pub fn next_label(&mut self, prefix: &str) -> String {
+        let label = format!("_qb_{}_{}", prefix, self.label_counter);
+        self.label_counter += 1;
+        label
+    }
+
+    /// Returns the current indentation string.
+    pub fn indent_str(&self) -> String {
+        "    ".repeat(self.indent)
+    }
+}
+
+/// Context for the current procedure/function being emitted.
+#[derive(Clone)]
+pub(super) struct ProcedureContext {
     /// Current procedure name (for unique label generation).
     pub current_proc: Option<String>,
     /// Current function's return variable (for EXIT FUNCTION).
@@ -83,28 +107,158 @@ pub(super) struct StmtEmitter {
     /// Map of variable name renamings (original -> renamed) for variables that shadow parameters.
     /// When a local variable shadows a parameter, we rename it and track the mapping here.
     pub variable_renames: HashMap<String, String>,
+}
+
+impl ProcedureContext {
+    /// Creates a new procedure context.
+    fn new() -> Self {
+        Self {
+            current_proc: None,
+            current_func_ret_var: None,
+            current_func_byref_strings: Vec::new(),
+            current_func_param_names: std::collections::HashSet::new(),
+            variable_renames: HashMap::new(),
+        }
+    }
+
+    /// Clears the procedure context (when exiting a procedure/function).
+    pub fn clear(&mut self) {
+        self.current_proc = None;
+        self.current_func_ret_var = None;
+        self.current_func_byref_strings.clear();
+        self.current_func_param_names.clear();
+        self.variable_renames.clear();
+    }
+}
+
+/// Global symbol tracking (variables, arrays, constants).
+#[derive(Clone)]
+pub(super) struct GlobalSymbols {
     /// Global variable names (to avoid re-declaring as locals).
-    pub global_var_names: std::collections::HashSet<String>,
+    pub var_names: std::collections::HashSet<String>,
     /// Global array variable names (arrays can't be implicitly declared as scalars).
-    pub global_array_names: std::collections::HashSet<String>,
+    pub array_names: std::collections::HashSet<String>,
     /// DIM SHARED global variable names (accessible from all functions without local SHARED).
-    pub shared_global_names: std::collections::HashSet<String>,
+    pub shared_names: std::collections::HashSet<String>,
     /// Global CONST names (shouldn't be redeclared as local variables).
-    pub global_const_names: std::collections::HashSet<String>,
+    pub const_names: std::collections::HashSet<String>,
+}
+
+impl GlobalSymbols {
+    /// Creates a new global symbols tracker.
+    fn new() -> Self {
+        Self {
+            var_names: std::collections::HashSet::new(),
+            array_names: std::collections::HashSet::new(),
+            shared_names: std::collections::HashSet::new(),
+            const_names: std::collections::HashSet::new(),
+        }
+    }
+}
+
+/// Context for DATA statement handling.
+#[derive(Clone)]
+pub(super) struct DataContext {
+    /// Map of DATA labels to their indices (for RESTORE with label).
+    pub label_indices: HashMap<String, usize>,
+}
+
+impl DataContext {
+    /// Creates a new data context.
+    fn new() -> Self {
+        Self {
+            label_indices: HashMap::new(),
+        }
+    }
+}
+
+/// Context for event handling (STRIG events).
+#[derive(Clone)]
+pub(super) struct EventContext {
     /// Counter for generating unique STRIG event IDs.
     pub strig_event_counter: u32,
     /// Registered STRIG event handlers: (event_id, target_label).
     pub strig_handlers: Vec<(u32, String)>,
+}
+
+impl EventContext {
+    /// Creates a new event context.
+    fn new() -> Self {
+        Self {
+            strig_event_counter: 0,
+            strig_handlers: Vec::new(),
+        }
+    }
+}
+
+/// Debug configuration.
+#[derive(Clone)]
+pub(super) struct DebugContext {
     /// Debug mode enabled (emit qb_dbg_line calls).
-    pub debug_enabled: bool,
+    pub enabled: bool,
     /// Source file name for debug tracking.
-    pub debug_source_file: Option<String>,
+    pub source_file: Option<String>,
+}
+
+impl DebugContext {
+    /// Creates a new debug context.
+    fn new() -> Self {
+        Self {
+            enabled: false,
+            source_file: None,
+        }
+    }
+}
+
+/// Compiler configuration options.
+#[derive(Clone)]
+pub(super) struct Config {
     /// Disable SHELL / _SHELLHIDE (compile-time error if used). Set from CBackend via --no-shell.
     pub no_shell: bool,
-    /// Labels already emitted (to skip duplicates from ambiguous parsing).
-    pub emitted_labels: std::collections::HashSet<String>,
     /// Runtime mode (inline vs external) - affects how QbString data is accessed.
     pub runtime_mode: super::RuntimeMode,
+}
+
+impl Config {
+    /// Creates a new config with the specified runtime mode.
+    fn with_runtime_mode(runtime_mode: super::RuntimeMode) -> Self {
+        Self {
+            no_shell: false,
+            runtime_mode,
+        }
+    }
+}
+
+/// State required for statement emission.
+///
+/// This is passed through recursive statement emission to track
+/// indentation, loop context, and label generation.
+///
+/// The state is organized into focused context structs for better maintainability:
+/// - `codegen`: Label generation, indentation, emitted labels
+/// - `procedure`: Current procedure/function context and variable renamings
+/// - `globals`: Global symbol tracking
+/// - `data`: DATA statement handling
+/// - `events`: Event handler tracking
+/// - `debug`: Debug configuration
+/// - `config`: Compiler configuration options
+pub(super) struct StmtEmitter {
+    /// Code generation state (labels, indentation).
+    pub codegen: CodeGenState,
+    /// Stack of loop labels for EXIT statements.
+    pub loop_stack: Vec<LoopContext>,
+    /// Procedure/function context.
+    pub procedure: ProcedureContext,
+    /// Global symbol tracking.
+    pub globals: GlobalSymbols,
+    /// DATA statement context.
+    pub data: DataContext,
+    /// Event handling context.
+    pub events: EventContext,
+    /// Debug configuration.
+    pub debug: DebugContext,
+    /// Compiler configuration.
+    pub config: Config,
 }
 
 impl StmtEmitter {
@@ -117,34 +271,20 @@ impl StmtEmitter {
     /// Creates a new statement emitter with the specified runtime mode.
     pub fn with_runtime_mode(runtime_mode: super::RuntimeMode) -> Self {
         Self {
-            label_counter: 0,
-            indent: 0,
+            codegen: CodeGenState::new(),
             loop_stack: Vec::new(),
-            data_label_indices: HashMap::new(),
-            current_proc: None,
-            current_func_ret_var: None,
-            current_func_byref_strings: Vec::new(),
-            current_func_param_names: std::collections::HashSet::new(),
-            variable_renames: HashMap::new(),
-            global_var_names: std::collections::HashSet::new(),
-            global_array_names: std::collections::HashSet::new(),
-            shared_global_names: std::collections::HashSet::new(),
-            global_const_names: std::collections::HashSet::new(),
-            strig_event_counter: 0,
-            strig_handlers: Vec::new(),
-            debug_enabled: false,
-            debug_source_file: None,
-            no_shell: false,
-            emitted_labels: std::collections::HashSet::new(),
-            runtime_mode,
+            procedure: ProcedureContext::new(),
+            globals: GlobalSymbols::new(),
+            data: DataContext::new(),
+            events: EventContext::new(),
+            debug: DebugContext::new(),
+            config: Config::with_runtime_mode(runtime_mode),
         }
     }
 
     /// Generates a unique label name.
     pub fn next_label(&mut self, prefix: &str) -> String {
-        let label = format!("_qb_{}_{}", prefix, self.label_counter);
-        self.label_counter += 1;
-        label
+        self.codegen.next_label(prefix)
     }
 
     /// Helper method to emit an expression with variable renamings applied.
@@ -155,9 +295,9 @@ impl StmtEmitter {
     ) -> Result<String, crate::codegen::error::CodeGenError> {
         super::expr::emit_expr(
             expr,
-            self.no_shell,
-            &self.variable_renames,
-            &self.current_func_param_names,
+            self.config.no_shell,
+            &self.procedure.variable_renames,
+            &self.procedure.current_func_param_names,
         )
     }
 
@@ -165,7 +305,7 @@ impl StmtEmitter {
     /// This ensures line number labels (e.g., _line_1) are unique per procedure.
     fn proc_label(&self, label: &str) -> String {
         let base_label = c_identifier(label);
-        if let Some(ref proc) = self.current_proc {
+        if let Some(ref proc) = self.procedure.current_proc {
             format!("{}_{}", proc, base_label)
         } else {
             base_label
@@ -174,7 +314,7 @@ impl StmtEmitter {
 
     /// Returns the current indentation string.
     pub(crate) fn indent_str(&self) -> String {
-        "    ".repeat(self.indent)
+        self.codegen.indent_str()
     }
 
     /// Determines if a statement is executable (should have debug hooks).
@@ -205,14 +345,15 @@ impl StmtEmitter {
         stmt: &TypedStatement,
         output: &mut String,
     ) -> Result<(), CodeGenError> {
-        if !self.debug_enabled {
+        if !self.debug.enabled {
             return Ok(());
         }
 
         // Extract line number from span
         let line = stmt.span.line;
         let file = self
-            .debug_source_file
+            .debug
+            .source_file
             .as_deref()
             .unwrap_or("_qb_dbg_source_file");
 
@@ -242,7 +383,7 @@ impl StmtEmitter {
 
         // Emit debug line hook for executable statements
         // (skip labels, data, declarations that don't execute)
-        if self.debug_enabled && Self::is_executable_statement(&stmt.kind) {
+        if self.debug.enabled && Self::is_executable_statement(&stmt.kind) {
             self.emit_debug_line(stmt, output)?;
         }
 
@@ -336,7 +477,7 @@ impl StmtEmitter {
                         // No length specified - replace rest of string
                         format!("(int32_t)(strlen({}) - ({} - 1))", target_code, start_code)
                     };
-                    let data_access = match self.runtime_mode {
+                    let data_access = match self.config.runtime_mode {
                         super::RuntimeMode::External => "qb_string_data(_mid_val)",
                         super::RuntimeMode::Inline => "_mid_val->data",
                     };
@@ -1035,7 +1176,7 @@ impl StmtEmitter {
                 let c_label = self.proc_label(name);
                 // Skip duplicate labels (can occur from ambiguous parsing of
                 // "SubName: AnotherSub" patterns that look like labels)
-                if self.emitted_labels.insert(c_label.clone()) {
+                if self.codegen.emitted_labels.insert(c_label.clone()) {
                     writeln_code!(output, "{}:", c_label)?;
                 }
             }
@@ -2103,7 +2244,7 @@ impl StmtEmitter {
                 let y_code = self.emit_expr(y)?;
                 let text_code = self.emit_expr(text)?;
                 // qb_gfx_printstring expects const char*, not qb_string*
-                let text_data = emit_string_data_access(text, &text_code, self.runtime_mode);
+                let text_data = emit_string_data_access(text, &text_code, self.config.runtime_mode);
                 writeln_code!(
                     output,
                     "{}qb_gfx_printstring((int32_t){}, (int32_t){}, {});",
@@ -2262,7 +2403,7 @@ impl StmtEmitter {
                     .transpose()?
                     .unwrap_or_else(|| "0.0".to_string());
                 let filename_access =
-                    emit_string_data_access(filename, &filename_code, self.runtime_mode);
+                    emit_string_data_access(filename, &filename_code, self.config.runtime_mode);
                 writeln_code!(
                     output,
                     "{}qb_sndplayfile({}, (double){}, (double){}, (double){}, (double){});",
@@ -2307,15 +2448,17 @@ impl StmtEmitter {
             TypedStatementKind::Kill { filename } => {
                 let filename_code = self.emit_expr(filename)?;
                 let filename_access =
-                    emit_string_data_access(filename, &filename_code, self.runtime_mode);
+                    emit_string_data_access(filename, &filename_code, self.config.runtime_mode);
                 writeln_code!(output, "{}qb_file_kill({});", indent, filename_access)?;
             }
 
             TypedStatementKind::Rename { old_name, new_name } => {
                 let old_code = self.emit_expr(old_name)?;
                 let new_code = self.emit_expr(new_name)?;
-                let old_access = emit_string_data_access(old_name, &old_code, self.runtime_mode);
-                let new_access = emit_string_data_access(new_name, &new_code, self.runtime_mode);
+                let old_access =
+                    emit_string_data_access(old_name, &old_code, self.config.runtime_mode);
+                let new_access =
+                    emit_string_data_access(new_name, &new_code, self.config.runtime_mode);
                 writeln_code!(
                     output,
                     "{}qb_file_rename({}, {});",
@@ -2327,19 +2470,22 @@ impl StmtEmitter {
 
             TypedStatementKind::Mkdir { path } => {
                 let path_code = self.emit_expr(path)?;
-                let path_access = emit_string_data_access(path, &path_code, self.runtime_mode);
+                let path_access =
+                    emit_string_data_access(path, &path_code, self.config.runtime_mode);
                 writeln_code!(output, "{}qb_mkdir({});", indent, path_access)?;
             }
 
             TypedStatementKind::Rmdir { path } => {
                 let path_code = self.emit_expr(path)?;
-                let path_access = emit_string_data_access(path, &path_code, self.runtime_mode);
+                let path_access =
+                    emit_string_data_access(path, &path_code, self.config.runtime_mode);
                 writeln_code!(output, "{}qb_rmdir({});", indent, path_access)?;
             }
 
             TypedStatementKind::Chdir { path } => {
                 let path_code = self.emit_expr(path)?;
-                let path_access = emit_string_data_access(path, &path_code, self.runtime_mode);
+                let path_access =
+                    emit_string_data_access(path, &path_code, self.config.runtime_mode);
                 writeln_code!(output, "{}qb_chdir({});", indent, path_access)?;
             }
 
@@ -2349,7 +2495,7 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::ShellCmd { command } => {
-                if self.no_shell {
+                if self.config.no_shell {
                     return Err(
                         CodeGenError::new(CodeGenErrorKind::ShellDisabled).with_span(stmt.span)
                     );
@@ -2357,7 +2503,8 @@ impl StmtEmitter {
                 if let Some(cmd) = command {
                     let cmd_code = self.emit_expr(cmd)?;
                     // qb_shell expects const char*, not qb_string*
-                    let cmd_data = emit_string_data_access(cmd, &cmd_code, self.runtime_mode);
+                    let cmd_data =
+                        emit_string_data_access(cmd, &cmd_code, self.config.runtime_mode);
                     writeln_code!(output, "{}qb_shell({});", indent, cmd_data)?;
                 } else {
                     writeln_code!(output, "{}qb_shell(NULL);", indent)?;
@@ -2365,7 +2512,7 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::ShellHide { command } => {
-                if self.no_shell {
+                if self.config.no_shell {
                     return Err(
                         CodeGenError::new(CodeGenErrorKind::ShellDisabled).with_span(stmt.span)
                     );
@@ -2377,7 +2524,7 @@ impl StmtEmitter {
             TypedStatementKind::Bload { filename, address } => {
                 let filename_code = self.emit_expr(filename)?;
                 let filename_access =
-                    emit_string_data_access(filename, &filename_code, self.runtime_mode);
+                    emit_string_data_access(filename, &filename_code, self.config.runtime_mode);
                 if let Some(addr) = address {
                     let addr_code = self.emit_expr(addr)?;
                     writeln_code!(
@@ -2399,7 +2546,7 @@ impl StmtEmitter {
             } => {
                 let filename_code = self.emit_expr(filename)?;
                 let filename_access =
-                    emit_string_data_access(filename, &filename_code, self.runtime_mode);
+                    emit_string_data_access(filename, &filename_code, self.config.runtime_mode);
                 let addr_code = self.emit_expr(address)?;
                 let len_code = self.emit_expr(length)?;
                 writeln_code!(
@@ -2459,7 +2606,8 @@ impl StmtEmitter {
             // ==================== Clipboard Statement ====================
             TypedStatementKind::ClipboardSet { text } => {
                 let text_code = self.emit_expr(text)?;
-                let text_access = emit_string_data_access(text, &text_code, self.runtime_mode);
+                let text_access =
+                    emit_string_data_access(text, &text_code, self.config.runtime_mode);
                 writeln_code!(output, "{}qb_clipboard_set({});", indent, text_access)?;
             }
 
@@ -2650,9 +2798,9 @@ impl StmtEmitter {
 
             TypedStatementKind::OnStrig { button_num, target } => {
                 // Generate a unique event ID for this handler
-                self.strig_event_counter += 1;
-                let event_id = self.strig_event_counter;
-                self.strig_handlers.push((event_id, target.clone()));
+                self.events.strig_event_counter += 1;
+                let event_id = self.events.strig_event_counter;
+                self.events.strig_handlers.push((event_id, target.clone()));
 
                 let btn_code = self.emit_expr(button_num)?;
                 writeln_code!(

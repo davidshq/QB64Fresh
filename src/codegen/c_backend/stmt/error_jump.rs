@@ -54,7 +54,7 @@ impl super::StmtEmitter {
             // For now, just disable error handling (simpler behavior)
             writeln_code!(output, "{}_qb_error_handler = NULL;", indent)?;
             writeln_code!(output, "{}_qb_error_resume_next = 0;", indent)?;
-        } else if self.current_proc.is_some()
+        } else if self.procedure.current_proc.is_some()
             && (is_new_handler
                 || actual_target.eq_ignore_ascii_case("qberror_test")
                 || actual_target.eq_ignore_ascii_case("qberror")

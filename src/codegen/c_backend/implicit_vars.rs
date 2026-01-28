@@ -25,7 +25,7 @@
 //! CALL MySub(x)  ' x is created if MySub takes a ByRef parameter
 //! ```
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::semantic::typed_ir::{
     TypedCaseMatch, TypedExpr, TypedExprKind, TypedInputTarget, TypedParameter, TypedStatement,
@@ -76,6 +76,7 @@ pub(super) fn collect_implicit_locals(
     shared_globals: &HashSet<String>,
     global_consts: &HashSet<String>,
     is_main_program: bool,
+    variable_renames: &mut HashMap<String, String>,
 ) -> Vec<String> {
     let mut locals = Vec::new();
 
@@ -111,6 +112,13 @@ pub(super) fn collect_implicit_locals(
         dim_declared.insert(c_identifier(&p.name));
     }
 
+    // Track which names are arrays (for dual namespace collision detection)
+    let mut array_names: HashSet<String> = HashSet::new();
+    // Add global arrays to the set
+    for var in global_arrays {
+        array_names.insert(var.clone());
+    }
+
     // PASS 1: Collect all DIM/REDIM declarations first (they have function-wide scope in BASIC)
     // Note: We do NOT include globals here - DIM should always create a local that shadows globals
     // EXCEPT in main program: arrays with existing globals use the global (for cross-function sharing)
@@ -121,6 +129,8 @@ pub(super) fn collect_implicit_locals(
             &mut locals,
             existing_vars,
             is_main_program,
+            variable_renames,
+            &mut array_names,
         );
     }
 
@@ -139,7 +149,13 @@ pub(super) fn collect_implicit_locals(
 
     // PASS 2: Collect implicit variables (assignments to non-declared variables)
     for stmt in body {
-        collect_implicits(stmt, &mut declared_vars, &mut locals);
+        collect_implicits(
+            stmt,
+            &mut declared_vars,
+            &mut locals,
+            variable_renames,
+            &array_names,
+        );
     }
 
     locals
@@ -159,6 +175,8 @@ fn collect_dims(
     locals: &mut Vec<String>,
     existing_vars: &HashSet<String>,
     is_main_program: bool, // NOTE: No longer used for REDIM (always uses global if exists)
+    variable_renames: &mut HashMap<String, String>,
+    array_names: &mut HashSet<String>,
 ) {
     match &stmt.kind {
         TypedStatementKind::Dim { variables, .. } => {
@@ -174,12 +192,21 @@ fn collect_dims(
                         declared_vars.insert(c_name);
                     } else {
                         // Either in SUB/FUNCTION, or no global exists: create local declaration
-                        declare_scalar_var(&var.name, &var.basic_type, declared_vars, locals);
+                        declare_scalar_var(
+                            &var.name,
+                            &var.basic_type,
+                            declared_vars,
+                            locals,
+                            Some(variable_renames),
+                            Some(array_names),
+                        );
                     }
                 } else {
                     // Array - mark as declared only, emit at statement location
                     // (arrays need runtime allocation)
-                    declared_vars.insert(c_name);
+                    declared_vars.insert(c_name.clone());
+                    // Track that this is an array (for dual namespace collision detection)
+                    array_names.insert(c_name);
                 }
             }
         }
@@ -190,7 +217,14 @@ fn collect_dims(
                 let c_name = c_identifier(&var.name);
                 if var.dimensions.is_empty() {
                     // Scalar REDIM - just a type declaration, no array
-                    declare_scalar_var(&var.name, &var.element_type, declared_vars, locals);
+                    declare_scalar_var(
+                        &var.name,
+                        &var.element_type,
+                        declared_vars,
+                        locals,
+                        Some(variable_renames),
+                        Some(&*array_names),
+                    );
                 } else if existing_vars.contains(&c_name) {
                     // Global array exists: use it instead of creating a local that would
                     // shadow it. This applies to both main AND SUB/FUNCTION contexts.
@@ -199,7 +233,10 @@ fn collect_dims(
                     declared_vars.insert(c_name);
                 } else {
                     // No global exists: create local array declaration
+                    let c_name = c_identifier(&var.name);
                     declare_array_var(&var.name, &var.element_type, declared_vars, locals, false);
+                    // Track that this is an array
+                    array_names.insert(c_name);
                 }
             }
         }
@@ -217,7 +254,15 @@ fn collect_dims(
         // Recurse into control flow structures
         TypedStatementKind::For { body, .. } => {
             for s in body {
-                collect_dims(s, declared_vars, locals, existing_vars, is_main_program);
+                collect_dims(
+                    s,
+                    declared_vars,
+                    locals,
+                    existing_vars,
+                    is_main_program,
+                    variable_renames,
+                    array_names,
+                );
             }
         }
         TypedStatementKind::If {
@@ -227,28 +272,68 @@ fn collect_dims(
             ..
         } => {
             for s in then_branch {
-                collect_dims(s, declared_vars, locals, existing_vars, is_main_program);
+                collect_dims(
+                    s,
+                    declared_vars,
+                    locals,
+                    existing_vars,
+                    is_main_program,
+                    variable_renames,
+                    array_names,
+                );
             }
             for (_, branch_body) in elseif_branches {
                 for s in branch_body {
-                    collect_dims(s, declared_vars, locals, existing_vars, is_main_program);
+                    collect_dims(
+                        s,
+                        declared_vars,
+                        locals,
+                        existing_vars,
+                        is_main_program,
+                        variable_renames,
+                        array_names,
+                    );
                 }
             }
             if let Some(else_stmts) = else_branch {
                 for s in else_stmts {
-                    collect_dims(s, declared_vars, locals, existing_vars, is_main_program);
+                    collect_dims(
+                        s,
+                        declared_vars,
+                        locals,
+                        existing_vars,
+                        is_main_program,
+                        variable_renames,
+                        array_names,
+                    );
                 }
             }
         }
         TypedStatementKind::While { body, .. } | TypedStatementKind::DoLoop { body, .. } => {
             for s in body {
-                collect_dims(s, declared_vars, locals, existing_vars, is_main_program);
+                collect_dims(
+                    s,
+                    declared_vars,
+                    locals,
+                    existing_vars,
+                    is_main_program,
+                    variable_renames,
+                    array_names,
+                );
             }
         }
         TypedStatementKind::SelectCase { cases, .. } => {
             for case in cases {
                 for s in &case.body {
-                    collect_dims(s, declared_vars, locals, existing_vars, is_main_program);
+                    collect_dims(
+                        s,
+                        declared_vars,
+                        locals,
+                        existing_vars,
+                        is_main_program,
+                        variable_renames,
+                        array_names,
+                    );
                 }
             }
         }
@@ -267,6 +352,8 @@ fn collect_implicits(
     stmt: &TypedStatement,
     declared_vars: &mut HashSet<String>,
     locals: &mut Vec<String>,
+    variable_renames: &mut HashMap<String, String>,
+    array_names: &HashSet<String>,
 ) {
     match &stmt.kind {
         // Skip DIM - already handled in pass 1
@@ -282,9 +369,16 @@ fn collect_implicits(
             value,
             ..
         } => {
-            declare_scalar_var(name, target_type, declared_vars, locals);
+            declare_scalar_var(
+                name,
+                target_type,
+                declared_vars,
+                locals,
+                Some(variable_renames),
+                Some(array_names),
+            );
             // Scan for ByRef function arguments in value
-            collect_byref_vars(value, declared_vars, locals);
+            collect_byref_vars(value, declared_vars, locals, variable_renames, array_names);
         }
 
         // FOR loop counter and expressions
@@ -297,15 +391,28 @@ fn collect_implicits(
             body,
             ..
         } => {
-            declare_scalar_var(variable, var_type, declared_vars, locals);
+            declare_scalar_var(
+                variable,
+                var_type,
+                declared_vars,
+                locals,
+                Some(variable_renames),
+                Some(array_names),
+            );
             // Scan FOR loop expressions for ByRef function args
-            collect_byref_vars(start, declared_vars, locals);
-            collect_byref_vars(end, declared_vars, locals);
+            collect_byref_vars(start, declared_vars, locals, variable_renames, array_names);
+            collect_byref_vars(end, declared_vars, locals, variable_renames, array_names);
             if let Some(step_expr) = step {
-                collect_byref_vars(step_expr, declared_vars, locals);
+                collect_byref_vars(
+                    step_expr,
+                    declared_vars,
+                    locals,
+                    variable_renames,
+                    array_names,
+                );
             }
             for s in body {
-                collect_implicits(s, declared_vars, locals);
+                collect_implicits(s, declared_vars, locals, variable_renames, array_names);
             }
         }
 
@@ -316,27 +423,39 @@ fn collect_implicits(
             elseif_branches,
             else_branch,
         } => {
-            collect_byref_vars(condition, declared_vars, locals);
+            collect_byref_vars(
+                condition,
+                declared_vars,
+                locals,
+                variable_renames,
+                array_names,
+            );
             for s in then_branch {
-                collect_implicits(s, declared_vars, locals);
+                collect_implicits(s, declared_vars, locals, variable_renames, array_names);
             }
             for (cond, branch_body) in elseif_branches {
-                collect_byref_vars(cond, declared_vars, locals);
+                collect_byref_vars(cond, declared_vars, locals, variable_renames, array_names);
                 for s in branch_body {
-                    collect_implicits(s, declared_vars, locals);
+                    collect_implicits(s, declared_vars, locals, variable_renames, array_names);
                 }
             }
             if let Some(else_stmts) = else_branch {
                 for s in else_stmts {
-                    collect_implicits(s, declared_vars, locals);
+                    collect_implicits(s, declared_vars, locals, variable_renames, array_names);
                 }
             }
         }
 
         TypedStatementKind::While { condition, body } => {
-            collect_byref_vars(condition, declared_vars, locals);
+            collect_byref_vars(
+                condition,
+                declared_vars,
+                locals,
+                variable_renames,
+                array_names,
+            );
             for s in body {
-                collect_implicits(s, declared_vars, locals);
+                collect_implicits(s, declared_vars, locals, variable_renames, array_names);
             }
         }
 
@@ -346,13 +465,25 @@ fn collect_implicits(
             body,
         } => {
             if let Some(cond) = pre_condition {
-                collect_byref_vars(&cond.condition, declared_vars, locals);
+                collect_byref_vars(
+                    &cond.condition,
+                    declared_vars,
+                    locals,
+                    variable_renames,
+                    array_names,
+                );
             }
             if let Some(cond) = post_condition {
-                collect_byref_vars(&cond.condition, declared_vars, locals);
+                collect_byref_vars(
+                    &cond.condition,
+                    declared_vars,
+                    locals,
+                    variable_renames,
+                    array_names,
+                );
             }
             for s in body {
-                collect_implicits(s, declared_vars, locals);
+                collect_implicits(s, declared_vars, locals, variable_renames, array_names);
             }
         }
 
@@ -367,18 +498,30 @@ fn collect_implicits(
             case_else,
         } => {
             // Collect variables from test expression
-            collect_byref_vars(test_expr, declared_vars, locals);
+            collect_byref_vars(
+                test_expr,
+                declared_vars,
+                locals,
+                variable_renames,
+                array_names,
+            );
             for case in cases {
                 for m in &case.matches {
-                    collect_case_match_byref(m, declared_vars, locals);
+                    collect_case_match_byref(
+                        m,
+                        declared_vars,
+                        locals,
+                        variable_renames,
+                        array_names,
+                    );
                 }
                 for s in &case.body {
-                    collect_implicits(s, declared_vars, locals);
+                    collect_implicits(s, declared_vars, locals, variable_renames, array_names);
                 }
             }
             if let Some(else_stmts) = case_else {
                 for s in else_stmts {
-                    collect_implicits(s, declared_vars, locals);
+                    collect_implicits(s, declared_vars, locals, variable_renames, array_names);
                 }
             }
         }
@@ -395,23 +538,36 @@ fn collect_implicits(
                 if is_byref {
                     // If the argument is a simple variable, declare it
                     if let TypedExprKind::Variable(name) = &arg.kind {
-                        declare_scalar_var(name, &arg.basic_type, declared_vars, locals);
+                        declare_scalar_var(
+                            name,
+                            &arg.basic_type,
+                            declared_vars,
+                            locals,
+                            Some(variable_renames),
+                            Some(array_names),
+                        );
                     }
                 }
                 // Also recursively collect from nested function calls in the arg
-                collect_byref_vars(arg, declared_vars, locals);
+                collect_byref_vars(arg, declared_vars, locals, variable_renames, array_names);
             }
         }
 
         TypedStatementKind::Print { items, .. } => {
             for item in items {
-                collect_byref_vars(&item.expr, declared_vars, locals);
+                collect_byref_vars(
+                    &item.expr,
+                    declared_vars,
+                    locals,
+                    variable_renames,
+                    array_names,
+                );
             }
         }
 
         _ => {
             // For other statements, collect ByRef args from any expressions they contain
-            collect_stmt_byref(stmt, declared_vars, locals);
+            collect_stmt_byref(stmt, declared_vars, locals, variable_renames, array_names);
         }
     }
 }
@@ -421,17 +577,19 @@ fn collect_case_match_byref(
     m: &TypedCaseMatch,
     declared_vars: &mut HashSet<String>,
     locals: &mut Vec<String>,
+    variable_renames: &mut HashMap<String, String>,
+    array_names: &HashSet<String>,
 ) {
     match m {
         TypedCaseMatch::Single(expr) => {
-            collect_byref_vars(expr, declared_vars, locals);
+            collect_byref_vars(expr, declared_vars, locals, variable_renames, array_names);
         }
         TypedCaseMatch::Range { from, to } => {
-            collect_byref_vars(from, declared_vars, locals);
-            collect_byref_vars(to, declared_vars, locals);
+            collect_byref_vars(from, declared_vars, locals, variable_renames, array_names);
+            collect_byref_vars(to, declared_vars, locals, variable_renames, array_names);
         }
         TypedCaseMatch::Comparison { value, .. } => {
-            collect_byref_vars(value, declared_vars, locals);
+            collect_byref_vars(value, declared_vars, locals, variable_renames, array_names);
         }
     }
 }
@@ -445,6 +603,8 @@ fn collect_byref_vars(
     expr: &TypedExpr,
     declared_vars: &mut HashSet<String>,
     locals: &mut Vec<String>,
+    variable_renames: &mut HashMap<String, String>,
+    array_names: &HashSet<String>,
 ) {
     match &expr.kind {
         // For function calls, check if any ByRef argument is a simple variable
@@ -459,32 +619,52 @@ fn collect_byref_vars(
                 if is_byref {
                     // If the argument is a simple variable, declare it
                     if let TypedExprKind::Variable(name) = &arg.kind {
-                        declare_scalar_var(name, &arg.basic_type, declared_vars, locals);
+                        declare_scalar_var(
+                            name,
+                            &arg.basic_type,
+                            declared_vars,
+                            locals,
+                            Some(variable_renames),
+                            Some(array_names),
+                        );
                     }
                 }
                 // Recurse into arg expressions to find nested function calls
-                collect_byref_vars(arg, declared_vars, locals);
+                collect_byref_vars(arg, declared_vars, locals, variable_renames, array_names);
             }
         }
         // Recurse into sub-expressions to find nested function calls
         TypedExprKind::Binary { left, right, .. } => {
-            collect_byref_vars(left, declared_vars, locals);
-            collect_byref_vars(right, declared_vars, locals);
+            collect_byref_vars(left, declared_vars, locals, variable_renames, array_names);
+            collect_byref_vars(right, declared_vars, locals, variable_renames, array_names);
         }
         TypedExprKind::Unary { operand, .. } => {
-            collect_byref_vars(operand, declared_vars, locals);
+            collect_byref_vars(
+                operand,
+                declared_vars,
+                locals,
+                variable_renames,
+                array_names,
+            );
         }
         TypedExprKind::Grouped(inner) => {
-            collect_byref_vars(inner, declared_vars, locals);
+            collect_byref_vars(inner, declared_vars, locals, variable_renames, array_names);
         }
-        TypedExprKind::ArrayAccess { indices, .. } => {
+        TypedExprKind::ArrayAccess {
+            name: _, indices, ..
+        } => {
+            // This is an array access - the array name is used as an array, not a scalar.
+            // We should NOT declare it as a scalar variable. Only process the indices
+            // for any ByRef variables they might contain.
+            // Note: The array name itself is already declared (via DIM) or is a global,
+            // so we don't need to declare it here.
             for idx in indices {
-                collect_byref_vars(idx, declared_vars, locals);
+                collect_byref_vars(idx, declared_vars, locals, variable_renames, array_names);
             }
         }
         TypedExprKind::ExternalFunctionCall { args, .. } => {
             for arg in args {
-                collect_byref_vars(arg, declared_vars, locals);
+                collect_byref_vars(arg, declared_vars, locals, variable_renames, array_names);
             }
         }
         TypedExprKind::Convert { expr: inner, .. }
@@ -492,17 +672,40 @@ fn collect_byref_vars(
         | TypedExprKind::MkDollarFunc { value: inner, .. }
         | TypedExprKind::CastFunc { value: inner, .. }
         | TypedExprKind::ValWithType { value: inner, .. } => {
-            collect_byref_vars(inner, declared_vars, locals);
+            collect_byref_vars(inner, declared_vars, locals, variable_renames, array_names);
         }
         TypedExprKind::FieldAccess { object, .. } => {
-            collect_byref_vars(object, declared_vars, locals);
+            collect_byref_vars(object, declared_vars, locals, variable_renames, array_names);
         }
         // Variables that are READ but never assigned - common BASIC pattern
         // Declare them with default initialization (matches QB64 implicit declaration)
         // Skip variables starting with '_' - these are QB64 built-in constants (#defined)
+        //
+        // CONSERVATIVE APPROACH: Only declare scalars when we're certain they're needed.
+        // If an array with this name exists, we should NOT create a scalar variable
+        // unless we're in a clear scalar usage context (like direct assignment).
+        // Since this function is called for expressions (not assignments), seeing
+        // a Variable here means it's being read, not assigned. If an array exists,
+        // this is likely array usage, not scalar usage, so we skip scalar creation.
         TypedExprKind::Variable(name) => {
             if !name.starts_with('_') {
-                declare_scalar_var(name, &expr.basic_type, declared_vars, locals);
+                let c_name = c_identifier(name);
+                // CONSERVATIVE: If an array with this name exists, don't create a scalar.
+                // The variable is likely being used as an array (even if we see it as
+                // a Variable expression here, it might be from array access context).
+                // Only create scalars when no array exists.
+                if !array_names.contains(&c_name) {
+                    declare_scalar_var(
+                        name,
+                        &expr.basic_type,
+                        declared_vars,
+                        locals,
+                        Some(variable_renames),
+                        Some(array_names),
+                    );
+                }
+                // If array exists, skip scalar creation - array accesses are handled
+                // separately and don't need scalar declarations.
             }
         }
         // Literals and other nodes
@@ -518,10 +721,12 @@ fn collect_stmt_byref(
     stmt: &TypedStatement,
     declared_vars: &mut HashSet<String>,
     locals: &mut Vec<String>,
+    variable_renames: &mut HashMap<String, String>,
+    array_names: &HashSet<String>,
 ) {
     match &stmt.kind {
         TypedStatementKind::Assignment { value, .. } => {
-            collect_byref_vars(value, declared_vars, locals);
+            collect_byref_vars(value, declared_vars, locals, variable_renames, array_names);
         }
         TypedStatementKind::If {
             condition,
@@ -529,26 +734,38 @@ fn collect_stmt_byref(
             elseif_branches,
             else_branch,
         } => {
-            collect_byref_vars(condition, declared_vars, locals);
+            collect_byref_vars(
+                condition,
+                declared_vars,
+                locals,
+                variable_renames,
+                array_names,
+            );
             for s in then_branch {
-                collect_implicits(s, declared_vars, locals);
+                collect_implicits(s, declared_vars, locals, variable_renames, array_names);
             }
             for (cond, branch_body) in elseif_branches {
-                collect_byref_vars(cond, declared_vars, locals);
+                collect_byref_vars(cond, declared_vars, locals, variable_renames, array_names);
                 for s in branch_body {
-                    collect_implicits(s, declared_vars, locals);
+                    collect_implicits(s, declared_vars, locals, variable_renames, array_names);
                 }
             }
             if let Some(else_stmts) = else_branch {
                 for s in else_stmts {
-                    collect_implicits(s, declared_vars, locals);
+                    collect_implicits(s, declared_vars, locals, variable_renames, array_names);
                 }
             }
         }
         TypedStatementKind::While { condition, body } => {
-            collect_byref_vars(condition, declared_vars, locals);
+            collect_byref_vars(
+                condition,
+                declared_vars,
+                locals,
+                variable_renames,
+                array_names,
+            );
             for s in body {
-                collect_implicits(s, declared_vars, locals);
+                collect_implicits(s, declared_vars, locals, variable_renames, array_names);
             }
         }
         TypedStatementKind::DoLoop {
@@ -557,13 +774,25 @@ fn collect_stmt_byref(
             body,
         } => {
             if let Some(cond) = pre_condition {
-                collect_byref_vars(&cond.condition, declared_vars, locals);
+                collect_byref_vars(
+                    &cond.condition,
+                    declared_vars,
+                    locals,
+                    variable_renames,
+                    array_names,
+                );
             }
             if let Some(cond) = post_condition {
-                collect_byref_vars(&cond.condition, declared_vars, locals);
+                collect_byref_vars(
+                    &cond.condition,
+                    declared_vars,
+                    locals,
+                    variable_renames,
+                    array_names,
+                );
             }
             for s in body {
-                collect_implicits(s, declared_vars, locals);
+                collect_implicits(s, declared_vars, locals, variable_renames, array_names);
             }
         }
         TypedStatementKind::For {
@@ -573,37 +802,43 @@ fn collect_stmt_byref(
             body,
             ..
         } => {
-            collect_byref_vars(start, declared_vars, locals);
-            collect_byref_vars(end, declared_vars, locals);
+            collect_byref_vars(start, declared_vars, locals, variable_renames, array_names);
+            collect_byref_vars(end, declared_vars, locals, variable_renames, array_names);
             if let Some(step_expr) = step {
-                collect_byref_vars(step_expr, declared_vars, locals);
+                collect_byref_vars(
+                    step_expr,
+                    declared_vars,
+                    locals,
+                    variable_renames,
+                    array_names,
+                );
             }
             for s in body {
-                collect_implicits(s, declared_vars, locals);
+                collect_implicits(s, declared_vars, locals, variable_renames, array_names);
             }
         }
         // FileGet has a target variable that needs to be declared
         TypedStatementKind::FileGet { target, .. } => {
-            declare_input_target(target, declared_vars, locals);
+            declare_input_target(target, declared_vars, locals, variable_renames, array_names);
         }
         // FileLineInput has a target variable that needs to be declared
         TypedStatementKind::FileLineInput { target, .. } => {
-            declare_input_target(target, declared_vars, locals);
+            declare_input_target(target, declared_vars, locals, variable_renames, array_names);
         }
         // Input statement has multiple targets that need to be declared
         TypedStatementKind::Input { targets, .. } => {
             for target in targets {
-                declare_input_target(target, declared_vars, locals);
+                declare_input_target(target, declared_vars, locals, variable_renames, array_names);
             }
         }
         // LineInput has a target that needs to be declared
         TypedStatementKind::LineInput { target, .. } => {
-            declare_input_target(target, declared_vars, locals);
+            declare_input_target(target, declared_vars, locals, variable_renames, array_names);
         }
         // FileInput has targets that need to be declared
         TypedStatementKind::FileInput { targets, .. } => {
             for target in targets {
-                declare_input_target(target, declared_vars, locals);
+                declare_input_target(target, declared_vars, locals, variable_renames, array_names);
             }
         }
         // Color statement - scan foreground/background expressions
@@ -613,74 +848,110 @@ fn collect_stmt_byref(
             border,
         } => {
             if let Some(fg) = foreground {
-                collect_byref_vars(fg, declared_vars, locals);
+                collect_byref_vars(fg, declared_vars, locals, variable_renames, array_names);
             }
             if let Some(bg) = background {
-                collect_byref_vars(bg, declared_vars, locals);
+                collect_byref_vars(bg, declared_vars, locals, variable_renames, array_names);
             }
             if let Some(b) = border {
-                collect_byref_vars(b, declared_vars, locals);
+                collect_byref_vars(b, declared_vars, locals, variable_renames, array_names);
             }
         }
         // Print statement - scan print items for expressions
         TypedStatementKind::Print { items, .. } => {
             for item in items {
-                collect_byref_vars(&item.expr, declared_vars, locals);
+                collect_byref_vars(
+                    &item.expr,
+                    declared_vars,
+                    locals,
+                    variable_renames,
+                    array_names,
+                );
             }
         }
         // PrintStringStmt (_PRINTSTRING) - scan position and text expressions
         TypedStatementKind::PrintStringStmt { x, y, text } => {
-            collect_byref_vars(x, declared_vars, locals);
-            collect_byref_vars(y, declared_vars, locals);
-            collect_byref_vars(text, declared_vars, locals);
+            collect_byref_vars(x, declared_vars, locals, variable_renames, array_names);
+            collect_byref_vars(y, declared_vars, locals, variable_renames, array_names);
+            collect_byref_vars(text, declared_vars, locals, variable_renames, array_names);
         }
         // SelectCase - scan test expression and case conditions
         TypedStatementKind::SelectCase {
             test_expr, cases, ..
         } => {
-            collect_byref_vars(test_expr, declared_vars, locals);
+            collect_byref_vars(
+                test_expr,
+                declared_vars,
+                locals,
+                variable_renames,
+                array_names,
+            );
             for case in cases {
                 for m in &case.matches {
                     match m {
                         TypedCaseMatch::Single(expr) => {
-                            collect_byref_vars(expr, declared_vars, locals);
+                            collect_byref_vars(
+                                expr,
+                                declared_vars,
+                                locals,
+                                variable_renames,
+                                array_names,
+                            );
                         }
                         TypedCaseMatch::Range { from, to } => {
-                            collect_byref_vars(from, declared_vars, locals);
-                            collect_byref_vars(to, declared_vars, locals);
+                            collect_byref_vars(
+                                from,
+                                declared_vars,
+                                locals,
+                                variable_renames,
+                                array_names,
+                            );
+                            collect_byref_vars(
+                                to,
+                                declared_vars,
+                                locals,
+                                variable_renames,
+                                array_names,
+                            );
                         }
                         TypedCaseMatch::Comparison { value, .. } => {
-                            collect_byref_vars(value, declared_vars, locals);
+                            collect_byref_vars(
+                                value,
+                                declared_vars,
+                                locals,
+                                variable_renames,
+                                array_names,
+                            );
                         }
                     }
                 }
                 for s in &case.body {
-                    collect_implicits(s, declared_vars, locals);
+                    collect_implicits(s, declared_vars, locals, variable_renames, array_names);
                 }
             }
         }
         // Call - scan arguments for variables
         TypedStatementKind::Call { args, .. } => {
             for arg in args {
-                collect_byref_vars(arg, declared_vars, locals);
+                collect_byref_vars(arg, declared_vars, locals, variable_renames, array_names);
             }
         }
         // ArrayAssignment - scan value and indices
         TypedStatementKind::ArrayAssignment { value, indices, .. } => {
-            collect_byref_vars(value, declared_vars, locals);
+            collect_byref_vars(value, declared_vars, locals, variable_renames, array_names);
             for idx in indices {
-                collect_byref_vars(idx, declared_vars, locals);
+                collect_byref_vars(idx, declared_vars, locals, variable_renames, array_names);
             }
         }
         // FieldAssignment - scan value expression
         TypedStatementKind::FieldAssignment { value, .. } => {
-            collect_byref_vars(value, declared_vars, locals);
+            collect_byref_vars(value, declared_vars, locals, variable_renames, array_names);
         }
         // ArrayFieldAssignment - scan value and indices
         TypedStatementKind::ArrayFieldAssignment { value, indices, .. } => {
-            collect_byref_vars(value, declared_vars, locals);
+            collect_byref_vars(value, declared_vars, locals, variable_renames, array_names);
             for idx in indices {
-                collect_byref_vars(idx, declared_vars, locals);
+                collect_byref_vars(idx, declared_vars, locals, variable_renames, array_names);
             }
         }
         _ => {}
@@ -695,10 +966,19 @@ fn declare_input_target(
     target: &TypedInputTarget,
     declared_vars: &mut HashSet<String>,
     locals: &mut Vec<String>,
+    variable_renames: &mut HashMap<String, String>,
+    array_names: &HashSet<String>,
 ) {
     match target {
         TypedInputTarget::Variable { name, basic_type } => {
-            declare_scalar_var(name, basic_type, declared_vars, locals);
+            declare_scalar_var(
+                name,
+                basic_type,
+                declared_vars,
+                locals,
+                Some(variable_renames),
+                Some(array_names),
+            );
         }
         // Array elements don't need declaration - the array itself is already declared
         TypedInputTarget::ArrayElement { .. } => {}
@@ -725,6 +1005,7 @@ mod tests {
             Span::new(0, 6, 1),
         )];
 
+        let mut renames = HashMap::new();
         let locals = collect_implicit_locals(
             &body,
             &[],
@@ -734,6 +1015,7 @@ mod tests {
             &HashSet::new(),
             &HashSet::new(),
             false,
+            &mut renames,
         );
 
         assert_eq!(locals.len(), 1);
@@ -753,6 +1035,7 @@ mod tests {
             Span::new(0, 9, 1),
         )];
 
+        let mut renames = HashMap::new();
         let locals = collect_implicit_locals(
             &body,
             &[],
@@ -762,6 +1045,7 @@ mod tests {
             &HashSet::new(),
             &HashSet::new(),
             false,
+            &mut renames,
         );
 
         // _TRUE should not be in locals because it's a reserved identifier
@@ -789,6 +1073,7 @@ mod tests {
             is_array: false,
         }];
 
+        let mut variable_renames = HashMap::new();
         let locals = collect_implicit_locals(
             &body,
             &params,
@@ -798,6 +1083,7 @@ mod tests {
             &HashSet::new(),
             &HashSet::new(),
             false,
+            &mut variable_renames,
         );
 
         // param1 should not be in locals because it's a parameter

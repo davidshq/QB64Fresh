@@ -6,7 +6,8 @@ This directory contains detailed API reference documentation for QB64Fresh's pro
 
 | Document | Description |
 |----------|-------------|
-| [HEADER_PARSER_API.md](HEADER_PARSER_API.md) | Complete Rust API reference for the C header parser (`header-parsing` feature) |
+| [HEADER_PARSER_API.md](HEADER_PARSER_API.md) | Complete Rust API reference and architecture for the C header parser (`header-parsing` feature) |
+| [CODEGEN_WRITE_HELPERS.md](CODEGEN_WRITE_HELPERS.md) | Error-handling wrappers for code generation output writing |
 
 ## Purpose
 

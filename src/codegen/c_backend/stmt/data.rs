@@ -171,7 +171,7 @@ impl super::StmtEmitter {
             }
             Some(lbl) => {
                 let label_upper = lbl.to_uppercase();
-                if let Some(&index) = self.data_label_indices.get(&label_upper) {
+                if let Some(&index) = self.data.label_indices.get(&label_upper) {
                     writeln_code!(
                         output,
                         "{}_qb_data_ptr = {}; /* RESTORE {} */",

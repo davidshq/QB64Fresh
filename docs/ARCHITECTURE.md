@@ -397,6 +397,44 @@ pub trait CodeGenerator {
 - Portable across platforms
 - Delegates optimization to C compiler
 
+**Statement Emitter Architecture (`stmt/` subdirectory):**
+
+The `StmtEmitter` struct accumulates state during C code generation for statements. The module has been split into focused submodules for maintainability:
+
+- **`mod.rs`** - Core `StmtEmitter` struct and main `emit_stmt()` dispatcher
+- **`assignments.rs`** - Assignment statements (LET, MID$, array assignments)
+- **`control_flow.rs`** - Control flow (IF, FOR, WHILE, DO, SELECT CASE)
+- **`data.rs`** - DATA/READ/RESTORE handling
+- **`def_fn.rs`** - DEF FN single-line and multi-line functions
+- **`definitions.rs`** - DIM, REDIM, SUB/FUNCTION definitions, DECLARE LIBRARY
+- **`error_jump.rs`** - Error handling (ON ERROR) and computed jumps (ON...GOTO/GOSUB)
+- **`io.rs`** - PRINT and INPUT helpers
+
+**Current State:**
+- ✅ Module split complete - Logic is well-organized across modules
+- ⚠️ Struct refactoring pending - `StmtEmitter` still has 20+ fields
+
+**Recommended Refactoring:**
+Split `StmtEmitter` into focused context structs:
+- `LabelContext` - Label generation and tracking
+- `FormattingContext` - Indentation and formatting
+- `ControlFlowContext` - Loop stack for EXIT statements
+- `DataContext` - DATA label indices
+- `ProcedureContext` - Current procedure, function return variables, parameter tracking
+- `GlobalContext` - Global symbol tracking (variables, arrays, constants)
+- `EventContext` - STRIG event handling
+- `DebugContext` - Debug mode settings
+- `ConfigContext` - Runtime mode and configuration flags
+
+This would improve:
+- Explicit dependencies (each function takes only needed contexts)
+- Better testability (can test individual contexts in isolation)
+- Clearer intent (function signatures show what state is accessed)
+- Easier maintenance (changes to one context don't affect others)
+
+**Write Helpers:**
+The `write_helpers.rs` module provides error-handling wrappers for `write!`/`writeln!` macros, ensuring consistent error handling throughout codegen. See [docs/reference/CODEGEN_WRITE_HELPERS.md](../reference/CODEGEN_WRITE_HELPERS.md) for details.
+
 **Future backends (possible):**
 - LLVM via `inkwell`
 - Cranelift for JIT

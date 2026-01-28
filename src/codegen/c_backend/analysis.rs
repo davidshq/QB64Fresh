@@ -224,6 +224,8 @@ pub(super) fn collect_globals(
                             &var.basic_type,
                             &mut declared_vars,
                             &mut globals,
+                            None,
+                            None, // No array_names for global analysis
                         );
                     } else {
                         // Global arrays (declared as pointers)
@@ -368,7 +370,7 @@ pub(super) fn collect_globals(
                     // Implicitly create module-level variable
                     // Infer type from the variable name suffix
                     let basic_type = infer_type_from_suffix(var_name);
-                    declare_scalar_var(var_name, &basic_type, declared_vars, globals);
+                    declare_scalar_var(var_name, &basic_type, declared_vars, globals, None, None);
                 }
             }
             TypedStatementKind::SubDefinition { body, .. }
@@ -465,7 +467,7 @@ fn collect_implicit_vars_from_stmt(
             name, target_type, ..
         } => {
             if !inside_procedure {
-                declare_scalar_var(name, target_type, declared_vars, globals);
+                declare_scalar_var(name, target_type, declared_vars, globals, None, None);
             }
         }
 
@@ -477,7 +479,7 @@ fn collect_implicit_vars_from_stmt(
             ..
         } => {
             if !inside_procedure {
-                declare_scalar_var(variable, var_type, declared_vars, globals);
+                declare_scalar_var(variable, var_type, declared_vars, globals, None, None);
             }
             // Recurse into body (still at module level if we're at module level)
             for s in body {
@@ -565,7 +567,7 @@ fn collect_vars_from_expr(
         TypedExprKind::Variable(name) => {
             // Skip variables starting with _ (built-in constants)
             if !name.starts_with('_') {
-                declare_scalar_var(name, &expr.basic_type, declared_vars, globals);
+                declare_scalar_var(name, &expr.basic_type, declared_vars, globals, None, None);
             }
         }
         TypedExprKind::Binary { left, right, .. } => {

@@ -199,6 +199,14 @@ double qb_timer(void);
 void qb_sleep(double seconds);
 void qb_delay(double seconds);
 
+/* Bit manipulation */
+int64_t qb_readbit(int64_t value, int64_t bit);
+int64_t qb_setbit(int64_t value, int64_t bit);
+int64_t qb_resetbit(int64_t value, int64_t bit);
+int64_t qb_togglebit(int64_t value, int64_t bit);
+int64_t qb_rol(int64_t value, int64_t bits);
+int64_t qb_ror(int64_t value, int64_t bits);
+
 /* Date/Time functions */
 QbString* qb_date(void);        /* DATE$ - returns MM-DD-YYYY format */
 QbString* qb_time(void);        /* TIME$ - returns HH:MM:SS format */
@@ -280,7 +288,7 @@ void qb_sub_environ(QbString* env);
  *             GET #/PUT #, EOF, LOF on network handles)
  * ============================================================================ */
 
-int64_t qb_net_openhost(int64_t port);
+int64_t qb_net_openhost(const char* connection_string);
 int64_t qb_net_openconnection(int64_t host_handle);
 int64_t qb_net_openclient(const char* connection_string);
 int32_t qb_net_connected(int64_t handle);

@@ -566,7 +566,7 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
     // QB64pe calls this with a string argument (host:port format)
     writeln_code!(
         output,
-        "static int64_t qb_net_openhost(int64_t port) {{ (void)port; return 0; }}"
+        "static int64_t qb_net_openhost(const char* connection_string) {{ (void)connection_string; return 0; }}"
     )?;
     writeln_code!(
         output,
@@ -645,7 +645,7 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
     )?;
     writeln_code!(
         output,
-        "QbString* qb_savefiledialog4(QbString* title, QbString* filter, QbString* def, int32_t flags) {{ (void)title; (void)filter; (void)def; (void)flags; return qb_string_new(\"\"); }}"
+        "QbString* qb_savefiledialog(const char* title, const char* initial_dir, const char* default_name, const char* filter) {{ (void)title; (void)initial_dir; (void)default_name; (void)filter; return qb_string_new(\"\"); }}"
     )?;
     writeln_code!(
         output,

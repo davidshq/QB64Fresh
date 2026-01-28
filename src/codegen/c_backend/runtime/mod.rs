@@ -940,7 +940,7 @@ pub(in crate::codegen) fn emit_header_with_debug(
             writeln_code!(output, "int32_t qb_screeny(void) {{ return 0; }}")?;
             writeln_code!(
                 output,
-                "int32_t qb_readbit(QbString* s, int32_t pos) {{ (void)s; (void)pos; return 0; }}"
+                "int64_t qb_readbit(int64_t value, int64_t bit) {{ (void)value; (void)bit; return 0; }}"
             )?;
             writeln_code!(
                 output,
@@ -948,7 +948,7 @@ pub(in crate::codegen) fn emit_header_with_debug(
             )?;
             writeln_code!(
                 output,
-                "QbString* qb_savefiledialog4(QbString* title, QbString* filter, QbString* def, int32_t flags) {{ (void)title; (void)filter; (void)def; (void)flags; return qb_string_empty(); }}"
+                "QbString* qb_savefiledialog(const char* title, const char* initial_dir, const char* default_name, const char* filter) {{ (void)title; (void)initial_dir; (void)default_name; (void)filter; return qb_string_empty(); }}"
             )?;
             writeln_code!(
                 output,
