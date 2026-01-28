@@ -68,6 +68,10 @@ pub struct Lexer<'source> {
     inner: logos::Lexer<'source, TokenKind>,
     /// The original source (for error reporting)
     source: &'source str,
+    /// Current line number (1-indexed)
+    current_line: usize,
+    /// Byte offset of the last newline we've seen
+    last_newline_offset: usize,
 }
 
 impl<'source> Lexer<'source> {
@@ -88,6 +92,8 @@ impl<'source> Lexer<'source> {
         Self {
             inner: TokenKind::lexer(source),
             source,
+            current_line: 1,
+            last_newline_offset: 0,
         }
     }
 
@@ -126,28 +132,39 @@ impl<'source> Lexer<'source> {
             Err(()) => TokenKind::Error, // Unrecognized character
         };
 
-        // Compute line number from byte offset
-        let line = Self::line_number_at_offset(self.source, byte_span.start);
-        let span = Span::new(byte_span.start, byte_span.end, line);
+        // Update line number by counting newlines since last token
+        // This is O(k) where k is the distance since last token, not O(n)!
+        if byte_span.start > self.last_newline_offset {
+            let newlines = self.source[self.last_newline_offset..byte_span.start]
+                .chars()
+                .filter(|&c| c == '\n')
+                .count();
+            self.current_line += newlines;
+            self.last_newline_offset = byte_span.start;
+        }
+        
+        // If this token contains newlines, update line number
+        if byte_span.start < byte_span.end {
+            let newlines_in_token = self.source[byte_span.start..byte_span.end]
+                .chars()
+                .filter(|&c| c == '\n')
+                .count();
+            if newlines_in_token > 0 {
+                self.current_line += newlines_in_token;
+                // Find the last newline in this token
+                if let Some(last_nl) = self.source[byte_span.start..byte_span.end]
+                    .rfind('\n')
+                {
+                    self.last_newline_offset = byte_span.start + last_nl + 1;
+                }
+            }
+        }
+
+        let span = Span::new(byte_span.start, byte_span.end, self.current_line);
 
         Some(Token::new(token_kind, span, text))
     }
 
-    /// Compute the 1-indexed line number at the given byte offset in the source.
-    ///
-    /// Counts newlines (`\n`) up to (but not including) the offset.
-    fn line_number_at_offset(source: &str, offset: usize) -> usize {
-        // Clamp offset to source length to avoid panics
-        let clamped_offset = offset.min(source.len());
-
-        // Count newlines in the prefix up to the offset
-        // Line numbers are 1-indexed, so we start at 1 and add 1 for each newline
-        source[..clamped_offset]
-            .chars()
-            .filter(|&c| c == '\n')
-            .count()
-            + 1
-    }
 
     /// Collect all remaining tokens into a vector.
     ///
@@ -187,6 +204,41 @@ impl<'source> Iterator for Lexer<'source> {
 /// ```
 pub fn lex(source: &str) -> Vec<Token> {
     Lexer::new(source).collect_tokens()
+}
+
+/// Lex with progress reporting for large files.
+///
+/// Reports progress every 10,000 tokens to stderr (for verbose mode).
+/// This helps track progress when lexing very large files.
+pub fn lex_with_progress(source: &str, verbose: bool) -> Vec<Token> {
+    if !verbose {
+        return lex(source);
+    }
+    
+    let mut lexer = Lexer::new(source);
+    let mut tokens = Vec::new();
+    let mut last_report = 0;
+    
+    while let Some(token) = lexer.next_token() {
+        tokens.push(token);
+        
+        // Report progress periodically
+        if tokens.len() - last_report >= 10000 {
+            let progress_pct = ((tokens.len() as f64 / source.len() as f64) * 100.0) as usize;
+            eprint!("\r[1/4] Lexing... {} tokens (~{}%)", tokens.len(), progress_pct.min(100));
+            use std::io::Write;
+            let _ = std::io::stderr().flush();
+            last_report = tokens.len();
+        }
+    }
+    
+    if verbose {
+        eprintln!("\r[1/4] Lexing complete: {} tokens", tokens.len());
+        use std::io::Write;
+        let _ = std::io::stderr().flush();
+    }
+    
+    tokens
 }
 
 #[cfg(test)]

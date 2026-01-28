@@ -179,6 +179,7 @@ pub(in crate::codegen) fn emit_header_with_debug(
             writeln_code!(output, "static int _qb_error_resume_next = 0;")?;
             writeln_code!(output, "static void* _qb_error_line = NULL;")?;
             writeln_code!(output, "static int32_t _INCLERRORLINE = 0;")?;
+            writeln_code!(output, "static char* _qb_err_msg = NULL;")?;
             writeln_code!(output)?;
             // GOSUB stack and STRIG event ID - needed by generated code even with external runtime
             legacy::emit_gosub_stack(output)?;
@@ -656,31 +657,12 @@ pub(in crate::codegen) fn emit_header_with_debug(
             writeln_code!(output, "    return strtoll(data, NULL, 10);")?;
             writeln_code!(output, "}}")?;
             writeln_code!(output)?;
-            // qb_file_put_string - PUT # for strings (binary write from string buffer)
-            writeln_code!(
-                output,
-                "void qb_file_put_string(int32_t fnum, qb_string* s) {{"
-            )?;
-            writeln_code!(output, "    if (!s) return;")?;
-            writeln_code!(output, "    size_t len = qb_string_len(s);")?;
-            writeln_code!(output, "    if (len == 0) return;")?;
-            writeln_code!(output, "    const char* data = qb_string_data(s);")?;
-            writeln_code!(output, "    qb_file_put(fnum, data, len);")?;
-            writeln_code!(output, "}}")?;
-            writeln_code!(output)?;
+            // qb_file_put_string - Provided by runtime library (declared in qb64fresh_rt.h)
+            // qb_echo - Provided by runtime library (declared in qb64fresh_rt.h)
             // qb_error - ERROR statement
             writeln_code!(output, "void qb_error(int32_t code) {{")?;
             writeln_code!(output, "    fprintf(stderr, \"ERROR %d\\n\", code);")?;
             writeln_code!(output, "    exit(code);")?;
-            writeln_code!(output, "}}")?;
-            writeln_code!(output)?;
-            // qb_echo - ECHO statement (console output)
-            // Outputs text to the console (similar to PRINT but explicitly for console)
-            writeln_code!(output, "void qb_echo(qb_string* text) {{")?;
-            writeln_code!(output, "    if (text) {{")?;
-            writeln_code!(output, "        qb_print_string(text);")?;
-            writeln_code!(output, "        qb_print_newline();")?;
-            writeln_code!(output, "    }}")?;
             writeln_code!(output, "}}")?;
             writeln_code!(output)?;
             // qb_sgn - SGN function
@@ -883,10 +865,7 @@ pub(in crate::codegen) fn emit_header_with_debug(
                 output,
                 "int32_t qb__mapunicode1(int32_t code) {{ return code; }}"
             )?;
-            writeln_code!(
-                output,
-                "void qb_sub__title(qb_string* title) {{ (void)title; }}"
-            )?;
+            // qb_sub__title - Provided by runtime library (declared in qb64fresh_rt.h)
             writeln_code!(output, "int32_t qb_resize(void) {{ return 0; }}")?;
             writeln_code!(output, "int32_t qb_resizewidth(void) {{ return 80; }}")?;
             writeln_code!(output, "int32_t qb_resizeheight(void) {{ return 25; }}")?;
@@ -948,6 +927,28 @@ pub(in crate::codegen) fn emit_header_with_debug(
                 "void qb_view_print(int32_t top, int32_t bottom) {{ (void)top; (void)bottom; }}"
             )?;
             writeln_code!(output, "int32_t qb_totaldroppedfiles(void) {{ return 0; }}")?;
+            writeln_code!(output)?;
+            // qb_sleep_keypress - needed even in external mode (not in runtime library)
+            // Note: qb_sleep and qb_delay are in runtime library, but qb_sleep_keypress is not
+            writeln_code!(output, "/* qb_sleep_keypress - SLEEP with no argument */")?;
+            writeln_code!(output, "#ifdef _WIN32")?;
+            writeln_code!(output, "#include <conio.h>")?;
+            writeln_code!(output, "void qb_sleep_keypress(void) {{")?;
+            writeln_code!(output, "    _getch();")?;
+            writeln_code!(output, "}}")?;
+            writeln_code!(output, "#else")?;
+            writeln_code!(output, "#include <termios.h>")?;
+            writeln_code!(output, "#include <unistd.h>")?;
+            writeln_code!(output, "void qb_sleep_keypress(void) {{")?;
+            writeln_code!(output, "    struct termios oldt, newt;")?;
+            writeln_code!(output, "    tcgetattr(STDIN_FILENO, &oldt);")?;
+            writeln_code!(output, "    newt = oldt;")?;
+            writeln_code!(output, "    newt.c_lflag &= ~(ICANON | ECHO);")?;
+            writeln_code!(output, "    tcsetattr(STDIN_FILENO, TCSANOW, &newt);")?;
+            writeln_code!(output, "    getchar();")?;
+            writeln_code!(output, "    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);")?;
+            writeln_code!(output, "}}")?;
+            writeln_code!(output, "#endif")?;
             writeln_code!(output)?;
         }
     }

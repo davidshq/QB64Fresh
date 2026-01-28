@@ -32,7 +32,7 @@ impl super::StmtEmitter {
         output: &mut String,
     ) -> Result<(), CodeGenError> {
         let c_name = c_identifier(name);
-        let value_code = emit_expr(value, self.no_shell)?;
+        let value_code = self.emit_expr(value)?;
 
         // Handle fixed-length string assignment specially
         if let BasicType::FixedString(len) = target_type {
@@ -87,14 +87,14 @@ impl super::StmtEmitter {
         output: &mut String,
     ) -> Result<(), CodeGenError> {
         let c_name = c_identifier(name);
-        let value_code = emit_expr(value, self.no_shell)?;
+        let value_code = self.emit_expr(value)?;
 
         // Cast indices to int64_t to ensure integer subscripts
         // (C requires integer array subscripts, but BASIC allows any numeric type)
         let indices_code: Result<Vec<_>, _> = indices
             .iter()
             .map(|idx| {
-                let code = emit_expr(idx, self.no_shell)?;
+                let code = self.emit_expr(idx)?;
                 Ok(format!("(int64_t)({})", code))
             })
             .collect();
@@ -198,11 +198,11 @@ impl super::StmtEmitter {
         output: &mut String,
     ) -> Result<(), CodeGenError> {
         let c_name = c_identifier(name);
-        let value_code = emit_expr(value, self.no_shell)?;
+        let value_code = self.emit_expr(value)?;
 
         let indices_code: Result<Vec<_>, _> = indices
             .iter()
-            .map(|e| emit_expr(e, self.no_shell))
+            .map(|e| self.emit_expr(e))
             .collect();
         let indices_code = indices_code?;
 
@@ -302,7 +302,7 @@ impl super::StmtEmitter {
         output: &mut String,
     ) -> Result<(), CodeGenError> {
         let c_name = c_identifier(name);
-        let value_code = emit_expr(value, self.no_shell)?;
+        let value_code = self.emit_expr(value)?;
 
         // Build field access chain: .field1.field2...
         let field_chain: String = fields

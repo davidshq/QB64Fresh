@@ -44,7 +44,7 @@ impl super::StmtEmitter {
                 .join(", ")
         };
 
-        let body_code = emit_expr(body, self.no_shell)?;
+        let body_code = self.emit_expr(body)?;
 
         writeln_code!(
             output,

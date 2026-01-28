@@ -257,6 +257,12 @@ impl super::StmtEmitter {
             .filter(|p| !p.by_val && p.basic_type == BasicType::String && !p.is_array)
             .map(|p| c_identifier(&p.name))
             .collect();
+        // Track all parameter names (BYVAL parameters don't get _ref suffix, so they can be shadowed)
+        // We need to rename local variables that shadow BYVAL parameters to avoid C compilation errors
+        self.current_func_param_names = params
+            .iter()
+            .map(|p| c_identifier(&p.name))
+            .collect();
 
         // Save temp pool base for this procedure - cleanup after each statement
         writeln_code!(output, "    uint64_t _qbs_proc_base = qbs_tmp_base_get();")?;
@@ -272,6 +278,8 @@ impl super::StmtEmitter {
 
         self.current_proc = None;
         self.current_func_byref_strings.clear();
+        self.current_func_param_names.clear();
+        self.variable_renames.clear();
 
         // Write back STRING byref parameters to caller's variables
         // Only strings need writeback - they use reference counting and local copies
@@ -393,6 +401,12 @@ impl super::StmtEmitter {
             .filter(|p| !p.by_val && p.basic_type == BasicType::String && !p.is_array)
             .map(|p| c_identifier(&p.name))
             .collect();
+        // Track all parameter names (BYVAL parameters don't get _ref suffix, so they can be shadowed)
+        // We need to rename local variables that shadow BYVAL parameters to avoid C compilation errors
+        self.current_func_param_names = params
+            .iter()
+            .map(|p| c_identifier(&p.name))
+            .collect();
 
         // Save temp pool base for this function - cleanup after each statement
         writeln_code!(output, "    uint64_t _qbs_proc_base = qbs_tmp_base_get();")?;
@@ -450,14 +464,24 @@ impl super::StmtEmitter {
     /// * `dimensions` - Array dimensions (empty for scalar)
     /// * `output` - Output buffer to write to
     pub(in crate::codegen::c_backend) fn emit_dim(
-        &self,
+        &mut self,
         indent: &str,
         name: &str,
         basic_type: &BasicType,
         dimensions: &[TypedArrayDimension],
         output: &mut String,
     ) -> Result<(), CodeGenError> {
-        let c_name = c_identifier(name);
+        let mut c_name = c_identifier(name);
+        let original_c_name = c_name.clone();
+        
+        // Check if this variable shadows a function parameter
+        // In BASIC, local variables can shadow parameters, but in C this causes compilation errors
+        // Rename the local variable to avoid the collision
+        if self.current_func_param_names.contains(&c_name) {
+            c_name = format!("{}_local", c_name);
+            // Track the renaming so we can update all references to this variable
+            self.variable_renames.insert(original_c_name.clone(), c_name.clone());
+        }
 
         if dimensions.is_empty() {
             // Handle fixed-length strings specially: char name[N] = "";
@@ -634,11 +658,11 @@ impl super::StmtEmitter {
         let size_expr = dimensions
             .iter()
             .map(|d| {
-                let upper_code = emit_expr(&d.upper, self.no_shell)?;
+                let upper_code = self.emit_expr(&d.upper)?;
                 let lower_code = d
                     .lower
                     .as_ref()
-                    .map(|e| emit_expr(e, self.no_shell))
+                    .map(|e| self.emit_expr(e))
                     .transpose()?
                     .unwrap_or_else(|| "0".to_string());
                 Ok(format!("({} - {} + 1)", upper_code, lower_code))
@@ -652,10 +676,10 @@ impl super::StmtEmitter {
             let lower_code = dimensions[0]
                 .lower
                 .as_ref()
-                .map(|e| emit_expr(e, self.no_shell))
+                .map(|e| self.emit_expr(e))
                 .transpose()?
                 .unwrap_or_else(|| "0".to_string());
-            let upper_code = emit_expr(&dimensions[0].upper, self.no_shell)?;
+            let upper_code = self.emit_expr(&dimensions[0].upper)?;
             format!(
                 "    qb_array_register({}, {}, {});",
                 c_name, lower_code, upper_code
@@ -667,14 +691,14 @@ impl super::StmtEmitter {
                 .map(|d| {
                     d.lower
                         .as_ref()
-                        .map(|e| emit_expr(e, self.no_shell))
+                        .map(|e| self.emit_expr(e))
                         .transpose()
                         .map(|opt| opt.unwrap_or_else(|| "0".to_string()))
                 })
                 .collect();
             let uppers: Result<Vec<String>, CodeGenError> = dimensions
                 .iter()
-                .map(|d| emit_expr(&d.upper, self.no_shell))
+                .map(|d| self.emit_expr(&d.upper))
                 .collect();
             let lowers = lowers?;
             let uppers = uppers?;
