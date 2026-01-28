@@ -1,17 +1,17 @@
 # QB64pe Compilation Status with QB64Fresh
 
-**Last Updated:** 2026-01-26  
-**Status:** Compilation Complete ✅ | Runtime Execution ⚠️ In Progress
+**Last Updated:** 2026-01-28  
+**Status:** Compilation In Progress ⚠️ | C Code Generation (69 errors remaining, 91% reduction from 807)
 
 ## Executive Summary
 
-QB64Fresh can successfully compile **QB64pe itself** — a 59,000-line BASIC compiler — through all compilation phases. The generated executable builds and runs, but crashes during GUI initialization. All runtime features are implemented and validated. Full execution testing (using bootstrapped QB64pe to compile other programs) is pending resolution of the runtime crash.
+QB64Fresh can successfully compile **QB64pe itself** — a 59,000-line BASIC compiler — through all compilation phases (preprocessing, lexing, parsing, semantic analysis, code generation). The generated C code (114,924 lines) compiles with **69 errors remaining** (down from 807 initial errors, a 91% reduction). The primary remaining issues are type system compatibility and runtime function signature mismatches. All runtime features are implemented and validated. Full execution testing is pending resolution of the C compilation errors.
 
 ---
 
-## Compilation Status: ✅ COMPLETE
+## Compilation Status: ⚠️ IN PROGRESS
 
-QB64Fresh successfully compiles QB64pe through all phases:
+QB64Fresh successfully compiles QB64pe through most phases:
 
 | Phase | Status | Details |
 |-------|--------|---------|
@@ -19,9 +19,9 @@ QB64Fresh successfully compiles QB64pe through all phases:
 | **Lexing** | ✅ Complete | 0 tokenization errors |
 | **Parsing** | ✅ Complete | 0 parse errors |
 | **Semantic Analysis** | ✅ Complete | 0 type checking errors |
-| **Code Generation** | ✅ Complete | ~115K lines of C code generated |
-| **C Compilation** | ✅ Complete | GCC compiles with 0 errors (warnings only) |
-| **Linking** | ✅ Complete | Successfully links with external runtime + SDL2 |
+| **Code Generation** | ✅ Complete | 114,924 lines of C code generated |
+| **C Compilation** | ⚠️ In Progress | GCC compiles with **69 errors remaining** (down from 807, 91% reduction) |
+| **Linking** | ⚠️ Blocked | Pending successful C compilation |
 
 ### Compilation Metrics
 
@@ -30,48 +30,49 @@ QB64Fresh successfully compiles QB64pe through all phases:
 | Source Files | 39 files |
 | Source Lines | ~59,000 lines of BASIC |
 | Preprocessed Size | 2.64 MB (with all `$INCLUDE` files) |
-| Generated C Code | ~115,000 lines (~4.5 MB) |
-| Final Executable | ~17 MB ELF binary |
+| Generated C Code | 114,924 lines (~4.5 MB) |
+| Final Executable | ⚠️ Blocked (pending C compilation) |
 | Compilation Time | ~800ms on modern hardware |
 | Parse Errors | 0 |
 | Semantic Errors | 0 |
-| GCC Errors | 0 (warnings only) |
+| GCC Errors | **69 errors remaining** (down from 807, 91% reduction) |
 
 **Test:** `cargo test --test bootstrap_tests qb64pe_compiles_successfully`
 
 ---
 
-## Executable Status: ⚠️ PARTIAL
+## Executable Status: ⚠️ BLOCKED
 
-The bootstrapped QB64pe executable:
+The bootstrapped QB64pe executable cannot be built yet due to C compilation errors:
 
-- ✅ **Builds successfully** (~17MB binary)
-- ✅ **Runs and displays help** (`-h` flag works)
-- ✅ **Command-line argument parsing** works correctly
-- ⚠️ **Crashes with segmentation fault** during GUI initialization
+- ⚠️ **C Compilation** - 69 errors remaining (blocking executable build)
+- ⚠️ **Linking** - Blocked until C compilation succeeds
+- ⚠️ **Runtime Execution** - Cannot test until executable builds
 
-### Runtime Execution Details
+### Current Blocking Issues
 
-From session log (2026-01-26):
-- Binary executes and shows expected error: "QB64-PE cannot locate the 'internal' folder"
-- Crashes with segfault (exit code 139) when run from QB64PE directory
-- Crash occurs during initialization, likely during:
-  - Graphics context initialization
-  - Resource loading
-  - GUI setup
+**Primary Issues (69 errors):**
 
-**Analysis:** The segmentation fault suggests:
-1. Possible uninitialized pointers or memory access issues
-2. Missing runtime initialization (e.g., graphics context, string pool)
-3. Incompatible function signatures causing stack corruption
-4. Missing error handling for failed resource loading
+1. **Type System Issues** (highest priority)
+   - Type compatibility between `qbt_ParseNum*` and `QbString*`
+   - ParseNum UDT struct mapping (partially fixed in commit 1183a3a)
+   - Additional UDT mappings may be needed
 
-**Next Steps for Debugging:**
-1. Add debug symbols to the binary for better crash analysis
-2. Check runtime initialization order (graphics, strings, etc.)
-3. Verify all function call conventions match between generated code and runtime library
-4. Test with a minimal BASIC program instead of full IDE
-5. Check for missing runtime library initialization calls
+2. **Runtime Function Signature Mismatches**
+   - Incompatible pointer types (`QbString*` vs `const char*`)
+   - Examples: `qb_removestringenclosingpair_str()`, `strcpy()`, `qb_net_openclient()`
+   - Const qualifier issues in hash table functions
+
+3. **Function Pointer Assignment** (1 error)
+   - Assignment to integer from function pointer without cast
+
+**Progress Made:**
+- ✅ Variable shadowing issue resolved (was causing 188 errors)
+- ✅ ParseNum UDT struct added to runtime header
+- ✅ Type name consistency fixed (`QbString*` vs `qb_string*`)
+- ✅ 91% reduction in errors (807 → 69)
+
+**See:** `docs/QB64PE_COMPILATION_BLOCKING_ISSUES.md` for detailed error analysis
 
 ---
 
@@ -256,40 +257,65 @@ All required runtime features are implemented and validated:
    - Stack size handling
    - Runtime initialization calls
 
+9. **Variable Shadowing Resolution** ✅ (2026-01-28)
+   - Fixed local variable shadowing function parameters
+   - Resolved 188 compilation errors related to variable shadowing
+
+10. **Type Name Consistency** ✅ (2026-01-28)
+    - Fixed `QbString*` vs `qb_string*` inconsistency
+    - Reduced errors from 807 → 69 (91% reduction)
+
+11. **ParseNum UDT Support** ✅ (2026-01-28)
+    - Added `qbt_ParseNum` struct to runtime header
+    - Partial support for ParseNum type mapping
+
 ---
 
 ## What Works ✅
 
-1. **Full Compilation Pipeline:** QB64pe source → C code → executable
+1. **Full Compilation Pipeline (QB64Fresh phases):** QB64pe source → C code generation
 2. **All Compiler Phases:** Preprocessing, lexing, parsing, semantic analysis, code generation
-3. **Generated Code Compiles:** GCC compilation succeeds with 0 errors
-4. **Executable Links:** Successfully links with external runtime + SDL2
-5. **Executable Runs:** Binary executes and handles command-line arguments
-6. **Runtime Features:** All required runtime features implemented and tested
+3. **Code Generation:** Successfully generates 114,924 lines of C code
+4. **Error Reduction:** 91% reduction in C compilation errors (807 → 69)
+5. **Runtime Features:** All required runtime features implemented and tested
+6. **Type System:** Variable shadowing resolved, ParseNum UDT partially supported
 
 ---
 
 ## What's Pending ⚠️
 
-### 1. Runtime Debugging (CRITICAL)
+### 1. C Compilation Error Resolution (CRITICAL)
 
-**Issue:** Segmentation fault during GUI initialization
+**Issue:** 69 C compilation errors remaining
+
+**Error Categories:**
+1. **Type System Issues** (Priority 1)
+   - Type compatibility between `qbt_ParseNum*` and `QbString*`
+   - Verify ParseNum UDT maps correctly in generated C
+   - Additional UDT mappings may be needed
+
+2. **Runtime Function Signature Mismatches** (Priority 1)
+   - Incompatible pointer types (`QbString*` vs `const char*`)
+   - Examples: `qb_removestringenclosingpair_str()`, `strcpy()`, `qb_net_openclient()`
+   - Const qualifier issues in hash table functions
+
+3. **Function Pointer Assignment** (Priority 2)
+   - 1 error: assignment to integer from function pointer without cast
 
 **Required Actions:**
-- Run QB64PE with gdb to identify exact crash location
-- Check runtime initialization order (graphics, strings, etc.)
-- Verify all function call conventions match between generated code and runtime library
-- Add more comprehensive error handling for initialization failures
-- Test with progressively more complex programs to isolate issues
+- Fix type system compatibility issues
+- Review and update runtime function signatures in `runtime/include/qb64fresh_rt.h`
+- Add proper type conversions in codegen
+- Add explicit casts for function pointer assignments
 
-**Status:** Debugging infrastructure added (debug symbols, runtime initialization calls), but crash still occurs
+**Status:** Major progress made (91% error reduction), remaining issues documented in `docs/QB64PE_COMPILATION_BLOCKING_ISSUES.md`
 
-### 2. Full Execution Testing
+### 2. Executable Build and Linking
 
-**Goal:** Use bootstrapped QB64pe to compile other BASIC programs
+**Goal:** Build executable from generated C code
 
 **Prerequisites:**
-- Resolve segmentation fault
+- Resolve all 69 C compilation errors
 - Build runtime library with graphics: `cargo build -p qb64fresh-runtime --release --features graphics-sdl2`
 - Compile QB64pe C code and link:
   ```bash
@@ -297,13 +323,41 @@ All required runtime features are implemented and validated:
       $(pkg-config --libs sdl2) -lm -lpthread -ldl -o qb64pe_bootstrapped
   ```
 
+**Status:** Blocked until C compilation succeeds
+
+### 3. Runtime Execution Testing
+
+**Goal:** Test bootstrapped QB64pe executable
+
+**Prerequisites:**
+- Successful C compilation and linking
+- Executable builds without errors
+
+**Test Plan:**
+- Run bootstrapped QB64pe with `-h` flag (help)
+- Test command-line argument parsing
+- Test GUI initialization (may require debugging if crashes occur)
+- Test with minimal BASIC program
+
+**Status:** Blocked until executable builds
+
+### 4. Full Execution Testing
+
+**Goal:** Use bootstrapped QB64pe to compile other BASIC programs
+
+**Prerequisites:**
+- Executable builds and runs successfully
+- Runtime execution works correctly
+
 **Test Plan:**
 - Run bootstrapped QB64pe on simple test program
 - Verify output
 - Test on QB4.5 compatibility suite subset
 - Compare results with original QB64pe
 
-### 3. Meta-Bootstrap Testing
+**Status:** Blocked until executable runs
+
+### 5. Meta-Bootstrap Testing
 
 **Goal:** Bootstrapped QB64pe compiles itself (meta-bootstrap)
 
@@ -317,25 +371,31 @@ All required runtime features are implemented and validated:
 
 ### Immediate (High Priority)
 
-1. **Debug Segmentation Fault:**
-   - Run QB64PE with gdb to identify exact crash location
-   - Review all string function calls for fixed-length string handling
-   - Add more comprehensive error handling for initialization failures
-   - Test with minimal BASIC program instead of full IDE
+1. **Fix C Compilation Errors:**
+   - Fix type system compatibility issues (`qbt_ParseNum*` vs `QbString*`)
+   - Review and update runtime function signatures
+   - Add proper type conversions in codegen
+   - Fix function pointer to integer conversion
+   - See `docs/QB64PE_COMPILATION_BLOCKING_ISSUES.md` for detailed analysis
 
-2. **Verify Runtime Initialization:**
-   - Ensure `qb_runtime_init()` is called correctly
-   - Check graphics initialization order
-   - Verify all required subsystems are initialized
+2. **Verify Type Mappings:**
+   - Ensure ParseNum UDT maps correctly to `qbt_ParseNum` struct
+   - Test struct field access (`.typ`, `.f`, `.i`, `.ui`, `.s`)
+   - Verify all UDT types are properly mapped
 
 ### Short Term (Medium Priority)
 
-3. **Full Execution Testing:**
-   - Once segfault is resolved, test compiling simple BASIC programs
+3. **Build and Test Executable:**
+   - Once C compilation succeeds, build executable
+   - Test basic functionality (help, command-line args)
+   - Debug any runtime issues if they occur
+
+4. **Full Execution Testing:**
+   - Test bootstrapped QB64pe compiling simple BASIC programs
    - Validate output correctness
    - Test on representative QB4.5 compatibility suite programs
 
-4. **Performance Benchmarking:**
+5. **Performance Benchmarking:**
    - Benchmark bootstrapped QB64pe compilation speed
    - Compare with original QB64pe performance
    - Document performance characteristics
@@ -389,16 +449,20 @@ See [docs/MEMORY_LIMITS.md](MEMORY_LIMITS.md) for details.
 - ✅ QB64pe can parse command-line arguments
 - ✅ Error reporting mechanisms are in place
 
-### Phase 3: Integration Testing ⚠️ IN PROGRESS
+### Phase 3: Integration Testing ⚠️ BLOCKED
 - ✅ Hello World code generation validated
-- ⚠️ Full execution test (requires runtime build and segfault resolution)
+- ⚠️ C compilation (69 errors remaining, 91% reduction achieved)
+- ⚠️ Executable build (blocked until C compilation succeeds)
+- ⚠️ Full execution test (blocked until executable builds)
 - ⚠️ QB4.5 compatibility test
 - ⚠️ Self-compilation test
 
 ### Final Success (Target)
-- ✅ Bootstrapped QB64pe can compile arbitrary BASIC programs
-- ✅ Full bootstrap chain works (QB64Fresh → QB64pe → BASIC programs)
-- ✅ All tests passing
+- ⚠️ C compilation succeeds with 0 errors
+- ⚠️ Bootstrapped QB64pe executable builds and runs
+- ⚠️ Bootstrapped QB64pe can compile arbitrary BASIC programs
+- ⚠️ Full bootstrap chain works (QB64Fresh → QB64pe → BASIC programs)
+- ⚠️ All tests passing
 
 ---
 
@@ -407,6 +471,8 @@ See [docs/MEMORY_LIMITS.md](MEMORY_LIMITS.md) for details.
 ### Documentation
 
 - [QB64PE Compilation Plan](QB64PE_COMPILATION_PLAN.md) - Detailed implementation plan
+- [QB64PE Compilation Blocking Issues](QB64PE_COMPILATION_BLOCKING_ISSUES.md) - **Current error analysis (69 errors)**
+- [Architectural Review Item 5 Implementation](ARCHITECTURAL_REVIEW_ITEM5_IMPLEMENTATION.md) - Runtime architecture improvements
 - [Bootstrap Validation](BOOTSTRAP_VALIDATION.md) - Current validation status
 - [Bootstrap Plan Full](archive/BOOTSTRAP_PLAN_FULL.md) - Complete bootstrap history
 - [Architecture Documentation](ARCHITECTURE.md#bootstrap-achievement) - Bootstrap achievement summary
@@ -414,7 +480,8 @@ See [docs/MEMORY_LIMITS.md](MEMORY_LIMITS.md) for details.
 
 ### Session Logs
 
-- [Session 064: QB64PE Bootstrap with External Runtime](AgenticLogs/2026-01-26_session-064_qb64pe-external-runtime-bootstrap.md) - Latest session log with detailed debugging
+- [Session 069: QB64pe Compilation Analysis](AgenticLogs/2026-01-28_session-069_qb64pe-compilation-analysis.md) - **Latest: Error analysis and documentation**
+- [Session 064: QB64PE Bootstrap with External Runtime](AgenticLogs/2026-01-26_session-064_qb64pe-external-runtime-bootstrap.md) - External runtime bootstrap
 
 ### Test Files
 
@@ -425,12 +492,18 @@ See [docs/MEMORY_LIMITS.md](MEMORY_LIMITS.md) for details.
 
 ## Conclusion
 
-**Current State:** QB64Fresh can compile QB64pe end-to-end through all compilation phases. The generated executable builds and runs, but crashes during GUI initialization. All runtime features are implemented and validated. The main blocker is runtime debugging, not compilation.
+**Current State:** QB64Fresh can compile QB64pe end-to-end through all QB64Fresh compilation phases (preprocessing, lexing, parsing, semantic analysis, code generation). The generated C code (114,924 lines) compiles with **69 errors remaining** (down from 807 initial errors, a 91% reduction). All runtime features are implemented and validated. The main blocker is resolving the remaining C compilation errors (primarily type system compatibility and runtime function signature mismatches).
 
-**Outlook:** Once the segmentation fault is resolved, full bootstrap validation should be achievable. The compilation infrastructure is solid; the remaining work is runtime debugging and execution testing.
+**Progress Made:**
+- ✅ Variable shadowing issue resolved (was causing 188 errors)
+- ✅ Type name consistency fixed (`QbString*` vs `qb_string*`)
+- ✅ ParseNum UDT struct added to runtime header
+- ✅ 91% reduction in C compilation errors (807 → 69)
 
-**Achievement:** Successfully compiled and linked QB64PE with QB64Fresh! The binary executes, demonstrating that the compilation pipeline works end-to-end. Runtime debugging is the next phase.
+**Outlook:** Once the remaining 69 C compilation errors are resolved, the executable should build successfully. The compilation infrastructure is solid; the remaining work is fixing type system issues and runtime function signature mismatches. See `docs/QB64PE_COMPILATION_BLOCKING_ISSUES.md` for detailed error analysis and recommended fixes.
+
+**Achievement:** Successfully generated C code from QB64pe source! Major progress on error reduction (91%). Remaining errors are well-documented and fixable.
 
 ---
 
-*Last updated: 2026-01-26*
+*Last updated: 2026-01-28*

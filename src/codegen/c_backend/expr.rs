@@ -619,6 +619,112 @@ pub(super) fn emit_expr(
                 return Ok(format!("qb_net_openhost({})", conn_data));
             }
 
+            // Special case: _OPENCLIENT expects const char* connection string, not QbString*
+            if upper_name == "_OPENCLIENT" {
+                // _OPENCLIENT takes 1 string argument (connection string like "TCP/IP:port:host")
+                let conn_code = emit_expr(&args[0], no_shell, variable_renames, param_names)?;
+                // Convert QbString* to const char* using qb_string_data()
+                let conn_data = if conn_code.starts_with("qb_str_from_c(") {
+                    // Fixed-length string - unwrap and use directly (it's already const char*)
+                    unwrap_qb_str_from_c(&conn_code)
+                } else {
+                    // Dynamic string - use qb_string_data() to get const char*
+                    format!("qb_string_data({})", conn_code)
+                };
+                return Ok(format!("qb_net_openclient({})", conn_data));
+            }
+
+            // Special case: qb_removestringenclosingpair_str expects QbString** (pointer to pointer)
+            // This is a QB64pe-specific runtime function that takes addresses of QbString* variables
+            if c_function_name(name) == "qb_removestringenclosingpair_str" {
+                let mut args_codes = Vec::new();
+                for arg in args {
+                    let arg_code = emit_expr(arg, no_shell, variable_renames, param_names)?;
+                    // Check if expression is an lvalue (can take address of)
+                    let is_lvalue = matches!(
+                        arg.kind,
+                        TypedExprKind::Variable { .. }
+                            | TypedExprKind::ArrayAccess { .. }
+                            | TypedExprKind::FieldAccess { .. }
+                    );
+
+                    if is_lvalue {
+                        // It's a variable/array/field - take address: &variable
+                        // For const variables, we need to cast away const: (QbString**)&variable
+                        // Check if the variable name suggests it might be const (common pattern)
+                        let needs_const_cast = if let TypedExprKind::Variable(var_name) = &arg.kind
+                        {
+                            arg_code.contains("const ")
+                                || (var_name.contains("METACOMMAND")
+                                    && var_name.contains("ENCLOSING"))
+                        } else {
+                            arg_code.contains("const ")
+                        };
+
+                        if needs_const_cast {
+                            let arg_code_clean = arg_code.replace("const ", "");
+                            args_codes.push(format!("(QbString**)&{}", arg_code_clean));
+                        } else {
+                            args_codes.push(format!("&{}", arg_code));
+                        }
+                    } else {
+                        // It's a function call or expression - use statement-expression to create temporary
+                        let temp_name = format!("_tmp_qbstr_{}", args_codes.len());
+                        args_codes.push(format!(
+                            "({{ QbString* {} = {}; &{}; }})",
+                            temp_name, arg_code, temp_name
+                        ));
+                    }
+                }
+                let args_str = args_codes.join(", ");
+                return Ok(format!("qb_removestringenclosingpair_str({})", args_str));
+            }
+
+            // Special case: qb_hasstringenclosingpair_int_int expects QbString** (pointer to pointer)
+            // Same handling as qb_removestringenclosingpair_str
+            if c_function_name(name) == "qb_hasstringenclosingpair_int_int" {
+                let mut args_codes = Vec::new();
+                for arg in args {
+                    let arg_code = emit_expr(arg, no_shell, variable_renames, param_names)?;
+                    // Check if expression is an lvalue (can take address of)
+                    let is_lvalue = matches!(
+                        arg.kind,
+                        TypedExprKind::Variable { .. }
+                            | TypedExprKind::ArrayAccess { .. }
+                            | TypedExprKind::FieldAccess { .. }
+                    );
+
+                    if is_lvalue {
+                        // It's a variable/array/field - take address: &variable
+                        // For const variables, we need to cast away const: (QbString**)&variable
+                        let needs_const_cast = if let TypedExprKind::Variable(var_name) = &arg.kind
+                        {
+                            arg_code.contains("const ")
+                                || (var_name.contains("METACOMMAND")
+                                    && var_name.contains("ENCLOSING"))
+                        } else {
+                            arg_code.contains("const ")
+                        };
+
+                        if needs_const_cast {
+                            let arg_code_clean = arg_code.replace("const ", "");
+                            args_codes.push(format!("(QbString**)&{}", arg_code_clean));
+                        } else {
+                            args_codes.push(format!("&{}", arg_code));
+                        }
+                    } else {
+                        // It's a function call or expression - use statement-expression to create temporary
+                        let temp_name = format!("_tmp_qbstr_{}", args_codes.len());
+                        args_codes.push(format!(
+                            "({{ QbString* {} = {}; &{}; }})",
+                            temp_name, arg_code, temp_name
+                        ));
+                    }
+                }
+                let args_str = args_codes.join(", ");
+                return Ok(format!("qb_hasstringenclosingpair_int_int({})", args_str));
+            }
+
             let c_name = c_function_name(name);
 
             // Special case: RND without arguments defaults to RND(1)
@@ -1068,14 +1174,28 @@ fn emit_array_access(
     variable_renames: &std::collections::HashMap<String, String>,
     param_names: &std::collections::HashSet<String>,
 ) -> Result<String, CodeGenError> {
-    let c_name = c_identifier(name);
+    let mut c_name = c_identifier(name);
 
-    // Array access always uses the original array name, not a renamed scalar.
-    // In BASIC's dual namespace, arrays and scalars can coexist with the same name.
-    // When there's a collision, we rename the scalar (e.g., c_str -> c_str_scalar),
-    // but arrays keep their original name (c_str). So array accesses should NOT
-    // use the rename - they should use the original name.
-    // Note: We don't check variable_renames here because renames are only for scalars.
+    // Check if this array was renamed due to parameter shadowing.
+    // When a local array shadows a function parameter (e.g., DIM args(5) AS ParseNum
+    // when args is a parameter), the array is renamed (e.g., args -> args_local)
+    // and the rename is stored in variable_renames.
+    // Note: This is different from scalar/array dual namespace, where arrays keep
+    // their original name and scalars are renamed. Here, the array itself is renamed.
+    //
+    // IMPORTANT: We must NOT apply renames that map array names to scalar names
+    // (i.e., renames ending with "_scalar"). These are for scalar/array dual namespace
+    // and should only be applied to scalar variable references, not array accesses.
+    // Only apply renames for parameter shadowing (e.g., args -> args_local).
+    if let Some(renamed) = variable_renames.get(&c_name) {
+        // Only apply the rename if it's NOT a scalar rename (doesn't end with "_scalar")
+        // Scalar renames are for scalar/array dual namespace and should not affect array accesses
+        if !renamed.ends_with("_scalar") {
+            c_name = renamed.clone();
+        }
+        // If the rename ends with "_scalar", ignore it - we're accessing an array,
+        // not a scalar, so we should use the original array name
+    }
 
     // Collect index codes, casting to int64_t to ensure integer subscripts
     // (C requires integer array subscripts, but BASIC allows any numeric type)
@@ -1825,7 +1945,7 @@ pub(crate) fn needs_fixed_string_conversion(expr: &TypedExpr) -> bool {
 pub(super) fn emit_string_data_access(
     expr: &TypedExpr,
     expr_code: &str,
-    runtime_mode: super::RuntimeMode,
+    runtime_mode: &super::RuntimeMode,
 ) -> String {
     // Check if this is a fixed-length string that needs conversion
     // Even though emit_expr() should convert them, we double-check here for safety
@@ -1839,10 +1959,7 @@ pub(super) fn emit_string_data_access(
         expr_code.to_string()
     };
 
-    match runtime_mode {
-        super::RuntimeMode::External => format!("qb_string_data({})", qb_string_expr),
-        super::RuntimeMode::Inline => format!("{}->data", qb_string_expr),
-    }
+    runtime_mode.string_data_access(&qb_string_expr)
 }
 
 #[cfg(test)]

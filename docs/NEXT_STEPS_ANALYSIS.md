@@ -1,141 +1,23 @@
 # Next Steps Analysis
 **Date:** 2026-01-28  
-**Based on:** [ARCHITECTURAL_REVIEW.md](ARCHITECTURAL_REVIEW.md)
+**Based on:** [ARCHITECTURAL_REVIEW.md](ARCHITECTURAL_REVIEW.md), [QB64PE_COMPILATION_STATUS.md](QB64PE_COMPILATION_STATUS.md)
 
 ## Executive Summary
 
-✅ **Critical blockers resolved:** Implicit variable handling fix is complete. QB64pe bootstrap passes successfully.  
-**Grade restored:** A- (from temporary B+)
+✅ **Critical blockers resolved:** Implicit variable handling fix is complete. QB64pe bootstrap passes successfully through all QB64Fresh phases.  
+**Grade:** A- (maintained)
 
-**Current state:** All fundamental architectural issues resolved. Remaining work focuses on:
-1. Code quality and maintainability improvements
-2. Performance optimizations
-3. Developer experience enhancements
-
----
-
-## Immediate Priority (Next Sprint)
-
-### 1. ✅ ~~Fix Implicit Variable Handling~~ **COMPLETE** (2026-01-28)
-- **Status:** Resolved
-- **Impact:** Critical blocker removed, compilation errors fixed
-- **Result:** QB64pe bootstrap compiles successfully
-
-### 2. **StmtEmitter Context Refactoring** ⚠️ **HIGH PRIORITY**
-
-**Current State:**
-- ✅ Module split complete (8 focused modules: assignments, control_flow, data, def_fn, definitions, error_jump, io)
-- ⚠️ Struct still has **20+ fields** in a single struct
-
-**Fields in StmtEmitter (20 total):**
-1. `label_counter: u32` - Label generation
-2. `indent: usize` - Formatting
-3. `loop_stack: Vec<LoopContext>` - Control flow
-4. `data_label_indices: HashMap<String, usize>` - Data handling
-5. `current_proc: Option<String>` - Procedure context
-6. `current_func_ret_var: Option<String>` - Function context
-7. `current_func_byref_strings: Vec<String>` - Function context
-8. `current_func_param_names: HashSet<String>` - Function context
-9. `variable_renames: HashMap<String, String>` - Variable shadowing
-10. `global_var_names: HashSet<String>` - Global symbol tracking
-11. `global_array_names: HashSet<String>` - Global symbol tracking
-12. `shared_global_names: HashSet<String>` - Global symbol tracking
-13. `global_const_names: HashSet<String>` - Global symbol tracking
-14. `strig_event_counter: u32` - Event handling
-15. `strig_handlers: Vec<(u32, String)>` - Event handling
-16. `debug_enabled: bool` - Debug support
-17. `debug_source_file: Option<String>` - Debug support
-18. `no_shell: bool` - Security/feature flag
-19. `emitted_labels: HashSet<String>` - Label tracking
-20. `runtime_mode: RuntimeMode` - Runtime configuration
-
-**Recommended Refactoring:**
-Split into focused context structs:
-
-```rust
-pub(super) struct StmtEmitter {
-    // Core formatting/control
-    pub formatting: FormattingContext,
-    pub control_flow: ControlFlowContext,
-    
-    // Procedure/function context
-    pub procedure: ProcedureContext,
-    
-    // Global symbol tracking
-    pub globals: GlobalContext,
-    
-    // Event handling
-    pub events: EventContext,
-    
-    // Debug support
-    pub debug: DebugContext,
-    
-    // Configuration
-    pub config: EmitterConfig,
-}
-
-pub(super) struct FormattingContext {
-    pub indent: usize,
-}
-
-pub(super) struct ControlFlowContext {
-    pub loop_stack: Vec<LoopContext>,
-    pub emitted_labels: HashSet<String>,
-    pub label_counter: u32,
-}
-
-pub(super) struct ProcedureContext {
-    pub current_proc: Option<String>,
-    pub current_func_ret_var: Option<String>,
-    pub current_func_byref_strings: Vec<String>,
-    pub current_func_param_names: HashSet<String>,
-    pub variable_renames: HashMap<String, String>,
-}
-
-pub(super) struct GlobalContext {
-    pub var_names: HashSet<String>,
-    pub array_names: HashSet<String>,
-    pub shared_names: HashSet<String>,
-    pub const_names: HashSet<String>,
-}
-
-pub(super) struct EventContext {
-    pub strig_event_counter: u32,
-    pub strig_handlers: Vec<(u32, String)>,
-}
-
-pub(super) struct DebugContext {
-    pub enabled: bool,
-    pub source_file: Option<String>,
-}
-
-pub(super) struct EmitterConfig {
-    pub no_shell: bool,
-    pub runtime_mode: RuntimeMode,
-}
-```
-
-**Benefits:**
-- ✅ Better testability (can test contexts in isolation)
-- ✅ Clearer dependencies (explicit what each module needs)
-- ✅ Easier to reason about state
-- ✅ Better documentation (each context has clear purpose)
-
-**Effort:** Medium (2-3 days)
-- Refactoring is mechanical but requires careful testing
-- All 8 modules need updates to use new context structs
-- Need to ensure no functionality regressions
-
-**Risk:** Low
-- Well-defined refactoring with clear boundaries
-- Module structure already in place
-- Can be done incrementally
+**Current state:** All fundamental architectural issues resolved. QB64pe compilation generates C code successfully but has 69 C compilation errors remaining (down from 807, 91% reduction). Remaining work focuses on:
+1. **QB64pe C compilation error resolution** (high priority - blocking executable build)
+2. Code quality and maintainability improvements
+3. Performance optimizations
+4. Developer experience enhancements
 
 ---
 
 ## Short-term Priorities (Next Month)
 
-### 3. **LSP Incremental Parsing** ⚠️ **PERFORMANCE CRITICAL**
+### 4. **LSP Incremental Parsing** ⚠️ **PERFORMANCE CRITICAL**
 
 **Current State:**
 - LSP re-parses entire file on every change
@@ -159,53 +41,13 @@ pub(super) struct EmitterConfig {
 
 **Priority:** High for user experience, but can be deferred if other priorities are more critical
 
----
-
-### 4. **Cloning Audit** ⚠️ **PERFORMANCE OPTIMIZATION**
-
-**Current State:**
-- **397 `clone()` calls** identified across 38 files
-- Many may be unnecessary
-- Performance impact on large programs
-
-**Recommended Approach:**
-1. Profile to identify hot paths
-2. Audit clones in hot paths first
-3. Use references/borrowing where possible
-4. Consider `Rc`/`Arc` for shared ownership if needed
-
-**Effort:** Medium (1 week)
-- Systematic audit required
-- Need to understand ownership patterns
-- Testing to ensure no regressions
-
-**Priority:** Medium - Performance improvement, but not blocking
-
----
-
-### 5. **Error Recovery Tests** ⚠️ **CODE QUALITY**
-
-**Current State:**
-- Error collection works, but recovery behavior not well-tested
-- Need to ensure errors don't cascade incorrectly
-- Parser error recovery needs validation
-
-**Recommended Approach:**
-1. Test parser continues after errors (doesn't stop at first error)
-2. Test semantic errors are collected, not just first error
-3. Test error messages are helpful (not confusing cascades)
-
-**Effort:** Low-Medium (2-3 days)
-- Write test cases for error scenarios
-- Validate error messages are clear
-
-**Priority:** Medium - Improves developer experience when debugging
+--
 
 ---
 
 ## Medium-term Priorities (Next Quarter)
 
-### 6. **Stream Code Generation** ⚠️ **MEMORY OPTIMIZATION**
+### 7. **Stream Code Generation** ⚠️ **MEMORY OPTIMIZATION**
 
 **Current State:**
 - Code generation accumulates entire C output in `String`
@@ -226,7 +68,7 @@ pub(super) struct EmitterConfig {
 
 ---
 
-### 7. **Runtime Mode Abstraction Unification** ⚠️ **CODE ORGANIZATION**
+### 8. **Runtime Mode Abstraction Unification** ⚠️ **CODE ORGANIZATION**
 
 **Current State:**
 - TypeRegistry helps, but runtime mode differences still handled with if/else
@@ -246,48 +88,61 @@ pub(super) struct EmitterConfig {
 
 ---
 
-### 8. **Test Coverage Reporting** ⚠️ **QUALITY METRICS**
+### 9. **Test Coverage Reporting** ✅ **COMPLETE**
 
 **Current State:**
-- No coverage metrics tracked
-- Unknown which code paths are tested
+- ✅ Coverage tool: `cargo llvm-cov --workspace` configured and working
+- ✅ CI integration: Coverage job in `.github/workflows/ci.yml` (runs on every PR/push)
+- ✅ Coverage target: **81.63%** achieved (exceeds 80% target)
+- ✅ Documentation: Coverage instructions in `docs/TESTING.md`
 
-**Recommended Approach:**
-- Set up `cargo tarpaulin` or `cargo llvm-cov`
-- Set coverage targets (e.g., 80% for core modules)
-- Track coverage trends
-
-**Effort:** Low (1 day)
-- Tool setup and CI integration
-- Document coverage goals
-
-**Priority:** Low - Nice to have, but not critical
+**Status:** ✅ **COMPLETE** (completed 2026-01-25)
+- Tool setup and CI integration done
+- Coverage goals documented and target exceeded
+- Coverage trends tracked via CI artifacts and Codecov uploads
 
 ---
 
 ## Recommended Next Steps (Prioritized)
 
-### **Option A: Code Quality Focus** (Recommended)
-1. **StmtEmitter refactoring** (2-3 days)
-   - High impact on maintainability
-   - Low risk, well-defined scope
-   - Sets foundation for future improvements
+### **Option A: QB64pe Bootstrap Completion** (Recommended - Highest Priority)
+1. **QB64pe C compilation error resolution** (1-2 weeks)
+   - **CRITICAL:** Blocks executable build and full bootstrap validation
+   - Fix 69 remaining C compilation errors
+   - Type system compatibility fixes
+   - Runtime function signature alignment
+   - **Impact:** Enables full bootstrap chain validation
 
-2. **Error recovery tests** (2-3 days)
-   - Improves code quality
-   - Validates error handling works correctly
-   - Low effort, high value
+2. **Executable build and testing** (2-3 days)
+   - Build bootstrapped QB64pe executable
+   - Test basic functionality (help, command-line args)
+   - Validate runtime execution
 
-3. **Cloning audit (hot paths only)** (3-4 days)
+3. **Full execution testing** (3-4 days)
+   - Test bootstrapped QB64pe compiling simple BASIC programs
+   - Validate output correctness
+   - Test on representative QB4.5 compatibility suite programs
+
+**Total:** ~2-3 weeks to complete bootstrap validation
+
+---
+
+### **Option B: Code Quality Focus** (After Bootstrap)
+1. ✅ **Error recovery tests** - **COMPLETE**
+   - ✅ 39 tests passing in `tests/error_recovery_tests.rs`
+   - ✅ Comprehensive coverage of parser and semantic error recovery
+   - ✅ Validates error handling works correctly
+
+2. **Cloning audit (hot paths only)** (3-4 days)
    - Focus on performance-critical paths
    - Profile first to identify bottlenecks
    - Incremental improvement
 
-**Total:** ~1.5 weeks of focused work
+**Total:** ~3-4 days of focused work (error recovery tests complete)
 
 ---
 
-### **Option B: Performance Focus**
+### **Option C: Performance Focus**
 1. **LSP incremental parsing** (1-2 weeks)
    - High user impact
    - Significant effort but transformative
@@ -300,7 +155,7 @@ pub(super) struct EmitterConfig {
 
 ---
 
-### **Option C: Infrastructure Focus**
+### **Option D: Infrastructure Focus**
 1. **Stream code generation** (1 week)
    - Memory optimization
    - Better scalability
@@ -308,10 +163,7 @@ pub(super) struct EmitterConfig {
 2. **Test coverage reporting** (1 day)
    - Quality metrics
 
-3. **StmtEmitter refactoring** (2-3 days)
-   - Code organization
-
-**Total:** ~2 weeks
+**Total:** ~1.5 weeks
 
 ---
 
@@ -319,10 +171,11 @@ pub(super) struct EmitterConfig {
 
 | Priority | Task | Impact | Effort | Risk | Recommended? |
 |----------|------|--------|--------|------|--------------|
-| **Immediate** | StmtEmitter refactoring | High (maintainability) | Medium (2-3 days) | Low | ✅ **YES** |
+| **Immediate** | ✅ StmtEmitter refactoring | High (maintainability) | ✅ Complete | - | ✅ **COMPLETE** |
+| **Immediate** | QB64pe C compilation errors | **CRITICAL** (blocks bootstrap) | Medium-High (1-2 weeks) | Medium | ✅ **YES - HIGHEST PRIORITY** |
 | **Short-term** | LSP incremental parsing | High (UX) | High (1-2 weeks) | Medium | ⚠️ **If UX is priority** |
 | **Short-term** | Cloning audit | Medium (performance) | Medium (1 week) | Low | ✅ **Yes (hot paths)** |
-| **Short-term** | Error recovery tests | Medium (quality) | Low (2-3 days) | Low | ✅ **YES** |
+| **Short-term** | ✅ Error recovery tests | Medium (quality) | ✅ Complete | - | ✅ **COMPLETE** |
 | **Medium-term** | Stream codegen | Medium (memory) | Medium (1 week) | Low | ⚠️ **If memory is issue** |
 | **Medium-term** | Runtime mode abstraction | Low (organization) | Medium-High | Medium | ❌ **Defer (YAGNI)** |
 | **Medium-term** | Test coverage | Low (metrics) | Low (1 day) | Low | ⚠️ **Nice to have** |
@@ -331,29 +184,37 @@ pub(super) struct EmitterConfig {
 
 ## Recommendation
 
-**Start with Option A (Code Quality Focus):**
+**Start with Option A (QB64pe Bootstrap Completion) - HIGHEST PRIORITY:**
 
-1. **StmtEmitter refactoring** - High value, low risk, well-defined scope
-2. **Error recovery tests** - Quick win, validates important behavior
-3. **Cloning audit (hot paths)** - Performance improvement where it matters most
+1. **QB64pe C compilation error resolution** - **CRITICAL:** Blocks executable build and full bootstrap validation
+2. **Executable build and testing** - Validate the bootstrapped compiler works
+3. **Full execution testing** - Complete the bootstrap validation
 
 This provides:
-- ✅ Immediate maintainability improvements
-- ✅ Code quality validation
-- ✅ Performance improvements in critical paths
-- ✅ Low risk, incremental progress
-- ✅ Sets foundation for future work
+- ✅ **Completes the bootstrap milestone** - QB64Fresh compiles QB64pe which can then compile BASIC programs
+- ✅ **Validates full compilation chain** - End-to-end validation of the compiler
+- ✅ **Enables meta-bootstrap testing** - Bootstrapped QB64pe can compile itself
+- ✅ **High impact achievement** - Major milestone for the project
 
-**After Option A, consider:**
-- LSP incremental parsing if user experience is a priority
-- Stream code generation if memory usage becomes an issue
-- Runtime mode abstraction only if we add more runtime modes
+**After Option A (Bootstrap Complete), consider:**
+- **Option B (Code Quality Focus)** - Error recovery tests, cloning audit
+- **Option C (Performance Focus)** - LSP incremental parsing if UX is priority
+- **Option D (Infrastructure Focus)** - Stream codegen if memory becomes an issue
 
 ---
 
 ## Notes
 
-- All critical blockers are resolved ✅
+- All critical architectural blockers are resolved ✅
 - Codebase is in excellent state (Grade A-)
-- Remaining work is optimization and organization, not fundamental fixes
-- Can proceed incrementally without blocking issues
+- **QB64pe bootstrap status:** All QB64Fresh phases complete, 69 C compilation errors remaining (91% reduction achieved)
+- **Next critical milestone:** Resolve C compilation errors to enable executable build and full bootstrap validation
+- Remaining work after bootstrap: optimization, organization, and developer experience improvements
+- Can proceed incrementally with clear priorities
+
+## Related Documentation
+
+- [QB64PE_COMPILATION_STATUS.md](QB64PE_COMPILATION_STATUS.md) - Current compilation status and metrics
+- [QB64PE_COMPILATION_BLOCKING_ISSUES.md](QB64PE_COMPILATION_BLOCKING_ISSUES.md) - Detailed error analysis (69 errors)
+- [ARCHITECTURAL_REVIEW.md](ARCHITECTURAL_REVIEW.md) - Architectural recommendations
+- [ARCHITECTURAL_REVIEW_COMPLETED.md](ARCHITECTURAL_REVIEW_COMPLETED.md) - Completed architectural improvements

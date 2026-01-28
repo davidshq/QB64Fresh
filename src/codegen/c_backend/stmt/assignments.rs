@@ -45,10 +45,7 @@ impl super::StmtEmitter {
             // For fixed-length strings, we need to copy the string content
             // The value is a QbString*, we need to copy its data into the char array
             // Note: Don't free _tmp here - it will be cleaned up by qbs_cleanup at statement end
-            let data_access = match self.config.runtime_mode {
-                super::super::RuntimeMode::External => "qb_string_data(_tmp)",
-                super::super::RuntimeMode::Inline => "_tmp->data",
-            };
+            let data_access = self.config.runtime_mode.string_data_access("_tmp");
             writeln_code!(
                 output,
                 "{}{{ QbString* _tmp = {}; strncpy({}, _tmp ? {} : \"\", {}); {}[{}] = '\\0'; }}",
@@ -96,8 +93,19 @@ impl super::StmtEmitter {
 
         // Array assignment always refers to the local array variable, not a parameter.
         // If the variable was renamed to avoid shadowing, use the renamed version.
+        //
+        // IMPORTANT: We must NOT apply renames that map array names to scalar names
+        // (i.e., renames ending with "_scalar"). These are for scalar/array dual namespace
+        // and should only be applied to scalar variable references, not array assignments.
+        // Only apply renames for parameter shadowing (e.g., args -> args_local).
         if let Some(renamed) = self.procedure.variable_renames.get(&c_name) {
-            c_name = renamed.clone();
+            // Only apply the rename if it's NOT a scalar rename (doesn't end with "_scalar")
+            // Scalar renames are for scalar/array dual namespace and should not affect array assignments
+            if !renamed.ends_with("_scalar") {
+                c_name = renamed.clone();
+            }
+            // If the rename ends with "_scalar", ignore it - we're assigning to an array,
+            // not a scalar, so we should use the original array name
         }
         let value_code = self.emit_expr(value)?;
 
@@ -140,10 +148,7 @@ impl super::StmtEmitter {
             // For fixed-length strings, we need to copy the string content
             // The value is a QbString*, we need to copy its data into the char array
             // Note: Don't free _tmp here - it will be cleaned up by qbs_cleanup at statement end
-            let data_access = match self.config.runtime_mode {
-                super::super::RuntimeMode::External => "qb_string_data(_tmp)",
-                super::super::RuntimeMode::Inline => "_tmp->data",
-            };
+            let data_access = self.config.runtime_mode.string_data_access("_tmp");
             writeln_code!(
                 output,
                 "{}{{ QbString* _tmp = {}; strncpy({}[{}], _tmp ? {} : \"\", {}); {}[{}][{}] = '\\0'; }}",
@@ -255,10 +260,7 @@ impl super::StmtEmitter {
         if let BasicType::FixedString(len) = field_type {
             // For fixed-length strings, we need to copy the string content
             // The value is a QbString*, we need to copy its data into the char array
-            let data_access = match self.config.runtime_mode {
-                super::super::RuntimeMode::External => "qb_string_data(_tmp)",
-                super::super::RuntimeMode::Inline => "_tmp->data",
-            };
+            let data_access = self.config.runtime_mode.string_data_access("_tmp");
             writeln_code!(
                 output,
                 "{}{{ QbString* _tmp = {}; strncpy({}[{}]{}, _tmp ? {} : \"\", {}); {}[{}]{}[{}] = '\\0'; }}",
@@ -329,10 +331,7 @@ impl super::StmtEmitter {
         if let BasicType::FixedString(len) = field_type {
             // For fixed-length strings, we need to copy the string content
             // The value is a QbString*, we need to copy its data into the char array
-            let data_access = match self.config.runtime_mode {
-                super::super::RuntimeMode::External => "qb_string_data(_tmp)",
-                super::super::RuntimeMode::Inline => "_tmp->data",
-            };
+            let data_access = self.config.runtime_mode.string_data_access("_tmp");
             writeln_code!(
                 output,
                 "{}{{ QbString* _tmp = {}; strncpy({}{}, _tmp ? {} : \"\", {}); {}{}[{}] = '\\0'; }}",

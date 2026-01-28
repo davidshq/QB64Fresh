@@ -266,11 +266,11 @@ fn main() {
     if args.emit_c {
         // Parse runtime mode - headless flag overrides to inline (stub graphics)
         let runtime_mode = if args.headless {
-            RuntimeMode::Inline
+            RuntimeMode::inline()
         } else {
             match args.runtime.to_lowercase().as_str() {
-                "inline" => RuntimeMode::Inline,
-                "external" => RuntimeMode::External,
+                "inline" => RuntimeMode::inline(),
+                "external" => RuntimeMode::external(),
                 other => {
                     eprintln!(
                         "Unknown runtime mode: '{}'. Use 'inline' or 'external'.",
@@ -284,7 +284,8 @@ fn main() {
         if args.verbose {
             eprintln!("[4/4] Code generation...");
         }
-        let mut backend = CBackend::with_runtime_mode(runtime_mode);
+        let runtime_mode_for_backend = runtime_mode.clone();
+        let mut backend = CBackend::with_runtime_mode(runtime_mode_for_backend);
         if args.debug {
             let source_file = args.input.to_string_lossy().to_string();
             backend = backend.with_debug(true).with_source_file(&source_file);

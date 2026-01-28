@@ -199,7 +199,7 @@ mod tests {
         let backend = CBackend::new();
         let result = backend.generate(&program);
         assert!(result.is_ok());
-        let output = result.unwrap();
+        let output = result.expect("generating empty program should succeed");
         assert!(output.code.contains("int main("));
     }
 }

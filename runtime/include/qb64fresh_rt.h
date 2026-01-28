@@ -79,6 +79,9 @@ int32_t qb_instrrev3(const QbString* s, const QbString* sub, int32_t start);
 /* String conversion from C string (for fixed-length strings) */
 QbString* qb_str_from_c(const char* s);
 
+/* QB64pe-specific string processing functions */
+QbString* qb_removestringenclosingpair_str(QbString** text_ref, QbString** pair_ref);
+
 /* ============================================================================
  * Memory Operations (_MEMNEW, _MEMFREE, _MEMGET, _MEMPUT, _MEMCOPY, _MEMFILL,
  *                    _MEM, _MEMEXISTS, _MEMELEMENT, _MEMIMAGE, _MEMSOUND, _OFFSET)
@@ -106,6 +109,20 @@ int32_t qb_memexists(qb_mem m);
 qb_mem qb_memelement(qb_mem m, intptr_t index);
 qb_mem qb_memimage(int32_t handle);
 qb_mem qb_memsound(int32_t handle);
+
+/* ============================================================================
+ * ParseNum UDT (for QB64pe compatibility)
+ * ============================================================================
+ * Used internally by QB64pe for constant evaluation and parsing.
+ * This struct holds a parsed numeric/string value during evaluation.
+ */
+typedef struct qbt_ParseNum {
+    long double f;        /* _FLOAT - floating point value */
+    int64_t i;            /* _INTEGER64 - signed integer value */
+    uint64_t ui;          /* _UNSIGNED _INTEGER64 - unsigned integer value */
+    QbString* s;          /* STRING - string value */
+    int32_t typ;          /* LONG - type indicator */
+} qbt_ParseNum;
 
 /* ============================================================================
  * I/O Functions

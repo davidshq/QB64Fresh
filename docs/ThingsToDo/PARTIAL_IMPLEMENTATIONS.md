@@ -1,6 +1,6 @@
 # Partial Implementations Audit & Runtime Implementation Plan
 
-This document catalogs all functionality that is only partially implemented across the QB64Fresh codebase and provides a comprehensive overview of the runtime implementation status. Last updated: 2026-01-27 (verified against current codebase - 2026-01-27).
+This document catalogs all functionality that is only partially implemented across the QB64Fresh codebase and provides a comprehensive overview of the runtime implementation status. Last updated: 2026-01-28 (verified against current codebase - 2026-01-28).
 
 For per-function status and will-not-implement: [STUB_FUNCTIONS_FULL.md](../archive/STUB_FUNCTIONS_FULL.md).
 
@@ -18,7 +18,7 @@ QB64Fresh supports two runtime modes, selected via `--runtime` when emitting C:
 
 See [RUNTIME_ARCHITECTURE_PERSPECTIVES.md](RUNTIME_ARCHITECTURE_PERSPECTIVES.md) for trade-offs, conformance, and when to use each mode.
 
-## Current Implementation Status (2026-01-27)
+## Current Implementation Status (2026-01-28)
 
 - **~409 of 419** built-in functions/subs fully implemented (~97.6%); see [STUB_FUNCTIONS_FULL.md](../archive/STUB_FUNCTIONS_FULL.md).
 - **~7** legacy/event stubs (ERDEV, ON COM, ON UEVENT, ON SIGNAL, etc.) and **~3** obsolete (e.g. PEN) are **will-not-implement** (stub-only).
@@ -151,7 +151,7 @@ runtime/src/
 | `_DROPPEDFILE$` | 🚫 | 🚫 | Yes | Returns empty string |
 | `_FINISHDROP`, `_ACCEPTFILEDROP` | 🚫 | 🚫 | Yes | No-ops |
 | **Console Control** | | | | |
-| `qb_echo` | ✅ | ✅ | Yes | Implemented. Outputs text to console followed by newline |
+| `qb_echo` | 🟢 | 🟢 | Yes | Implemented. Outputs text to console followed by newline |
 
 ---
 
@@ -195,17 +195,17 @@ runtime/src/
 
 | Function | Status | vs QB64pe | Description |
 |----------|--------|-----------|-------------|
-| `_MEMNEW(size)` | [x] | ✓ | Allocate memory block |
-| `_MEMFREE(block)` | [x] | ✓ | Free memory block |
-| `_MEMEXISTS(block)` | [x] | ✓ | Check if block is valid |
-| `_MEMCOPY(src, dest, size)` | [x] | ✓ | Copy memory |
-| `_MEMGET(block, offset, type)` | [x] | ✓ | Read typed value |
-| `_MEMPUT(block, offset, value)` | [x] | ✓ | Write typed value |
-| `_MEMFILL(block, offset, size, value)` | [x] | ✓ | Fill memory |
-| `_MEM(var)` | [x] | ✓ | Get memory block for variable (qb_mem_of, etc.) |
-| `_MEMELEMENT(block, index)` | [x] | ✓ | Element offset |
-| `_MEMSOUND(handle)` | [~] | ~ | Stub (returns empty) |
-| `_MEMIMAGE(handle)` | [~] | ~ | Stub (returns empty) |
+| `_MEMNEW(size)` | 🟢 | ✓ | Allocate memory block |
+| `_MEMFREE(block)` | 🟢 | ✓ | Free memory block |
+| `_MEMEXISTS(block)` | 🟢 | ✓ | Check if block is valid |
+| `_MEMCOPY(src, dest, size)` | 🟢 | ✓ | Copy memory |
+| `_MEMGET(block, offset, type)` | 🟢 | ✓ | Read typed value |
+| `_MEMPUT(block, offset, value)` | 🟢 | ✓ | Write typed value |
+| `_MEMFILL(block, offset, size, value)` | 🟢 | ✓ | Fill memory |
+| `_MEM(var)` | 🟢 | ✓ | Get memory block for variable (qb_mem_of, etc.) |
+| `_MEMELEMENT(block, index)` | 🟢 | ✓ | Element offset |
+| `_MEMSOUND(handle)` | ⚠️ | ~ | Stub (returns empty) |
+| `_MEMIMAGE(handle)` | ⚠️ | ~ | Stub (returns empty) |
 
 #### 1.2 String System
 
@@ -214,26 +214,26 @@ runtime/src/
 
 | Function | Status | vs QB64pe | Description |
 |----------|--------|-----------|-------------|
-| `LEN(str)` | [x] | ✓ | String length |
-| `LEFT$(str, n)` | [x] | ✓ | Left substring |
-| `RIGHT$(str, n)` | [x] | ✓ | Right substring |
-| `MID$(str, start, len)` | [x] | ✓ | Middle substring |
-| `INSTR(start, str, search)` | [x] | ✓ | Find substring |
-| `_INSTRREV(start, str, search)` | [x] | ✓ | Find from right (qb_instrrev, qb_instrrev3) |
-| `UCASE$(str)` | [x] | ✓ | Uppercase |
-| `LCASE$(str)` | [x] | ✓ | Lowercase |
-| `LTRIM$(str)` | [x] | ✓ | Trim left |
-| `RTRIM$(str)` | [x] | ✓ | Trim right |
-| `_TRIM$(str)` | [x] | ✓ | Trim both (qb_trim; same as TRIM$) |
-| `SPACE$(n)` | [x] | ✓ | Create spaces |
-| `STRING$(n, char)` | [x] | ✓ | Create repeated char |
-| `CHR$(n)` | [x] | ✓ | ASCII to char |
-| `ASC(str, pos)` | [x] | ✓ | Char to ASCII |
-| `STR$(num)` | [x] | ✓ | Number to string |
-| `VAL(str)` | [x] | ✓ | String to number |
-| `HEX$(num)` | [x] | ✓ | Number to hex (qb_hex) |
-| `OCT$(num)` | [x] | ✓ | Number to octal (qb_oct) |
-| `_BIN$(num)` | [x] | ✓ | Number to binary (qb_bin) |
+| `LEN(str)` | 🟢 | ✓ | String length |
+| `LEFT$(str, n)` | 🟢 | ✓ | Left substring |
+| `RIGHT$(str, n)` | 🟢 | ✓ | Right substring |
+| `MID$(str, start, len)` | 🟢 | ✓ | Middle substring |
+| `INSTR(start, str, search)` | 🟢 | ✓ | Find substring |
+| `_INSTRREV(start, str, search)` | 🟢 | ✓ | Find from right (qb_instrrev, qb_instrrev3) |
+| `UCASE$(str)` | 🟢 | ✓ | Uppercase |
+| `LCASE$(str)` | 🟢 | ✓ | Lowercase |
+| `LTRIM$(str)` | 🟢 | ✓ | Trim left |
+| `RTRIM$(str)` | 🟢 | ✓ | Trim right |
+| `_TRIM$(str)` | 🟢 | ✓ | Trim both (qb_trim; same as TRIM$) |
+| `SPACE$(n)` | 🟢 | ✓ | Create spaces |
+| `STRING$(n, char)` | 🟢 | ✓ | Create repeated char |
+| `CHR$(n)` | 🟢 | ✓ | ASCII to char |
+| `ASC(str, pos)` | 🟢 | ✓ | Char to ASCII |
+| `STR$(num)` | 🟢 | ✓ | Number to string |
+| `VAL(str)` | 🟢 | ✓ | String to number |
+| `HEX$(num)` | 🟢 | ✓ | Number to hex (qb_hex) |
+| `OCT$(num)` | 🟢 | ✓ | Number to octal (qb_oct) |
+| `_BIN$(num)` | 🟢 | ✓ | Number to binary (qb_bin) |
 
 #### 1.3 Math Functions
 
@@ -242,32 +242,32 @@ runtime/src/
 
 | Function | Status | vs QB64pe | Description |
 |----------|--------|-----------|-------------|
-| `ABS(x)` | [x] | ✓ | Absolute value |
-| `SGN(x)` | [x] | ✓ | Sign |
-| `INT(x)` | [x] | ✓ | Floor |
-| `FIX(x)` | [x] | ✓ | Truncate toward zero |
-| `CINT(x)` | [x] | ✓ | Convert to integer |
-| `CLNG(x)` | [x] | ✓ | Convert to long |
-| `CSNG(x)` | [x] | ✓ | Convert to single |
-| `CDBL(x)` | [x] | ✓ | Convert to double |
-| `SQR(x)` | [x] | ✓ | Square root |
-| `LOG(x)` | [x] | ✓ | Natural log |
-| `EXP(x)` | [x] | ✓ | Exponential |
-| `SIN(x)` | [x] | ✓ | Sine |
-| `COS(x)` | [x] | ✓ | Cosine |
-| `TAN(x)` | [x] | ✓ | Tangent |
-| `ATN(x)` | [x] | ✓ | Arctangent |
-| `_ASIN(x)` | [x] | ✓ | Arcsine |
-| `_ACOS(x)` | [x] | ✓ | Arccosine |
-| `_ATAN2(y, x)` | [x] | ✓ | Two-argument arctangent |
-| `_SINH(x)` | [x] | ✓ | Hyperbolic sine |
-| `_COSH(x)` | [x] | ✓ | Hyperbolic cosine |
-| `_TANH(x)` | [x] | ✓ | Hyperbolic tangent |
-| `_PI(mult)` | [x] | ✓ | Pi constant |
-| `RND(n)` | [x] | ✓ | Random number |
-| `RANDOMIZE(seed)` | [x] | ✓ | Seed RNG |
-| `_D2R(x)` | [x] | ✓ | Degrees to radians |
-| `_R2D(x)` | [x] | ✓ | Radians to degrees |
+| `ABS(x)` | 🟢 | ✓ | Absolute value |
+| `SGN(x)` | 🟢 | ✓ | Sign |
+| `INT(x)` | 🟢 | ✓ | Floor |
+| `FIX(x)` | 🟢 | ✓ | Truncate toward zero |
+| `CINT(x)` | 🟢 | ✓ | Convert to integer |
+| `CLNG(x)` | 🟢 | ✓ | Convert to long |
+| `CSNG(x)` | 🟢 | ✓ | Convert to single |
+| `CDBL(x)` | 🟢 | ✓ | Convert to double |
+| `SQR(x)` | 🟢 | ✓ | Square root |
+| `LOG(x)` | 🟢 | ✓ | Natural log |
+| `EXP(x)` | 🟢 | ✓ | Exponential |
+| `SIN(x)` | 🟢 | ✓ | Sine |
+| `COS(x)` | 🟢 | ✓ | Cosine |
+| `TAN(x)` | 🟢 | ✓ | Tangent |
+| `ATN(x)` | 🟢 | ✓ | Arctangent |
+| `_ASIN(x)` | 🟢 | ✓ | Arcsine |
+| `_ACOS(x)` | 🟢 | ✓ | Arccosine |
+| `_ATAN2(y, x)` | 🟢 | ✓ | Two-argument arctangent |
+| `_SINH(x)` | 🟢 | ✓ | Hyperbolic sine |
+| `_COSH(x)` | 🟢 | ✓ | Hyperbolic cosine |
+| `_TANH(x)` | 🟢 | ✓ | Hyperbolic tangent |
+| `_PI(mult)` | 🟢 | ✓ | Pi constant |
+| `RND(n)` | 🟢 | ✓ | Random number |
+| `RANDOMIZE(seed)` | 🟢 | ✓ | Seed RNG |
+| `_D2R(x)` | 🟢 | ✓ | Degrees to radians |
+| `_R2D(x)` | 🟢 | ✓ | Radians to degrees |
 
 #### 1.4 File I/O
 
@@ -276,27 +276,27 @@ runtime/src/
 
 | Function | Status | vs QB64pe | Description |
 |----------|--------|-----------|-------------|
-| `OPEN file FOR mode AS #n` | [x] | ✓ | Open file |
-| `CLOSE #n` | [x] | ✓ | Close file |
-| `PRINT #n, data` | [x] | ✓ | Write to file |
-| `INPUT #n, vars` | [x] | ✓ | Read from file |
-| `LINE INPUT #n, str$` | [x] | ✓ | Read line |
-| `WRITE #n, data` | [x] | ✓ | Write CSV format (qb_file_write_*; file.rs, file_io.rs) |
-| `GET #n, pos, var` | [x] | ✓ | Binary read |
-| `PUT #n, pos, var` | [x] | ✓ | Binary write |
-| `SEEK #n, pos` | [x] | ✓ | Set position |
-| `SEEK(n)` | [x] | ✓ | Get position |
-| `LOC(n)` | [x] | ✓ | Current record |
-| `LOF(n)` | [x] | ✓ | File length |
-| `EOF(n)` | [x] | ✓ | End of file |
-| `FREEFILE` | [x] | ✓ | Next free file number |
-| `KILL file` | [x] | ✓ | Delete file |
-| `NAME old AS new` | [x] | ✓ | Rename file |
-| `CHDIR path` | [x] | ✓ | Change directory (inline: system.rs; external: io.rs) |
-| `MKDIR path` | [x] | ✓ | Create directory |
-| `RMDIR path` | [x] | ✓ | Remove directory |
-| `_FILEEXISTS(file)` | [x] | ✓ | Check file exists |
-| `_DIREXISTS(path)` | [x] | ✓ | Check directory exists (inline: system; external: io) |
+| `OPEN file FOR mode AS #n` | 🟢 | ✓ | Open file |
+| `CLOSE #n` | 🟢 | ✓ | Close file |
+| `PRINT #n, data` | 🟢 | ✓ | Write to file |
+| `INPUT #n, vars` | 🟢 | ✓ | Read from file |
+| `LINE INPUT #n, str$` | 🟢 | ✓ | Read line |
+| `WRITE #n, data` | 🟢 | ✓ | Write CSV format (qb_file_write_*; file.rs, file_io.rs) |
+| `GET #n, pos, var` | 🟢 | ✓ | Binary read |
+| `PUT #n, pos, var` | 🟢 | ✓ | Binary write |
+| `SEEK #n, pos` | 🟢 | ✓ | Set position |
+| `SEEK(n)` | 🟢 | ✓ | Get position |
+| `LOC(n)` | 🟢 | ✓ | Current record |
+| `LOF(n)` | 🟢 | ✓ | File length |
+| `EOF(n)` | 🟢 | ✓ | End of file |
+| `FREEFILE` | 🟢 | ✓ | Next free file number |
+| `KILL file` | 🟢 | ✓ | Delete file |
+| `NAME old AS new` | 🟢 | ✓ | Rename file |
+| `CHDIR path` | 🟢 | ✓ | Change directory (inline: system.rs; external: io.rs) |
+| `MKDIR path` | 🟢 | ✓ | Create directory |
+| `RMDIR path` | 🟢 | ✓ | Remove directory |
+| `_FILEEXISTS(file)` | 🟢 | ✓ | Check file exists |
+| `_DIREXISTS(path)` | 🟢 | ✓ | Check directory exists (inline: system; external: io) |
 
 **Note (external):** `qb_chdir`, `qb_mkdir`, `qb_rmdir`, and `qb_dir_exists` are declared in `runtime/include/qb64fresh_rt.h` and implemented in `runtime/src/io.rs`.
 
@@ -311,47 +311,47 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 
 | Function | Status | vs QB64pe | Description |
 |----------|--------|-----------|-------------|
-| `SCREEN mode` | [~] | ✓ | Set screen mode |
-| `_NEWIMAGE(w, h, mode)` | [~] | ✓ | Create image buffer |
-| `_FREEIMAGE handle` | [~] | ✓ | Free image |
-| `_DEST handle` | [~] | ✓ | Set draw destination |
-| `_SOURCE handle` | [~] | ✓ | Set read source |
-| `_DISPLAY` | [~] | ✓ | Refresh screen |
-| `_SCREENHIDE` | [~] | ✓ | Hide window |
-| `_SCREENSHOW` | [~] | ✓ | Show window |
-| `_SCREENMOVE x, y` | [~] | ✓ | Move window |
-| `_FULLSCREEN mode` | [~] | ✓ | Fullscreen toggle |
-| `_TITLE text$` | [~] | ✓ | Set window title |
-| `_WIDTH` | [~] | ✓ | Screen width |
-| `_HEIGHT` | [~] | ✓ | Screen height |
-| `_DESKTOPWIDTH` | [~] | ✓ | Desktop width |
-| `_DESKTOPHEIGHT` | [~] | ✓ | Desktop height |
+| `SCREEN mode` | ⚠️ | ✓ | Set screen mode |
+| `_NEWIMAGE(w, h, mode)` | ⚠️ | ✓ | Create image buffer |
+| `_FREEIMAGE handle` | ⚠️ | ✓ | Free image |
+| `_DEST handle` | ⚠️ | ✓ | Set draw destination |
+| `_SOURCE handle` | ⚠️ | ✓ | Set read source |
+| `_DISPLAY` | ⚠️ | ✓ | Refresh screen |
+| `_SCREENHIDE` | ⚠️ | ✓ | Hide window |
+| `_SCREENSHOW` | ⚠️ | ✓ | Show window |
+| `_SCREENMOVE x, y` | ⚠️ | ✓ | Move window |
+| `_FULLSCREEN mode` | ⚠️ | ✓ | Fullscreen toggle |
+| `_TITLE text$` | ⚠️ | ✓ | Set window title |
+| `_WIDTH` | ⚠️ | ✓ | Screen width |
+| `_HEIGHT` | ⚠️ | ✓ | Screen height |
+| `_DESKTOPWIDTH` | ⚠️ | ✓ | Desktop width |
+| `_DESKTOPHEIGHT` | ⚠️ | ✓ | Desktop height |
 
 #### 2.2 Drawing Primitives
 
 | Function | Status | vs QB64pe | Description |
 |----------|--------|-----------|-------------|
-| `CLS` | [~] | ✓ | Clear screen |
-| `PSET (x, y), color` | [~] | ✓ | Set pixel |
-| `PRESET (x, y)` | [~] | ✓ | Set pixel to background |
-| `POINT(x, y)` | [~] | ✓ | Get pixel color |
-| `LINE (x1,y1)-(x2,y2), color, style` | [~] | ✓ | Draw line |
-| `CIRCLE (x, y), r, color, start, end, aspect` | [~] | ✓ | Draw circle/ellipse/arc |
-| `PAINT (x, y), fill, border` | [~] | ✓ | Flood fill |
-| `DRAW commands$` | [~] | ✓ | Draw language |
-| `VIEW (x1,y1)-(x2,y2)` | [~] | ✓ | Set viewport |
-| `WINDOW (x1,y1)-(x2,y2)` | [~] | ✓ | World coordinates |
+| `CLS` | ⚠️ | ✓ | Clear screen |
+| `PSET (x, y), color` | ⚠️ | ✓ | Set pixel |
+| `PRESET (x, y)` | ⚠️ | ✓ | Set pixel to background |
+| `POINT(x, y)` | ⚠️ | ✓ | Get pixel color |
+| `LINE (x1,y1)-(x2,y2), color, style` | ⚠️ | ✓ | Draw line |
+| `CIRCLE (x, y), r, color, start, end, aspect` | ⚠️ | ✓ | Draw circle/ellipse/arc |
+| `PAINT (x, y), fill, border` | ⚠️ | ✓ | Flood fill |
+| `DRAW commands$` | ⚠️ | ✓ | Draw language |
+| `VIEW (x1,y1)-(x2,y2)` | ⚠️ | ✓ | Set viewport |
+| `WINDOW (x1,y1)-(x2,y2)` | ⚠️ | ✓ | World coordinates |
 
 #### 2.3 Color and Image Operations
 
 | Function | Status | vs QB64pe | Description |
 |----------|--------|-----------|-------------|
-| `COLOR fg, bg` | [~] | ✓ | Set colors |
-| `_RGB`, `_RGBA`, `_RGB32`, `_RGBA32` | [~] | ✓ | Create colors |
-| `_RED`, `_GREEN`, `_BLUE`, `_ALPHA` (and 32-bit) | [~] | ✓ | Extract components |
-| `_PUTIMAGE` | [~] | ✓ | Copy/scale image |
-| `GET (x1,y1)-(x2,y2), array` | [~] | ✓ | Capture to array |
-| `PUT (x, y), array, action` | [~] | ✓ | Draw from array |
+| `COLOR fg, bg` | ⚠️ | ✓ | Set colors |
+| `_RGB`, `_RGBA`, `_RGB32`, `_RGBA32` | ⚠️ | ✓ | Create colors |
+| `_RED`, `_GREEN`, `_BLUE`, `_ALPHA` (and 32-bit) | ⚠️ | ✓ | Extract components |
+| `_PUTIMAGE` | ⚠️ | ✓ | Copy/scale image |
+| `GET (x1,y1)-(x2,y2), array` | ⚠️ | ✓ | Capture to array |
+| `PUT (x, y), array, action` | ⚠️ | ✓ | Draw from array |
 
 #### 2.4 Text and Fonts
 
@@ -359,12 +359,12 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 
 | Function | Status | vs QB64pe | Description |
 |----------|--------|-----------|-------------|
-| `PRINT expressions` | [x] | ✓ | Print text |
-| `LOCATE row, col` | [x] | ✓ | Set cursor position |
-| `CSRLIN`, `POS(0)` | [x] | ✓ | Cursor row/column |
-| `_PRINTSTRING (x, y), text$` | [~] | ✓ | Print at pixel position |
-| `_LOADFONT`, `_FONT`, `_FREEFONT` | [~] | ✓ | Font load/set/free |
-| `_FONTHEIGHT`, `_FONTWIDTH`, `_PRINTWIDTH` | [~] | ✓ | Font metrics |
+| `PRINT expressions` | 🟢 | ✓ | Print text |
+| `LOCATE row, col` | 🟢 | ✓ | Set cursor position |
+| `CSRLIN`, `POS(0)` | 🟢 | ✓ | Cursor row/column |
+| `_PRINTSTRING (x, y), text$` | ⚠️ | ✓ | Print at pixel position |
+| `_LOADFONT`, `_FONT`, `_FREEFONT` | ⚠️ | ✓ | Font load/set/free |
+| `_FONTHEIGHT`, `_FONTWIDTH`, `_PRINTWIDTH` | ⚠️ | ✓ | Font metrics |
 
 ### Phase 3: Input System
 
@@ -375,12 +375,12 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 
 | Function | Status | vs QB64pe | Description |
 |----------|--------|-----------|-------------|
-| `INKEY$` | [x] | ✓ | Get key (non-blocking) |
-| `INPUT prompt; vars` | [x] | ✓ | Prompted input |
-| `LINE INPUT prompt; str$` | [x] | ✓ | Line input |
-| `_KEYHIT` | [x] | ✓ | Get key code (non-blocking) |
-| `_KEYDOWN(code)` | [x] | ✓ | Check if key pressed |
-| `_KEYCLEAR` | [x] | ✓ | Clear keyboard buffer |
+| `INKEY$` | 🟢 | ✓ | Get key (non-blocking) |
+| `INPUT prompt; vars` | 🟢 | ✓ | Prompted input |
+| `LINE INPUT prompt; str$` | 🟢 | ✓ | Line input |
+| `_KEYHIT` | 🟢 | ✓ | Get key code (non-blocking) |
+| `_KEYDOWN(code)` | 🟢 | ✓ | Check if key pressed |
+| `_KEYCLEAR` | 🟢 | ✓ | Clear keyboard buffer |
 
 #### 3.2 Mouse
 
@@ -389,12 +389,12 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 
 | Function | Status | vs QB64pe | Description |
 |----------|--------|-----------|-------------|
-| `_MOUSEINPUT` | [x] ext / [~] inline | ✓ | Poll mouse events |
-| `_MOUSEX`, `_MOUSEY` | [x] ext / [~] inline | ✓ | Mouse position |
-| `_MOUSEBUTTON(n)` | [x] ext / [~] inline | ✓ | Button state |
-| `_MOUSEWHEEL` | [x] ext / [~] inline | ✓ | Wheel delta |
-| `_MOUSESHOW`, `_MOUSEHIDE` | [x] ext / [~] inline | ✓ | Cursor visibility |
-| `_MOUSEMOVE x, y` | [x] ext / [~] inline | ✓ | Move cursor |
+| `_MOUSEINPUT` | 🟢 ext / ⚠️ inline | ✓ | Poll mouse events |
+| `_MOUSEX`, `_MOUSEY` | 🟢 ext / ⚠️ inline | ✓ | Mouse position |
+| `_MOUSEBUTTON(n)` | 🟢 ext / ⚠️ inline | ✓ | Button state |
+| `_MOUSEWHEEL` | 🟢 ext / ⚠️ inline | ✓ | Wheel delta |
+| `_MOUSESHOW`, `_MOUSEHIDE` | 🟢 ext / ⚠️ inline | ✓ | Cursor visibility |
+| `_MOUSEMOVE x, y` | 🟢 ext / ⚠️ inline | ✓ | Move cursor |
 
 #### 3.3 Game Controller
 
@@ -403,10 +403,10 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 
 | Function | Status | vs QB64pe | Description |
 |----------|--------|-----------|-------------|
-| `STICK(n)` | [x] ext / [~] inline | ✓ | Joystick axis |
-| `STRIG(n)` | [x] ext / [~] inline | ✓ | Joystick button |
-| `_DEVICES`, `_DEVICE$(n)` | [x] ext / [~] inline | ✓ | Device count/name (qb_devices; _DEVICE$ in header/io) |
-| `_AXIS(n)`, `_BUTTON(n)` | [x] ext / [~] inline | ✓ | Axis/button (qb_axis, qb_button in `runtime/include/qb64fresh_rt.h`) |
+| `STICK(n)` | 🟢 ext / ⚠️ inline | ✓ | Joystick axis |
+| `STRIG(n)` | 🟢 ext / ⚠️ inline | ✓ | Joystick button |
+| `_DEVICES`, `_DEVICE$(n)` | 🟢 ext / ⚠️ inline | ✓ | Device count/name (qb_devices; _DEVICE$ in header/io) |
+| `_AXIS(n)`, `_BUTTON(n)` | 🟢 ext / ⚠️ inline | ✓ | Axis/button (qb_axis, qb_button in `runtime/include/qb64fresh_rt.h`) |
 
 ### Phase 4: Audio System
 
@@ -415,13 +415,13 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 
 | Function | Status | vs QB64pe | Description |
 |----------|--------|-----------|-------------|
-| `BEEP` | [x] ext / [~] inline | ✓ | System beep |
-| `SOUND freq, duration` | [x] ext / [~] inline | ✓ | Generate tone |
-| `PLAY command$` | [x] ext / [~] inline | ✓ | Play music string |
-| `_SNDOPEN`, `_SNDCLOSE` | [x] ext / [~] inline | ✓ | Open/close sound file |
-| `_SNDPLAY`, `_SNDPAUSE`, `_SNDSTOP` | [x] ext / [~] inline | ✓ | Playback control |
-| `_SNDLOOP`, `_SNDVOL`, `_SNDBAL` | [x] ext / [~] inline | ✓ | Loop, volume, balance |
-| `_SNDPLAYING`, `_SNDLEN`, `_SNDGETPOS`, `_SNDSETPOS` | [x] ext / [~] inline | ✓ | Queries |
+| `BEEP` | 🟢 ext / ⚠️ inline | ✓ | System beep |
+| `SOUND freq, duration` | 🟢 ext / ⚠️ inline | ✓ | Generate tone |
+| `PLAY command$` | 🟢 ext / ⚠️ inline | ✓ | Play music string |
+| `_SNDOPEN`, `_SNDCLOSE` | 🟢 ext / ⚠️ inline | ✓ | Open/close sound file |
+| `_SNDPLAY`, `_SNDPAUSE`, `_SNDSTOP` | 🟢 ext / ⚠️ inline | ✓ | Playback control |
+| `_SNDLOOP`, `_SNDVOL`, `_SNDBAL` | 🟢 ext / ⚠️ inline | ✓ | Loop, volume, balance |
+| `_SNDPLAYING`, `_SNDLEN`, `_SNDGETPOS`, `_SNDSETPOS` | 🟢 ext / ⚠️ inline | ✓ | Queries |
 
 ### Phase 5: System Integration
 
@@ -432,24 +432,24 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 
 | Function | Status | vs QB64pe | Description |
 |----------|--------|-----------|-------------|
-| `TIMER` | [x] | ✓ | Seconds since midnight |
-| `_DELAY seconds` | [x] | ✓ | Delay execution |
-| `SLEEP seconds` | [x] | ✓ | Sleep |
-| `_LIMIT fps` | [x] | ✓ | Frame rate limit |
-| `DATE$` | [x] | ✓ | Current date |
-| `TIME$` | [x] | ✓ | Current time |
+| `TIMER` | 🟢 | ✓ | Seconds since midnight |
+| `_DELAY seconds` | 🟢 | ✓ | Delay execution |
+| `SLEEP seconds` | 🟢 | ✓ | Sleep |
+| `_LIMIT fps` | 🟢 | ✓ | Frame rate limit |
+| `DATE$` | 🟢 | ✓ | Current date |
+| `TIME$` | 🟢 | ✓ | Current time |
 
 #### 5.2 Environment and Shell
 
 | Function | Status | vs QB64pe | Description |
 |----------|--------|-----------|-------------|
-| `ENVIRON$(name)` | [x] | ✓ | Get env variable |
-| `ENVIRON "name=value"` | [x] | ✓ | Set env variable |
-| `COMMAND$` | [x] | ✓ | Command line |
-| `_OS$` | [x] | ✓ | Operating system |
-| `_SHELL(cmd$)` | [x] | ✓ | Execute command |
-| `SHELL cmd$` | [x] | ✓ | Execute (no return) |
-| `SYSTEM`, `END` | [x] | ✓ | Exit program |
+| `ENVIRON$(name)` | 🟢 | ✓ | Get env variable |
+| `ENVIRON "name=value"` | 🟢 | ✓ | Set env variable |
+| `COMMAND$` | 🟢 | ✓ | Command line |
+| `_OS$` | 🟢 | ✓ | Operating system |
+| `_SHELL(cmd$)` | 🟢 | ✓ | Execute command |
+| `SHELL cmd$` | 🟢 | ✓ | Execute (no return) |
+| `SYSTEM`, `END` | 🟢 | ✓ | Exit program |
 
 #### 5.3 Dialogs and Clipboard
 
@@ -457,10 +457,10 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 
 | Function | Status | vs QB64pe | Description |
 |----------|--------|-----------|-------------|
-| `_MESSAGEBOX` | [x] ext / [~] inline | ✓ | Message box (qb_messagebox_ex in header) |
-| `_OPENFILEDIALOG$`, `_SAVEFILEDIALOG$` | [x] ext / [~] inline | ✓ | File dialogs |
-| `_SELECTFOLDERDIALOG$` | [x] ext / [~] inline | ✓ | Folder dialog |
-| `_CLIPBOARD$` | [x] ext / [~] inline | ✓ | Get/set clipboard (qb_clipboard_get/set) |
+| `_MESSAGEBOX` | 🟢 ext / ⚠️ inline | ✓ | Message box (qb_messagebox_ex in header) |
+| `_OPENFILEDIALOG$`, `_SAVEFILEDIALOG$` | 🟢 ext / ⚠️ inline | ✓ | File dialogs |
+| `_SELECTFOLDERDIALOG$` | 🟢 ext / ⚠️ inline | ✓ | Folder dialog |
+| `_CLIPBOARD$` | 🟢 ext / ⚠️ inline | ✓ | Get/set clipboard (qb_clipboard_get/set) |
 
 #### 5.4 Error Handling
 
@@ -468,11 +468,11 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 
 | Function | Status | vs QB64pe | Description |
 |----------|--------|-----------|-------------|
-| `ON ERROR GOTO label` | [x] | ✓ | Set error handler |
-| `RESUME`, `RESUME NEXT`, `RESUME label` | [x] | ✓ | Resume after error |
-| `ERR`, `ERL` | [x] | ✓ | Error code/line |
-| `_ERRORMESSAGE$` | [x] | ✓ | Error message (qb_errormessage; error.rs) |
-| `ERROR n` | [x] | ✓ | Generate error |
+| `ON ERROR GOTO label` | 🟢 | ✓ | Set error handler |
+| `RESUME`, `RESUME NEXT`, `RESUME label` | 🟢 | ✓ | Resume after error |
+| `ERR`, `ERL` | 🟢 | ✓ | Error code/line |
+| `_ERRORMESSAGE$` | 🟢 | ✓ | Error message (qb_errormessage; error.rs) |
+| `ERROR n` | 🟢 | ✓ | Generate error |
 
 ### Phase 6: Networking
 
@@ -481,11 +481,11 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 
 | Function | Status | vs QB64pe | Description |
 |----------|--------|-----------|-------------|
-| `_OPENHOST(port)` | [x] ext impl / [~] inline / [x] in header | ~ | Open TCP server (`qb_net_openhost`) |
-| `_OPENCONNECTION(host)` | [x] ext impl / [~] inline / [x] in header | ~ | Accept connection |
-| `_OPENCLIENT("TCP/IP:port:addr")` | [x] ext impl / [~] inline / [x] in header | ~ | Connect to server |
-| `_CONNECTED(handle)` | [x] ext impl / [~] inline / [x] in header | ~ | Check connected |
-| `_CLOSEHOST` (CLOSE #) | [x] ext impl / [x] in header | ~ | Close handle (`qb_net_close`) |
+| `_OPENHOST(port)` | 🟢 ext impl / ⚠️ inline / 🟢 in header | ~ | Open TCP server (`qb_net_openhost`) |
+| `_OPENCONNECTION(host)` | 🟢 ext impl / ⚠️ inline / 🟢 in header | ~ | Accept connection |
+| `_OPENCLIENT("TCP/IP:port:addr")` | 🟢 ext impl / ⚠️ inline / 🟢 in header | ~ | Connect to server |
+| `_CONNECTED(handle)` | 🟢 ext impl / ⚠️ inline / 🟢 in header | ~ | Check connected |
+| `_CLOSEHOST` (CLOSE #) | 🟢 ext impl / 🟢 in header | ~ | Close handle (`qb_net_close`) |
 
 **Note on networking parity:** Our implementation uses numeric ports for `_OPENHOST` (e.g., `_OPENHOST(8080)`), while QB64pe uses a string format (e.g., `_OPENHOST("TCP/IP:8080")`). The semantic analyzer correctly expects a string, but the runtime implementation currently takes a numeric port. This is a known API difference that should be addressed for full parity. The external runtime implementation is functional but uses a different API signature than QB64pe.
 
@@ -504,12 +504,12 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 
 ## Implementation Order (Suggested)
 
-1. **Core I/O (done for bootstrap):** Strings, console I/O, file I/O, keyboard, math. ✅
-2. **Graphics foundation (done in external):** SDL2 window, screen modes, CLS, COLOR, PSET, LINE, CIRCLE, VIEW, WINDOW, GET/PUT, _PUTIMAGE, alpha blending, PCOPY, screen pages. ✅
-3. **Graphics extended (done):** Images, fonts, _LOADFONT, _PRINTSTRING, Unicode; _MAPTRIANGLE, _COPYPALETTE, _DISPLAYORDER. ✅
-4. **Audio (done in external):** BEEP, SOUND, _SNDOPEN/_SNDPLAY family, PLAY, rodio backend. ✅
-5. **Input (done in external):** Mouse, game controller/joystick (STICK, STRIG, _DEVICES, _AXIS, _BUTTON, ON STRIG). ✅
-6. **System (done in external):** Dialogs, clipboard. **Networking:** `qb_net_*` implemented in `runtime/src/io.rs` and declared in `runtime/include/qb64fresh_rt.h`. **Directory ops:** `qb_chdir`, `qb_mkdir`, `qb_rmdir`, `qb_dir_exists` in header and `io.rs`. ✅
+1. **Core I/O (done for bootstrap):** Strings, console I/O, file I/O, keyboard, math. 🟢
+2. **Graphics foundation (done in external):** SDL2 window, screen modes, CLS, COLOR, PSET, LINE, CIRCLE, VIEW, WINDOW, GET/PUT, _PUTIMAGE, alpha blending, PCOPY, screen pages. 🟢
+3. **Graphics extended (done):** Images, fonts, _LOADFONT, _PRINTSTRING, Unicode; _MAPTRIANGLE, _COPYPALETTE, _DISPLAYORDER. 🟢
+4. **Audio (done in external):** BEEP, SOUND, _SNDOPEN/_SNDPLAY family, PLAY, rodio backend. 🟢
+5. **Input (done in external):** Mouse, game controller/joystick (STICK, STRIG, _DEVICES, _AXIS, _BUTTON, ON STRIG). 🟢
+6. **System (done in external):** Dialogs, clipboard. **Networking:** `qb_net_*` implemented in `runtime/src/io.rs` and declared in `runtime/include/qb64fresh_rt.h`. **Directory ops:** `qb_chdir`, `qb_mkdir`, `qb_rmdir`, `qb_dir_exists` in header and `io.rs`. 🟢
 
 ## Success Criteria
 
@@ -558,13 +558,16 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 
 ## Recent Changes
 
+### 2026-01-28
+- 📝 **Documentation Update**: Updated status dates and verified current implementation state
+
 ### 2026-01-27
-- ✅ **FIELD Statement**: Fully implemented (see [File I/O Features](#file-io-features))
-- ✅ **LSET/RSET**: Fully implemented (see [File I/O Features](#file-io-features))
-- ✅ **Graphics Features**: Console Scrolling, Per-Image Palettes, STEP Position Tracking, and Window Functions verified/implemented (see [Graphics Features](#graphics-features))
+- 🟢 **FIELD Statement**: Fully implemented (see [File I/O Features](#file-io-features))
+- 🟢 **LSET/RSET**: Fully implemented (see [File I/O Features](#file-io-features))
+- 🟢 **Graphics Features**: Console Scrolling, Per-Image Palettes, STEP Position Tracking, and Window Functions verified/implemented (see [Graphics Features](#graphics-features))
 
 ### 2026-01-26
-- ✅ **Array Metadata Tracking**: Fully implemented with hash table registry system
+- 🟢 **Array Metadata Tracking**: Fully implemented with hash table registry system
   - `qb_array_register` / `qb_array_register_md` track array bounds
   - `qb_ubound` / `qb_ubound2` and `qb_lbound` / `qb_lbound2` now return correct values
   - `qb_array_update` handles REDIM pointer changes

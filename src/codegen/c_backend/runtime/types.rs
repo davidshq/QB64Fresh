@@ -32,14 +32,16 @@ pub(in crate::codegen::c_backend) fn register_string_types(
         writeln_code!(output, "    size_t capacity;")?;
         writeln_code!(output, "    int refcount;")?;
         writeln_code!(output, "}};")?;
+        // Add typedef so QbString* can be used in function signatures
+        writeln_code!(output, "typedef struct QbString QbString;")?;
         Ok(())
     });
 
     // Register qb_string typedef (depends on QbString)
     registry.register_type("qb_string", &["QbString"], |output| {
         // The header's typedef struct QbString QbString; is now complete
-        // Create qb_string alias - must be on separate line to avoid redefinition
-        writeln_code!(output, "typedef QbString qb_string;")?;
+        // Create qb_string alias - must use struct keyword for proper C syntax
+        writeln_code!(output, "typedef struct QbString qb_string;")?;
         writeln_code!(output)?;
         Ok(())
     });

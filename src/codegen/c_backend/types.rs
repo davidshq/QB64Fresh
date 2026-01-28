@@ -99,6 +99,25 @@ pub(super) fn declare_scalar_var(
     array_names: Option<&HashSet<String>>,
 ) -> bool {
     let c_name = c_identifier(name);
+
+    // CONSERVATIVE CHECK: If an array with this name exists and the variable is not
+    // already declared, we should NOT create a scalar. This prevents creating
+    // scalars for array-only usage (e.g., `providedArgs(1)` should not create
+    // `providedArgs_scalar`). Only create scalars when explicitly needed (e.g.,
+    // in assignment statements where we know it's scalar usage).
+    //
+    // Exception: If the variable is already in declared_vars, it means it was
+    // explicitly declared (e.g., via DIM or assignment), so we should handle
+    // the dual namespace case (rename scalar if array exists).
+    if !declared_vars.contains(&c_name)
+        && let Some(arrays) = array_names
+        && arrays.contains(&c_name)
+    {
+        // Array exists and variable not declared - this is likely array-only usage.
+        // Don't create a scalar - it will be created when actually used as scalar.
+        return false;
+    }
+
     // Check if this name is already declared
     // In BASIC's dual namespace, a scalar and array can coexist with the same name
     // If the name is already declared AND it's an array, we need to rename the scalar

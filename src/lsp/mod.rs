@@ -21,6 +21,7 @@
 //! QB64Fresh Compiler (lexer, parser, semantic)
 //! ```
 
+mod analysis;
 mod position;
 mod signatures;
 #[cfg(test)]
@@ -35,25 +36,27 @@ use tower_lsp::{Client, LanguageServer};
 
 use crate::ast::Span;
 use crate::lexer::{TokenKind, lex};
-use crate::parser::Parser;
-use crate::semantic::{DocumentSymbolKind, SemanticAnalyzer};
+use crate::semantic::DocumentSymbolKind;
 
+use analysis::AnalysisCache;
 use position::{
     format_basic_type, has_type_suffix, offset_to_position, position_to_offset, span_to_range,
 };
 use signatures::get_builtin_signature;
 
 /// State for a single open document.
-#[derive(Debug)]
 pub struct DocumentState {
     /// The document's content.
     pub content: String,
     /// The document's version (for incremental updates).
     pub version: i32,
+    /// Cached analysis results (AST, typed IR, diagnostics).
+    /// Wrapped in Arc to allow sharing without cloning SemanticAnalyzer.
+    pub analysis: Option<Arc<AnalysisCache>>,
 }
 
 /// Shared state for the language server.
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct ServerState {
     /// Open documents indexed by URI.
     pub documents: HashMap<Url, DocumentState>,
@@ -76,86 +79,48 @@ impl QbLanguageServer {
         }
     }
 
-    /// Analyzes a document and publishes diagnostics.
-    async fn analyze_document(&self, uri: &Url, content: &str) {
-        let diagnostics = self.get_diagnostics(content);
-        self.client
-            .publish_diagnostics(uri.clone(), diagnostics, None)
-            .await;
-    }
-
-    /// Runs the compiler pipeline and collects diagnostics.
-    fn get_diagnostics(&self, source: &str) -> Vec<Diagnostic> {
-        let mut diagnostics = Vec::new();
-
-        // Lexer phase
-        let tokens = lex(source);
-
-        // Parser phase
-        let mut parser = Parser::new(&tokens);
-        let program = match parser.parse() {
-            Ok(p) => p,
-            Err(errors) => {
-                // Convert parse errors to diagnostics
-                for err in errors {
-                    // Get span if available, or use start of file for errors without position
-                    let range = match err.span() {
-                        Some(span) => span_to_range(source, span.start, span.end),
-                        None => Range {
-                            start: Position {
-                                line: 0,
-                                character: 0,
-                            },
-                            end: Position {
-                                line: 0,
-                                character: 0,
-                            },
-                        },
-                    };
-                    diagnostics.push(Diagnostic {
-                        range,
-                        severity: Some(DiagnosticSeverity::ERROR),
-                        code: None,
-                        code_description: None,
-                        source: Some("qb64fresh".to_string()),
-                        message: err.to_string(),
-                        related_information: None,
-                        tags: None,
-                        data: None,
-                    });
-                }
-                return diagnostics;
-            }
-        };
-
-        // Semantic analysis phase
-        let mut analyzer = SemanticAnalyzer::new();
-        if let Err(errors) = analyzer.analyze(&program) {
-            for err in errors {
-                let span = err.span();
-                diagnostics.push(Diagnostic {
-                    range: span_to_range(source, span.start, span.end),
-                    severity: Some(DiagnosticSeverity::ERROR),
-                    code: None,
-                    code_description: None,
-                    source: Some("qb64fresh".to_string()),
-                    message: err.to_string(),
-                    related_information: None,
-                    tags: None,
-                    data: None,
-                });
+    /// Gets cached analysis for a document, or creates a new one if missing/invalid.
+    ///
+    /// This is an async helper that checks the document state for cached analysis.
+    /// If the cache exists and is valid for the current version, returns a reference to it.
+    /// Otherwise, a fresh analysis is performed and cached.
+    async fn get_or_analyze(&self, uri: &Url, content: &str, version: i32) -> Arc<AnalysisCache> {
+        // Check if we have valid cached analysis
+        {
+            let state = self.state.read().await;
+            if let Some(doc) = state.documents.get(uri)
+                && let Some(ref cache) = doc.analysis
+                && cache.is_valid_for(version)
+            {
+                return Arc::clone(cache);
             }
         }
 
-        diagnostics
+        // No valid cache - perform fresh analysis
+        let cache = Arc::new(AnalysisCache::analyze_document(content, version));
+
+        // Store the cache
+        {
+            let mut state = self.state.write().await;
+            if let Some(doc) = state.documents.get_mut(uri) {
+                doc.analysis = Some(Arc::clone(&cache));
+            }
+        }
+
+        cache
     }
 
-    /// Gets hover information at a position.
-    fn get_hover_info(&self, source: &str, position: Position) -> Option<String> {
+    /// Gets hover information at a position using cached analysis.
+    fn get_hover_info(
+        &self,
+        source: &str,
+        position: Position,
+        cache: &Arc<AnalysisCache>,
+    ) -> Option<String> {
         // Convert position to byte offset
         let offset = position_to_offset(source, position)?;
 
-        // Lex the source
+        // Lex the source (we still need tokens for position lookup)
         let tokens = lex(source);
 
         // Find the token at this position
@@ -163,19 +128,12 @@ impl QbLanguageServer {
             .iter()
             .find(|t| t.span.start <= offset && offset < t.span.end)?;
 
-        // For identifiers, try to get detailed symbol information
-        if token.kind == TokenKind::Identifier {
-            // Parse and analyze to get symbol information
-            let mut parser = Parser::new(&tokens);
-            if let Ok(program) = parser.parse() {
-                let mut analyzer = SemanticAnalyzer::new();
-                let _ = analyzer.analyze(&program);
-
-                // Try to get detailed hover info for this symbol
-                if let Some(info) = analyzer.get_hover_info(&token.text) {
-                    return Some(info);
-                }
-            }
+        // For identifiers, try to get detailed symbol information from cached analyzer
+        if token.kind == TokenKind::Identifier
+            && let Some(ref analyzer) = cache.analyzer
+            && let Some(info) = analyzer.get_hover_info(&token.text)
+        {
+            return Some(info);
         }
 
         // Fallback: show token information for non-identifiers or unresolved symbols
@@ -186,15 +144,20 @@ impl QbLanguageServer {
         ))
     }
 
-    /// Finds the definition location of a symbol at the given position.
+    /// Finds the definition location of a symbol at the given position using cached analysis.
     ///
     /// Returns the definition span if the position is on an identifier that
     /// references a defined symbol (variable, procedure, label, or type).
-    fn find_definition(&self, source: &str, position: Position) -> Option<Span> {
+    fn find_definition(
+        &self,
+        source: &str,
+        position: Position,
+        cache: &Arc<AnalysisCache>,
+    ) -> Option<Span> {
         // Convert position to byte offset
         let offset = position_to_offset(source, position)?;
 
-        // Lex the source
+        // Lex the source (we still need tokens for position lookup)
         let tokens = lex(source);
 
         // Find the identifier token at this position
@@ -208,57 +171,57 @@ impl QbLanguageServer {
             None
         })?;
 
-        // Parse and analyze to get the symbol table
-        let mut parser = Parser::new(&tokens);
-        let program = parser.parse().ok()?;
+        // Use cached analyzer to find definition
+        if let Some(ref analyzer) = cache.analyzer {
+            return analyzer.find_definition(&identifier_name);
+        }
 
-        let mut analyzer = SemanticAnalyzer::new();
-        // We don't care about errors for definition lookup
-        let _ = analyzer.analyze(&program);
-
-        // Get the symbol table and look up the identifier
-        analyzer.find_definition(&identifier_name)
+        None
     }
 
-    /// Gets all document symbols for the outline view.
-    fn get_document_symbols(&self, source: &str) -> Vec<SymbolInformation> {
-        let tokens = lex(source);
-        let mut parser = Parser::new(&tokens);
-        let program = match parser.parse() {
-            Ok(p) => p,
-            Err(_) => return Vec::new(),
-        };
+    /// Gets all document symbols for the outline view using cached analysis.
+    fn get_document_symbols(
+        &self,
+        source: &str,
+        cache: &Arc<AnalysisCache>,
+    ) -> Vec<SymbolInformation> {
+        // Use cached analyzer if available
+        if let Some(ref analyzer) = cache.analyzer {
+            return analyzer
+                .get_document_symbols()
+                .into_iter()
+                .map(|sym| SymbolInformation {
+                    name: sym.name,
+                    kind: match sym.kind {
+                        DocumentSymbolKind::Sub => SymbolKind::FUNCTION,
+                        DocumentSymbolKind::Function => SymbolKind::FUNCTION,
+                        DocumentSymbolKind::Type => SymbolKind::STRUCT,
+                        DocumentSymbolKind::Constant => SymbolKind::CONSTANT,
+                        DocumentSymbolKind::Array => SymbolKind::ARRAY,
+                        DocumentSymbolKind::Variable => SymbolKind::VARIABLE,
+                    },
+                    location: Location {
+                        uri: Url::parse("file:///").expect("file:/// should be a valid URL"), // Will be replaced
+                        range: span_to_range(source, sym.span.start, sym.span.end),
+                    },
+                    tags: None,
+                    #[allow(deprecated)]
+                    deprecated: None,
+                    container_name: None,
+                })
+                .collect();
+        }
 
-        let mut analyzer = SemanticAnalyzer::new();
-        let _ = analyzer.analyze(&program);
-
-        analyzer
-            .get_document_symbols()
-            .into_iter()
-            .map(|sym| SymbolInformation {
-                name: sym.name,
-                kind: match sym.kind {
-                    DocumentSymbolKind::Sub => SymbolKind::FUNCTION,
-                    DocumentSymbolKind::Function => SymbolKind::FUNCTION,
-                    DocumentSymbolKind::Type => SymbolKind::STRUCT,
-                    DocumentSymbolKind::Constant => SymbolKind::CONSTANT,
-                    DocumentSymbolKind::Array => SymbolKind::ARRAY,
-                    DocumentSymbolKind::Variable => SymbolKind::VARIABLE,
-                },
-                location: Location {
-                    uri: Url::parse("file:///").unwrap(), // Will be replaced
-                    range: span_to_range(source, sym.span.start, sym.span.end),
-                },
-                tags: None,
-                #[allow(deprecated)]
-                deprecated: None,
-                container_name: None,
-            })
-            .collect()
+        Vec::new()
     }
 
-    /// Gets completion items for code completion.
-    fn get_completions(&self, source: &str, _position: Position) -> Vec<CompletionItem> {
+    /// Gets completion items for code completion using cached analysis.
+    fn get_completions(
+        &self,
+        _source: &str,
+        _position: Position,
+        cache: &Arc<AnalysisCache>,
+    ) -> Vec<CompletionItem> {
         let mut completions = Vec::new();
 
         // Add keywords
@@ -298,14 +261,8 @@ impl QbLanguageServer {
             });
         }
 
-        // Parse and analyze to get symbols
-        let tokens = lex(source);
-        let mut parser = Parser::new(&tokens);
-        if let Ok(program) = parser.parse() {
-            let mut analyzer = SemanticAnalyzer::new();
-            let _ = analyzer.analyze(&program);
-
-            // Add user-defined procedures
+        // Add user-defined procedures from cached analyzer
+        if let Some(ref analyzer) = cache.analyzer {
             for sym in analyzer.get_document_symbols() {
                 let (kind, detail) = match sym.kind {
                     DocumentSymbolKind::Sub => (CompletionItemKind::FUNCTION, "SUB"),
@@ -452,11 +409,16 @@ impl QbLanguageServer {
         })
     }
 
-    /// Finds all references to an identifier at the given position.
+    /// Finds all references to an identifier at the given position using cached analysis.
     ///
     /// Returns a list of locations where the identifier appears in the document.
     /// This is a simple text-based search that finds all matching identifier tokens.
-    fn find_references(&self, source: &str, position: Position) -> Vec<Range> {
+    fn find_references(
+        &self,
+        source: &str,
+        position: Position,
+        _cache: &Arc<AnalysisCache>,
+    ) -> Vec<Range> {
         // Convert position to byte offset
         let offset = match position_to_offset(source, position) {
             Some(o) => o,
@@ -518,26 +480,26 @@ impl QbLanguageServer {
         None
     }
 
-    /// Computes inlay hints for a document range.
+    /// Computes inlay hints for a document range using cached analysis.
     ///
     /// Currently provides:
     /// - Type hints after variable names in DIM statements (showing inferred or explicit types)
     /// - Return type hints for FUNCTION declarations
     ///
     /// The hints appear as subtle inline annotations in the editor.
-    fn get_inlay_hints(&self, source: &str, range: Range) -> Vec<InlayHint> {
+    fn get_inlay_hints(
+        &self,
+        source: &str,
+        range: Range,
+        cache: &Arc<AnalysisCache>,
+    ) -> Vec<InlayHint> {
         let mut hints = Vec::new();
 
-        // Parse and analyze the source to get symbol information
-        let tokens = lex(source);
-        let mut parser = Parser::new(&tokens);
-        let program = match parser.parse() {
-            Ok(p) => p,
-            Err(_) => return hints,
+        // Use cached analyzer if available
+        let analyzer = match &cache.analyzer {
+            Some(a) => a,
+            None => return hints,
         };
-
-        let mut analyzer = SemanticAnalyzer::new();
-        let _ = analyzer.analyze(&program);
 
         // Convert range to byte offsets for filtering
         let range_start = position_to_offset(source, range.start).unwrap_or(0);
@@ -650,32 +612,66 @@ impl LanguageServer for QbLanguageServer {
                 DocumentState {
                     content: content.clone(),
                     version,
+                    analysis: None, // Will be set by analyze_document
                 },
             );
         }
 
-        // Analyze and publish diagnostics
-        self.analyze_document(&uri, &content).await;
+        // Analyze and publish diagnostics (this will cache the results)
+        let cache = Arc::new(AnalysisCache::analyze_document(&content, version));
+        let diagnostics = cache.diagnostics.clone();
+
+        // Store the cache
+        {
+            let mut state = self.state.write().await;
+            if let Some(doc) = state.documents.get_mut(&uri) {
+                doc.analysis = Some(Arc::clone(&cache));
+            }
+        }
+
+        // Publish diagnostics
+        self.client
+            .publish_diagnostics(uri.clone(), diagnostics, Some(version))
+            .await;
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         let uri = params.text_document.uri;
+        let version = params.text_document.version;
 
         // Get the new content (we're using FULL sync, so there's one change with full content)
         if let Some(change) = params.content_changes.into_iter().next() {
             let content = change.text;
 
-            // Update document state
+            // Update document state and analyze
+            let cache = Arc::new(AnalysisCache::analyze_document(&content, version));
+            let diagnostics = cache.diagnostics.clone();
+
+            // Store the cache and update document
             {
                 let mut state = self.state.write().await;
                 if let Some(doc) = state.documents.get_mut(&uri) {
-                    doc.content = content.clone();
-                    doc.version = params.text_document.version;
+                    doc.content = content;
+                    doc.version = version;
+                    doc.analysis = Some(Arc::clone(&cache));
+                } else {
+                    // Document doesn't exist - this shouldn't happen per LSP spec,
+                    // but handle gracefully by creating the document entry
+                    state.documents.insert(
+                        uri.clone(),
+                        DocumentState {
+                            content,
+                            version,
+                            analysis: Some(Arc::clone(&cache)),
+                        },
+                    );
                 }
             }
 
-            // Re-analyze and publish diagnostics
-            self.analyze_document(&uri, &content).await;
+            // Publish diagnostics
+            self.client
+                .publish_diagnostics(uri, diagnostics, Some(version))
+                .await;
         }
     }
 
@@ -696,22 +692,26 @@ impl LanguageServer for QbLanguageServer {
         let uri = &params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
 
-        // Get document content
-        let content = {
+        // Get document content and version
+        if let Some((content, version)) = {
             let state = self.state.read().await;
-            state.documents.get(uri).map(|d| d.content.clone())
-        };
+            state
+                .documents
+                .get(uri)
+                .map(|d| (d.content.clone(), d.version))
+        } {
+            // Get or create cached analysis
+            let cache = self.get_or_analyze(uri, &content, version).await;
 
-        if let Some(content) = content
-            && let Some(info) = self.get_hover_info(&content, position)
-        {
-            return Ok(Some(Hover {
-                contents: HoverContents::Markup(MarkupContent {
-                    kind: MarkupKind::Markdown,
-                    value: info,
-                }),
-                range: None,
-            }));
+            if let Some(info) = self.get_hover_info(&content, position, &cache) {
+                return Ok(Some(Hover {
+                    contents: HoverContents::Markup(MarkupContent {
+                        kind: MarkupKind::Markdown,
+                        value: info,
+                    }),
+                    range: None,
+                }));
+            }
         }
 
         Ok(None)
@@ -724,20 +724,24 @@ impl LanguageServer for QbLanguageServer {
         let uri = &params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
 
-        // Get document content
-        let content = {
+        // Get document content and version
+        if let Some((content, version)) = {
             let state = self.state.read().await;
-            state.documents.get(uri).map(|d| d.content.clone())
-        };
+            state
+                .documents
+                .get(uri)
+                .map(|d| (d.content.clone(), d.version))
+        } {
+            // Get or create cached analysis
+            let cache = self.get_or_analyze(uri, &content, version).await;
 
-        if let Some(content) = content
-            && let Some(def_span) = self.find_definition(&content, position)
-        {
-            let range = span_to_range(&content, def_span.start, def_span.end);
-            return Ok(Some(GotoDefinitionResponse::Scalar(Location {
-                uri: uri.clone(),
-                range,
-            })));
+            if let Some(def_span) = self.find_definition(&content, position, &cache) {
+                let range = span_to_range(&content, def_span.start, def_span.end);
+                return Ok(Some(GotoDefinitionResponse::Scalar(Location {
+                    uri: uri.clone(),
+                    range,
+                })));
+            }
         }
 
         Ok(None)
@@ -749,14 +753,18 @@ impl LanguageServer for QbLanguageServer {
     ) -> Result<Option<DocumentSymbolResponse>> {
         let uri = &params.text_document.uri;
 
-        // Get document content
-        let content = {
+        // Get document content and version
+        if let Some((content, version)) = {
             let state = self.state.read().await;
-            state.documents.get(uri).map(|d| d.content.clone())
-        };
+            state
+                .documents
+                .get(uri)
+                .map(|d| (d.content.clone(), d.version))
+        } {
+            // Get or create cached analysis
+            let cache = self.get_or_analyze(uri, &content, version).await;
 
-        if let Some(content) = content {
-            let mut symbols = self.get_document_symbols(&content);
+            let mut symbols = self.get_document_symbols(&content, &cache);
             if symbols.is_empty() {
                 return Ok(None);
             }
@@ -783,12 +791,14 @@ impl LanguageServer for QbLanguageServer {
             state
                 .documents
                 .iter()
-                .map(|(uri, doc)| (uri.clone(), doc.content.clone()))
+                .map(|(uri, doc)| (uri.clone(), doc.content.clone(), doc.version))
                 .collect::<Vec<_>>()
         };
 
-        for (uri, content) in documents {
-            let mut symbols = self.get_document_symbols(&content);
+        for (uri, content, version) in documents {
+            // Get or create cached analysis for each document
+            let cache = self.get_or_analyze(&uri, &content, version).await;
+            let mut symbols = self.get_document_symbols(&content, &cache);
 
             // Filter by query if provided
             if !query.is_empty() {
@@ -814,14 +824,18 @@ impl LanguageServer for QbLanguageServer {
         let uri = &params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
 
-        // Get document content
-        let content = {
+        // Get document content and version
+        if let Some((content, version)) = {
             let state = self.state.read().await;
-            state.documents.get(uri).map(|d| d.content.clone())
-        };
+            state
+                .documents
+                .get(uri)
+                .map(|d| (d.content.clone(), d.version))
+        } {
+            // Get or create cached analysis
+            let cache = self.get_or_analyze(uri, &content, version).await;
 
-        if let Some(content) = content {
-            let completions = self.get_completions(&content, position);
+            let completions = self.get_completions(&content, position, &cache);
             if completions.is_empty() {
                 return Ok(None);
             }
@@ -835,14 +849,18 @@ impl LanguageServer for QbLanguageServer {
         let uri = &params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
 
-        // Get document content
-        let content = {
+        // Get document content and version
+        if let Some((content, version)) = {
             let state = self.state.read().await;
-            state.documents.get(uri).map(|d| d.content.clone())
-        };
+            state
+                .documents
+                .get(uri)
+                .map(|d| (d.content.clone(), d.version))
+        } {
+            // Get or create cached analysis
+            let cache = self.get_or_analyze(uri, &content, version).await;
 
-        if let Some(content) = content {
-            let ranges = self.find_references(&content, position);
+            let ranges = self.find_references(&content, position, &cache);
             if ranges.is_empty() {
                 return Ok(None);
             }
@@ -880,14 +898,18 @@ impl LanguageServer for QbLanguageServer {
         let uri = &params.text_document.uri;
         let range = params.range;
 
-        // Get document content
-        let content = {
+        // Get document content and version
+        if let Some((content, version)) = {
             let state = self.state.read().await;
-            state.documents.get(uri).map(|d| d.content.clone())
-        };
+            state
+                .documents
+                .get(uri)
+                .map(|d| (d.content.clone(), d.version))
+        } {
+            // Get or create cached analysis
+            let cache = self.get_or_analyze(uri, &content, version).await;
 
-        if let Some(content) = content {
-            let hints = self.get_inlay_hints(&content, range);
+            let hints = self.get_inlay_hints(&content, range, &cache);
             if hints.is_empty() {
                 return Ok(None);
             }
@@ -929,15 +951,19 @@ impl LanguageServer for QbLanguageServer {
         let position = params.text_document_position.position;
         let new_name = &params.new_name;
 
-        // Get document content
-        let content = {
+        // Get document content and version
+        if let Some((content, version)) = {
             let state = self.state.read().await;
-            state.documents.get(uri).map(|d| d.content.clone())
-        };
+            state
+                .documents
+                .get(uri)
+                .map(|d| (d.content.clone(), d.version))
+        } {
+            // Get or create cached analysis
+            let cache = self.get_or_analyze(uri, &content, version).await;
 
-        if let Some(content) = content {
             // Find all references to rename
-            let ranges = self.find_references(&content, position);
+            let ranges = self.find_references(&content, position, &cache);
             if ranges.is_empty() {
                 return Ok(None);
             }

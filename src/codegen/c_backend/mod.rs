@@ -74,7 +74,6 @@ use self::analysis::{collect_callback_wrappers, collect_data_values, collect_typ
 use self::implicit_vars::collect_implicit_locals;
 use self::runtime::emit_header_with_debug;
 use self::stmt::{StmtEmitter, emit_params};
-use self::type_registry::TypeRegistry;
 use self::types::c_identifier;
 
 /// Helper macro to collect errors from Result-returning operations.
@@ -88,13 +87,152 @@ macro_rules! collect_err {
 }
 
 /// Runtime mode for code generation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+///
+/// This enum encapsulates the runtime mode with associated data needed for each mode.
+/// Using associated data avoids passing separate parameters and makes mode-specific
+/// behavior explicit and type-safe.
+#[derive(Debug)]
 pub enum RuntimeMode {
     /// Inline runtime code in generated output (no external dependencies).
-    #[default]
-    Inline,
+    ///
+    /// The `TypeRegistry` is used to track and emit type definitions needed
+    /// for the inline runtime (e.g., `qb_string` type definition).
+    Inline {
+        /// Type registry for managing type definitions in inline mode.
+        type_registry: type_registry::TypeRegistry,
+    },
     /// Use external runtime library (requires libqb64fresh_rt.a).
-    External,
+    ///
+    /// The `header_path` specifies the path to the runtime header file to include.
+    External {
+        /// Path to the runtime header file (e.g., "qb64fresh_rt.h").
+        header_path: std::path::PathBuf,
+    },
+}
+
+impl RuntimeMode {
+    /// Creates a new inline runtime mode with a fresh type registry.
+    pub fn inline() -> Self {
+        Self::Inline {
+            type_registry: type_registry::TypeRegistry::new(),
+        }
+    }
+
+    /// Creates a new external runtime mode with the default header path.
+    pub fn external() -> Self {
+        Self::External {
+            header_path: std::path::PathBuf::from("qb64fresh_rt.h"),
+        }
+    }
+
+    /// Creates a new external runtime mode with a custom header path.
+    pub fn external_with_header(header_path: impl Into<std::path::PathBuf>) -> Self {
+        Self::External {
+            header_path: header_path.into(),
+        }
+    }
+
+    /// Returns a reference to the type registry if in inline mode.
+    ///
+    /// # Panics
+    ///
+    /// Panics if called on `External` mode.
+    pub fn type_registry(&self) -> &type_registry::TypeRegistry {
+        match self {
+            Self::Inline { type_registry } => type_registry,
+            Self::External { .. } => {
+                panic!("type_registry() called on External runtime mode")
+            }
+        }
+    }
+
+    /// Returns a mutable reference to the type registry if in inline mode.
+    ///
+    /// # Panics
+    ///
+    /// Panics if called on `External` mode.
+    pub fn type_registry_mut(&mut self) -> &mut type_registry::TypeRegistry {
+        match self {
+            Self::Inline { type_registry } => type_registry,
+            Self::External { .. } => {
+                panic!("type_registry_mut() called on External runtime mode")
+            }
+        }
+    }
+
+    /// Returns the header path if in external mode.
+    ///
+    /// # Panics
+    ///
+    /// Panics if called on `Inline` mode.
+    pub fn header_path(&self) -> &std::path::Path {
+        match self {
+            Self::External { header_path } => header_path,
+            Self::Inline { .. } => {
+                panic!("header_path() called on Inline runtime mode")
+            }
+        }
+    }
+
+    /// Checks if this is inline mode.
+    pub fn is_inline(&self) -> bool {
+        matches!(self, Self::Inline { .. })
+    }
+
+    /// Checks if this is external mode.
+    pub fn is_external(&self) -> bool {
+        matches!(self, Self::External { .. })
+    }
+
+    /// Generates C code to access string data based on the runtime mode.
+    ///
+    /// In inline mode, strings are accessed via `->data` member.
+    /// In external mode, strings use the `qb_string_data()` function.
+    ///
+    /// # Arguments
+    ///
+    /// * `qb_string_expr` - C expression that evaluates to a `qb_string*` or `QbString*`
+    ///
+    /// # Returns
+    ///
+    /// C code that evaluates to `const char*` pointing to the string data.
+    pub fn string_data_access(&self, qb_string_expr: &str) -> String {
+        match self {
+            Self::Inline { .. } => format!("{}->data", qb_string_expr),
+            Self::External { .. } => format!("qb_string_data({})", qb_string_expr),
+        }
+    }
+}
+
+impl Default for RuntimeMode {
+    fn default() -> Self {
+        Self::inline()
+    }
+}
+
+impl PartialEq for RuntimeMode {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Inline { .. }, Self::Inline { .. }) => true,
+            (Self::External { header_path: a }, Self::External { header_path: b }) => a == b,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for RuntimeMode {}
+
+impl Clone for RuntimeMode {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Inline { type_registry } => Self::Inline {
+                type_registry: type_registry.clone(),
+            },
+            Self::External { header_path } => Self::External {
+                header_path: header_path.clone(),
+            },
+        }
+    }
 }
 
 /// C code generation backend.
@@ -131,7 +269,7 @@ impl CBackend {
     /// Creates a new C backend with inline runtime.
     pub fn new() -> Self {
         Self {
-            runtime_mode: RuntimeMode::Inline,
+            runtime_mode: RuntimeMode::inline(),
             debug_enabled: false,
             source_file: None,
             no_shell: false,
@@ -251,38 +389,48 @@ impl CBackend {
 impl CodeGenerator for CBackend {
     fn generate(&self, program: &TypedProgram) -> Result<GeneratedOutput, Vec<CodeGenError>> {
         let mut ctx = CodeGenContext::new();
-        let mut emitter = StmtEmitter::with_runtime_mode(self.runtime_mode);
+        let mut runtime_mode = self.runtime_mode.clone();
+        let mut emitter = StmtEmitter::with_runtime_mode(runtime_mode.clone());
         emitter.debug.enabled = self.debug_enabled;
         emitter.debug.source_file = self.source_file.clone();
         emitter.config.no_shell = self.no_shell;
         let mut output = String::new();
 
-        // Create type registry and register built-in types
-        let mut type_registry = TypeRegistry::new();
-        // Register string types - they'll be emitted when needed
-        if let Err(e) = runtime::types::register_string_types(&mut type_registry) {
+        // Register string types in the type registry if in inline mode
+        if let RuntimeMode::Inline { type_registry } = &mut runtime_mode
+            && let Err(e) = runtime::types::register_string_types(type_registry)
+        {
             ctx.push_error(e);
         }
 
         // Header (with optional debug support)
         if let Err(e) = emit_header_with_debug(
             &mut output,
-            self.runtime_mode,
+            &mut runtime_mode,
             self.debug_enabled,
             self.source_file.as_deref(),
-            &mut type_registry,
         ) {
             ctx.push_error(e);
         }
 
         // TYPE definitions (must come before global variables that use those types)
-        let type_defs = match collect_type_definitions(program) {
+        let mut type_defs = match collect_type_definitions(program) {
             Ok(defs) => defs,
             Err(e) => {
                 ctx.push_error(e);
                 Vec::new()
             }
         };
+
+        // In external runtime mode, skip types that are already defined in the runtime header
+        if runtime_mode.is_external() {
+            type_defs.retain(|def| {
+                // Skip qbt_ParseNum - it's already defined in qb64fresh_rt.h
+                // Only filter out the struct definition itself, not structs that reference it
+                !def.starts_with("typedef struct qbt_ParseNum {")
+            });
+        }
+
         if !type_defs.is_empty() {
             collect_err!(ctx, writeln_code!(&mut output, "/* User-Defined Types */"));
             for def in type_defs {
@@ -487,7 +635,7 @@ impl CodeGenerator for CBackend {
             writeln_code!(&mut output, "int main(int argc, char** argv) {{")
         );
         // Initialize runtime library (external runtime only)
-        if self.runtime_mode == RuntimeMode::External {
+        if self.runtime_mode.is_external() {
             collect_err!(
                 ctx,
                 writeln_code!(&mut output, "    /* Initialize runtime library */")
@@ -742,7 +890,7 @@ impl CodeGenerator for CBackend {
             collect_err!(ctx, writeln_code!(&mut output, "    qb_dbg_shutdown();"));
         }
         // Shutdown runtime library (external runtime only)
-        if self.runtime_mode == RuntimeMode::External {
+        if self.runtime_mode.is_external() {
             collect_err!(
                 ctx,
                 writeln_code!(&mut output, "    /* Shutdown runtime library */")

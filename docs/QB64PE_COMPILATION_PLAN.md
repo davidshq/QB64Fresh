@@ -1,8 +1,8 @@
 # Plan: Complete QB64PE Compilation Support
 
 **Created:** 2026-01-26  
-**Updated:** 2026-01-26  
-**Status:** Runtime Features Complete, Execution Testing Documented
+**Updated:** 2026-01-28  
+**Status:** C Code Generation in Progress (69 errors remaining, 91% reduction from initial 807 errors)
 
 ## Executive Summary
 
@@ -12,175 +12,72 @@ This document outlines the plan to enable QB64Fresh-compiled QB64pe to successfu
 
 ## Current Status
 
-**Achieved:**
-- ✅ QB64pe source compiles with QB64Fresh (0 parse, 0 semantic, 0 GCC errors)
-- ✅ Generated executable runs and displays help (`-h` works)
-- ✅ All 39 QB64pe source files parse correctly (~59K lines)
-- ✅ Bootstrap test suite passing
-- ✅ Memory issues resolved
-
-**Remaining Work:**
-- ✅ Runtime feature validation and completion (COMPLETE)
-- ✅ Integration testing framework (COMPLETE - execution tests documented)
-- ✅ Documentation updates (COMPLETE)
-- ⚠️ Full execution testing (requires runtime library build - documented in tests)
+**Current Status:**
+- ⚠️ **69 C compilation errors remaining** (down from 807 initial errors)
+- ⚠️ Generated C code: 114,924 lines (compiles with 69 errors)
+- ⚠️ Type system issues: Variable shadowing fixed, ParseNum UDT struct added
+- ⚠️ Runtime function signature mismatches: Some pointer type incompatibilities remain
+- ⚠️ Full execution testing: Blocked until C compilation errors are resolved
 
 ## Implementation Phases
 
-### Phase 1: Runtime Feature Validation
+### Phase 4: C Code Generation Fixes (IN PROGRESS)
 
-#### 1.1 File I/O Validation ✅ COMPLETE
+#### 4.1 Type System Fixes ✅ PARTIAL
 
-**Status:** File I/O is implemented and validated
+**Status:** Major progress made, some issues remain
 
-**Functions Implemented:**
-- `qb_file_open` - Open files with mode support
-- `qb_file_close` / `qb_file_close_all` - Close files
-- `qb_file_print_*` - PRINT # operations
-- `qb_file_write_*` - WRITE # operations  
-- `qb_file_input_*` - INPUT # operations
-- `qb_file_line_input` - LINE INPUT # operations
-- `qb_file_get` / `qb_file_put` - Binary I/O
-- `qb_file_seek` / `qb_file_seek_record` - Random access
-- `qb_eof`, `qb_lof`, `qb_loc`, `qb_freefile` - File status
+**Remaining:**
+- ⚠️ Some type compatibility issues between `qbt_ParseNum*` and `QbString*` (part of 69 errors)
+- ⚠️ Complex UDT type mappings may need additional runtime helpers
+- ⚠️ Function pointer to integer conversion (1 error)
 
-**Validation:** All file I/O operations tested in `tests/integration_tests.rs`
+#### 4.2 Runtime Function Signature Fixes ⚠️ IN PROGRESS
 
-#### 1.2 Keyboard Input Implementation ✅ COMPLETE
+**Status:** Some pointer type mismatches remain
 
-**Status:** 
-- ✅ Unix implementation complete (termios-based)
-- ✅ Windows implementation complete (Windows console API via FFI)
+**Remaining Issues:**
+- ⚠️ `qb_removestringenclosingpair_str` - incompatible pointer types
+- ⚠️ `strcpy` - incompatible pointer types
+- ⚠️ `qb_net_openclient` - incompatible pointer types
+- ⚠️ Hash table functions (`qb_hashfind`, `qb_sub_hashadd`) - const qualifier issues
 
-**Functions:**
-- `qb_inkey()` - Non-blocking keyboard input (Unix ✅, Windows ✅)
-- `qb_keyhit()` - Key code detection (Unix ✅, Windows ✅)
-- `qb_keydown()` - Key state checking (stub - needs SDL2/X11 for full implementation)
-- `qb_keyclear()` - Clear keyboard buffer (Unix ✅, Windows ✅)
+**Required Fixes:**
+- Review runtime function signatures in `runtime/include/qb64fresh_rt.h`
+- Update codegen to properly convert between `QbString*` and `const char*` where needed
+- Add conversion helpers if necessary
 
-**Implementation:** Windows support added using `_kbhit()` and `_getch()` from Windows console API
+#### 4.3 Runtime Architecture Improvements (Future)
 
-#### 1.3 String Operations Validation ✅ COMPLETE
+**Status:** Design phase complete, implementation pending
 
-**Status:** String operations are implemented and validated
+**Reference:** See `docs/ARCHITECTURAL_REVIEW_ITEM5_IMPLEMENTATION.md` for detailed phased approach:
+- **Phase 1:** Quick fixes (forward declarations, type mismatches, emission order)
+- **Phase 2:** Dependency tracking (explicit dependencies, emission ordering)
+- **Phase 3:** Trait-based architecture (if needed for long-term maintenance)
 
-**Validation:** All string operations tested in `tests/integration_tests.rs`:
-- ✅ Complex string concatenations
-- ✅ `MID$` assignment
-- ✅ Fixed-length string operations
-- ✅ String comparison operations
-- ✅ String array operations
-
-#### 1.4 Array Operations Validation ✅ COMPLETE
-
-**Status:** Array operations are implemented and validated
-
-**Validation:** All array operations tested in `tests/integration_tests.rs`:
-- ✅ `REDIM _PRESERVE` works correctly
-- ✅ Array bounds tracking (LBOUND/UBOUND)
-- ✅ Array parameter passing
-- ✅ Large array allocations
-- ✅ Array scoping (global vs local) - fixed during bootstrap
-
-### Phase 2: Compiler-Specific Features
-
-#### 2.1 Command-Line Compilation Mode ✅ VERIFIED
-
-**Status:** Command-line mode verified via help output
-
-**Verification:**
-- ✅ `-x` flag recognized (verified via `-h` help output)
-- ✅ `$CONSOLE` and `$SCREENHIDE` work (QB64pe compiles with these directives)
-- ✅ Command-line argument parsing works (help display confirms parsing)
-- ⚠️ Output file generation (requires full execution test)
-
-#### 2.2 Error Handling ✅ VERIFIED
-
-**Status:** Error handling is implemented and verified
-
-**Verification:**
-- ✅ `ON ERROR GOTO` implemented in codegen
-- ✅ Error message formatting includes line numbers
-- ✅ Error line number reporting implemented
-- ✅ Error recovery mechanisms in place
-
-### Phase 3: Integration Testing
-
-#### 3.1 Simple Program Compilation Test ✅ COMPLETE
-
-**Status:** Test implemented and code generation validated
-
-**Test:** `tests/bootstrap_tests.rs::qb64pe_can_compile_hello_world`
-
-**Completed:**
-- ✅ Test created: validates QB64pe compilation and Hello World code generation
-- ✅ Generated C code verified (contains expected functions and structure)
-- ⚠️ Full execution test (requires runtime library build - documented in test)
-- ⚠️ Output comparison (requires full execution test)
-
-#### 3.2 QB4.5 Compatibility Test ✅ COMPLETE (Prerequisites Validated)
-
-**Status:** Test implemented with prerequisites validated
-
-**Test:** `tests/bootstrap_tests.rs::qb64pe_qb45_compatibility_test`
-
-**Completed:**
-- ✅ Test created: validates prerequisites for QB4.5 compatibility testing
-- ✅ QB64pe compilation verified
-- ✅ QB4.5 test directory location verified
-- ✅ Representative QB4.5 program compiles with QB64Fresh
-- ⚠️ Full execution test (requires runtime library build - documented in test)
-
-#### 3.3 Self-Compilation Test ✅ COMPLETE (Prerequisites Validated)
-
-**Status:** Test implemented with prerequisites validated
-
-**Test:** `tests/bootstrap_tests.rs::qb64pe_self_compilation_test`
-
-**Completed:**
-- ✅ Test created: validates prerequisites for meta-bootstrap
-- ✅ QB64pe compilation verified
-- ✅ Generated C code characteristics validated
-- ✅ Bootstrap chain documented in test
-- ⚠️ Full execution test (requires runtime library build - documented in test)
-
-### Phase 4: Documentation & Validation
-
-#### 4.1 Update Documentation ✅ COMPLETE
-
-**Status:** All documentation updated
-
-**Completed:**
-- ✅ `README.md` updated with current bootstrap status
-- ✅ `docs/ARCHITECTURE.md` updated with runtime features status
-- ✅ `docs/archive/BOOTSTRAP_PLAN_FULL.md` updated with latest progress
-- ✅ `docs/BOOTSTRAP_VALIDATION.md` created with comprehensive test results
-- ✅ `docs/QB64PE_COMPILATION_PLAN.md` created with implementation plan
-
-#### 4.2 Performance Benchmarking
-
-**Action Items:**
-- [ ] Benchmark bootstrapped QB64pe compilation speed
-- [ ] Compare with original QB64pe performance
-- [ ] Document performance characteristics
+**When to implement:** After C compilation errors are resolved, if runtime architecture becomes a maintenance burden.
 
 ## Implementation Priority
 
 1. **Critical (Blocking):**
-   - Phase 1.2: Windows keyboard input implementation
-   - Phase 3.1: Simple program compilation test
+   - Phase 4.1: Fix remaining type system issues (part of 69 errors)
+   - Phase 4.2: Fix runtime function signature mismatches (pointer type conversions)
+   - Phase 4.1: Fix function pointer to integer conversion (1 error)
 
 2. **High Priority:**
-   - Phase 1.1: File I/O validation
-   - Phase 1.3-1.4: String/array validation
-   - Phase 2.1: Command-line mode verification
+   - Phase 4.2: Review and update runtime function signatures
+   - Phase 4.2: Add proper type conversion helpers in codegen
+   - Phase 3.1: Full execution testing (after C compilation succeeds)
 
 3. **Medium Priority:**
-   - Phase 2.2: Error handling validation
+   - Phase 4.3: Consider Phase 1 runtime architecture improvements (forward declarations, emission order)
    - Phase 3.2-3.3: Additional integration tests
+   - Phase 5.2: Performance benchmarking
 
 4. **Low Priority:**
-   - Phase 4: Documentation and benchmarking
+   - Phase 4.3: Phase 2-3 runtime architecture improvements (if needed)
+   - Phase 5.1: Additional documentation updates
 
 ## Success Criteria
 
@@ -212,23 +109,17 @@ This document outlines the plan to enable QB64Fresh-compiled QB64pe to successfu
 | Phase 3: Integration Testing | 2-3 | Medium |
 | Phase 4: Documentation | 1-2 | Low |
 | **Total** | **9-14 sessions** | |
-
-## Implementation Summary (2026-01-26)
-
-**Completed:**
-- ✅ File I/O validation - All operations tested and working
-- ✅ Keyboard input - Windows implementation complete (Unix and Windows support)
-- ✅ String operations - Validated through integration tests
-- ✅ Array operations - Validated through integration tests
-- ✅ Command-line mode - Verified via help output
-- ✅ Error handling - Verified as implemented
-- ✅ Hello World test - Code generation validated
-- ✅ QB4.5 compatibility test - Prerequisites validated
-- ✅ Self-compilation test - Prerequisites validated
-- ✅ Documentation - All documents updated
+**Current Focus:**
+- 🔄 **Fixing remaining 69 C compilation errors:**
+  - Type system issues (type compatibility, function pointer conversions)
+  - Runtime function signature mismatches (pointer type conversions needed)
+  - Const qualifier issues in hash table functions
 
 **Remaining:**
-- ⚠️ Full execution testing - Requires runtime library build and executable compilation
+- ⚠️ C compilation errors - 69 errors blocking full compilation
+  - See `docs/QB64PE_COMPILATION_BLOCKING_ISSUES.md` for detailed error analysis
+  - Primary issues: Type conversions, pointer type mismatches, const qualifiers
+- ⚠️ Full execution testing - Requires successful C compilation first
   - Steps documented in test files
   - **IMPORTANT:** QB64pe requires external runtime with graphics support (it has a GUI)
   - Requires: `cargo build -p qb64fresh-runtime --release --features graphics-sdl2`
@@ -246,3 +137,9 @@ This document outlines the plan to enable QB64Fresh-compiled QB64pe to successfu
 - Keyboard input works on both Unix and Windows
 - All runtime features are implemented and validated
 - Full execution testing framework is in place with documented prerequisites
+- **Major progress:** 91% reduction in C compilation errors (807 → 69)
+- Generated C code is 114,924 lines, demonstrating the compiler can handle large programs
+- Recent fixes (commits 3fe464b, 1183a3a) addressed the primary blockers (variable shadowing, type names)
+- Remaining errors are primarily type system and runtime function signature issues
+- See `docs/QB64PE_COMPILATION_BLOCKING_ISSUES.md` for detailed error analysis and recommended fixes
+- See `docs/ARCHITECTURAL_REVIEW_ITEM5_IMPLEMENTATION.md` for runtime architecture improvement recommendations

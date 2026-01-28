@@ -687,25 +687,40 @@ fn collect_byref_vars(
         // Since this function is called for expressions (not assignments), seeing
         // a Variable here means it's being read, not assigned. If an array exists,
         // this is likely array usage, not scalar usage, so we skip scalar creation.
+        //
+        // CRITICAL: We must be very conservative here. If an array exists with this name,
+        // we should NOT create a scalar at all, even if it means the variable might not
+        // be declared. It's better to have a missing declaration error than to create
+        // a scalar that conflicts with array usage. The variable will be declared when
+        // it's actually used as a scalar (e.g., in an assignment statement).
         TypedExprKind::Variable(name) => {
             if !name.starts_with('_') {
                 let c_name = c_identifier(name);
-                // CONSERVATIVE: If an array with this name exists, don't create a scalar.
-                // The variable is likely being used as an array (even if we see it as
-                // a Variable expression here, it might be from array access context).
-                // Only create scalars when no array exists.
+                // CONSERVATIVE: If an array with this name exists, NEVER create a scalar.
+                // The variable is being used in an expression context, and if an array
+                // exists, this is almost certainly array usage (even if the expression
+                // itself is a Variable node, it might be from a context where array access
+                // was expected). Only create scalars when we're absolutely certain there's
+                // no array with this name.
+                //
+                // This prevents the error where we create `providedArgs_scalar` when only
+                // `providedArgs` array exists, causing invalid C code like `providedArgs_scalar[1]`.
                 if !array_names.contains(&c_name) {
-                    declare_scalar_var(
-                        name,
-                        &expr.basic_type,
-                        declared_vars,
-                        locals,
-                        Some(variable_renames),
-                        Some(array_names),
-                    );
+                    // Also check if the variable is already declared (might be a global or parameter)
+                    if !declared_vars.contains(&c_name) {
+                        declare_scalar_var(
+                            name,
+                            &expr.basic_type,
+                            declared_vars,
+                            locals,
+                            Some(variable_renames),
+                            Some(array_names),
+                        );
+                    }
                 }
-                // If array exists, skip scalar creation - array accesses are handled
-                // separately and don't need scalar declarations.
+                // If array exists, skip scalar creation completely - array accesses are handled
+                // separately and don't need scalar declarations. The variable will be declared
+                // when it's actually used as a scalar (e.g., in an assignment like `x = 5`).
             }
         }
         // Literals and other nodes
