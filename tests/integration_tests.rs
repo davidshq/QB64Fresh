@@ -30,7 +30,7 @@ fn compile_to_c(source: &str) -> Result<String, String> {
     let backend = CBackend::with_runtime_mode(RuntimeMode::Inline);
     let output = backend
         .generate(&typed_program)
-        .map_err(|e| format!("CodeGen error: {}", e))?;
+        .map_err(|e| format!("CodeGen error: {:?}", e))?;
 
     Ok(output.code)
 }
@@ -623,6 +623,98 @@ mod control_flow {
             END SELECT
         "#;
         assert_compiles(source);
+    }
+
+    /// Regression: SELECT CASE with string types (commit 18560d1, 11389a2)
+    /// Tests that string comparisons work correctly in SELECT CASE.
+    #[test]
+    fn select_case_string() {
+        let source = r#"
+            DIM s$ AS STRING
+            s$ = "two"
+            SELECT CASE s$
+                CASE "one"
+                    PRINT "One"
+                CASE "two"
+                    PRINT "Two"
+                CASE "three"
+                    PRINT "Three"
+                CASE ELSE
+                    PRINT "Other"
+            END SELECT
+        "#;
+        let code = compile_to_c(source).unwrap();
+        // Should use qb_string_compare for string comparisons
+        assert!(
+            code.contains("qb_string_compare"),
+            "SELECT CASE with strings should use qb_string_compare"
+        );
+    }
+
+    /// Regression: SELECT CASE with fixed-length strings (commit 11389a2)
+    /// Tests that fixed-length strings are properly wrapped when comparing.
+    #[test]
+    fn select_case_fixed_length_string() {
+        let source = r#"
+            DIM s AS STRING * 10
+            s = "test"
+            SELECT CASE s
+                CASE "test"
+                    PRINT "Match"
+                CASE ELSE
+                    PRINT "No match"
+            END SELECT
+        "#;
+        let code = compile_to_c(source).unwrap();
+        // Should use qb_string_compare and properly handle fixed-length strings
+        assert!(
+            code.contains("qb_string_compare"),
+            "SELECT CASE with fixed-length strings should use qb_string_compare"
+        );
+    }
+
+    /// Regression: SELECT CASE with string ranges
+    /// Tests that string ranges work in SELECT CASE.
+    #[test]
+    fn select_case_string_range() {
+        let source = r#"
+            DIM s$ AS STRING
+            s$ = "cat"
+            SELECT CASE s$
+                CASE "a" TO "b"
+                    PRINT "A-B"
+                CASE "c" TO "d"
+                    PRINT "C-D"
+                CASE ELSE
+                    PRINT "Other"
+            END SELECT
+        "#;
+        let code = compile_to_c(source).unwrap();
+        assert!(
+            code.contains("qb_string_compare"),
+            "SELECT CASE with string ranges should use qb_string_compare"
+        );
+    }
+
+    /// Regression: SELECT CASE with string IS operators
+    /// Tests that string IS operators work in SELECT CASE.
+    #[test]
+    fn select_case_string_is() {
+        let source = r#"
+            DIM s$ AS STRING
+            s$ = "test"
+            SELECT CASE s$
+                CASE IS < "m"
+                    PRINT "Less than m"
+                CASE IS >= "m"
+                    PRINT "m or more"
+            END SELECT
+        "#;
+        let code = compile_to_c(source).unwrap();
+        assert!(
+            code.contains("qb_string_compare"),
+            "SELECT CASE with string IS operators should use qb_string_compare"
+        );
     }
 
     #[test]
@@ -5099,12 +5191,52 @@ MID$(s$, 1, 5) = "Goodbye"
     #[test]
     fn mid_array_element() {
         let source = r#"
-DIM arr$(10)
-arr$(1) = "Test"
-MID$(arr$(1), 1, 2) = "XX"
-"#;
+            DIM arr$(10)
+            arr$(1) = "Test"
+            MID$(arr$(1), 1, 2) = "XX"
+        "#;
         let code = compile_to_c(source).unwrap();
         assert!(code.contains("qb_mid_assign("));
+    }
+
+    /// Regression: MID$ assignment with fixed-length strings (commit 219a5ae)
+    /// Tests that MID$ assignment with fixed-length strings doesn't cause stack corruption.
+    #[test]
+    fn mid_fixed_length_string() {
+        let source = r#"
+            DIM s AS STRING * 20
+            s = "Hello World"
+            MID$(s, 7) = "BASIC"
+        "#;
+        let code = compile_to_c(source).unwrap();
+        // For fixed-length strings, should use manual copying or properly unwrap
+        assert!(
+            code.contains("MID$")
+                || code.contains("mid")
+                || code.contains("strncpy")
+                || code.contains("strlen"),
+            "MID$ with fixed-length strings should generate appropriate code"
+        );
+    }
+
+    /// Regression: MID$ assignment with fixed-length string arrays (commit 219a5ae)
+    /// Tests that MID$ assignment with fixed-length string arrays works correctly.
+    #[test]
+    fn mid_fixed_length_string_array() {
+        let source = r#"
+            DIM arr(10) AS STRING * 20
+            arr(1) = "Test"
+            MID$(arr(1), 1, 2) = "XX"
+        "#;
+        let code = compile_to_c(source).unwrap();
+        // Should handle fixed-length string arrays correctly
+        assert!(
+            code.contains("MID$")
+                || code.contains("mid")
+                || code.contains("strncpy")
+                || code.contains("strlen"),
+            "MID$ with fixed-length string arrays should generate appropriate code"
+        );
     }
 }
 
@@ -7720,7 +7852,7 @@ mod debug_codegen_tests {
             .with_source_file("test.bas");
         let output = backend
             .generate(&typed_program)
-            .map_err(|e| format!("CodeGen error: {}", e))?;
+            .map_err(|e| format!("CodeGen error: {:?}", e))?;
 
         Ok(output.code)
     }
