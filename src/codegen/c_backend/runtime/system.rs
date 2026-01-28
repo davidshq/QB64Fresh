@@ -280,9 +280,9 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
     )?;
     writeln_code!(
         output,
-        "    if (!s || !*s || pos < 1 || pos > (int32_t)(*s)->len) return;"
+        "    if (!s || !*s || pos < 1 || pos > (int32_t)qb_string_len(*s)) return;"
     )?;
-    writeln_code!(output, "    (*s)->data[pos - 1] = (char)ch;")?;
+    writeln_code!(output, "    qb_string_data(*s)[pos - 1] = (char)ch;")?;
     writeln_code!(output, "}}")?;
 
     writeln_code!(
@@ -563,9 +563,10 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
     writeln_code!(output)?;
 
     // Network functions (stubs - no actual network support)
+    // QB64pe calls this with a string argument (host:port format)
     writeln_code!(
         output,
-        "int64_t qb_net_openhost(int64_t port) {{ (void)port; return 0; }}"
+        "int64_t qb_net_openhost(qb_string* hostport) {{ (void)hostport; return 0; }}"
     )?;
     writeln_code!(
         output,
@@ -637,9 +638,10 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
     writeln_code!(output)?;
 
     // Dialog functions (stubs)
+    // QB64pe calls this with 4 string arguments: title, message, buttons, icon
     writeln_code!(
         output,
-        "int32_t qb_messagebox4(qb_string* title, qb_string* msg, qb_string* btns, int32_t def) {{ (void)title; (void)msg; (void)btns; (void)def; return 1; }}"
+        "int32_t qb_messagebox4(qb_string* title, qb_string* msg, qb_string* btns, qb_string* icon) {{ (void)title; (void)msg; (void)btns; (void)icon; return 1; }}"
     )?;
     writeln_code!(
         output,

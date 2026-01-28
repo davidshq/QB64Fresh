@@ -157,8 +157,27 @@ pub(in crate::codegen) fn emit_header_with_debug(
             // Use external runtime library
             writeln_code!(output, "#include \"qb64fresh_rt.h\"")?;
             writeln_code!(output)?;
-            // Alias for compatibility with inline code style
-            writeln_code!(output, "typedef QbString qb_string;")?;
+            // Emit full struct definition for compilation of generated code
+            // See docs/FIX_REMAINING_ERRORS_DISCUSSION.md for rationale
+            // IMPORTANT: This must come immediately after the include, before any code uses qb_string
+            writeln_code!(output, "/* ============================================================================")?;
+            writeln_code!(output, " * qb_string Structure Definition (Compilation Only)")?;
+            writeln_code!(output, " * ============================================================================")?;
+            writeln_code!(output, " * This structure definition is provided for compilation of generated code")?;
+            writeln_code!(output, " * that accesses struct members (e.g., in UDTs containing qb_string* fields).")?;
+            writeln_code!(output, " *")?;
+            writeln_code!(output, " * IMPORTANT: For runtime code, use the API functions:")?;
+            writeln_code!(output, " *   - qb_string_data() instead of ->data")?;
+            writeln_code!(output, " *   - qb_string_len() instead of ->len")?;
+            writeln_code!(output, " *   - qb_string_release() for memory management")?;
+            writeln_code!(output, " *")?;
+            writeln_code!(output, " * Direct struct member access is an implementation detail and may change")?;
+            writeln_code!(output, " * in future versions. The API functions in qb64fresh_rt.h are the stable")?;
+            writeln_code!(output, " * interface.")?;
+            writeln_code!(output, " * ============================================================================")?;
+            writeln_code!(output)?;
+            types::emit_string_type(output)?;
+            // Note: emit_string_type() already creates the qb_string typedef
             writeln_code!(output)?;
             writeln_code!(output, "/* Using external QB64Fresh runtime library */")?;
             writeln_code!(
@@ -187,8 +206,9 @@ pub(in crate::codegen) fn emit_header_with_debug(
             writeln_code!(output)?;
             // Empty string constant - for external runtime, use qb_string_empty() function
             // We'll call it once and cache the result
+            // Note: Use QbString* here since qb_string typedef may not be visible yet
             writeln_code!(output, "/* Empty string constant for external runtime */")?;
-            writeln_code!(output, "static qb_string* _qbs_empty = NULL;")?;
+            writeln_code!(output, "static QbString* _qbs_empty = NULL;")?;
             writeln_code!(output, "static void _init_qbs_empty(void) {{")?;
             writeln_code!(
                 output,
@@ -210,7 +230,8 @@ pub(in crate::codegen) fn emit_header_with_debug(
             writeln_code!(output, "/* Helper functions for external runtime */")?;
             writeln_code!(output)?;
             // qb_len_str - string length (use runtime library function)
-            writeln_code!(output, "int32_t qb_len_str(qb_string* s) {{")?;
+            // Note: Use QbString* in external mode since qb_string typedef visibility is unreliable
+            writeln_code!(output, "int32_t qb_len_str(QbString* s) {{")?;
             writeln_code!(output, "    return s ? (int32_t)qb_string_len(s) : 0;")?;
             writeln_code!(output, "}}")?;
             writeln_code!(output)?;
@@ -227,10 +248,10 @@ pub(in crate::codegen) fn emit_header_with_debug(
             // If length is -1, replace up to min(remaining length, value length)
             writeln_code!(
                 output,
-                "void qb_mid_assign(qb_string** target, int32_t start, int32_t length, qb_string* value) {{"
+                "void qb_mid_assign(QbString** target, int32_t start, int32_t length, QbString* value) {{"
             )?;
             writeln_code!(output, "    if (!target || !*target || !value) return;")?;
-            writeln_code!(output, "    qb_string* s = *target;")?;
+            writeln_code!(output, "    QbString* s = *target;")?;
             writeln_code!(output, "    size_t s_len = qb_string_len(s);")?;
             writeln_code!(
                 output,
@@ -262,24 +283,24 @@ pub(in crate::codegen) fn emit_header_with_debug(
             )?;
             writeln_code!(
                 output,
-                "    qb_string* left_part = (idx > 0) ? qb_left(s, (int32_t)idx) : qb_string_empty();"
+                "    QbString* left_part = (idx > 0) ? qb_left(s, (int32_t)idx) : qb_string_empty();"
             )?;
             writeln_code!(
                 output,
-                "    qb_string* replace_part = (replace_len > 0) ? qb_left(value, (int32_t)replace_len) : qb_string_empty();"
+                "    QbString* replace_part = (replace_len > 0) ? qb_left(value, (int32_t)replace_len) : qb_string_empty();"
             )?;
             writeln_code!(output, "    size_t right_start = idx + replace_len;")?;
             writeln_code!(
                 output,
-                "    qb_string* right_part = (right_start < s_len) ? qb_right(s, (int32_t)(s_len - right_start + 1)) : qb_string_empty();"
+                "    QbString* right_part = (right_start < s_len) ? qb_right(s, (int32_t)(s_len - right_start + 1)) : qb_string_empty();"
             )?;
             writeln_code!(
                 output,
-                "    qb_string* temp = qb_string_concat(left_part, replace_part);"
+                "    QbString* temp = qb_string_concat(left_part, replace_part);"
             )?;
             writeln_code!(
                 output,
-                "    qb_string* new_str = qb_string_concat(temp, right_part);"
+                "    QbString* new_str = qb_string_concat(temp, right_part);"
             )?;
             writeln_code!(output, "    // Clean up temporary strings")?;
             writeln_code!(output, "    if (left_part) qb_string_release(left_part);")?;
@@ -297,7 +318,7 @@ pub(in crate::codegen) fn emit_header_with_debug(
             // qb_instr2 - 2-argument INSTR (starts at beginning)
             writeln_code!(
                 output,
-                "int32_t qb_instr2(qb_string* s, qb_string* find) {{"
+                "int32_t qb_instr2(QbString* s, QbString* find) {{"
             )?;
             writeln_code!(output, "    return qb_instr(1, s, find);")?;
             writeln_code!(output, "}}")?;
@@ -345,7 +366,7 @@ pub(in crate::codegen) fn emit_header_with_debug(
             writeln_code!(output, "}}")?;
             writeln_code!(output)?;
             // qb_mki - make integer (for CV functions)
-            writeln_code!(output, "qb_string* qb_mki(int16_t n) {{")?;
+            writeln_code!(output, "QbString* qb_mki(int16_t n) {{")?;
             writeln_code!(output, "    uint8_t bytes[2];")?;
             writeln_code!(output, "    bytes[0] = (uint8_t)(n & 0xFF);")?;
             writeln_code!(output, "    bytes[1] = (uint8_t)((n >> 8) & 0xFF);")?;
@@ -357,7 +378,7 @@ pub(in crate::codegen) fn emit_header_with_debug(
             // This is a wrapper for when STRING$ is called with a string argument
             writeln_code!(
                 output,
-                "qb_string* qb_string_fill_str(int32_t n, qb_string* c) {{"
+                "QbString* qb_string_fill_str(int32_t n, QbString* c) {{"
             )?;
             writeln_code!(
                 output,
@@ -371,18 +392,18 @@ pub(in crate::codegen) fn emit_header_with_debug(
             // qb_string_fill_code - STRING$(n, code) - fill with ASCII code (alias for compatibility)
             writeln_code!(
                 output,
-                "qb_string* qb_string_fill_code(int32_t n, int32_t code) {{"
+                "QbString* qb_string_fill_code(int32_t n, int32_t code) {{"
             )?;
             writeln_code!(output, "    return qb_string_fill(n, code);")?;
             writeln_code!(output, "}}")?;
             writeln_code!(output)?;
             // qb_mid2 - 2-argument MID$ function (start only, no length)
-            writeln_code!(output, "qb_string* qb_mid2(qb_string* s, int32_t start) {{")?;
+            writeln_code!(output, "QbString* qb_mid2(QbString* s, int32_t start) {{")?;
             writeln_code!(output, "    return qb_mid(s, start, -1);")?;
             writeln_code!(output, "}}")?;
             writeln_code!(output)?;
             // qb_asc2 - 2-argument ASC function (position)
-            writeln_code!(output, "int32_t qb_asc2(qb_string* s, int32_t pos) {{")?;
+            writeln_code!(output, "int32_t qb_asc2(QbString* s, int32_t pos) {{")?;
             writeln_code!(
                 output,
                 "    if (!s || pos < 1 || pos > (int32_t)qb_string_len(s)) return 0;"
@@ -414,7 +435,7 @@ pub(in crate::codegen) fn emit_header_with_debug(
             writeln_code!(output, "}}")?;
             writeln_code!(output)?;
             // qb_cvl - unpack 4-byte string to 32-bit long
-            writeln_code!(output, "int32_t qb_cvl(qb_string* s) {{")?;
+            writeln_code!(output, "int32_t qb_cvl(QbString* s) {{")?;
             writeln_code!(output, "    if (!s || qb_string_len(s) < 4) return 0;")?;
             writeln_code!(output, "    const char* data = qb_string_data(s);")?;
             writeln_code!(output, "    int32_t result;")?;
@@ -430,7 +451,7 @@ pub(in crate::codegen) fn emit_header_with_debug(
             writeln_code!(output, "static char** _qb_argv = NULL;")?;
             writeln_code!(output)?;
             // qb_command_n - COMMAND$(n) - get command line argument
-            writeln_code!(output, "qb_string* qb_command_n(int64_t n) {{")?;
+            writeln_code!(output, "QbString* qb_command_n(int64_t n) {{")?;
             writeln_code!(
                 output,
                 "    if (n < 0 || n >= _qb_argc || !_qb_argv) return qb_string_empty();"
@@ -444,14 +465,14 @@ pub(in crate::codegen) fn emit_header_with_debug(
             writeln_code!(output, "}}")?;
             writeln_code!(output)?;
             // qb_fullpath - _FULLPATH$
-            writeln_code!(output, "qb_string* qb_fullpath(qb_string* path) {{")?;
+            writeln_code!(output, "QbString* qb_fullpath(QbString* path) {{")?;
             writeln_code!(output, "    if (!path) return qb_string_empty();")?;
             writeln_code!(output, "    const char* path_str = qb_string_data(path);")?;
             writeln_code!(output, "    char* resolved = realpath(path_str, NULL);")?;
             writeln_code!(output, "    if (resolved) {{")?;
             writeln_code!(
                 output,
-                "        qb_string* result = qb_string_new(resolved);"
+                "        QbString* result = qb_string_new(resolved);"
             )?;
             writeln_code!(output, "        free(resolved);")?;
             writeln_code!(output, "        return result;")?;
@@ -460,7 +481,7 @@ pub(in crate::codegen) fn emit_header_with_debug(
             writeln_code!(output, "}}")?;
             writeln_code!(output)?;
             // qb_str - STR$(n) - convert number to string
-            writeln_code!(output, "qb_string* qb_str(double n) {{")?;
+            writeln_code!(output, "QbString* qb_str(double n) {{")?;
             writeln_code!(output, "    char buf[64];")?;
             writeln_code!(output, "    snprintf(buf, sizeof(buf), \" %g\", n);")?;
             writeln_code!(output, "    return qb_string_new(buf);")?;
@@ -470,31 +491,31 @@ pub(in crate::codegen) fn emit_header_with_debug(
             // For opaque strings, we need to create a new string with the modified character
             writeln_code!(
                 output,
-                "void qb_asc_assign(qb_string** s, int32_t pos, int32_t ch) {{"
+                "void qb_asc_assign(QbString** s, int32_t pos, int32_t ch) {{"
             )?;
             writeln_code!(
                 output,
                 "    if (!s || !*s || pos < 1 || pos > (int32_t)qb_string_len(*s)) return;"
             )?;
-            writeln_code!(output, "    qb_string* old = *s;")?;
+            writeln_code!(output, "    QbString* old = *s;")?;
             writeln_code!(output, "    size_t len = qb_string_len(old);")?;
             writeln_code!(output, "    // Build new string: left + char + right")?;
             writeln_code!(
                 output,
-                "    qb_string* left = (pos > 1) ? qb_left(old, pos - 1) : qb_string_empty();"
+                "    QbString* left = (pos > 1) ? qb_left(old, pos - 1) : qb_string_empty();"
             )?;
-            writeln_code!(output, "    qb_string* char_str = qb_chr(ch);")?;
+            writeln_code!(output, "    QbString* char_str = qb_chr(ch);")?;
             writeln_code!(
                 output,
-                "    qb_string* right = (pos < (int32_t)len) ? qb_right(old, (int32_t)(len - pos + 1)) : qb_string_empty();"
-            )?;
-            writeln_code!(
-                output,
-                "    qb_string* temp = qb_string_concat(left, char_str);"
+                "    QbString* right = (pos < (int32_t)len) ? qb_right(old, (int32_t)(len - pos + 1)) : qb_string_empty();"
             )?;
             writeln_code!(
                 output,
-                "    qb_string* new_str = qb_string_concat(temp, right);"
+                "    QbString* temp = qb_string_concat(left, char_str);"
+            )?;
+            writeln_code!(
+                output,
+                "    QbString* new_str = qb_string_concat(temp, right);"
             )?;
             writeln_code!(output, "    // Clean up")?;
             writeln_code!(output, "    if (left) qb_string_release(left);")?;
@@ -516,7 +537,7 @@ pub(in crate::codegen) fn emit_header_with_debug(
             // qb_file_get_string - GET # for strings (binary read into string buffer)
             writeln_code!(
                 output,
-                "void qb_file_get_string(int32_t fnum, qb_string* s) {{"
+                "void qb_file_get_string(int32_t fnum, QbString* s) {{"
             )?;
             writeln_code!(output, "    if (!s) return;")?;
             writeln_code!(output, "    size_t len = qb_string_len(s);")?;
@@ -554,7 +575,7 @@ pub(in crate::codegen) fn emit_header_with_debug(
             writeln_code!(output, "}}")?;
             writeln_code!(output)?;
             // qb_environ - ENVIRON$ function
-            writeln_code!(output, "qb_string* qb_environ(qb_string* name) {{")?;
+            writeln_code!(output, "QbString* qb_environ(QbString* name) {{")?;
             writeln_code!(output, "    if (!name) return qb_string_empty();")?;
             writeln_code!(output, "    const char* name_str = qb_string_data(name);")?;
             writeln_code!(output, "    const char* val = getenv(name_str);")?;
@@ -565,7 +586,7 @@ pub(in crate::codegen) fn emit_header_with_debug(
             writeln_code!(output, "}}")?;
             writeln_code!(output)?;
             // qb_cvi - unpack 2-byte string to 16-bit integer
-            writeln_code!(output, "int16_t qb_cvi(qb_string* s) {{")?;
+            writeln_code!(output, "int16_t qb_cvi(QbString* s) {{")?;
             writeln_code!(output, "    if (!s || qb_string_len(s) < 2) return 0;")?;
             writeln_code!(output, "    const char* data = qb_string_data(s);")?;
             writeln_code!(output, "    int16_t result;")?;
@@ -574,14 +595,14 @@ pub(in crate::codegen) fn emit_header_with_debug(
             writeln_code!(output, "}}")?;
             writeln_code!(output)?;
             // qb_mkl - pack 32-bit long to 4-byte string
-            writeln_code!(output, "qb_string* qb_mkl(int32_t n) {{")?;
+            writeln_code!(output, "QbString* qb_mkl(int32_t n) {{")?;
             writeln_code!(output, "    uint8_t bytes[4];")?;
             writeln_code!(output, "    memcpy(bytes, &n, 4);")?;
             writeln_code!(output, "    return qb_string_from_bytes(bytes, 4);")?;
             writeln_code!(output, "}}")?;
             writeln_code!(output)?;
             // qb_readfile - _READFILE$
-            writeln_code!(output, "qb_string* qb_readfile(qb_string* path) {{")?;
+            writeln_code!(output, "QbString* qb_readfile(QbString* path) {{")?;
             writeln_code!(output, "    if (!path) return qb_string_empty();")?;
             writeln_code!(output, "    const char* path_str = qb_string_data(path);")?;
             writeln_code!(output, "    FILE* f = fopen(path_str, \"rb\");")?;
@@ -599,7 +620,7 @@ pub(in crate::codegen) fn emit_header_with_debug(
             writeln_code!(output, "    fclose(f);")?;
             writeln_code!(
                 output,
-                "    qb_string* result = qb_string_from_bytes((uint8_t*)buf, size);"
+                "    QbString* result = qb_string_from_bytes((uint8_t*)buf, size);"
             )?;
             writeln_code!(output, "    free(buf);")?;
             writeln_code!(output, "    return result;")?;
@@ -608,7 +629,7 @@ pub(in crate::codegen) fn emit_header_with_debug(
             // qb_writefile - _WRITEFILE
             writeln_code!(
                 output,
-                "void qb_writefile(qb_string* path, qb_string* content) {{"
+                "void qb_writefile(QbString* path, QbString* content) {{"
             )?;
             writeln_code!(output, "    if (!path || !content) return;")?;
             writeln_code!(output, "    const char* path_str = qb_string_data(path);")?;
@@ -624,7 +645,7 @@ pub(in crate::codegen) fn emit_header_with_debug(
             writeln_code!(output, "}}")?;
             writeln_code!(output)?;
             // qb_deflate - compression (stub)
-            writeln_code!(output, "qb_string* qb_deflate(qb_string* data) {{")?;
+            writeln_code!(output, "QbString* qb_deflate(QbString* data) {{")?;
             writeln_code!(output, "    (void)data;")?;
             writeln_code!(output, "    return qb_string_empty();")?;
             writeln_code!(output, "}}")?;
@@ -644,14 +665,14 @@ pub(in crate::codegen) fn emit_header_with_debug(
             )?;
             writeln_code!(output)?;
             // qb_val_uint64 - VAL with UINT64 type
-            writeln_code!(output, "uint64_t qb_val_uint64(qb_string* s) {{")?;
+            writeln_code!(output, "uint64_t qb_val_uint64(QbString* s) {{")?;
             writeln_code!(output, "    if (!s) return 0;")?;
             writeln_code!(output, "    const char* data = qb_string_data(s);")?;
             writeln_code!(output, "    return strtoull(data, NULL, 10);")?;
             writeln_code!(output, "}}")?;
             writeln_code!(output)?;
             // qb_val_int64 - VAL with INT64 type
-            writeln_code!(output, "int64_t qb_val_int64(qb_string* s) {{")?;
+            writeln_code!(output, "int64_t qb_val_int64(QbString* s) {{")?;
             writeln_code!(output, "    if (!s) return 0;")?;
             writeln_code!(output, "    const char* data = qb_string_data(s);")?;
             writeln_code!(output, "    return strtoll(data, NULL, 10);")?;
@@ -725,21 +746,21 @@ pub(in crate::codegen) fn emit_header_with_debug(
             writeln_code!(output, "int32_t qb_csrlin(void) {{ return 1; }}")?;
             writeln_code!(
                 output,
-                "double qb_cvd(qb_string* s) {{ if (!s || qb_string_len(s) < 8) return 0.0; double result; memcpy(&result, qb_string_data(s), 8); return result; }}"
+                "double qb_cvd(QbString* s) {{ if (!s || qb_string_len(s) < 8) return 0.0; double result; memcpy(&result, qb_string_data(s), 8); return result; }}"
             )?;
             writeln_code!(
                 output,
-                "double qb_cvq(qb_string* s) {{ if (!s || qb_string_len(s) < 8) return 0.0; double result; memcpy(&result, qb_string_data(s), 8); return result; }}"
+                "double qb_cvq(QbString* s) {{ if (!s || qb_string_len(s) < 8) return 0.0; double result; memcpy(&result, qb_string_data(s), 8); return result; }}"
             )?;
             writeln_code!(
                 output,
-                "float qb_cvs(qb_string* s) {{ if (!s || qb_string_len(s) < 4) return 0.0f; float result; memcpy(&result, qb_string_data(s), 4); return result; }}"
+                "float qb_cvs(QbString* s) {{ if (!s || qb_string_len(s) < 4) return 0.0f; float result; memcpy(&result, qb_string_data(s), 4); return result; }}"
             )?;
             writeln_code!(output, "int32_t qb_defaultcolor(void) {{ return 7; }}")?;
             writeln_code!(output, "void qb_def_seg(int32_t seg) {{ (void)seg; }}")?;
             writeln_code!(
                 output,
-                "qb_string* qb_droppedfile_str(int32_t index) {{ (void)index; return qb_string_empty(); }}"
+                "QbString* qb_droppedfile_str(int32_t index) {{ (void)index; return qb_string_empty(); }}"
             )?;
             writeln_code!(output, "int32_t qb_exit_state(void) {{ return 0; }}")?;
             writeln_code!(output, "void qb_finishdrop(void) {{ }}")?;
@@ -754,7 +775,7 @@ pub(in crate::codegen) fn emit_header_with_debug(
             )?;
             writeln_code!(
                 output,
-                "int32_t qb_loadfont3(qb_string* path, int32_t size, qb_string* req) {{ (void)path; (void)size; (void)req; return 0; }}"
+                "int32_t qb_loadfont3(QbString* path, int32_t size, QbString* req) {{ (void)path; (void)size; (void)req; return 0; }}"
             )?;
             writeln_code!(output, "int32_t logical_drives(void) {{ return 0; }}")?;
             writeln_code!(output)?;
@@ -841,9 +862,10 @@ pub(in crate::codegen) fn emit_header_with_debug(
                 output,
                 "uint32_t qb__rgba(int32_t r, int32_t g, int32_t b, int32_t a, int32_t mode) {{ (void)r; (void)g; (void)b; (void)a; (void)mode; return 0; }}"
             )?;
+            // QB64pe calls this with 4 string arguments: title, message, buttons, icon
             writeln_code!(
                 output,
-                "int32_t qb_messagebox4(qb_string* title, qb_string* message, int32_t type, int32_t icon) {{ (void)title; (void)message; (void)type; (void)icon; return 0; }}"
+                "int32_t qb_messagebox4(QbString* title, QbString* message, QbString* btns, QbString* icon) {{ (void)title; (void)message; (void)btns; (void)icon; return 0; }}"
             )?;
             writeln_code!(
                 output,
@@ -882,15 +904,15 @@ pub(in crate::codegen) fn emit_header_with_debug(
             writeln_code!(output, "int32_t qb_screeny(void) {{ return 0; }}")?;
             writeln_code!(
                 output,
-                "int32_t qb_readbit(qb_string* s, int32_t pos) {{ (void)s; (void)pos; return 0; }}"
+                "int32_t qb_readbit(QbString* s, int32_t pos) {{ (void)s; (void)pos; return 0; }}"
             )?;
             writeln_code!(
                 output,
-                "qb_string* qb_openfiledialog5(qb_string* title, qb_string* filter, qb_string* def, qb_string* opts, int32_t flags) {{ (void)title; (void)filter; (void)def; (void)opts; (void)flags; return qb_string_empty(); }}"
+                "QbString* qb_openfiledialog5(QbString* title, QbString* filter, QbString* def, QbString* opts, int32_t flags) {{ (void)title; (void)filter; (void)def; (void)opts; (void)flags; return qb_string_empty(); }}"
             )?;
             writeln_code!(
                 output,
-                "qb_string* qb_savefiledialog4(qb_string* title, qb_string* filter, qb_string* def, int32_t flags) {{ (void)title; (void)filter; (void)def; (void)flags; return qb_string_empty(); }}"
+                "QbString* qb_savefiledialog4(QbString* title, QbString* filter, QbString* def, int32_t flags) {{ (void)title; (void)filter; (void)def; (void)flags; return qb_string_empty(); }}"
             )?;
             writeln_code!(
                 output,
@@ -898,7 +920,13 @@ pub(in crate::codegen) fn emit_header_with_debug(
             )?;
             writeln_code!(
                 output,
-                "int32_t qb_shellhide(qb_string* cmd) {{ (void)cmd; return 0; }}"
+                "int32_t qb_shellhide(QbString* cmd) {{ (void)cmd; return 0; }}"
+            )?;
+            // Network functions (stubs - no actual network support)
+            // QB64pe calls this with a string argument (host:port format)
+            writeln_code!(
+                output,
+                "int64_t qb_net_openhost(QbString* hostport) {{ (void)hostport; return 0; }}"
             )?;
             writeln_code!(
                 output,
@@ -907,19 +935,19 @@ pub(in crate::codegen) fn emit_header_with_debug(
             // Note: qb_sub_setdependency is defined in QB64pe source, don't redefine here
             writeln_code!(
                 output,
-                "qb_string* qb_md5(qb_string* s) {{ (void)s; return qb_string_empty(); }}"
+                "QbString* qb_md5(QbString* s) {{ (void)s; return qb_string_empty(); }}"
             )?;
             writeln_code!(
                 output,
-                "qb_string* qb_mkd(double n) {{ uint8_t bytes[8]; memcpy(bytes, &n, 8); return qb_string_from_bytes(bytes, 8); }}"
+                "QbString* qb_mkd(double n) {{ uint8_t bytes[8]; memcpy(bytes, &n, 8); return qb_string_from_bytes(bytes, 8); }}"
             )?;
             writeln_code!(
                 output,
-                "qb_string* qb_mkq(double n) {{ uint8_t bytes[8]; memcpy(bytes, &n, 8); return qb_string_from_bytes(bytes, 8); }}"
+                "QbString* qb_mkq(double n) {{ uint8_t bytes[8]; memcpy(bytes, &n, 8); return qb_string_from_bytes(bytes, 8); }}"
             )?;
             writeln_code!(
                 output,
-                "qb_string* qb_mks(float n) {{ uint8_t bytes[4]; memcpy(bytes, &n, 4); return qb_string_from_bytes(bytes, 4); }}"
+                "QbString* qb_mks(float n) {{ uint8_t bytes[4]; memcpy(bytes, &n, 4); return qb_string_from_bytes(bytes, 4); }}"
             )?;
             writeln_code!(output, "int64_t qb_windowhasfocus(void) {{ return -1; }}")?;
             writeln_code!(
