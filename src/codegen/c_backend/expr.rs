@@ -35,10 +35,16 @@ use super::types::{c_identifier, c_type};
 ///
 /// When `no_shell` is true, `SHELL` and `_SHELLHIDE` (function form) are rejected with
 /// `CodeGenErrorKind::ShellDisabled`. Statement forms are rejected in the statement emitter.
+///
+/// `param_names` is used to avoid incorrectly renaming parameter references when a local
+/// variable shadows a parameter. If a variable name is both in `variable_renames` and
+/// `param_names`, and it's used as a simple variable (not array access), we use the
+/// parameter name instead of the renamed local variable.
 pub(super) fn emit_expr(
     expr: &TypedExpr,
     no_shell: bool,
     variable_renames: &std::collections::HashMap<String, String>,
+    param_names: &std::collections::HashSet<String>,
 ) -> Result<String, CodeGenError> {
     // Try to fold the expression to a constant first
     // Only fold complex expressions (binary, unary, function calls) to avoid
@@ -79,9 +85,17 @@ pub(super) fn emit_expr(
 
         TypedExprKind::Variable(name) => {
             let mut c_name = c_identifier(name);
-            // Apply variable renaming if this variable was renamed to avoid parameter shadowing
+            // Apply variable renaming if this variable was renamed to avoid parameter shadowing.
+            // However, if the variable name is also a parameter name, and this is a simple variable
+            // reference (not array access), we should use the parameter name instead of the renamed
+            // local variable. This handles cases like `countFunctionElements(args)` where `args`
+            // is a parameter, not the local variable that shadows it.
             if let Some(renamed) = variable_renames.get(&c_name) {
-                c_name = renamed.clone();
+                // Only apply rename if this is NOT a parameter name, or if it's an array access
+                // (which would refer to the local array, not the parameter)
+                if !param_names.contains(&c_name) {
+                    c_name = renamed.clone();
+                }
             }
             // Fixed-length strings are char arrays in C, but need to be wrapped
             // when used in contexts expecting qb_string* (e.g., string concatenation)
@@ -92,10 +106,10 @@ pub(super) fn emit_expr(
             }
         }
 
-        TypedExprKind::Binary { left, op, right } => emit_binary_expr(left, op, right, no_shell, variable_renames),
+        TypedExprKind::Binary { left, op, right } => emit_binary_expr(left, op, right, no_shell, variable_renames, param_names),
 
         TypedExprKind::Unary { op, operand } => {
-            let operand_code = emit_expr(operand, no_shell, variable_renames)?;
+            let operand_code = emit_expr(operand, no_shell, variable_renames, param_names)?;
             let op_str = match op {
                 crate::ast::UnaryOp::Negate => "-",
                 crate::ast::UnaryOp::Not => "~", // Bitwise NOT for numeric types
@@ -104,7 +118,7 @@ pub(super) fn emit_expr(
         }
 
         TypedExprKind::Grouped(inner) => {
-            let inner_code = emit_expr(inner, no_shell, variable_renames)?;
+            let inner_code = emit_expr(inner, no_shell, variable_renames, param_names)?;
             Ok(format!("({})", inner_code))
         }
 
@@ -116,7 +130,7 @@ pub(super) fn emit_expr(
             // Special case: _IIF is polymorphic - use appropriate variant based on return type
             if upper_name == "_IIF" {
                 let args_code: Result<Vec<_>, _> =
-                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames)).collect();
+                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames, param_names)).collect();
                 let args_str = args_code?.join(", ");
                 let c_name = if expr.basic_type.is_string() {
                     "qb_iif_str".to_string()
@@ -129,7 +143,7 @@ pub(super) fn emit_expr(
             // Special case: MID$ with 2 arguments (no length) uses qb_mid2
             if upper_name == "MID$" && args.len() == 2 {
                 let args_code: Result<Vec<_>, _> =
-                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames)).collect();
+                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames, param_names)).collect();
                 let args_str = args_code?.join(", ");
                 return Ok(format!("qb_mid2({})", args_str));
             }
@@ -137,7 +151,7 @@ pub(super) fn emit_expr(
             // Special case: INSTR with 2 arguments (no start) uses qb_instr2
             if upper_name == "INSTR" && args.len() == 2 {
                 let args_code: Result<Vec<_>, _> =
-                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames)).collect();
+                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames, param_names)).collect();
                 let args_str = args_code?.join(", ");
                 return Ok(format!("qb_instr2({})", args_str));
             }
@@ -146,7 +160,7 @@ pub(super) fn emit_expr(
             // C function signature: qb_instrrev3(source, search, start) - arguments reordered
             if upper_name == "_INSTRREV" && args.len() == 3 {
                 let args_code: Result<Vec<_>, _> =
-                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames)).collect();
+                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames, param_names)).collect();
                 let args_vec = args_code?;
                 // Reorder: BASIC (start, source, search) -> C (source, search, start)
                 return Ok(format!(
@@ -158,7 +172,7 @@ pub(super) fn emit_expr(
             // Special case: LBOUND with 2 arguments (array, dimension) uses qb_lbound2
             if upper_name == "LBOUND" && args.len() == 2 {
                 let args_code: Result<Vec<_>, _> =
-                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames)).collect();
+                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames, param_names)).collect();
                 let args_str = args_code?.join(", ");
                 return Ok(format!("qb_lbound2({})", args_str));
             }
@@ -166,14 +180,14 @@ pub(super) fn emit_expr(
             // Special case: UBOUND with 2 arguments (array, dimension) uses qb_ubound2
             if upper_name == "UBOUND" && args.len() == 2 {
                 let args_code: Result<Vec<_>, _> =
-                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames)).collect();
+                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames, param_names)).collect();
                 let args_str = args_code?.join(", ");
                 return Ok(format!("qb_ubound2({})", args_str));
             }
 
             // Special case: LEN - use qb_len_str for strings, sizeof for numeric types
             if upper_name == "LEN" && args.len() == 1 {
-                let arg_code = emit_expr(&args[0], no_shell, variable_renames)?;
+                let arg_code = emit_expr(&args[0], no_shell, variable_renames, param_names)?;
                 if args[0].basic_type.is_string() {
                     return Ok(format!("qb_len_str({})", arg_code));
                 } else {
@@ -194,7 +208,7 @@ pub(super) fn emit_expr(
                         | TypedExprKind::FieldAccess { .. }
                 );
                 if is_lvalue {
-                    let arg_code = emit_expr(arg, no_shell, variable_renames)?;
+                    let arg_code = emit_expr(arg, no_shell, variable_renames, param_names)?;
                     return Ok(format!("((int32_t)(intptr_t)&({}))", arg_code));
                 } else {
                     // Non-lvalue - can't take address, return 0
@@ -212,7 +226,7 @@ pub(super) fn emit_expr(
                         | TypedExprKind::FieldAccess { .. }
                 );
                 if is_lvalue {
-                    let arg_code = emit_expr(arg, no_shell, variable_renames)?;
+                    let arg_code = emit_expr(arg, no_shell, variable_renames, param_names)?;
                     return Ok(format!("qb_varptr_str(&({}))", arg_code));
                 } else {
                     return Ok("qb_string_new(\"\")".to_string());
@@ -227,14 +241,14 @@ pub(super) fn emit_expr(
 
             // Special case: SADD - returns address of string data
             if upper_name == "SADD" && args.len() == 1 {
-                let arg_code = emit_expr(&args[0], no_shell, variable_renames)?;
+                let arg_code = emit_expr(&args[0], no_shell, variable_renames, param_names)?;
                 return Ok(format!("((int32_t)(intptr_t)({}).data)", arg_code));
             }
 
             // Special case: _MESSAGEBOX with different argument counts
             if upper_name == "_MESSAGEBOX" {
                 let args_code: Result<Vec<_>, _> =
-                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames)).collect();
+                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames, param_names)).collect();
                 let args_str = args_code?.join(", ");
                 return match args.len() {
                     1 => Ok(format!("qb_messagebox1({})", args_str)),
@@ -248,7 +262,7 @@ pub(super) fn emit_expr(
             // Special case: _LOADFONT with different argument counts
             if upper_name == "_LOADFONT" {
                 let args_code: Result<Vec<_>, _> =
-                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames)).collect();
+                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames, param_names)).collect();
                 let args_str = args_code?.join(", ");
                 return match args.len() {
                     2 => Ok(format!("qb_loadfont({})", args_str)),
@@ -273,7 +287,7 @@ pub(super) fn emit_expr(
             // 4 args: _RGB32(r, g, b, a) or _RGB32(gray, gray, gray, a) -> qb__rgb32_4
             if upper_name == "_RGB32" {
                 let args_code: Result<Vec<_>, _> =
-                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames)).collect();
+                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames, param_names)).collect();
                 let args_str = args_code?.join(", ");
                 return match args.len() {
                     3 => Ok(format!("qb__rgb32({})", args_str)),
@@ -287,7 +301,7 @@ pub(super) fn emit_expr(
             // 3 args: SCREEN(row, col, attr_flag) -> qb_screen3
             if upper_name == "SCREEN" {
                 let args_code: Result<Vec<_>, _> =
-                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames)).collect();
+                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames, param_names)).collect();
                 let args_str = args_code?.join(", ");
                 return match args.len() {
                     2 => Ok(format!("qb_screen({})", args_str)),
@@ -301,7 +315,7 @@ pub(super) fn emit_expr(
             // For external runtime, qb_string_fill takes int32_t, so we use qb_string_fill_str for string args
             if upper_name == "STRING$" && args.len() == 2 {
                 let args_code: Result<Vec<_>, _> =
-                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames)).collect();
+                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames, param_names)).collect();
                 let args_vec = args_code?;
                 if !args[1].basic_type.is_string() {
                     return Ok(format!(
@@ -320,7 +334,7 @@ pub(super) fn emit_expr(
             // Special case: _SAVEFILEDIALOG$ with different argument counts
             if upper_name == "_SAVEFILEDIALOG$" {
                 let args_code: Result<Vec<_>, _> =
-                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames)).collect();
+                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames, param_names)).collect();
                 let args_str = args_code?.join(", ");
                 return match args.len() {
                     2 => Ok(format!("qb_savefiledialog({})", args_str)),
@@ -333,7 +347,7 @@ pub(super) fn emit_expr(
             // Special case: _OPENFILEDIALOG$ with different argument counts
             if upper_name == "_OPENFILEDIALOG$" {
                 let args_code: Result<Vec<_>, _> =
-                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames)).collect();
+                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames, param_names)).collect();
                 let args_str = args_code?.join(", ");
                 return match args.len() {
                     2 => Ok(format!("qb_openfiledialog({})", args_str)),
@@ -349,7 +363,7 @@ pub(super) fn emit_expr(
             // Inline runtime: qb_selectfolderdialog(qb_string* title) or qb_selectfolderdialog2(qb_string* title, qb_string* initial_dir)
             if upper_name == "_SELECTFOLDERDIALOG$" {
                 let args_code: Result<Vec<_>, _> =
-                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames)).collect();
+                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames, param_names)).collect();
                 let args_vec = args_code?;
                 return match args_vec.len() {
                     0 => Ok("qb_selectfolderdialog(NULL, NULL)".to_string()), // No args - use NULL for both
@@ -374,7 +388,7 @@ pub(super) fn emit_expr(
             // Special case: _SCREENIMAGE - provide default 0,0,0,0 for full screen capture
             if upper_name == "_SCREENIMAGE" {
                 let args_code: Result<Vec<_>, _> =
-                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames)).collect();
+                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames, param_names)).collect();
                 let args_str = args_code?.join(", ");
                 return match args.len() {
                     0 => Ok("qb_screenimage(0, 0, 0, 0)".to_string()),
@@ -386,7 +400,7 @@ pub(super) fn emit_expr(
             // Special case: COMMAND$ with argument uses qb_command_n
             if upper_name == "COMMAND$" && !args.is_empty() {
                 let args_code: Result<Vec<_>, _> =
-                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames)).collect();
+                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames, param_names)).collect();
                 let args_str = args_code?.join(", ");
                 return Ok(format!("qb_command_n({})", args_str));
             }
@@ -394,7 +408,7 @@ pub(super) fn emit_expr(
             // Special case: ASC with 2 arguments (position) uses qb_asc2
             if upper_name == "ASC" && args.len() == 2 {
                 let args_code: Result<Vec<_>, _> =
-                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames)).collect();
+                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames, param_names)).collect();
                 let args_str = args_code?.join(", ");
                 return Ok(format!("qb_asc2({})", args_str));
             }
@@ -403,7 +417,7 @@ pub(super) fn emit_expr(
             // QB64 extension: STRIG(button, controller) overrides implicit controller
             if upper_name == "STRIG" && args.len() == 2 {
                 let args_code: Result<Vec<_>, _> =
-                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames)).collect();
+                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames, param_names)).collect();
                 let args_str = args_code?.join(", ");
                 return Ok(format!("qb_strig2({})", args_str));
             }
@@ -411,7 +425,7 @@ pub(super) fn emit_expr(
             // Special case: TIMER with argument (accuracy) uses qb_timer_n
             if upper_name == "TIMER" && !args.is_empty() {
                 let args_code: Result<Vec<_>, _> =
-                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames)).collect();
+                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames, param_names)).collect();
                 let args_str = args_code?.join(", ");
                 return Ok(format!("qb_timer_n({})", args_str));
             }
@@ -422,7 +436,7 @@ pub(super) fn emit_expr(
                     return Ok("qb_console_get()".to_string());
                 } else {
                     let args_code: Result<Vec<_>, _> =
-                        args.iter().map(|e| emit_expr(e, no_shell, variable_renames)).collect();
+                        args.iter().map(|e| emit_expr(e, no_shell, variable_renames, param_names)).collect();
                     let args_str = args_code?.join(", ");
                     return Ok(format!("qb_console({})", args_str));
                 }
@@ -431,7 +445,7 @@ pub(super) fn emit_expr(
             // Special case: _MAPUNICODE - use different functions based on arg count
             if upper_name == "_MAPUNICODE" {
                 let args_code: Result<Vec<_>, _> =
-                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames)).collect();
+                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames, param_names)).collect();
                 let args_str = args_code?.join(", ");
                 return match args.len() {
                     1 => Ok(format!("qb__mapunicode1({})", args_str)),
@@ -446,7 +460,7 @@ pub(super) fn emit_expr(
             // Always returns the palette color at the given index
             if upper_name == "_PALETTECOLOR" {
                 let args_code: Result<Vec<_>, _> =
-                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames)).collect();
+                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames, param_names)).collect();
                 let args_vec = args_code?;
                 return match args.len() {
                     1 => Ok(format!("qb_palettecolor_get({}, 0)", args_vec[0])),
@@ -467,7 +481,7 @@ pub(super) fn emit_expr(
             // Special case: _ICON - use different functions based on arg count
             if upper_name == "_ICON" {
                 let args_code: Result<Vec<_>, _> =
-                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames)).collect();
+                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames, param_names)).collect();
                 let args_str = args_code?.join(", ");
                 return match args.len() {
                     0 => Ok("qb_icon()".to_string()),
@@ -480,7 +494,7 @@ pub(super) fn emit_expr(
             // Special case: _ACCEPTFILEDROP - use different functions based on arg count
             if upper_name == "_ACCEPTFILEDROP" {
                 let args_code: Result<Vec<_>, _> =
-                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames)).collect();
+                    args.iter().map(|e| emit_expr(e, no_shell, variable_renames, param_names)).collect();
                 let args_str = args_code?.join(", ");
                 return match args.len() {
                     0 => Ok("qb_acceptfiledrop()".to_string()),
@@ -500,7 +514,7 @@ pub(super) fn emit_expr(
             if !params.is_empty() {
                 let mut args_codes = Vec::new();
                 for (i, arg) in args.iter().enumerate() {
-                    let arg_code = emit_expr(arg, no_shell, variable_renames)?;
+                    let arg_code = emit_expr(arg, no_shell, variable_renames, param_names)?;
                     // Check if this parameter is byref (and not an array)
                     let is_byref = params
                         .get(i)
@@ -545,7 +559,11 @@ pub(super) fn emit_expr(
                             // For fixed-length strings, wrap with qb_str_from_c() first
                             if needs_fixed_string_conversion(arg) {
                                 // Check if already wrapped to avoid double wrapping
-                                let inner_code = unwrap_qb_str_from_c(&arg_code);
+                                // Unwrap multiple levels if needed
+                                let mut inner_code = unwrap_qb_str_from_c(&arg_code);
+                                while inner_code.starts_with("qb_str_from_c(") {
+                                    inner_code = unwrap_qb_str_from_c(&inner_code);
+                                }
                                 args_codes
                                     .push(format!("&(qb_string*){{qb_str_from_c({})}}", inner_code));
                             } else {
@@ -558,7 +576,11 @@ pub(super) fn emit_expr(
                         // Fixed-length strings need conversion to qb_string*
                         if needs_fixed_string_conversion(arg) {
                             // Check if already wrapped to avoid double wrapping
-                            let inner_code = unwrap_qb_str_from_c(&arg_code);
+                            // Unwrap multiple levels if needed
+                            let mut inner_code = unwrap_qb_str_from_c(&arg_code);
+                            while inner_code.starts_with("qb_str_from_c(") {
+                                inner_code = unwrap_qb_str_from_c(&inner_code);
+                            }
                             args_codes.push(format!("qb_str_from_c({})", inner_code));
                         } else {
                             args_codes.push(arg_code);
@@ -574,7 +596,7 @@ pub(super) fn emit_expr(
             let args_code: Result<Vec<_>, _> = args
                 .iter()
                 .map(|arg| {
-                    let code = emit_expr(arg, no_shell, variable_renames)?;
+                    let code = emit_expr(arg, no_shell, variable_renames, param_names)?;
                     // Check if this is a fixed-length string that needs conversion
                     // This includes FieldAccess of fixed-length string fields
                     if needs_fixed_string_conversion(arg) {
@@ -596,7 +618,7 @@ pub(super) fn emit_expr(
             indices,
             dimensions,
         } => {
-            let array_code = emit_array_access(name, indices, dimensions, no_shell, variable_renames)?;
+            let array_code = emit_array_access(name, indices, dimensions, no_shell, variable_renames, param_names)?;
             // Fixed-length string array elements need conversion to qb_string*
             if matches!(expr.basic_type, BasicType::FixedString(_)) {
                 Ok(format!("qb_str_from_c({})", array_code))
@@ -606,7 +628,7 @@ pub(super) fn emit_expr(
         }
 
         TypedExprKind::Convert { expr, to_type } => {
-            let inner_code = emit_expr(expr, no_shell, variable_renames)?;
+            let inner_code = emit_expr(expr, no_shell, variable_renames, param_names)?;
 
             // Handle string-to-string conversion (no-op)
             if expr.basic_type.is_string() && to_type.is_string() {
@@ -625,7 +647,7 @@ pub(super) fn emit_expr(
         }
 
         TypedExprKind::FieldAccess { object, field } => {
-            let obj_code = emit_expr(object, no_shell, variable_renames)?;
+            let obj_code = emit_expr(object, no_shell, variable_renames, param_names)?;
             let c_field = c_identifier(field);
             let field_access = format!("{}.{}", obj_code, c_field);
             // Fixed-length string fields need conversion to qb_string*
@@ -647,7 +669,7 @@ pub(super) fn emit_expr(
             args,
             params,
             ..
-        } => emit_external_function_call(c_name, args, params, no_shell, variable_renames),
+        } => emit_external_function_call(c_name, args, params, no_shell, variable_renames, param_names),
 
         TypedExprKind::ProcPtr { wrapper_name, .. } => {
             // Return the address of the C wrapper function as an intptr_t
@@ -655,7 +677,7 @@ pub(super) fn emit_expr(
         }
 
         TypedExprKind::CvFunc { target_type, value } => {
-            let value_code = emit_expr(value, no_shell, variable_renames)?;
+            let value_code = emit_expr(value, no_shell, variable_renames, param_names)?;
             // Use the appropriate qb_cv* function based on target type
             let func = match target_type {
                 BasicType::Integer => "qb_cvi",
@@ -669,7 +691,7 @@ pub(super) fn emit_expr(
         }
 
         TypedExprKind::MkDollarFunc { source_type, value } => {
-            let value_code = emit_expr(value, no_shell, variable_renames)?;
+            let value_code = emit_expr(value, no_shell, variable_renames, param_names)?;
             // Use the appropriate qb_mk*$ function based on source type
             let func = match source_type {
                 BasicType::Integer => "qb_mki",
@@ -683,14 +705,14 @@ pub(super) fn emit_expr(
         }
 
         TypedExprKind::CastFunc { target_type, value } => {
-            let value_code = emit_expr(value, no_shell, variable_renames)?;
+            let value_code = emit_expr(value, no_shell, variable_renames, param_names)?;
             // Explicit cast to the target C type
             let c_ty = c_type(target_type);
             Ok(format!("(({})({})", c_ty, value_code))
         }
 
         TypedExprKind::ValWithType { value, target_type } => {
-            let value_code = emit_expr(value, no_shell, variable_renames)?;
+            let value_code = emit_expr(value, no_shell, variable_renames, param_names)?;
             // VAL with type specifier uses specific conversion functions
             // that parse the string and return the specified type
             let func = match target_type {
@@ -712,8 +734,8 @@ pub(super) fn emit_expr(
             offset,
             target_type,
         } => {
-            let mem_code = emit_expr(mem, no_shell, variable_renames)?;
-            let offset_code = emit_expr(offset, no_shell, variable_renames)?;
+            let mem_code = emit_expr(mem, no_shell, variable_renames, param_names)?;
+            let offset_code = emit_expr(offset, no_shell, variable_renames, param_names)?;
             // _MEMGET reads raw bytes from memory at the given offset
             // and interprets them as the specified type.
             // Generated code: *((type*)((char*)(mem).offset + (offset)))
@@ -736,11 +758,12 @@ fn emit_external_function_call(
     params: &[crate::semantic::typed_ir::ExternalParamInfo],
     no_shell: bool,
     variable_renames: &std::collections::HashMap<String, String>,
+    param_names: &std::collections::HashSet<String>,
 ) -> Result<String, CodeGenError> {
     let mut marshalled_args = Vec::new();
 
     for (i, arg) in args.iter().enumerate() {
-                    let arg_code = emit_expr(arg, no_shell, variable_renames)?;
+                    let arg_code = emit_expr(arg, no_shell, variable_renames, param_names)?;
 
         // Check if this argument needs string marshalling
         let needs_marshalling = if i < params.len() {
@@ -769,18 +792,60 @@ fn emit_binary_expr(
     right: &TypedExpr,
     no_shell: bool,
     variable_renames: &std::collections::HashMap<String, String>,
+    param_names: &std::collections::HashSet<String>,
 ) -> Result<String, CodeGenError> {
-    let left_code = emit_expr(left, no_shell, variable_renames)?;
-    let right_code = emit_expr(right, no_shell, variable_renames)?;
+    let left_code = emit_expr(left, no_shell, variable_renames, param_names)?;
+    let right_code = emit_expr(right, no_shell, variable_renames, param_names)?;
 
     // Handle string concatenation specially
     if left.basic_type.is_string() && matches!(op, BinaryOp::Add) {
-        return Ok(format!("qb_string_concat({}, {})", left_code, right_code));
+        // Only wrap fixed-length strings (char arrays) for concatenation
+        // Dynamic strings (qb_string*) are already the correct type
+        let left_wrapped = if matches!(left.basic_type, BasicType::FixedString(_)) {
+            // Check if already wrapped to avoid double wrapping
+            if left_code.starts_with("qb_str_from_c(") {
+                left_code
+            } else {
+                format!("qb_str_from_c({})", left_code)
+            }
+        } else {
+            left_code
+        };
+        let right_wrapped = if matches!(right.basic_type, BasicType::FixedString(_)) {
+            if right_code.starts_with("qb_str_from_c(") {
+                right_code
+            } else {
+                format!("qb_str_from_c({})", right_code)
+            }
+        } else {
+            right_code
+        };
+        return Ok(format!("qb_string_concat({}, {})", left_wrapped, right_wrapped));
     }
 
     // Handle string comparisons
     if left.basic_type.is_string() {
-        return emit_string_comparison(&left_code, &right_code, op);
+        // Only wrap fixed-length strings (char arrays) for comparison
+        // Dynamic strings (qb_string*) are already the correct type
+        let left_wrapped = if matches!(left.basic_type, BasicType::FixedString(_)) {
+            if left_code.starts_with("qb_str_from_c(") {
+                left_code
+            } else {
+                format!("qb_str_from_c({})", left_code)
+            }
+        } else {
+            left_code
+        };
+        let right_wrapped = if matches!(right.basic_type, BasicType::FixedString(_)) {
+            if right_code.starts_with("qb_str_from_c(") {
+                right_code
+            } else {
+                format!("qb_str_from_c({})", right_code)
+            }
+        } else {
+            right_code
+        };
+        return emit_string_comparison(&left_wrapped, &right_wrapped, op);
     }
 
     // Handle operators that can't be expressed as simple C binary operators
@@ -835,6 +900,7 @@ fn emit_array_access(
     dimensions: &[TypedArrayDimension],
     no_shell: bool,
     variable_renames: &std::collections::HashMap<String, String>,
+    param_names: &std::collections::HashSet<String>,
 ) -> Result<String, CodeGenError> {
     let c_name = c_identifier(name);
 
@@ -845,7 +911,7 @@ fn emit_array_access(
     let indices_code: Result<Vec<_>, _> = indices
         .iter()
         .map(|idx| {
-            let code = emit_expr(idx, no_shell, variable_renames)?;
+            let code = emit_expr(idx, no_shell, variable_renames, param_names)?;
             // Cast to int64_t to ensure integer subscript
             // This handles VAL(), floating-point expressions, and implicit conversions
             Ok(format!("(int64_t)({})", code))
@@ -929,7 +995,12 @@ fn c_binary_op(op: &BinaryOp) -> Result<String, CodeGenError> {
 ///
 /// Note: We negate the result to convert C bool (0/1) to BASIC bool (0/-1).
 /// This is critical for NOT operator compatibility (NOT in BASIC is bitwise ~).
+///
+/// The arguments should already be properly wrapped (fixed-length strings wrapped
+/// with qb_str_from_c(), dynamic strings as qb_string*). This function just
+/// generates the comparison code.
 fn emit_string_comparison(left: &str, right: &str, op: &BinaryOp) -> Result<String, CodeGenError> {
+    // Arguments are already properly typed (qb_string*), just use them directly
     let cmp = format!("qb_string_compare({}, {})", left, right);
     // Negate to convert C bool (0/1) to BASIC bool (0/-1)
     let result = match op {
@@ -1541,7 +1612,8 @@ pub(crate) fn unwrap_qb_str_from_c(code: &str) -> String {
 /// - FieldAccess with FixedString type
 /// - Convert from FixedString wrapping a FieldAccess
 /// - ArrayAccess of fixed-length string elements
-fn needs_fixed_string_conversion(expr: &TypedExpr) -> bool {
+/// - Variable with FixedString type
+pub(crate) fn needs_fixed_string_conversion(expr: &TypedExpr) -> bool {
     match &expr.kind {
         // Direct field access of a fixed-length string
         TypedExprKind::FieldAccess { .. } => {
