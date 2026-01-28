@@ -542,24 +542,29 @@ mod tests {
     #[test]
     fn test_preprocess_no_includes() {
         let source = "PRINT \"Hello\"\nx = 42\n";
-        let result = preprocess(source, Path::new("."), None).unwrap();
+        let result = preprocess(source, Path::new("."), None)
+            .expect("preprocessing simple source without includes should succeed");
         assert_eq!(result, "PRINT \"Hello\"\nx = 42\n");
     }
 
     #[test]
     fn test_preprocess_with_include() {
         // Create temp directory and files
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir =
+            TempDir::new().expect("creating temp directory for include test should succeed");
         let temp_path = temp_dir.path();
 
         // Create the include file
         let include_path = temp_path.join("header.bi");
-        let mut include_file = fs::File::create(&include_path).unwrap();
-        writeln!(include_file, "CONST VERSION = 1").unwrap();
+        let mut include_file =
+            fs::File::create(&include_path).expect("creating include file should succeed");
+        writeln!(include_file, "CONST VERSION = 1")
+            .expect("writing to include file should succeed");
 
         // Main source with include
         let source = "PRINT \"Start\"\n$INCLUDE: 'header.bi'\nPRINT \"End\"\n";
-        let result = preprocess(source, temp_path, None).unwrap();
+        let result = preprocess(source, temp_path, None)
+            .expect("preprocessing source with valid include should succeed");
 
         // Check that the include was expanded
         assert!(result.contains("CONST VERSION = 1"));
@@ -571,23 +576,29 @@ mod tests {
 
     #[test]
     fn test_preprocess_nested_includes() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new()
+            .expect("creating temp directory for nested includes test should succeed");
         let temp_path = temp_dir.path();
 
         // Create level2.bi
         let level2_path = temp_path.join("level2.bi");
-        let mut level2_file = fs::File::create(&level2_path).unwrap();
-        writeln!(level2_file, "CONST LEVEL2 = 2").unwrap();
+        let mut level2_file =
+            fs::File::create(&level2_path).expect("creating level2.bi should succeed");
+        writeln!(level2_file, "CONST LEVEL2 = 2").expect("writing to level2.bi should succeed");
 
         // Create level1.bi that includes level2.bi
         let level1_path = temp_path.join("level1.bi");
-        let mut level1_file = fs::File::create(&level1_path).unwrap();
-        writeln!(level1_file, "CONST LEVEL1 = 1").unwrap();
-        writeln!(level1_file, "$INCLUDE: 'level2.bi'").unwrap();
+        let mut level1_file =
+            fs::File::create(&level1_path).expect("creating level1.bi should succeed");
+        writeln!(level1_file, "CONST LEVEL1 = 1")
+            .expect("writing first line to level1.bi should succeed");
+        writeln!(level1_file, "$INCLUDE: 'level2.bi'")
+            .expect("writing include directive to level1.bi should succeed");
 
         // Main source
         let source = "$INCLUDE: 'level1.bi'\nPRINT LEVEL1 + LEVEL2\n";
-        let result = preprocess(source, temp_path, None).unwrap();
+        let result = preprocess(source, temp_path, None)
+            .expect("preprocessing source with nested includes should succeed");
 
         assert!(result.contains("CONST LEVEL1 = 1"));
         assert!(result.contains("CONST LEVEL2 = 2"));
@@ -596,18 +607,19 @@ mod tests {
 
     #[test]
     fn test_preprocess_circular_include_detection() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new()
+            .expect("creating temp directory for circular include test should succeed");
         let temp_path = temp_dir.path();
 
         // Create file_a.bi that includes file_b.bi
         let file_a_path = temp_path.join("file_a.bi");
-        let mut file_a = fs::File::create(&file_a_path).unwrap();
-        writeln!(file_a, "$INCLUDE: 'file_b.bi'").unwrap();
+        let mut file_a = fs::File::create(&file_a_path).expect("creating file_a.bi should succeed");
+        writeln!(file_a, "$INCLUDE: 'file_b.bi'").expect("writing to file_a.bi should succeed");
 
         // Create file_b.bi that includes file_a.bi (circular!)
         let file_b_path = temp_path.join("file_b.bi");
-        let mut file_b = fs::File::create(&file_b_path).unwrap();
-        writeln!(file_b, "$INCLUDE: 'file_a.bi'").unwrap();
+        let mut file_b = fs::File::create(&file_b_path).expect("creating file_b.bi should succeed");
+        writeln!(file_b, "$INCLUDE: 'file_a.bi'").expect("writing to file_b.bi should succeed");
 
         // Try to process - should detect circular include
         let source = "$INCLUDE: 'file_a.bi'\n";
@@ -634,11 +646,15 @@ mod tests {
     fn test_preprocess_file_not_found_reports_actual_source_path() {
         // When source_path is Some(real_path), FileNotFound.from_file should be that path,
         // not "main.bas". (Regression test for preprocess() initial file fix.)
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir =
+            TempDir::new().expect("creating temp directory for source path test should succeed");
         let entry_path = temp_dir.path().join("myapp.bas");
-        std::fs::write(&entry_path, "$INCLUDE: 'nonexistent.bi'\n").unwrap();
+        std::fs::write(&entry_path, "$INCLUDE: 'nonexistent.bi'\n")
+            .expect("writing test source file should succeed");
 
-        let base = entry_path.parent().unwrap();
+        let base = entry_path
+            .parent()
+            .expect("entry_path should have a parent directory");
         let result = preprocess(
             "$INCLUDE: 'nonexistent.bi'\n",
             base,

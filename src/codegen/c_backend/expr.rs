@@ -1820,14 +1820,16 @@ mod tests {
     #[test]
     fn test_emit_integer_literal() {
         let expr = TypedExpr::integer(42, Span::new(0, 2, 1));
-        let result = emit_expr(&expr, false, &HashMap::new(), &HashSet::new()).unwrap();
+        let result = emit_expr(&expr, false, &HashMap::new(), &HashSet::new())
+            .expect("emitting integer literal should succeed");
         assert_eq!(result, "42LL");
     }
 
     #[test]
     fn test_emit_string_literal() {
         let expr = TypedExpr::string("Hello".to_string(), Span::new(0, 7, 1));
-        let result = emit_expr(&expr, false, &HashMap::new(), &HashSet::new()).unwrap();
+        let result = emit_expr(&expr, false, &HashMap::new(), &HashSet::new())
+            .expect("emitting string literal should succeed");
         assert_eq!(result, "qb_string_new(\"Hello\")");
     }
 
@@ -1843,7 +1845,8 @@ mod tests {
             BasicType::Double,
             Span::new(0, 5, 1),
         );
-        let result = emit_expr(&expr, false, &HashMap::new(), &HashSet::new()).unwrap();
+        let result = emit_expr(&expr, false, &HashMap::new(), &HashSet::new())
+            .expect("emitting constant-folded power operator should succeed");
         assert_eq!(result, "8LL"); // 2^3 = 8, folded at compile time
     }
 
@@ -1863,7 +1866,8 @@ mod tests {
             BasicType::Double,
             Span::new(0, 5, 1),
         );
-        let result = emit_expr(&expr, false, &HashMap::new(), &HashSet::new()).unwrap();
+        let result = emit_expr(&expr, false, &HashMap::new(), &HashSet::new())
+            .expect("emitting power operator with variable should succeed");
         assert_eq!(result, "pow(x, 3LL)");
     }
 
@@ -1879,7 +1883,8 @@ mod tests {
             BasicType::Long,
             Span::new(0, 7, 1),
         );
-        let result = emit_expr(&expr, false, &HashMap::new(), &HashSet::new()).unwrap();
+        let result = emit_expr(&expr, false, &HashMap::new(), &HashSet::new())
+            .expect("emitting constant-folded EQV operator should succeed");
         // EQV: !(5 XOR 3) = !6 = -7 (bitwise NOT)
         assert_eq!(result, "-7LL");
     }
@@ -1900,7 +1905,8 @@ mod tests {
             BasicType::Long,
             Span::new(0, 7, 1),
         );
-        let result = emit_expr(&expr, false, &HashMap::new(), &HashSet::new()).unwrap();
+        let result = emit_expr(&expr, false, &HashMap::new(), &HashSet::new())
+            .expect("emitting EQV operator with variable should succeed");
         assert_eq!(result, "(~(x ^ 3LL))");
     }
 
@@ -1916,7 +1922,8 @@ mod tests {
             BasicType::Long,
             Span::new(0, 7, 1),
         );
-        let result = emit_expr(&expr, false, &HashMap::new(), &HashSet::new()).unwrap();
+        let result = emit_expr(&expr, false, &HashMap::new(), &HashSet::new())
+            .expect("emitting constant-folded IMP operator should succeed");
         // IMP: (!5) OR 3 = -6 OR 3 = -5
         assert_eq!(result, "-5LL");
     }
@@ -1937,7 +1944,8 @@ mod tests {
             BasicType::Long,
             Span::new(0, 7, 1),
         );
-        let result = emit_expr(&expr, false, &HashMap::new(), &HashSet::new()).unwrap();
+        let result = emit_expr(&expr, false, &HashMap::new(), &HashSet::new())
+            .expect("emitting IMP operator with variable should succeed");
         assert_eq!(result, "((~x) | 3LL)");
     }
 
