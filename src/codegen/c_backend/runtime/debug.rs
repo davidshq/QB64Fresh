@@ -577,7 +577,7 @@ mod tests {
     #[test]
     fn test_emit_debug_runtime() {
         let mut output = String::new();
-        emit_debug_runtime(&mut output);
+        emit_debug_runtime(&mut output).unwrap();
 
         // Verify key components are present
         assert!(output.contains("_qb_dbg_enabled"));
@@ -593,7 +593,7 @@ mod tests {
     #[test]
     fn test_platform_specific_code() {
         let mut output = String::new();
-        emit_debug_runtime(&mut output);
+        emit_debug_runtime(&mut output).unwrap();
 
         // Verify Windows and Unix code paths
         assert!(output.contains("#ifdef _WIN32"));

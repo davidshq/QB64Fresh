@@ -79,7 +79,7 @@ pub fn compile(source: &str) -> CompileResult {
     let backend = CBackend::with_runtime_mode(RuntimeMode::Inline);
     match backend.generate(&typed_program) {
         Ok(output) => CompileResult::Success(output.code),
-        Err(e) => CompileResult::Error(format!("CodeGen error: {}", e)),
+        Err(e) => CompileResult::Error(format!("CodeGen error: {:?}", e)),
     }
 }
 
