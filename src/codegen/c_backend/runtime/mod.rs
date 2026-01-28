@@ -923,11 +923,10 @@ pub(in crate::codegen) fn emit_header_with_debug(
                 "int32_t qb_shellhide(QbString* cmd) {{ (void)cmd; return 0; }}"
             )?;
             // Network functions (stubs - no actual network support)
-            // QB64pe calls this with a string argument (host:port format)
-            writeln_code!(
-                output,
-                "int64_t qb_net_openhost(QbString* hostport) {{ (void)hostport; return 0; }}"
-            )?;
+            // Note: qb_net_openhost is declared in qb64fresh_rt.h but with different signature (int64_t port)
+            // QB64pe calls this with a string argument (host:port format), so we provide a wrapper
+            // Only generate in External mode if header signature doesn't match usage
+            // For now, skip generation - runtime library should provide correct implementation
             writeln_code!(
                 output,
                 "void qb_sub_set_foreground_window(intptr_t hwnd) {{ (void)hwnd; }}"

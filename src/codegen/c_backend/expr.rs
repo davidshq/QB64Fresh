@@ -564,8 +564,15 @@ pub(super) fn emit_expr(
                                 while inner_code.starts_with("qb_str_from_c(") {
                                     inner_code = unwrap_qb_str_from_c(&inner_code);
                                 }
-                                args_codes
-                                    .push(format!("&(qb_string*){{qb_str_from_c({})}}", inner_code));
+                                // For BYREF QbString* parameter, we need QbString**
+                                // Can't use &(QbString*){...} - compound literals can't be pointer types
+                                // Use a statement-expression to create a temporary pointer variable
+                                // Generate unique temp name to avoid conflicts in nested calls
+                                let temp_name = format!("_tmp_str_byref_{}", i);
+                                args_codes.push(format!(
+                                    "({{ QbString* {} = qb_str_from_c({}); &{}; }})",
+                                    temp_name, inner_code, temp_name
+                                ));
                             } else {
                                 // Cast value to parameter type to handle type mismatches
                                 args_codes.push(format!("&({}){{{}}}", c_ty, arg_code));
@@ -902,7 +909,13 @@ fn emit_array_access(
     variable_renames: &std::collections::HashMap<String, String>,
     param_names: &std::collections::HashSet<String>,
 ) -> Result<String, CodeGenError> {
-    let c_name = c_identifier(name);
+    let mut c_name = c_identifier(name);
+    
+    // Array access always refers to the local array variable, not a parameter.
+    // If the variable was renamed to avoid shadowing, use the renamed version.
+    if let Some(renamed) = variable_renames.get(&c_name) {
+        c_name = renamed.clone();
+    }
 
     // Collect index codes, casting to int64_t to ensure integer subscripts
     // (C requires integer array subscripts, but BASIC allows any numeric type)

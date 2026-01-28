@@ -251,7 +251,7 @@ pub(super) fn collect_globals(
                         // For string constants, we can't use function calls as initializers
                         // in C. Declare without initializer and add initialization to run at start.
                         if matches!(value_expr.basic_type, BasicType::String) {
-                            globals.push(format!("qb_string* {} = NULL;", c_name));
+                            globals.push(format!("QbString* {} = NULL;", c_name));
                             string_const_inits.push(format!("{} = {};", c_name, value_code));
                         } else {
                             globals.push(format!("const {} {} = {};", c_ty, c_name, value_code));
@@ -424,10 +424,10 @@ pub(super) fn collect_globals(
     // In BASIC, uninitialized strings are empty (""), not null.
     // We can't initialize qb_string* at global scope in C, so we do it at program start.
     for decl in &globals {
-        // Match declarations like "qb_string* name = NULL;" or "qb_string* name_str = NULL;"
-        if decl.starts_with("qb_string* ") && decl.ends_with(" = NULL;") {
-            // Extract variable name: "qb_string* foo = NULL;" -> "foo"
-            let after_type = &decl["qb_string* ".len()..];
+        // Match declarations like "QbString* name = NULL;" or "QbString* name_str = NULL;"
+        if decl.starts_with("QbString* ") && decl.ends_with(" = NULL;") {
+            // Extract variable name: "QbString* foo = NULL;" -> "foo"
+            let after_type = &decl["QbString* ".len()..];
             if let Some(name) = after_type.strip_suffix(" = NULL;") {
                 // Add initialization: foo = qb_string_new("");
                 string_const_inits.push(format!("{} = qb_string_new(\"\");", name));

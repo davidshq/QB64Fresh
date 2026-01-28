@@ -81,7 +81,7 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
     writeln_code!(output, "#endif")?;
     writeln_code!(output)?;
 
-    writeln_code!(output, "int32_t qb_file_exists(qb_string* path) {{")?;
+    writeln_code!(output, "int32_t qb_file_exists(QbString* path) {{")?;
     writeln_code!(output, "    if (!path || !path->data) return 0;")?;
     writeln_code!(output, "    struct stat st;")?;
     writeln_code!(
@@ -103,7 +103,7 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
     writeln_code!(output, "#endif")?;
     writeln_code!(output, "}}")?;
 
-    writeln_code!(output, "int32_t qb_dir_exists(qb_string* path) {{")?;
+    writeln_code!(output, "int32_t qb_dir_exists(QbString* path) {{")?;
     writeln_code!(output, "    if (!path || !path->data) return 0;")?;
     writeln_code!(output, "    struct stat st;")?;
     writeln_code!(
@@ -125,7 +125,7 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
     writeln_code!(output, "#endif")?;
     writeln_code!(output, "}}")?;
 
-    writeln_code!(output, "qb_string* qb_fullpath(qb_string* path) {{")?;
+    writeln_code!(output, "QbString* qb_fullpath(QbString* path) {{")?;
     writeln_code!(
         output,
         "    if (!path || !path->data) return qb_string_new(\"\");"
@@ -157,7 +157,7 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
 
     writeln_code!(
         output,
-        "qb_string* qb_dir(qb_string* spec) {{ (void)spec; return qb_string_new(\"\"); }}"
+        "QbString* qb_dir(QbString* spec) {{ (void)spec; return qb_string_new(\"\"); }}"
     )?;
 
     writeln_code!(output, "int32_t qb_chdir(const char* path) {{")?;
@@ -250,22 +250,22 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
         "int32_t qb_console(int32_t mode) {{ (void)mode; return 1; }}"
     )?;
 
-    writeln_code!(output, "int32_t qb_shell(qb_string* cmd) {{")?;
+    writeln_code!(output, "int32_t qb_shell(QbString* cmd) {{")?;
     writeln_code!(output, "    if (!cmd || !cmd->data) return -1;")?;
     writeln_code!(output, "    return system(cmd->data);")?;
     writeln_code!(output, "}}")?;
 
     writeln_code!(
         output,
-        "int32_t qb_shell_hide(qb_string* cmd) {{ return qb_shell(cmd); }}"
+        "int32_t qb_shell_hide(QbString* cmd) {{ return qb_shell(cmd); }}"
     )?;
     writeln_code!(
         output,
-        "int32_t qb_shellhide(qb_string* cmd) {{ return qb_shell(cmd); }}"
+        "int32_t qb_shellhide(QbString* cmd) {{ return qb_shell(cmd); }}"
     )?;
     writeln_code!(
         output,
-        "void qb_echo(qb_string* text) {{ if (text) {{ qb_print_string(text); qb_print_newline(); }} }}"
+        "void qb_echo(QbString* text) {{ if (text) {{ qb_print_string(text); qb_print_newline(); }} }}"
     )?;
     writeln_code!(
         output,
@@ -276,7 +276,7 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
     // String functions
     writeln_code!(
         output,
-        "void qb_asc_assign(qb_string** s, int32_t pos, int32_t ch) {{"
+        "void qb_asc_assign(QbString** s, int32_t pos, int32_t ch) {{"
     )?;
     writeln_code!(
         output,
@@ -287,7 +287,7 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
 
     writeln_code!(
         output,
-        "int32_t qb_instrrev3(qb_string* s, qb_string* sub, int32_t start) {{"
+        "int32_t qb_instrrev3(QbString* s, QbString* sub, int32_t start) {{"
     )?;
     writeln_code!(
         output,
@@ -323,7 +323,7 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
     )?;
     writeln_code!(
         output,
-        "int32_t qb_loadfont3(qb_string* path, int32_t size, qb_string* req) {{ (void)path; (void)size; (void)req; return 0; }}"
+        "int32_t qb_loadfont3(QbString* path, int32_t size, QbString* req) {{ (void)path; (void)size; (void)req; return 0; }}"
     )?;
 
     // _MAPUNICODE implementation - maintains CP437 to Unicode mapping table
@@ -499,7 +499,7 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
     // Window functions (stubs)
     writeln_code!(
         output,
-        "void qb_sub__title(qb_string* title) {{ (void)title; }}"
+        "void qb_sub__title(QbString* title) {{ (void)title; }}"
     )?;
     writeln_code!(
         output,
@@ -510,13 +510,13 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
     writeln_code!(output, "void qb_icon1(int32_t handle) {{ (void)handle; }}")?;
     writeln_code!(
         output,
-        "void qb_icon2(int32_t handle, qb_string* cmd) {{ (void)handle; (void)cmd; }}"
+        "void qb_icon2(int32_t handle, QbString* cmd) {{ (void)handle; (void)cmd; }}"
     )?;
     writeln_code!(output)?;
 
     // Environment functions
     // ENVIRON "name=value" - set environment variable
-    writeln_code!(output, "void qb_sub_environ(qb_string* env) {{")?;
+    writeln_code!(output, "void qb_sub_environ(QbString* env) {{")?;
     writeln_code!(output, "    if (!env || !env->data) return;")?;
     writeln_code!(output, "    const char* env_str = env->data;")?;
     writeln_code!(output)?;
@@ -553,7 +553,7 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
     writeln_code!(output, "int32_t qb_inclerrorline(void) {{ return 0; }}")?;
     writeln_code!(
         output,
-        "qb_string* qb_inclerrorfile(void) {{ return qb_string_new(\"\"); }}"
+        "QbString* qb_inclerrorfile(void) {{ return qb_string_new(\"\"); }}"
     )?;
     writeln_code!(output, "int32_t qb_exit_state(void) {{ return 0; }}")?;
     writeln_code!(
@@ -566,7 +566,7 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
     // QB64pe calls this with a string argument (host:port format)
     writeln_code!(
         output,
-        "int64_t qb_net_openhost(qb_string* hostport) {{ (void)hostport; return 0; }}"
+        "static int64_t qb_net_openhost(QbString* hostport) {{ (void)hostport; return 0; }}"
     )?;
     writeln_code!(
         output,
@@ -574,7 +574,7 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
     )?;
     writeln_code!(
         output,
-        "int32_t qb_net_openclient(qb_string* addr) {{ (void)addr; return 0; }}"
+        "int32_t qb_net_openclient(QbString* addr) {{ (void)addr; return 0; }}"
     )?;
     writeln_code!(
         output,
@@ -603,11 +603,11 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
     )?;
     writeln_code!(
         output,
-        "size_t qb_net_get_string(int64_t handle, qb_string* s) {{ (void)handle; (void)s; return 0; }}"
+        "size_t qb_net_get_string(int64_t handle, QbString* s) {{ (void)handle; (void)s; return 0; }}"
     )?;
     writeln_code!(
         output,
-        "size_t qb_net_put_string(int64_t handle, const qb_string* s) {{ (void)handle; (void)s; return 0; }}"
+        "size_t qb_net_put_string(int64_t handle, const QbString* s) {{ (void)handle; (void)s; return 0; }}"
     )?;
     writeln_code!(
         output,
@@ -627,7 +627,7 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
     writeln_code!(output, "int32_t qb_totaldroppedfiles(void) {{ return 0; }}")?;
     writeln_code!(
         output,
-        "qb_string* qb_droppedfile_str(int32_t index) {{ (void)index; return qb_string_new(\"\"); }}"
+        "QbString* qb_droppedfile_str(int32_t index) {{ (void)index; return qb_string_new(\"\"); }}"
     )?;
     writeln_code!(output, "void qb_finishdrop(void) {{ }}")?;
     writeln_code!(output, "void qb_acceptfiledrop(void) {{ }}")?;
@@ -641,26 +641,26 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
     // QB64pe calls this with 4 string arguments: title, message, buttons, icon
     writeln_code!(
         output,
-        "int32_t qb_messagebox4(qb_string* title, qb_string* msg, qb_string* btns, qb_string* icon) {{ (void)title; (void)msg; (void)btns; (void)icon; return 1; }}"
+        "int32_t qb_messagebox4(QbString* title, QbString* msg, QbString* btns, QbString* icon) {{ (void)title; (void)msg; (void)btns; (void)icon; return 1; }}"
     )?;
     writeln_code!(
         output,
-        "qb_string* qb_savefiledialog4(qb_string* title, qb_string* filter, qb_string* def, int32_t flags) {{ (void)title; (void)filter; (void)def; (void)flags; return qb_string_new(\"\"); }}"
+        "QbString* qb_savefiledialog4(QbString* title, QbString* filter, QbString* def, int32_t flags) {{ (void)title; (void)filter; (void)def; (void)flags; return qb_string_new(\"\"); }}"
     )?;
     writeln_code!(
         output,
-        "qb_string* qb_openfiledialog5(qb_string* title, qb_string* filter, qb_string* def, qb_string* opts, int32_t flags) {{ (void)title; (void)filter; (void)def; (void)opts; (void)flags; return qb_string_new(\"\"); }}"
+        "QbString* qb_openfiledialog5(QbString* title, QbString* filter, QbString* def, QbString* opts, int32_t flags) {{ (void)title; (void)filter; (void)def; (void)opts; (void)flags; return qb_string_new(\"\"); }}"
     )?;
     writeln_code!(output)?;
 
     // Number conversion functions
     writeln_code!(
         output,
-        "int64_t qb_val_int64(qb_string* s) {{ if (!s || !s->data) return 0; return strtoll(s->data, NULL, 10); }}"
+        "int64_t qb_val_int64(QbString* s) {{ if (!s || !s->data) return 0; return strtoll(s->data, NULL, 10); }}"
     )?;
     writeln_code!(
         output,
-        "uint64_t qb_val_uint64(qb_string* s) {{ if (!s || !s->data) return 0; return strtoull(s->data, NULL, 10); }}"
+        "uint64_t qb_val_uint64(QbString* s) {{ if (!s || !s->data) return 0; return strtoull(s->data, NULL, 10); }}"
     )?;
     writeln_code!(
         output,
@@ -668,22 +668,22 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
     )?;
     writeln_code!(
         output,
-        "qb_string* qb_mkq(double val) {{ char buf[64]; snprintf(buf, sizeof(buf), \"%.17g\", val); return qb_string_new(buf); }}"
+        "QbString* qb_mkq(double val) {{ char buf[64]; snprintf(buf, sizeof(buf), \"%.17g\", val); return qb_string_new(buf); }}"
     )?;
     writeln_code!(
         output,
-        "double qb_cvq(qb_string* s) {{ if (!s || !s->data || s->len < 8) return 0.0; double d; memcpy(&d, s->data, 8); return d; }}"
+        "double qb_cvq(QbString* s) {{ if (!s || !s->data || s->len < 8) return 0.0; double d; memcpy(&d, s->data, 8); return d; }}"
     )?;
     writeln_code!(output)?;
 
     // Compression functions (stubs - no actual compression)
     writeln_code!(
         output,
-        "qb_string* qb_deflate(qb_string* data) {{ (void)data; return qb_string_new(\"\"); }}"
+        "QbString* qb_deflate(QbString* data) {{ (void)data; return qb_string_new(\"\"); }}"
     )?;
     writeln_code!(
         output,
-        "qb_string* qb_md5(qb_string* data) {{ (void)data; return qb_string_new(\"00000000000000000000000000000000\"); }}"
+        "QbString* qb_md5(QbString* data) {{ (void)data; return qb_string_new(\"00000000000000000000000000000000\"); }}"
     )?;
     writeln_code!(output)?;
 
@@ -757,7 +757,7 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
     )?;
 
     // qb_string_copy - create a copy of a string
-    writeln_code!(output, "qb_string* qb_string_copy(qb_string* s) {{")?;
+    writeln_code!(output, "QbString* qb_string_copy(QbString* s) {{")?;
     writeln_code!(output, "    if (!s) return qb_string_new(\"\");")?;
     writeln_code!(
         output,

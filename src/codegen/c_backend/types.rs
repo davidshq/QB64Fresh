@@ -103,7 +103,7 @@ pub(super) fn declare_scalar_var(
 
     let decl = match basic_type {
         BasicType::FixedString(len) => format!("char {}[{}] = \"\";", c_name, len + 1),
-        BasicType::String => format!("qb_string* {} = NULL;", c_name),
+        BasicType::String => format!("QbString* {} = NULL;", c_name),
         BasicType::UserDefined(_) => {
             let c_ty = c_type(basic_type);
             format!("{} {} = {{0}};", c_ty, c_name)
@@ -182,7 +182,7 @@ pub(super) fn declare_array_var(
 ///
 /// ```ignore
 /// assert_eq!(c_type(&BasicType::Integer), "int16_t");
-/// assert_eq!(c_type(&BasicType::String), "qb_string*");
+/// assert_eq!(c_type(&BasicType::String), "QbString*");
 /// assert_eq!(c_type(&BasicType::FixedString(10)), "char[11]");
 /// ```
 pub(super) fn c_type(basic_type: &BasicType) -> String {
@@ -196,7 +196,7 @@ pub(super) fn c_type(basic_type: &BasicType) -> String {
         BasicType::Single => "float".to_string(),
         BasicType::Double => "double".to_string(),
         BasicType::Float => "long double".to_string(),
-        BasicType::String => "qb_string*".to_string(),
+        BasicType::String => "QbString*".to_string(),
         BasicType::FixedString(n) => format!("char[{}]", n + 1), // +1 for null terminator
         BasicType::UnsignedBit => "uint8_t".to_string(),
         BasicType::UnsignedByte => "uint8_t".to_string(),
@@ -348,7 +348,7 @@ mod tests {
         assert_eq!(c_type(&BasicType::Long), "int32_t");
         assert_eq!(c_type(&BasicType::Integer64), "int64_t");
         assert_eq!(c_type(&BasicType::Double), "double");
-        assert_eq!(c_type(&BasicType::String), "qb_string*");
+        assert_eq!(c_type(&BasicType::String), "QbString*");
         assert_eq!(c_type(&BasicType::FixedString(10)), "char[11]");
         assert_eq!(c_type(&BasicType::UnsignedInteger), "uint16_t");
         assert_eq!(
