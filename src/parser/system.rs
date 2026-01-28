@@ -19,7 +19,7 @@ impl<'a> Parser<'a> {
     ///
     /// Syntax: `KILL filename$`
     pub(super) fn parse_kill(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("KILL keyword").span.start;
+        let start = self.advance_start("KILL keyword")?;
         let filename = self.parse_expression()?;
         let span = self.span_from(start);
         Ok(Statement::new(StatementKind::Kill { filename }, span))
@@ -29,7 +29,7 @@ impl<'a> Parser<'a> {
     ///
     /// Syntax: `NAME oldname$ AS newname$`
     pub(super) fn parse_name(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("NAME keyword").span.start;
+        let start = self.advance_start("NAME keyword")?;
         let old_name = self.parse_expression()?;
         self.expect(&TokenKind::As, "AS")?;
         let new_name = self.parse_expression()?;
@@ -44,7 +44,7 @@ impl<'a> Parser<'a> {
     ///
     /// Syntax: `MKDIR path$`
     pub(super) fn parse_mkdir(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("MKDIR keyword").span.start;
+        let start = self.advance_start("MKDIR keyword")?;
         let path = self.parse_expression()?;
         let span = self.span_from(start);
         Ok(Statement::new(StatementKind::Mkdir { path }, span))
@@ -54,7 +54,7 @@ impl<'a> Parser<'a> {
     ///
     /// Syntax: `RMDIR path$`
     pub(super) fn parse_rmdir(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("RMDIR keyword").span.start;
+        let start = self.advance_start("RMDIR keyword")?;
         let path = self.parse_expression()?;
         let span = self.span_from(start);
         Ok(Statement::new(StatementKind::Rmdir { path }, span))
@@ -64,7 +64,7 @@ impl<'a> Parser<'a> {
     ///
     /// Syntax: `CHDIR path$`
     pub(super) fn parse_chdir(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("CHDIR keyword").span.start;
+        let start = self.advance_start("CHDIR keyword")?;
         let path = self.parse_expression()?;
         let span = self.span_from(start);
         Ok(Statement::new(StatementKind::Chdir { path }, span))
@@ -74,7 +74,7 @@ impl<'a> Parser<'a> {
     ///
     /// Syntax: `ENVIRON "name=value"`
     pub(super) fn parse_environ(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("ENVIRON keyword").span.start;
+        let start = self.advance_start("ENVIRON keyword")?;
         let env_string = self.parse_expression()?;
         let span = self.span_from(start);
         Ok(Statement::new(StatementKind::Environ { env_string }, span))
@@ -87,7 +87,7 @@ impl<'a> Parser<'a> {
     /// Syntax: `SHELL [_HIDE] [_DONTWAIT] [command$]`
     /// Options can be combined, e.g., `SHELL _HIDE _DONTWAIT "cmd"`
     pub(super) fn parse_shell(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("SHELL keyword").span.start;
+        let start = self.advance_start("SHELL keyword")?;
 
         // Parse options (can have multiple in any order)
         let mut hide = false;
@@ -149,7 +149,7 @@ impl<'a> Parser<'a> {
     ///
     /// Syntax: `_SHELLHIDE command$`
     pub(super) fn parse_shellhide(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("_SHELLHIDE keyword").span.start;
+        let start = self.advance_start("_SHELLHIDE keyword")?;
         let command = self.parse_expression()?;
         let span = self.span_from(start);
         Ok(Statement::new(StatementKind::ShellHide { command }, span))
@@ -161,7 +161,7 @@ impl<'a> Parser<'a> {
     ///
     /// Syntax: `BLOAD filename$[, address]`
     pub(super) fn parse_bload(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("BLOAD keyword").span.start;
+        let start = self.advance_start("BLOAD keyword")?;
         let filename = self.parse_expression()?;
 
         let address = if self.match_token(&TokenKind::Comma) {
@@ -181,7 +181,7 @@ impl<'a> Parser<'a> {
     ///
     /// Syntax: `BSAVE filename$, address, length`
     pub(super) fn parse_bsave(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("BSAVE keyword").span.start;
+        let start = self.advance_start("BSAVE keyword")?;
         let filename = self.parse_expression()?;
         self.expect(&TokenKind::Comma, ",")?;
         let address = self.parse_expression()?;
@@ -203,7 +203,7 @@ impl<'a> Parser<'a> {
     ///
     /// Syntax: `SETMEM bytes`
     pub(super) fn parse_setmem(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("SETMEM keyword").span.start;
+        let start = self.advance_start("SETMEM keyword")?;
         let bytes = self.parse_expression()?;
         let span = self.span_from(start);
         Ok(Statement::new(StatementKind::Setmem { bytes }, span))
@@ -215,7 +215,7 @@ impl<'a> Parser<'a> {
     ///
     /// Syntax: `_MOUSEHIDE`
     pub(super) fn parse_mousehide(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("_MOUSEHIDE keyword").span.start;
+        let start = self.advance_start("_MOUSEHIDE keyword")?;
         let span = self.span_from(start);
         Ok(Statement::new(StatementKind::MouseHide, span))
     }
@@ -224,7 +224,7 @@ impl<'a> Parser<'a> {
     ///
     /// Syntax: `_MOUSESHOW`
     pub(super) fn parse_mouseshow(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("_MOUSESHOW keyword").span.start;
+        let start = self.advance_start("_MOUSESHOW keyword")?;
         let span = self.span_from(start);
         Ok(Statement::new(StatementKind::MouseShow, span))
     }
@@ -233,7 +233,7 @@ impl<'a> Parser<'a> {
     ///
     /// Syntax: `_MOUSEMOVE x%, y%`
     pub(super) fn parse_mousemove(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("_MOUSEMOVE keyword").span.start;
+        let start = self.advance_start("_MOUSEMOVE keyword")?;
         let x = self.parse_expression()?;
         self.expect(&TokenKind::Comma, ",")?;
         let y = self.parse_expression()?;
@@ -247,7 +247,7 @@ impl<'a> Parser<'a> {
     ///
     /// Syntax: `_CLIPBOARD$ = text$`
     pub(super) fn parse_clipboard_set(&mut self) -> Result<Statement, ()> {
-        let start = self.advance().expect("_CLIPBOARD$ keyword").span.start;
+        let start = self.advance_start("_CLIPBOARD$ keyword")?;
         self.expect(&TokenKind::Equals, "=")?;
         let text = self.parse_expression()?;
         let span = self.span_from(start);
