@@ -15,11 +15,42 @@
 use crate::codegen::error::CodeGenError;
 use crate::writeln_code;
 
-/// Emits the qb_string type definition.
+use crate::codegen::c_backend::type_registry::TypeRegistry;
+
+/// Registers the qb_string type definitions in the type registry.
 ///
-/// This function emits the full struct definition for `qb_string`, which is needed
-/// for compilation of generated code that accesses struct members (e.g., in UDTs
-/// containing `qb_string*` fields).
+/// This registers both `QbString` (the struct) and `qb_string` (the typedef)
+/// with proper dependency ordering.
+pub(in crate::codegen::c_backend) fn register_string_types(
+    registry: &mut TypeRegistry,
+) -> Result<(), CodeGenError> {
+    // Register QbString struct (no dependencies)
+    registry.register_type("QbString", &[], |output| {
+        writeln_code!(output, "struct QbString {{")?;
+        writeln_code!(output, "    char* data;")?;
+        writeln_code!(output, "    size_t len;")?;
+        writeln_code!(output, "    size_t capacity;")?;
+        writeln_code!(output, "    int refcount;")?;
+        writeln_code!(output, "}};")?;
+        Ok(())
+    });
+
+    // Register qb_string typedef (depends on QbString)
+    registry.register_type("qb_string", &["QbString"], |output| {
+        // The header's typedef struct QbString QbString; is now complete
+        // Create qb_string alias - must be on separate line to avoid redefinition
+        writeln_code!(output, "typedef QbString qb_string;")?;
+        writeln_code!(output)?;
+        Ok(())
+    });
+
+    Ok(())
+}
+
+/// Emits the qb_string type definition using the type registry.
+///
+/// This function ensures proper ordering: QbString struct is emitted before qb_string typedef.
+/// It uses the type registry to handle dependencies automatically.
 ///
 /// **Important**: While the struct definition is provided for compilation, the API
 /// functions (`qb_string_data()`, `qb_string_len()`, `qb_string_release()`, etc.)
@@ -28,22 +59,24 @@ use crate::writeln_code;
 ///
 /// In external runtime mode, we define the struct as `QbString` to match the header
 /// file's forward declaration, then typedef it to `qb_string` for compatibility.
-pub(super) fn emit_string_type(output: &mut String) -> Result<(), CodeGenError> {
-    // Define the struct (completing the forward declaration from the header)
-    // The header has: typedef struct QbString QbString;
-    // We define the struct here, which completes QbString
-    // Then create qb_string as an alias for QbString
-    writeln_code!(output, "struct QbString {{")?;
-    writeln_code!(output, "    char* data;")?;
-    writeln_code!(output, "    size_t len;")?;
-    writeln_code!(output, "    size_t capacity;")?;
-    writeln_code!(output, "    int refcount;")?;
-    writeln_code!(output, "}};")?;
-    // The header's typedef struct QbString QbString; is now complete
-    // Create qb_string alias - must be on separate line to avoid redefinition
-    writeln_code!(output, "typedef QbString qb_string;")?;
-    writeln_code!(output)?;
+pub(super) fn emit_string_type(
+    registry: &mut TypeRegistry,
+    output: &mut String,
+) -> Result<(), CodeGenError> {
+    // Ensure qb_string is emitted (which will also emit QbString first due to dependency)
+    registry.ensure_type_emitted("qb_string", output)?;
     Ok(())
+}
+
+/// Emits the qb_string type definition (legacy function for backward compatibility).
+///
+/// This is a wrapper that creates a temporary registry. New code should use
+/// `emit_string_type` with a registry instead.
+#[allow(dead_code)]
+pub(super) fn emit_string_type_legacy(output: &mut String) -> Result<(), CodeGenError> {
+    let mut registry = TypeRegistry::new();
+    register_string_types(&mut registry)?;
+    emit_string_type(&mut registry, output)
 }
 
 /// Emits dummy variables for the LEN() type-sizing pattern.

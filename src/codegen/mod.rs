@@ -65,6 +65,61 @@ impl GeneratedOutput {
     }
 }
 
+/// Context for collecting code generation errors.
+///
+/// This context allows code generation to collect multiple errors instead of
+/// stopping at the first error, providing better user experience.
+pub struct CodeGenContext {
+    /// Collected errors during code generation.
+    errors: Vec<CodeGenError>,
+}
+
+impl CodeGenContext {
+    /// Creates a new empty code generation context.
+    pub fn new() -> Self {
+        Self { errors: Vec::new() }
+    }
+
+    /// Pushes an error to the context.
+    pub fn push_error(&mut self, error: CodeGenError) {
+        self.errors.push(error);
+    }
+
+    /// Checks if any errors have been collected.
+    pub fn has_errors(&self) -> bool {
+        !self.errors.is_empty()
+    }
+
+    /// Gets a reference to the collected errors.
+    pub fn errors(&self) -> &[CodeGenError] {
+        &self.errors
+    }
+
+    /// Consumes the context and returns either the value or the collected errors.
+    pub fn into_result<T>(self, value: T) -> Result<T, Vec<CodeGenError>> {
+        if self.errors.is_empty() {
+            Ok(value)
+        } else {
+            Err(self.errors)
+        }
+    }
+
+    /// Consumes the context and returns the errors, or None if there are no errors.
+    pub fn into_errors(self) -> Option<Vec<CodeGenError>> {
+        if self.errors.is_empty() {
+            None
+        } else {
+            Some(self.errors)
+        }
+    }
+}
+
+impl Default for CodeGenContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Trait for code generation backends.
 ///
 /// This trait defines the interface that all code generation backends must implement.
@@ -79,16 +134,23 @@ impl GeneratedOutput {
 /// - Generating any required runtime library calls
 /// - Producing well-formatted, readable output (where applicable)
 ///
+/// # Error Handling
+///
+/// Backends should collect multiple errors during code generation rather than
+/// stopping at the first error. This provides better user experience by showing
+/// all issues at once.
+///
 /// # Example Implementation
 ///
 /// ```ignore
 /// struct MyBackend;
 ///
 /// impl CodeGenerator for MyBackend {
-///     fn generate(&self, program: &TypedProgram) -> Result<GeneratedOutput, CodeGenError> {
-///         // Transform program to target format
-///         let code = self.emit(program)?;
-///         Ok(GeneratedOutput {
+///     fn generate(&self, program: &TypedProgram) -> Result<GeneratedOutput, Vec<CodeGenError>> {
+///         let mut ctx = CodeGenContext::new();
+///         // Transform program to target format, collecting errors
+///         let code = self.emit(program, &mut ctx)?;
+///         ctx.into_result(GeneratedOutput {
 ///             code,
 ///             format: "MyFormat".to_string(),
 ///             extension: "my".to_string(),
@@ -106,8 +168,8 @@ pub trait CodeGenerator {
     /// # Returns
     ///
     /// * `Ok(GeneratedOutput)` - Successfully generated code
-    /// * `Err(CodeGenError)` - Code generation failed
-    fn generate(&self, program: &TypedProgram) -> Result<GeneratedOutput, CodeGenError>;
+    /// * `Err(Vec<CodeGenError>)` - Code generation failed (may contain multiple errors)
+    fn generate(&self, program: &TypedProgram) -> Result<GeneratedOutput, Vec<CodeGenError>>;
 
     /// Returns the name of this backend for diagnostics.
     fn backend_name(&self) -> &str;
