@@ -786,6 +786,143 @@ mod regression_tests {
         );
     }
 
+    /// Regression: FFI declaration completeness check.
+    /// Bug: Missing qb_dir() declaration caused pointer truncation crash (64-bit pointer
+    /// truncated to 32-bit). Fix: commit 988e3e5 - Added missing declaration.
+    /// This test verifies critical FFI functions are declared in the header.
+    /// Note: Full completeness check would require more sophisticated parsing to avoid
+    /// false positives from variable names and comments in source code.
+    #[test]
+    fn ffi_declaration_completeness() {
+        use std::fs;
+
+        // Get paths
+        // CARGO_MANIFEST_DIR points to the crate root (QB64Fresh/)
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let crate_root = Path::new(manifest_dir);
+        let header_path = crate_root.join("runtime/include/qb64fresh_rt.h");
+
+        // Read header file
+        let header_content =
+            fs::read_to_string(&header_path).expect("Failed to read runtime header file");
+
+        // Extract all declared FFI functions from header
+        // Look for patterns like: "return_type qb_function_name(" or "QbString* qb_function_name("
+        let mut declared_functions = std::collections::HashSet::new();
+
+        // More robust parsing: handle multi-line declarations and various return types
+        let mut in_multiline = false;
+        let mut current_decl = String::new();
+
+        for line in header_content.lines() {
+            let line = line.trim();
+            // Skip comments and preprocessor directives
+            if line.starts_with("//")
+                || line.starts_with("#")
+                || line.starts_with("/*")
+                || line == "*/"
+            {
+                continue;
+            }
+
+            // Handle multi-line declarations
+            if in_multiline {
+                current_decl.push_str(" ");
+                current_decl.push_str(line);
+                if line.contains('(') && line.contains(')') {
+                    // Complete declaration
+                    in_multiline = false;
+                    if let Some(pos) = current_decl.find("qb_") {
+                        if let Some(paren_pos) = current_decl[pos..].find('(') {
+                            let func_part = &current_decl[pos..pos + paren_pos].trim();
+                            // Extract function name
+                            let func_name = if let Some(space_pos) = func_part.rfind(' ') {
+                                &func_part[space_pos + 1..]
+                            } else if func_part.starts_with("qb_") {
+                                func_part
+                            } else {
+                                current_decl.clear();
+                                continue;
+                            };
+
+                            if func_name.starts_with("qb_") {
+                                let name = func_name.strip_prefix("qb_").unwrap_or(func_name);
+                                if name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                                    declared_functions.insert(name.to_string());
+                                }
+                            }
+                        }
+                    }
+                    current_decl.clear();
+                }
+                continue;
+            }
+
+            // Look for function declarations: qb_xxx(
+            if line.contains("qb_") && line.contains('(') {
+                if let Some(pos) = line.find("qb_") {
+                    if let Some(paren_pos) = line[pos..].find('(') {
+                        let func_part = &line[pos..pos + paren_pos].trim();
+                        // Extract function name
+                        let func_name = if let Some(space_pos) = func_part.rfind(' ') {
+                            &func_part[space_pos + 1..]
+                        } else if func_part.starts_with("qb_") {
+                            func_part
+                        } else {
+                            continue;
+                        };
+
+                        if func_name.starts_with("qb_") {
+                            let name = func_name.strip_prefix("qb_").unwrap_or(func_name);
+                            if name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                                declared_functions.insert(name.to_string());
+                            }
+                        }
+                    } else if line.contains("qb_") && !line.contains(')') {
+                        // Multi-line declaration starting
+                        in_multiline = true;
+                        current_decl = line.to_string();
+                    }
+                }
+            }
+        }
+
+        // Verify critical FFI functions that are known to be used are declared
+        // This focuses on functions that return pointers (most critical for truncation bugs)
+        let critical_functions = [
+            "dir",           // The specific bug that was fixed (commit 988e3e5)
+            "string_new",    // Commonly used, returns pointer
+            "string_concat", // Commonly used, returns pointer
+            "string_retain", // Returns pointer
+            "str_from_c",    // Returns pointer
+            "memnew",        // Returns struct with pointer
+            "memimage",      // Returns struct with pointer
+            "memsound",      // Returns struct with pointer
+        ];
+
+        let mut missing_critical = Vec::new();
+        for func in &critical_functions {
+            if !declared_functions.contains(*func) {
+                missing_critical.push(format!("qb_{}()", func));
+            }
+        }
+
+        if !missing_critical.is_empty() {
+            panic!(
+                "Critical FFI functions not declared in header:\n  {}\n\n\
+                 This could cause pointer truncation crashes on 64-bit systems.\n\
+                 Add declarations to runtime/include/qb64fresh_rt.h",
+                missing_critical.join("\n  ")
+            );
+        }
+
+        // Verify that qb_dir is declared (the specific bug that was fixed)
+        assert!(
+            declared_functions.contains("dir"),
+            "qb_dir() must be declared (commit 988e3e5 fix - prevents pointer truncation crash)"
+        );
+    }
+
     /// Regression: String temp pool overflow tracking.
     /// Bug: String temp pool overflowed without proper tracking when main pool was full,
     /// causing 39.8GB memory usage. Fix: commit 5c4d469 - Added overflow tracking.
