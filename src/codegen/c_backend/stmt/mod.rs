@@ -44,7 +44,7 @@ use crate::semantic::typed_ir::{
 use crate::semantic::types::BasicType;
 use crate::writeln_code;
 
-use super::expr::{emit_expr, emit_string_data_access, escape_string};
+use super::expr::{emit_expr, emit_string_data_access, escape_string, unwrap_qb_str_from_c};
 use super::types::{c_identifier, c_type, default_init};
 
 /// Context for the current loop (for EXIT statement handling).
@@ -76,6 +76,13 @@ pub(super) struct StmtEmitter {
     /// Current function's byref STRING parameter names (for EXIT FUNCTION writebacks).
     /// These need to be written back before any return statement.
     pub current_func_byref_strings: Vec<String>,
+    /// Current function's parameter names (for detecting variable shadowing in DIM statements).
+    /// In BASIC, local variables can shadow parameters, but in C this causes compilation errors.
+    /// We need to rename local variables that shadow BYVAL parameters.
+    pub current_func_param_names: std::collections::HashSet<String>,
+    /// Map of variable name renamings (original -> renamed) for variables that shadow parameters.
+    /// When a local variable shadows a parameter, we rename it and track the mapping here.
+    pub variable_renames: HashMap<String, String>,
     /// Global variable names (to avoid re-declaring as locals).
     pub global_var_names: std::collections::HashSet<String>,
     /// Global array variable names (arrays can't be implicitly declared as scalars).
@@ -117,6 +124,8 @@ impl StmtEmitter {
             current_proc: None,
             current_func_ret_var: None,
             current_func_byref_strings: Vec::new(),
+            current_func_param_names: std::collections::HashSet::new(),
+            variable_renames: HashMap::new(),
             global_var_names: std::collections::HashSet::new(),
             global_array_names: std::collections::HashSet::new(),
             shared_global_names: std::collections::HashSet::new(),
@@ -136,6 +145,12 @@ impl StmtEmitter {
         let label = format!("_qb_{}_{}", prefix, self.label_counter);
         self.label_counter += 1;
         label
+    }
+    
+    /// Helper method to emit an expression with variable renamings applied.
+    /// This wraps `emit_expr` and automatically passes the current variable renamings.
+    pub(super) fn emit_expr(&self, expr: &crate::semantic::typed_ir::TypedExpr) -> Result<String, crate::codegen::error::CodeGenError> {
+        super::expr::emit_expr(expr, self.no_shell, &self.variable_renames)
     }
 
     /// Converts a BASIC label to a C label, prefixing with procedure name if in a procedure.
@@ -280,9 +295,19 @@ impl StmtEmitter {
                 value,
             } => {
                 // Target is an lvalue (variable, array element, or field access)
-                let target_code = emit_expr(target, self.no_shell)?;
-                let start_code = emit_expr(start, self.no_shell)?;
-                let value_code = emit_expr(value, self.no_shell)?;
+                let target_code_raw = self.emit_expr(target)?;
+                // For fixed-length strings used with strlen/strncpy, we need the raw char array,
+                // not the qb_str_from_c() wrapped version
+                let target_code = if matches!(
+                    target.basic_type,
+                    crate::semantic::types::BasicType::FixedString(_)
+                ) {
+                    unwrap_qb_str_from_c(&target_code_raw)
+                } else {
+                    target_code_raw
+                };
+                let start_code = self.emit_expr(start)?;
+                let value_code = self.emit_expr(value)?;
 
                 // Check if target is a fixed-length string (char array)
                 // Fixed-length strings need manual character copying, not qb_mid_assign
@@ -292,7 +317,7 @@ impl StmtEmitter {
                 ) {
                     // For fixed-length strings, manually copy characters
                     let len_code = if let Some(len_expr) = length {
-                        emit_expr(len_expr, self.no_shell)?
+                        self.emit_expr(len_expr)?
                     } else {
                         // No length specified - replace rest of string
                         format!("(int32_t)(strlen({}) - ({} - 1))", target_code, start_code)
@@ -318,7 +343,7 @@ impl StmtEmitter {
                     // For dynamic strings (QbString*), use qb_mid_assign
                     // We need to pass its address to qb_mid_assign
                     if let Some(len_expr) = length {
-                        let len_code = emit_expr(len_expr, self.no_shell)?;
+                        let len_code = self.emit_expr(len_expr)?;
                         writeln_code!(
                             output,
                             "{}qb_mid_assign(&({}), {}, {}, {});",
@@ -349,9 +374,9 @@ impl StmtEmitter {
             } => {
                 // ASC(str$, pos) = value sets a single character in a string
                 // We need to pass the target's address to qb_asc_assign
-                let target_code = emit_expr(target, self.no_shell)?;
-                let position_code = emit_expr(position, self.no_shell)?;
-                let value_code = emit_expr(value, self.no_shell)?;
+                let target_code = self.emit_expr(target)?;
+                let position_code = self.emit_expr(position)?;
+                let value_code = self.emit_expr(value)?;
                 writeln_code!(
                     output,
                     "{}qb_asc_assign(&({}), {}, {});",
@@ -376,7 +401,7 @@ impl StmtEmitter {
                 values,
                 newline,
             } => {
-                let format_code = emit_expr(format, self.no_shell)?;
+                let format_code = self.emit_expr(format)?;
                 // Generate code to print each value using the format string
                 // We use a runtime function that handles format string parsing
                 if values.is_empty() {
@@ -392,7 +417,7 @@ impl StmtEmitter {
                     writeln_code!(output, "{}{{", indent)?;
                     writeln_code!(output, "{}    QbPrintValue _pv[{}];", indent, values.len())?;
                     for (i, value) in values.iter().enumerate() {
-                        let value_code = emit_expr(value, self.no_shell)?;
+                        let value_code = self.emit_expr(value)?;
                         match &value.basic_type {
                             BasicType::String => {
                                 writeln_code!(
@@ -476,7 +501,7 @@ impl StmtEmitter {
                         let c_arr = c_identifier(name);
                         let idx_code: Vec<_> = indices
                             .iter()
-                            .map(|e| emit_expr(e, self.no_shell))
+                            .map(|e| self.emit_expr(e))
                             .collect::<Result<_, _>>()?;
                         let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
                         format!("{}[{}]", c_arr, idx)
@@ -490,7 +515,7 @@ impl StmtEmitter {
                         let c_arr = c_identifier(name);
                         let idx_code: Vec<_> = indices
                             .iter()
-                            .map(|e| emit_expr(e, self.no_shell))
+                            .map(|e| self.emit_expr(e))
                             .collect::<Result<_, _>>()?;
                         let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
                         let field_chain = fields.join(".");
@@ -604,7 +629,7 @@ impl StmtEmitter {
 
             TypedStatementKind::End { exit_code } => {
                 if let Some(code) = exit_code {
-                    let code_expr = emit_expr(code, self.no_shell)?;
+                    let code_expr = self.emit_expr(code)?;
                     writeln_code!(output, "{}exit((int){});", indent, code_expr)?;
                 } else {
                     writeln_code!(output, "{}exit(0);", indent)?;
@@ -618,7 +643,7 @@ impl StmtEmitter {
 
             TypedStatementKind::System { exit_code } => {
                 if let Some(code) = exit_code {
-                    let code_expr = emit_expr(code, self.no_shell)?;
+                    let code_expr = self.emit_expr(code)?;
                     writeln_code!(output, "{}exit((int){});", indent, code_expr)?;
                 } else {
                     writeln_code!(output, "{}exit(0);", indent)?;
@@ -627,7 +652,7 @@ impl StmtEmitter {
 
             TypedStatementKind::Sleep { seconds } => {
                 if let Some(secs) = seconds {
-                    let secs_code = emit_expr(secs, self.no_shell)?;
+                    let secs_code = self.emit_expr(secs)?;
                     writeln_code!(output, "{}qb_sleep((int){});", indent, secs_code)?;
                 } else {
                     // No argument - wait for keypress
@@ -640,10 +665,10 @@ impl StmtEmitter {
                 and_mask,
                 xor_mask,
             } => {
-                let port_code = emit_expr(port, self.no_shell)?;
-                let and_code = emit_expr(and_mask, self.no_shell)?;
+                let port_code = self.emit_expr(port)?;
+                let and_code = self.emit_expr(and_mask)?;
                 if let Some(xor) = xor_mask {
-                    let xor_code = emit_expr(xor, self.no_shell)?;
+                    let xor_code = self.emit_expr(xor)?;
                     writeln_code!(
                         output,
                         "{}qb_wait((int){}, (int){}, (int){});",
@@ -664,12 +689,12 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::Delay { seconds } => {
-                let secs_code = emit_expr(seconds, self.no_shell)?;
+                let secs_code = self.emit_expr(seconds)?;
                 writeln_code!(output, "{}qb_delay({});", indent, secs_code)?;
             }
 
             TypedStatementKind::Limit { fps } => {
-                let fps_code = emit_expr(fps, self.no_shell)?;
+                let fps_code = self.emit_expr(fps)?;
                 writeln_code!(output, "{}qb_limit((int){});", indent, fps_code)?;
                 // STRIG event check after _LIMIT (common in game loops)
                 let return_label = self.next_label("strig_ret");
@@ -711,7 +736,7 @@ impl StmtEmitter {
                 let mut temp_counter = 0;
 
                 for (i, arg) in args.iter().enumerate() {
-                    let arg_code = emit_expr(arg, self.no_shell)?;
+                    let arg_code = self.emit_expr(arg)?;
                     // Check if this parameter is byref (and not an array ref which decays to pointer)
                     let is_byref = params
                         .get(i)
@@ -915,7 +940,7 @@ impl StmtEmitter {
             TypedStatementKind::Const { definitions } => {
                 for (name, value, _basic_type) in definitions {
                     let c_name = c_identifier(name);
-                    let value_code = emit_expr(value, self.no_shell)?;
+                    let value_code = self.emit_expr(value)?;
                     writeln_code!(
                         output,
                         "{}const {} {} = {};",
@@ -952,7 +977,7 @@ impl StmtEmitter {
                 // In modern QB64, this is largely a no-op, but we can emit a runtime call
                 // for compatibility with PEEK/POKE/BLOAD/BSAVE.
                 if let Some(seg_expr) = segment {
-                    let seg_code = emit_expr(seg_expr, self.no_shell)?;
+                    let seg_code = self.emit_expr(seg_expr)?;
                     writeln_code!(output, "{}qb_def_seg((int32_t){});", indent, seg_code)?;
                 } else {
                     // DEF SEG without argument resets to default segment
@@ -962,8 +987,8 @@ impl StmtEmitter {
 
             TypedStatementKind::Poke { address, value } => {
                 // POKE writes a byte to memory within the current segment.
-                let addr_code = emit_expr(address, self.no_shell)?;
-                let val_code = emit_expr(value, self.no_shell)?;
+                let addr_code = self.emit_expr(address)?;
+                let val_code = self.emit_expr(value)?;
                 writeln_code!(
                     output,
                     "{}qb_poke((int32_t){}, (uint8_t){});",
@@ -982,9 +1007,9 @@ impl StmtEmitter {
                 // _MEMPUT writes a value to memory at the given offset,
                 // interpreting the value as the specified type.
                 // Generated code: *((type*)((char*)(mem).offset + (offset))) = (value);
-                let mem_code = emit_expr(mem, self.no_shell)?;
-                let offset_code = emit_expr(offset, self.no_shell)?;
-                let value_code = emit_expr(value, self.no_shell)?;
+                let mem_code = self.emit_expr(mem)?;
+                let offset_code = self.emit_expr(offset)?;
+                let value_code = self.emit_expr(value)?;
                 let c_ty = c_type(value_type);
                 writeln_code!(
                     output,
@@ -1006,7 +1031,7 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::Expression(expr) => {
-                let expr_code = emit_expr(expr, self.no_shell)?;
+                let expr_code = self.emit_expr(expr)?;
                 writeln_code!(output, "{}{};", indent, expr_code)?;
             }
 
@@ -1098,8 +1123,8 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::Swap { left, right } => {
-                let left_code = emit_expr(left, self.no_shell)?;
-                let right_code = emit_expr(right, self.no_shell)?;
+                let left_code = self.emit_expr(left)?;
+                let right_code = self.emit_expr(right)?;
                 let temp_var = self.next_label("swap_temp");
 
                 // Fixed-length strings need special handling (C arrays can't be assigned directly)
@@ -1155,7 +1180,7 @@ impl StmtEmitter {
                 if let Some(seed_expr) = seed {
                     // RANDOMIZE expr - seed with specific value
                     // TIMER is just a function call in the expression, no special handling needed
-                    let seed_code = emit_expr(seed_expr, self.no_shell)?;
+                    let seed_code = self.emit_expr(seed_expr)?;
                     writeln_code!(output, "{}qb_randomize((double)({}));", indent, seed_code)?;
                 } else {
                     // RANDOMIZE without arguments - for compatibility, use timer
@@ -1380,22 +1405,22 @@ impl StmtEmitter {
                 // SCREEN [mode][,[colorswitch]][,[apage]][,[vpage]]
                 let mode_code = mode
                     .as_ref()
-                    .map(|e| emit_expr(e, self.no_shell))
+                    .map(|e| self.emit_expr(e))
                     .transpose()?
                     .unwrap_or_else(|| "-1".to_string());
                 let color_code = color_switch
                     .as_ref()
-                    .map(|e| emit_expr(e, self.no_shell))
+                    .map(|e| self.emit_expr(e))
                     .transpose()?
                     .unwrap_or_else(|| "-1".to_string());
                 let apage_code = active_page
                     .as_ref()
-                    .map(|e| emit_expr(e, self.no_shell))
+                    .map(|e| self.emit_expr(e))
                     .transpose()?
                     .unwrap_or_else(|| "-1".to_string());
                 let vpage_code = visual_page
                     .as_ref()
-                    .map(|e| emit_expr(e, self.no_shell))
+                    .map(|e| self.emit_expr(e))
                     .transpose()?
                     .unwrap_or_else(|| "-1".to_string());
                 writeln_code!(
@@ -1411,7 +1436,7 @@ impl StmtEmitter {
 
             TypedStatementKind::Cls { mode } => {
                 if let Some(mode_expr) = mode {
-                    let mode_code = emit_expr(mode_expr, self.no_shell)?;
+                    let mode_code = self.emit_expr(mode_expr)?;
                     writeln_code!(output, "{}qb_gfx_cls_mode((int32_t){});", indent, mode_code)?;
                 } else {
                     writeln_code!(output, "{}qb_gfx_cls();", indent)?;
@@ -1426,19 +1451,19 @@ impl StmtEmitter {
                 // Use -1 as sentinel for "unchanged" - runtime will check this
                 let fg_code = foreground
                     .as_ref()
-                    .map(|e| emit_expr(e, self.no_shell))
+                    .map(|e| self.emit_expr(e))
                     .transpose()?
                     .unwrap_or_else(|| "-1".to_string());
                 let bg_code = background
                     .as_ref()
-                    .map(|e| emit_expr(e, self.no_shell))
+                    .map(|e| self.emit_expr(e))
                     .transpose()?
                     .unwrap_or_else(|| "-1".to_string());
                 // Border is ignored in modern systems (was CGA/EGA text mode only)
                 // We accept it for compatibility but don't use it
                 let _border_code = border
                     .as_ref()
-                    .map(|e| emit_expr(e, self.no_shell))
+                    .map(|e| self.emit_expr(e))
                     .transpose()?;
                 writeln_code!(
                     output,
@@ -1453,12 +1478,12 @@ impl StmtEmitter {
                 // LOCATE with optional parameters - use -1 to indicate "unchanged"
                 let row_code = row
                     .as_ref()
-                    .map(|e| emit_expr(e, self.no_shell))
+                    .map(|e| self.emit_expr(e))
                     .transpose()?
                     .unwrap_or("-1".to_string());
                 let col_code = col
                     .as_ref()
-                    .map(|e| emit_expr(e, self.no_shell))
+                    .map(|e| self.emit_expr(e))
                     .transpose()?
                     .unwrap_or("-1".to_string());
                 writeln_code!(
@@ -1471,11 +1496,11 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::Pset { step, x, y, color } => {
-                let x_code = emit_expr(x, self.no_shell)?;
-                let y_code = emit_expr(y, self.no_shell)?;
+                let x_code = self.emit_expr(x)?;
+                let y_code = self.emit_expr(y)?;
                 let step_int = if *step { 1 } else { 0 };
                 if let Some(c) = color {
-                    let c_code = emit_expr(c, self.no_shell)?;
+                    let c_code = self.emit_expr(c)?;
                     writeln_code!(
                         output,
                         "{}qb_gfx_pset_step((int32_t){}, (int32_t){}, (uint32_t){}, {});",
@@ -1499,8 +1524,8 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::Preset { step, x, y } => {
-                let x_code = emit_expr(x, self.no_shell)?;
-                let y_code = emit_expr(y, self.no_shell)?;
+                let x_code = self.emit_expr(x)?;
+                let y_code = self.emit_expr(y)?;
                 let step_int = if *step { 1 } else { 0 };
                 // PRESET plots in background color - pass 0 (black) by default
                 writeln_code!(
@@ -1523,22 +1548,22 @@ impl StmtEmitter {
                 box_style,
                 style,
             } => {
-                let x2_code = emit_expr(x2, self.no_shell)?;
-                let y2_code = emit_expr(y2, self.no_shell)?;
+                let x2_code = self.emit_expr(x2)?;
+                let y2_code = self.emit_expr(y2)?;
                 let color_code = if let Some(c) = color {
-                    emit_expr(c, self.no_shell)?
+                    self.emit_expr(c)?
                 } else {
                     "0xFFFFFFFF".to_string() // Use current foreground
                 };
 
                 // Handle optional start coordinates (use 0,0 as default for now)
                 let x1_code = if let Some(e) = x1 {
-                    emit_expr(e, self.no_shell)?
+                    self.emit_expr(e)?
                 } else {
                     "0".to_string()
                 };
                 let y1_code = if let Some(e) = y1 {
-                    emit_expr(e, self.no_shell)?
+                    self.emit_expr(e)?
                 } else {
                     "0".to_string()
                 };
@@ -1551,7 +1576,7 @@ impl StmtEmitter {
                 // Only valid with box outlines (B), ignored for filled boxes (BF) and plain lines
                 let style_code = if let Some(s) = style {
                     // Cast to uint16_t to ensure proper type
-                    format!("(uint16_t)({})", emit_expr(s, self.no_shell)?)
+                    format!("(uint16_t)({})", self.emit_expr(s)?)
                 } else {
                     "0xFFFF".to_string() // No style = solid line
                 };
@@ -1613,11 +1638,11 @@ impl StmtEmitter {
                 color,
                 filled,
             } => {
-                let x_code = emit_expr(x, self.no_shell)?;
-                let y_code = emit_expr(y, self.no_shell)?;
-                let r_code = emit_expr(radius, self.no_shell)?;
+                let x_code = self.emit_expr(x)?;
+                let y_code = self.emit_expr(y)?;
+                let r_code = self.emit_expr(radius)?;
                 let color_code = if let Some(c) = color {
-                    emit_expr(c, self.no_shell)?
+                    self.emit_expr(c)?
                 } else {
                     "0xFFFFFFFF".to_string()
                 };
@@ -1643,15 +1668,15 @@ impl StmtEmitter {
                 color,
                 border,
             } => {
-                let x_code = emit_expr(x, self.no_shell)?;
-                let y_code = emit_expr(y, self.no_shell)?;
+                let x_code = self.emit_expr(x)?;
+                let y_code = self.emit_expr(y)?;
                 let color_code = if let Some(c) = color {
-                    emit_expr(c, self.no_shell)?
+                    self.emit_expr(c)?
                 } else {
                     "0xFFFFFFFF".to_string()
                 };
                 let border_code = if let Some(b) = border {
-                    emit_expr(b, self.no_shell)?
+                    self.emit_expr(b)?
                 } else {
                     color_code.clone() // Default border = fill color
                 };
@@ -1685,8 +1710,8 @@ impl StmtEmitter {
                 unicode_value,
                 char_position,
             } => {
-                let unicode_code = emit_expr(unicode_value, self.no_shell)?;
-                let char_code = emit_expr(char_position, self.no_shell)?;
+                let unicode_code = self.emit_expr(unicode_value)?;
+                let char_code = self.emit_expr(char_position)?;
                 writeln_code!(
                     output,
                     "{}qb_mapunicode((int32_t){}, (int32_t){});",
@@ -1708,8 +1733,8 @@ impl StmtEmitter {
             TypedStatementKind::Palette { attribute, color } => {
                 match (attribute, color) {
                     (Some(attr), Some(col)) => {
-                        let attr_code = emit_expr(attr, self.no_shell)?;
-                        let col_code = emit_expr(col, self.no_shell)?;
+                        let attr_code = self.emit_expr(attr)?;
+                        let col_code = self.emit_expr(col)?;
                         writeln_code!(
                             output,
                             "{}qb_gfx_palette((int32_t){}, (uint32_t){});",
@@ -1726,8 +1751,8 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::Pcopy { source, dest } => {
-                let src_code = emit_expr(source, self.no_shell)?;
-                let dst_code = emit_expr(dest, self.no_shell)?;
+                let src_code = self.emit_expr(source)?;
+                let dst_code = self.emit_expr(dest)?;
                 writeln_code!(
                     output,
                     "{}qb_gfx_pcopy((int32_t){}, (int32_t){});",
@@ -1739,9 +1764,9 @@ impl StmtEmitter {
 
             // ==================== Additional Graphics Statements ====================
             TypedStatementKind::Width { columns, rows } => {
-                let cols_code = emit_expr(columns, self.no_shell)?;
+                let cols_code = self.emit_expr(columns)?;
                 if let Some(r) = rows {
-                    let rows_code = emit_expr(r, self.no_shell)?;
+                    let rows_code = self.emit_expr(r)?;
                     writeln_code!(
                         output,
                         "{}qb_gfx_set_width((uint32_t){}, (uint32_t){});",
@@ -1767,18 +1792,18 @@ impl StmtEmitter {
             } => {
                 let screen_int = if *screen { 1 } else { 0 };
                 if let Some(c) = coords {
-                    let x1 = emit_expr(&c.x1, self.no_shell)?;
-                    let y1 = emit_expr(&c.y1, self.no_shell)?;
-                    let x2 = emit_expr(&c.x2, self.no_shell)?;
-                    let y2 = emit_expr(&c.y2, self.no_shell)?;
+                    let x1 = self.emit_expr(&c.x1)?;
+                    let y1 = self.emit_expr(&c.y1)?;
+                    let x2 = self.emit_expr(&c.x2)?;
+                    let y2 = self.emit_expr(&c.y2)?;
                     let fill = fill_color
                         .as_ref()
-                        .map(|e| emit_expr(e, self.no_shell))
+                        .map(|e| self.emit_expr(e))
                         .transpose()?
                         .unwrap_or_else(|| "-1".to_string());
                     let border = border_color
                         .as_ref()
-                        .map(|e| emit_expr(e, self.no_shell))
+                        .map(|e| self.emit_expr(e))
                         .transpose()?
                         .unwrap_or_else(|| "-1".to_string());
                     writeln_code!(
@@ -1801,8 +1826,8 @@ impl StmtEmitter {
 
             TypedStatementKind::ViewPrint { top, bottom } => {
                 if let (Some(t), Some(b)) = (top, bottom) {
-                    let top_code = emit_expr(t, self.no_shell)?;
-                    let bottom_code = emit_expr(b, self.no_shell)?;
+                    let top_code = self.emit_expr(t)?;
+                    let bottom_code = self.emit_expr(b)?;
                     writeln_code!(
                         output,
                         "{}qb_view_print((int32_t){}, (int32_t){});",
@@ -1819,10 +1844,10 @@ impl StmtEmitter {
             TypedStatementKind::WindowCoords { screen, coords } => {
                 let screen_int = if *screen { 1 } else { 0 };
                 if let Some(c) = coords {
-                    let x1 = emit_expr(&c.x1, self.no_shell)?;
-                    let y1 = emit_expr(&c.y1, self.no_shell)?;
-                    let x2 = emit_expr(&c.x2, self.no_shell)?;
-                    let y2 = emit_expr(&c.y2, self.no_shell)?;
+                    let x1 = self.emit_expr(&c.x1)?;
+                    let y1 = self.emit_expr(&c.y1)?;
+                    let x2 = self.emit_expr(&c.x2)?;
+                    let y2 = self.emit_expr(&c.y2)?;
                     writeln_code!(
                         output,
                         "{}qb_gfx_window({}, (double){}, (double){}, (double){}, (double){});",
@@ -1840,7 +1865,7 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::DrawCmd { commands } => {
-                let cmd_code = emit_expr(commands, self.no_shell)?;
+                let cmd_code = self.emit_expr(commands)?;
                 writeln_code!(output, "{}qb_gfx_draw({});", indent, cmd_code)?;
             }
 
@@ -1854,10 +1879,10 @@ impl StmtEmitter {
                 array_name,
                 array_indices,
             } => {
-                let x1_code = emit_expr(x1, self.no_shell)?;
-                let y1_code = emit_expr(y1, self.no_shell)?;
-                let x2_code = emit_expr(x2, self.no_shell)?;
-                let y2_code = emit_expr(y2, self.no_shell)?;
+                let x1_code = self.emit_expr(x1)?;
+                let y1_code = self.emit_expr(y1)?;
+                let x2_code = self.emit_expr(x2)?;
+                let y2_code = self.emit_expr(y2)?;
                 let arr_name = c_identifier(array_name);
 
                 // Calculate array pointer - either base or with offset
@@ -1867,7 +1892,7 @@ impl StmtEmitter {
                     // For multi-dimensional arrays, generate index expression
                     let indices: Vec<String> = array_indices
                         .iter()
-                        .map(|e| emit_expr(e, self.no_shell))
+                        .map(|e| self.emit_expr(e))
                         .collect::<Result<_, _>>()?;
                     format!("&{}[{}]", arr_name, indices.join("]["))
                 };
@@ -1905,8 +1930,8 @@ impl StmtEmitter {
             } => {
                 use crate::ast::PutAction;
 
-                let x_code = emit_expr(x, self.no_shell)?;
-                let y_code = emit_expr(y, self.no_shell)?;
+                let x_code = self.emit_expr(x)?;
+                let y_code = self.emit_expr(y)?;
                 let arr_name = c_identifier(array_name);
 
                 // Calculate array pointer
@@ -1916,7 +1941,7 @@ impl StmtEmitter {
                     // For multi-dimensional arrays, generate index expression
                     let indices: Vec<String> = array_indices
                         .iter()
-                        .map(|e| emit_expr(e, self.no_shell))
+                        .map(|e| self.emit_expr(e))
                         .collect::<Result<_, _>>()?;
                     format!("&{}[{}]", arr_name, indices.join("]["))
                 };
@@ -1932,7 +1957,7 @@ impl StmtEmitter {
 
                 // QB64 extension: _CLIP with optional transparent color
                 let trans_code = if let Some(tc) = transparent_color {
-                    emit_expr(tc, self.no_shell)?
+                    self.emit_expr(tc)?
                 } else {
                     "-1".to_string() // No transparent color
                 };
@@ -1968,7 +1993,7 @@ impl StmtEmitter {
 
             // ==================== QB64 Graphics Extensions ====================
             TypedStatementKind::FreeImage { handle } => {
-                let h_code = emit_expr(handle, self.no_shell)?;
+                let h_code = self.emit_expr(handle)?;
                 writeln_code!(output, "{}qb_gfx_freeimage((int32_t){});", indent, h_code)?;
             }
 
@@ -1982,12 +2007,12 @@ impl StmtEmitter {
                 // Generate _PUTIMAGE call with all optional parameters
                 let src_handle = source
                     .as_ref()
-                    .map(|e| emit_expr(e, self.no_shell))
+                    .map(|e| self.emit_expr(e))
                     .transpose()?
                     .unwrap_or_else(|| "-1".to_string());
                 let dst_handle = dest
                     .as_ref()
-                    .map(|e| emit_expr(e, self.no_shell))
+                    .map(|e| self.emit_expr(e))
                     .transpose()?
                     .unwrap_or_else(|| "-1".to_string());
 
@@ -1999,14 +2024,14 @@ impl StmtEmitter {
                 };
 
                 if let (Some(dc), Some(sc)) = (dest_coords, source_coords) {
-                    let dx1 = emit_expr(&dc.x1, self.no_shell)?;
-                    let dy1 = emit_expr(&dc.y1, self.no_shell)?;
-                    let dx2 = emit_expr(&dc.x2, self.no_shell)?;
-                    let dy2 = emit_expr(&dc.y2, self.no_shell)?;
-                    let sx1 = emit_expr(&sc.x1, self.no_shell)?;
-                    let sy1 = emit_expr(&sc.y1, self.no_shell)?;
-                    let sx2 = emit_expr(&sc.x2, self.no_shell)?;
-                    let sy2 = emit_expr(&sc.y2, self.no_shell)?;
+                    let dx1 = self.emit_expr(&dc.x1)?;
+                    let dy1 = self.emit_expr(&dc.y1)?;
+                    let dx2 = self.emit_expr(&dc.x2)?;
+                    let dy2 = self.emit_expr(&dc.y2)?;
+                    let sx1 = self.emit_expr(&sc.x1)?;
+                    let sy1 = self.emit_expr(&sc.y1)?;
+                    let sx2 = self.emit_expr(&sc.x2)?;
+                    let sy2 = self.emit_expr(&sc.y2)?;
                     writeln_code!(
                         output,
                         "{}qb_gfx_putimage_full((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, {});",
@@ -2024,10 +2049,10 @@ impl StmtEmitter {
                         scale_code
                     )?;
                 } else if let Some(dc) = dest_coords {
-                    let dx1 = emit_expr(&dc.x1, self.no_shell)?;
-                    let dy1 = emit_expr(&dc.y1, self.no_shell)?;
-                    let dx2 = emit_expr(&dc.x2, self.no_shell)?;
-                    let dy2 = emit_expr(&dc.y2, self.no_shell)?;
+                    let dx1 = self.emit_expr(&dc.x1)?;
+                    let dy1 = self.emit_expr(&dc.y1)?;
+                    let dx2 = self.emit_expr(&dc.x2)?;
+                    let dy2 = self.emit_expr(&dc.y2)?;
                     writeln_code!(
                         output,
                         "{}qb_gfx_putimage((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, {});",
@@ -2053,26 +2078,28 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::SourceImg { handle } => {
-                let h_code = emit_expr(handle, self.no_shell)?;
+                let h_code = self.emit_expr(handle)?;
                 writeln_code!(output, "{}qb_gfx_source((int32_t){});", indent, h_code)?;
             }
 
             TypedStatementKind::DestImg { handle } => {
-                let h_code = emit_expr(handle, self.no_shell)?;
+                let h_code = self.emit_expr(handle)?;
                 writeln_code!(output, "{}qb_gfx_dest((int32_t){});", indent, h_code)?;
             }
 
             TypedStatementKind::PrintStringStmt { x, y, text } => {
-                let x_code = emit_expr(x, self.no_shell)?;
-                let y_code = emit_expr(y, self.no_shell)?;
-                let text_code = emit_expr(text, self.no_shell)?;
+                let x_code = self.emit_expr(x)?;
+                let y_code = self.emit_expr(y)?;
+                let text_code = self.emit_expr(text)?;
+                // qb_gfx_printstring expects const char*, not qb_string*
+                let text_data = emit_string_data_access(text, &text_code, self.runtime_mode);
                 writeln_code!(
                     output,
                     "{}qb_gfx_printstring((int32_t){}, (int32_t){}, {});",
                     indent,
                     x_code,
                     y_code,
-                    text_code
+                    text_data
                 )?;
             }
 
@@ -2090,8 +2117,8 @@ impl StmtEmitter {
                 frequency,
                 duration,
             } => {
-                let freq_code = emit_expr(frequency, self.no_shell)?;
-                let dur_code = emit_expr(duration, self.no_shell)?;
+                let freq_code = self.emit_expr(frequency)?;
+                let dur_code = self.emit_expr(duration)?;
                 writeln_code!(
                     output,
                     "{}qb_sound((double){}, (double){});",
@@ -2102,38 +2129,38 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::PlayStmt { commands } => {
-                let cmd_code = emit_expr(commands, self.no_shell)?;
+                let cmd_code = self.emit_expr(commands)?;
                 writeln_code!(output, "{}qb_play({});", indent, cmd_code)?;
             }
 
             TypedStatementKind::SndClose { handle } => {
-                let h_code = emit_expr(handle, self.no_shell)?;
+                let h_code = self.emit_expr(handle)?;
                 writeln_code!(output, "{}qb_sndclose((int32_t){});", indent, h_code)?;
             }
 
             TypedStatementKind::SndPlay { handle } => {
-                let h_code = emit_expr(handle, self.no_shell)?;
+                let h_code = self.emit_expr(handle)?;
                 writeln_code!(output, "{}qb_sndplay((int32_t){});", indent, h_code)?;
             }
 
             TypedStatementKind::SndStop { handle } => {
-                let h_code = emit_expr(handle, self.no_shell)?;
+                let h_code = self.emit_expr(handle)?;
                 writeln_code!(output, "{}qb_sndstop((int32_t){});", indent, h_code)?;
             }
 
             TypedStatementKind::SndPause { handle } => {
-                let h_code = emit_expr(handle, self.no_shell)?;
+                let h_code = self.emit_expr(handle)?;
                 writeln_code!(output, "{}qb_sndpause((int32_t){});", indent, h_code)?;
             }
 
             TypedStatementKind::SndLoop { handle } => {
-                let h_code = emit_expr(handle, self.no_shell)?;
+                let h_code = self.emit_expr(handle)?;
                 writeln_code!(output, "{}qb_sndloop((int32_t){});", indent, h_code)?;
             }
 
             TypedStatementKind::SndVol { handle, volume } => {
-                let h_code = emit_expr(handle, self.no_shell)?;
-                let vol_code = emit_expr(volume, self.no_shell)?;
+                let h_code = self.emit_expr(handle)?;
+                let vol_code = self.emit_expr(volume)?;
                 writeln_code!(
                     output,
                     "{}qb_sndvol((int32_t){}, (double){});",
@@ -2150,21 +2177,21 @@ impl StmtEmitter {
                 z,
                 channel,
             } => {
-                let h_code = emit_expr(handle, self.no_shell)?;
+                let h_code = self.emit_expr(handle)?;
                 let x_code = match x {
-                    Some(e) => emit_expr(e, self.no_shell)?,
+                    Some(e) => self.emit_expr(e)?,
                     None => "0.0".to_string(),
                 };
                 let y_code = match y {
-                    Some(e) => emit_expr(e, self.no_shell)?,
+                    Some(e) => self.emit_expr(e)?,
                     None => "0.0".to_string(),
                 };
                 let z_code = match z {
-                    Some(e) => emit_expr(e, self.no_shell)?,
+                    Some(e) => self.emit_expr(e)?,
                     None => "0.0".to_string(),
                 };
                 let ch_code = match channel {
-                    Some(e) => emit_expr(e, self.no_shell)?,
+                    Some(e) => self.emit_expr(e)?,
                     None => "0".to_string(),
                 };
                 writeln_code!(
@@ -2180,9 +2207,9 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::SndRaw { left, right } => {
-                let left_code = emit_expr(left, self.no_shell)?;
+                let left_code = self.emit_expr(left)?;
                 if let Some(r) = right {
-                    let right_code = emit_expr(r, self.no_shell)?;
+                    let right_code = self.emit_expr(r)?;
                     writeln_code!(
                         output,
                         "{}qb_sndraw_stereo((double){}, (double){});",
@@ -2202,25 +2229,25 @@ impl StmtEmitter {
                 y,
                 z,
             } => {
-                let filename_code = emit_expr(filename, self.no_shell)?;
+                let filename_code = self.emit_expr(filename)?;
                 let volume_code = volume
                     .as_ref()
-                    .map(|e| emit_expr(e, self.no_shell))
+                    .map(|e| self.emit_expr(e))
                     .transpose()?
                     .unwrap_or_else(|| "1.0".to_string());
                 let x_code = x
                     .as_ref()
-                    .map(|e| emit_expr(e, self.no_shell))
+                    .map(|e| self.emit_expr(e))
                     .transpose()?
                     .unwrap_or_else(|| "0.0".to_string());
                 let y_code = y
                     .as_ref()
-                    .map(|e| emit_expr(e, self.no_shell))
+                    .map(|e| self.emit_expr(e))
                     .transpose()?
                     .unwrap_or_else(|| "0.0".to_string());
                 let z_code = z
                     .as_ref()
-                    .map(|e| emit_expr(e, self.no_shell))
+                    .map(|e| self.emit_expr(e))
                     .transpose()?
                     .unwrap_or_else(|| "0.0".to_string());
                 let filename_access =
@@ -2238,10 +2265,10 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::SndPlayCopy { handle, volume } => {
-                let handle_code = emit_expr(handle, self.no_shell)?;
+                let handle_code = self.emit_expr(handle)?;
                 let volume_code = volume
                     .as_ref()
-                    .map(|e| emit_expr(e, self.no_shell))
+                    .map(|e| self.emit_expr(e))
                     .transpose()?
                     .unwrap_or_else(|| "1.0".to_string());
                 writeln_code!(
@@ -2254,8 +2281,8 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::SndSetPos { handle, position } => {
-                let handle_code = emit_expr(handle, self.no_shell)?;
-                let position_code = emit_expr(position, self.no_shell)?;
+                let handle_code = self.emit_expr(handle)?;
+                let position_code = self.emit_expr(position)?;
                 writeln_code!(
                     output,
                     "{}qb_sndsetpos((int32_t){}, (double){});",
@@ -2267,15 +2294,15 @@ impl StmtEmitter {
 
             // ==================== System Integration Statements ====================
             TypedStatementKind::Kill { filename } => {
-                let filename_code = emit_expr(filename, self.no_shell)?;
+                let filename_code = self.emit_expr(filename)?;
                 let filename_access =
                     emit_string_data_access(filename, &filename_code, self.runtime_mode);
                 writeln_code!(output, "{}qb_file_kill({});", indent, filename_access)?;
             }
 
             TypedStatementKind::Rename { old_name, new_name } => {
-                let old_code = emit_expr(old_name, self.no_shell)?;
-                let new_code = emit_expr(new_name, self.no_shell)?;
+                let old_code = self.emit_expr(old_name)?;
+                let new_code = self.emit_expr(new_name)?;
                 let old_access = emit_string_data_access(old_name, &old_code, self.runtime_mode);
                 let new_access = emit_string_data_access(new_name, &new_code, self.runtime_mode);
                 writeln_code!(
@@ -2288,25 +2315,25 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::Mkdir { path } => {
-                let path_code = emit_expr(path, self.no_shell)?;
+                let path_code = self.emit_expr(path)?;
                 let path_access = emit_string_data_access(path, &path_code, self.runtime_mode);
                 writeln_code!(output, "{}qb_mkdir({});", indent, path_access)?;
             }
 
             TypedStatementKind::Rmdir { path } => {
-                let path_code = emit_expr(path, self.no_shell)?;
+                let path_code = self.emit_expr(path)?;
                 let path_access = emit_string_data_access(path, &path_code, self.runtime_mode);
                 writeln_code!(output, "{}qb_rmdir({});", indent, path_access)?;
             }
 
             TypedStatementKind::Chdir { path } => {
-                let path_code = emit_expr(path, self.no_shell)?;
+                let path_code = self.emit_expr(path)?;
                 let path_access = emit_string_data_access(path, &path_code, self.runtime_mode);
                 writeln_code!(output, "{}qb_chdir({});", indent, path_access)?;
             }
 
             TypedStatementKind::Environ { env_string } => {
-                let env_string_code = emit_expr(env_string, self.no_shell)?;
+                let env_string_code = self.emit_expr(env_string)?;
                 writeln_code!(output, "{}qb_sub_environ({});", indent, env_string_code)?;
             }
 
@@ -2317,8 +2344,10 @@ impl StmtEmitter {
                     );
                 }
                 if let Some(cmd) = command {
-                    let cmd_code = emit_expr(cmd, self.no_shell)?;
-                    writeln_code!(output, "{}qb_shell({});", indent, cmd_code)?;
+                    let cmd_code = self.emit_expr(cmd)?;
+                    // qb_shell expects const char*, not qb_string*
+                    let cmd_data = emit_string_data_access(cmd, &cmd_code, self.runtime_mode);
+                    writeln_code!(output, "{}qb_shell({});", indent, cmd_data)?;
                 } else {
                     writeln_code!(output, "{}qb_shell(NULL);", indent)?;
                 }
@@ -2330,16 +2359,16 @@ impl StmtEmitter {
                         CodeGenError::new(CodeGenErrorKind::ShellDisabled).with_span(stmt.span)
                     );
                 }
-                let cmd_code = emit_expr(command, self.no_shell)?;
-                writeln_code!(output, "{}qb_shell_hide({});", indent, cmd_code)?;
+                let cmd_code = self.emit_expr(command)?;
+                writeln_code!(output, "{}qb_shellhide({});", indent, cmd_code)?;
             }
 
             TypedStatementKind::Bload { filename, address } => {
-                let filename_code = emit_expr(filename, self.no_shell)?;
+                let filename_code = self.emit_expr(filename)?;
                 let filename_access =
                     emit_string_data_access(filename, &filename_code, self.runtime_mode);
                 if let Some(addr) = address {
-                    let addr_code = emit_expr(addr, self.no_shell)?;
+                    let addr_code = self.emit_expr(addr)?;
                     writeln_code!(
                         output,
                         "{}qb_bload({}, (void*)(intptr_t){});",
@@ -2357,11 +2386,11 @@ impl StmtEmitter {
                 address,
                 length,
             } => {
-                let filename_code = emit_expr(filename, self.no_shell)?;
+                let filename_code = self.emit_expr(filename)?;
                 let filename_access =
                     emit_string_data_access(filename, &filename_code, self.runtime_mode);
-                let addr_code = emit_expr(address, self.no_shell)?;
-                let len_code = emit_expr(length, self.no_shell)?;
+                let addr_code = self.emit_expr(address)?;
+                let len_code = self.emit_expr(length)?;
                 writeln_code!(
                     output,
                     "{}qb_bsave({}, (void*)(intptr_t){}, (size_t){});",
@@ -2374,7 +2403,7 @@ impl StmtEmitter {
 
             TypedStatementKind::Setmem { bytes } => {
                 // SETMEM is a no-op in modern systems - just evaluate the expression
-                let bytes_code = emit_expr(bytes, self.no_shell)?;
+                let bytes_code = self.emit_expr(bytes)?;
                 writeln_code!(
                     output,
                     "{}(void){}; /* SETMEM: no-op in flat memory model */",
@@ -2385,7 +2414,7 @@ impl StmtEmitter {
 
             TypedStatementKind::CallAbsolute { args: _, address } => {
                 // CALL ABSOLUTE is a legacy statement that cannot be safely implemented
-                let addr_code = emit_expr(address, self.no_shell)?;
+                let addr_code = self.emit_expr(address)?;
                 writeln_code!(
                     output,
                     "{}fprintf(stderr, \"Warning: CALL ABSOLUTE at address %ld not supported in flat memory model\\n\", (long){});",
@@ -2405,8 +2434,8 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::MouseMoveStmt { x, y } => {
-                let x_code = emit_expr(x, self.no_shell)?;
-                let y_code = emit_expr(y, self.no_shell)?;
+                let x_code = self.emit_expr(x)?;
+                let y_code = self.emit_expr(y)?;
                 writeln_code!(
                     output,
                     "{}qb_mouse_move((int32_t){}, (int32_t){});",
@@ -2418,7 +2447,7 @@ impl StmtEmitter {
 
             // ==================== Clipboard Statement ====================
             TypedStatementKind::ClipboardSet { text } => {
-                let text_code = emit_expr(text, self.no_shell)?;
+                let text_code = self.emit_expr(text)?;
                 let text_access = emit_string_data_access(text, &text_code, self.runtime_mode);
                 writeln_code!(output, "{}qb_clipboard_set({});", indent, text_access)?;
             }
@@ -2470,7 +2499,7 @@ impl StmtEmitter {
             TypedStatementKind::Run { target } => {
                 // RUN restarts the program or runs another - stub implementation
                 if let Some(t) = target {
-                    let target_code = emit_expr(t, self.no_shell)?;
+                    let target_code = self.emit_expr(t)?;
                     writeln_code!(output, "{}qb_run({});", indent, target_code)?;
                 } else {
                     writeln_code!(output, "{}qb_run(NULL);", indent)?;
@@ -2478,7 +2507,7 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::Chain { filename } => {
-                let filename_code = emit_expr(filename, self.no_shell)?;
+                let filename_code = self.emit_expr(filename)?;
                 writeln_code!(output, "{}qb_chain({});", indent, filename_code)?;
             }
 
@@ -2493,7 +2522,7 @@ impl StmtEmitter {
             TypedStatementKind::Lprint { values, newline } => {
                 // Print to printer (LPT1) - similar to PRINT but to a different stream
                 for item in values {
-                    let expr_code = emit_expr(&item.expr, self.no_shell)?;
+                    let expr_code = self.emit_expr(&item.expr)?;
                     writeln_code!(output, "{}qb_lprint({});", indent, expr_code)?;
                     if item.separator == Some(PrintSeparator::Comma) {
                         writeln_code!(output, "{}qb_lprint_tab();", indent)?;
@@ -2506,7 +2535,7 @@ impl StmtEmitter {
 
             TypedStatementKind::FilesStmt { filespec } => {
                 if let Some(spec) = filespec {
-                    let spec_code = emit_expr(spec, self.no_shell)?;
+                    let spec_code = self.emit_expr(spec)?;
                     writeln_code!(output, "{}qb_files({});", indent, spec_code)?;
                 } else {
                     writeln_code!(output, "{}qb_files(NULL);", indent)?;
@@ -2514,7 +2543,7 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::FieldStmt { file_num, fields } => {
-                let file_num_code = emit_expr(file_num, self.no_shell)?;
+                let file_num_code = self.emit_expr(file_num)?;
                 writeln_code!(
                     output,
                     "{}qb_field_start((int32_t)({}));",
@@ -2522,7 +2551,7 @@ impl StmtEmitter {
                     file_num_code
                 )?;
                 for field in fields {
-                    let width_code = emit_expr(&field.width, self.no_shell)?;
+                    let width_code = self.emit_expr(&field.width)?;
                     writeln_code!(
                         output,
                         "{}qb_field_add((int32_t)({}), &{});",
@@ -2534,19 +2563,19 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::Lset { variable, value } => {
-                let value_code = emit_expr(value, self.no_shell)?;
+                let value_code = self.emit_expr(value)?;
                 let c_var = c_identifier(variable);
                 writeln_code!(output, "{}qb_lset(&{}, {});", indent, c_var, value_code)?;
             }
 
             TypedStatementKind::Rset { variable, value } => {
-                let value_code = emit_expr(value, self.no_shell)?;
+                let value_code = self.emit_expr(value)?;
                 let c_var = c_identifier(variable);
                 writeln_code!(output, "{}qb_rset(&{}, {});", indent, c_var, value_code)?;
             }
 
             TypedStatementKind::OnKey { key_num, target } => {
-                let key_code = emit_expr(key_num, self.no_shell)?;
+                let key_code = self.emit_expr(key_num)?;
                 writeln_code!(
                     output,
                     "{}qb_on_key((int32_t)({}), &&{});",
@@ -2557,7 +2586,7 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::KeyControl { key_num, mode } => {
-                let key_code = emit_expr(key_num, self.no_shell)?;
+                let key_code = self.emit_expr(key_num)?;
                 let mode_code = match mode {
                     EventControlMode::On => "1",
                     EventControlMode::Off => "0",
@@ -2573,7 +2602,7 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::OnTimer { interval, target } => {
-                let interval_code = emit_expr(interval, self.no_shell)?;
+                let interval_code = self.emit_expr(interval)?;
                 writeln_code!(
                     output,
                     "{}qb_on_timer({}, &&{});",
@@ -2593,7 +2622,7 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::StrigControl { button_num, mode } => {
-                let btn_code = emit_expr(button_num, self.no_shell)?;
+                let btn_code = self.emit_expr(button_num)?;
                 let mode_code = match mode {
                     EventControlMode::On => "1",
                     EventControlMode::Off => "0",
@@ -2614,7 +2643,7 @@ impl StmtEmitter {
                 let event_id = self.strig_event_counter;
                 self.strig_handlers.push((event_id, target.clone()));
 
-                let btn_code = emit_expr(button_num, self.no_shell)?;
+                let btn_code = self.emit_expr(button_num)?;
                 writeln_code!(
                     output,
                     "{}qb_on_strig((int32_t)({}), {});",
@@ -2625,7 +2654,7 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::OnCom { port_num, target } => {
-                let port_code = emit_expr(port_num, self.no_shell)?;
+                let port_code = self.emit_expr(port_num)?;
                 writeln_code!(
                     output,
                     "{}qb_on_com((int32_t)({}), &&{});",
@@ -2636,7 +2665,7 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::ComControl { port_num, mode } => {
-                let port_code = emit_expr(port_num, self.no_shell)?;
+                let port_code = self.emit_expr(port_num)?;
                 let mode_code = match mode {
                     EventControlMode::On => "1",
                     EventControlMode::Off => "0",
@@ -2682,7 +2711,7 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::OnSignal { signal_num, target } => {
-                let signal_code = emit_expr(signal_num, self.no_shell)?;
+                let signal_code = self.emit_expr(signal_num)?;
                 writeln_code!(
                     output,
                     "{}qb_on_signal((int32_t)({}), &&{});",
@@ -2693,7 +2722,7 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::SignalControl { signal_num, mode } => {
-                let signal_code = emit_expr(signal_num, self.no_shell)?;
+                let signal_code = self.emit_expr(signal_num)?;
                 let mode_code = match mode {
                     EventControlMode::On => "1",
                     EventControlMode::Off => "0",
@@ -2709,8 +2738,8 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::OutPort { port, value } => {
-                let port_code = emit_expr(port, self.no_shell)?;
-                let value_code = emit_expr(value, self.no_shell)?;
+                let port_code = self.emit_expr(port)?;
+                let value_code = self.emit_expr(value)?;
                 writeln_code!(
                     output,
                     "{}qb_out((int32_t)({}), (int32_t)({}));",
@@ -2725,7 +2754,7 @@ impl StmtEmitter {
                 in_regs,
                 out_regs,
             } => {
-                let int_code = emit_expr(int_num, self.no_shell)?;
+                let int_code = self.emit_expr(int_num)?;
                 writeln_code!(
                     output,
                     "{}qb_interrupt((int32_t)({}), &{}, &{});",
@@ -2741,7 +2770,7 @@ impl StmtEmitter {
                 in_regs,
                 out_regs,
             } => {
-                let int_code = emit_expr(int_num, self.no_shell)?;
+                let int_code = self.emit_expr(int_num)?;
                 writeln_code!(
                     output,
                     "{}qb_interruptx((int32_t)({}), &{}, &{});",
@@ -2756,8 +2785,8 @@ impl StmtEmitter {
                 file_num,
                 control_string,
             } => {
-                let file_code = emit_expr(file_num, self.no_shell)?;
-                let string_code = emit_expr(control_string, self.no_shell)?;
+                let file_code = self.emit_expr(file_num)?;
+                let string_code = self.emit_expr(control_string)?;
                 writeln_code!(
                     output,
                     "{}qb_ioctl((int32_t)({}), {});",
@@ -2773,7 +2802,7 @@ impl StmtEmitter {
 
             TypedStatementKind::ClearStmt { stack_size } => {
                 if let Some(size) = stack_size {
-                    let size_code = emit_expr(size, self.no_shell)?;
+                    let size_code = self.emit_expr(size)?;
                     writeln_code!(output, "{}qb_clear((int32_t)({}));", indent, size_code)?;
                 } else {
                     writeln_code!(output, "{}qb_clear(0);", indent)?;
@@ -2786,7 +2815,7 @@ impl StmtEmitter {
 
             // Window/Desktop statements (QB64)
             TypedStatementKind::TitleStmt { title } => {
-                let title_code = emit_expr(title, self.no_shell)?;
+                let title_code = self.emit_expr(title)?;
                 writeln_code!(output, "{}qb_title({});", indent, title_code)?;
             }
 
@@ -2795,11 +2824,11 @@ impl StmtEmitter {
                     writeln_code!(output, "{}qb_screenmove_center();", indent)?;
                 } else {
                     let x_code = match x {
-                        Some(e) => emit_expr(e, self.no_shell)?,
+                        Some(e) => self.emit_expr(e)?,
                         None => "0".to_string(),
                     };
                     let y_code = match y {
-                        Some(e) => emit_expr(e, self.no_shell)?,
+                        Some(e) => self.emit_expr(e)?,
                         None => "0".to_string(),
                     };
                     writeln_code!(
@@ -2837,7 +2866,7 @@ impl StmtEmitter {
 
             TypedStatementKind::IconStmt { handle } => {
                 if let Some(h) = handle {
-                    let handle_code = emit_expr(h, self.no_shell)?;
+                    let handle_code = self.emit_expr(h)?;
                     writeln_code!(output, "{}qb_icon((int32_t)({}));", indent, handle_code)?;
                 } else {
                     writeln_code!(output, "{}qb_icon(0);", indent)?;
@@ -2853,7 +2882,7 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::ConsoleTitleStmt { title } => {
-                let title_code = emit_expr(title, self.no_shell)?;
+                let title_code = self.emit_expr(title)?;
                 writeln_code!(output, "{}qb_consoletitle({});", indent, title_code)?;
             }
 
@@ -2867,9 +2896,9 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::AssertStmt { condition, message } => {
-                let cond_code = emit_expr(condition, self.no_shell)?;
+                let cond_code = self.emit_expr(condition)?;
                 if let Some(msg) = message {
-                    let msg_code = emit_expr(msg, self.no_shell)?;
+                    let msg_code = self.emit_expr(msg)?;
                     writeln_code!(output, "{}qb_assert({}, {});", indent, cond_code, msg_code)?;
                 } else {
                     writeln_code!(output, "{}qb_assert({}, NULL);", indent, cond_code)?;
