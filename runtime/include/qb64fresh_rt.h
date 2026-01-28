@@ -251,6 +251,9 @@ int64_t qb_lof(int32_t fnum);
 int64_t qb_loc(int32_t fnum);
 int32_t qb_freefile(void);
 
+/* System/shell functions */
+int32_t qb_shell(const char* command);  /* SHELL statement - execute command */
+
 /* FIELD statement support */
 void qb_field_start(int32_t fnum);
 void qb_field_add(int32_t width, QbString** var);
@@ -326,6 +329,12 @@ int32_t qb_messagebox_ex(const char* title, const char* message, int32_t buttons
 int32_t qb_stick(int32_t axis);
 int32_t qb_strig(int32_t button);
 int32_t qb_strig2(int32_t button, int32_t controller);  /* QB64 extension */
+
+/* STRIG event handling */
+void qb_on_strig(int32_t button_num, uint32_t event_id);  /* ON STRIG statement */
+void qb_strig_control(int32_t button_num, int32_t mode);   /* STRIG(n) ON|OFF|STOP */
+uint32_t qb_strig_check_event(void);  /* Check for pending STRIG event, returns event_id or 0 */
+void qb_strig_event_done(void);  /* Mark STRIG event as handled */
 
 /* QB64 input device extensions */
 int32_t qb_devices(void);

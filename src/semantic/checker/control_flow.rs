@@ -251,36 +251,47 @@ impl<'a> TypeChecker<'a> {
         });
 
         // Determine loop variable type
-        let var_type = if let Some(sym) = self.symbols.lookup_symbol(variable) {
-            // Variable exists - use existing type
-            sym.basic_type.clone()
-        } else {
-            // Infer type from start and end expressions
+        // FOR loop variables MUST be numeric, regardless of any previous declaration
+        let var_type = {
+            // Infer type from start and end expressions (must be numeric)
             let t = typed_start
                 .basic_type
                 .common_type(&typed_end.basic_type)
                 .unwrap_or(BasicType::Single);
+            
+            // Ensure the type is numeric (FOR loops require numeric variables)
+            let numeric_type = if t.is_numeric() {
+                t
+            } else {
+                // If start/end aren't numeric, default to Single but this is already an error above
+                BasicType::Single
+            };
+            
+            // Check if variable already exists with a different (non-numeric) type
+            if let Some(sym) = self.symbols.lookup_symbol(variable) {
+                if !sym.basic_type.is_numeric() {
+                    // Variable exists but is not numeric - this is an error
+                    // FOR loop variables must be numeric
+                    self.errors.push(SemanticError::TypeMismatch {
+                        expected: "numeric".to_string(),
+                        found: sym.basic_type.to_string(),
+                        span,
+                    });
+                }
+            }
+            
+            // Override the symbol table entry to ensure the loop variable is numeric
+            // This shadows any previous declaration within the loop scope
             let symbol = Symbol {
                 name: variable.to_string(),
                 kind: SymbolKind::Variable,
-                basic_type: t.clone(),
+                basic_type: numeric_type.clone(),
                 span,
                 is_mutable: true,
             };
-            // Should never fail since we checked lookup_symbol, but handle it
-            if let Err(dup) = self.symbols.define_symbol(symbol) {
-                let (existing, _) = *dup;
-                // Type conflict - variable was defined elsewhere
-                self.errors.push(SemanticError::DuplicateVariable {
-                    name: variable.to_string(),
-                    original_span: existing.span,
-                    duplicate_span: span,
-                });
-                // Use existing type to avoid cascading errors
-                existing.basic_type.clone()
-            } else {
-                t
-            }
+            self.symbols.update_or_define_symbol(symbol);
+            
+            numeric_type
         };
 
         // Check body with increased FOR depth

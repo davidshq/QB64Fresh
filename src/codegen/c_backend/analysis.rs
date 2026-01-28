@@ -245,7 +245,7 @@ pub(super) fn collect_globals(
                     if !declared_vars.contains(&c_name) {
                         let c_ty = c_type(&value_expr.basic_type);
                         // Try to evaluate as a constant expression
-                        let value_code = super::expr::emit_expr(value_expr, false)
+                        let value_code = super::expr::emit_expr(value_expr, false, &std::collections::HashMap::new())
                             .unwrap_or_else(|_| "0".to_string());
 
                         // For string constants, we can't use function calls as initializers

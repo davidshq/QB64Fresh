@@ -55,8 +55,10 @@ name = "compiler_benchmarks"
 harness = false
 
 [profile.release]
-lto = true
-codegen-units = 1
+# LTO disabled for faster builds during rapid prototyping
+# Re-enable for production releases: lto = true, codegen-units = 1
+lto = false
+codegen-units = 16
 
 [[bin]]
 name = "qb64fresh"

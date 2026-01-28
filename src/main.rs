@@ -7,7 +7,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use qb64fresh::codegen::{CBackend, CodeGenerator, RuntimeMode};
-use qb64fresh::lexer::{TokenKind, lex};
+use qb64fresh::lexer::{TokenKind, lex, lex_with_progress};
 use qb64fresh::parser::Parser;
 use qb64fresh::preprocessor::preprocess;
 use qb64fresh::semantic::SemanticAnalyzer;
@@ -139,7 +139,23 @@ fn main() {
     }
 
     // Lexer phase
-    let tokens = lex(&source);
+    if args.verbose {
+        eprintln!("[1/4] Lexing... (source: {} bytes)", source.len());
+        // Flush stderr to ensure message appears immediately
+        use std::io::Write;
+        let _ = std::io::stderr().flush();
+    }
+    let tokens = if args.verbose && source.len() > 100_000 {
+        // Use progress reporting for large files
+        lex_with_progress(&source, true)
+    } else {
+        lex(&source)
+    };
+    if args.verbose {
+        eprintln!("\r[1/4] Lexing complete: {} tokens", tokens.len());
+        use std::io::Write;
+        let _ = std::io::stderr().flush();
+    }
 
     if args.tokens {
         // Print tokens for debugging
@@ -164,6 +180,9 @@ fn main() {
     }
 
     // Parser phase
+    if args.verbose {
+        eprintln!("[2/4] Parsing...");
+    }
     let mut parser = Parser::new(&tokens);
     let program = match parser.parse() {
         Ok(p) => p,
@@ -185,6 +204,9 @@ fn main() {
             std::process::exit(1);
         }
     };
+    if args.verbose {
+        eprintln!("[2/4] Parsing complete: {} statements", program.statements.len());
+    }
 
     if args.ast {
         println!("AST for {}:", args.input.display());
@@ -198,6 +220,9 @@ fn main() {
     }
 
     // Semantic analysis phase
+    if args.verbose {
+        eprintln!("[3/4] Semantic analysis...");
+    }
     let mut analyzer = SemanticAnalyzer::new();
     let typed_program = match analyzer.analyze(&program) {
         Ok(tp) => tp,
@@ -216,6 +241,9 @@ fn main() {
             std::process::exit(1);
         }
     };
+    if args.verbose {
+        eprintln!("[3/4] Semantic analysis complete: {} typed statements", typed_program.statements.len());
+    }
 
     if args.typed_ir {
         println!("Typed IR for {}:", args.input.display());
@@ -247,6 +275,9 @@ fn main() {
             }
         };
 
+        if args.verbose {
+            eprintln!("[4/4] Code generation...");
+        }
         let mut backend = CBackend::with_runtime_mode(runtime_mode);
         if args.debug {
             let source_file = args.input.to_string_lossy().to_string();

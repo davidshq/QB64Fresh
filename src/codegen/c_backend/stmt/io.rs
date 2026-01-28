@@ -84,7 +84,7 @@ impl super::StmtEmitter {
                     let c_arr = c_identifier(name);
                     let idx_code: Vec<_> = indices
                         .iter()
-                        .map(|e| emit_expr(e, self.no_shell))
+                        .map(|e| self.emit_expr(e))
                         .collect::<Result<_, _>>()?;
                     // Use first index for 1D array syntax (TODO: handle multi-dim)
                     let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
@@ -99,7 +99,7 @@ impl super::StmtEmitter {
                     let c_arr = c_identifier(name);
                     let idx_code: Vec<_> = indices
                         .iter()
-                        .map(|e| emit_expr(e, self.no_shell))
+                        .map(|e| self.emit_expr(e))
                         .collect::<Result<_, _>>()?;
                     let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
                     let field_chain = fields.join(".");
@@ -185,7 +185,7 @@ impl super::StmtEmitter {
         output: &mut String,
     ) -> Result<(), CodeGenError> {
         let indent = self.indent_str();
-        let expr_code = emit_expr(&item.expr, self.no_shell)?;
+        let expr_code = self.emit_expr(&item.expr)?;
 
         if item.expr.basic_type.is_string() {
             writeln_code!(output, "{}qb_print_string({});", indent, expr_code)?;
