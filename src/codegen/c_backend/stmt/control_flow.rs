@@ -570,7 +570,14 @@ impl super::StmtEmitter {
                 let val = self.emit_expr(expr)?;
                 if is_string {
                     // String comparison: use qb_string_compare
-                    Ok(format!("(qb_string_compare({}, {}) == 0)", test_var, val))
+                    // test_var is the variable name - wrap only if it's a fixed-length string
+                    let test_wrapped = if matches!(test_type, BasicType::FixedString(_)) {
+                        format!("qb_str_from_c({})", test_var)
+                    } else {
+                        test_var.to_string()
+                    };
+                    // val is from emit_expr which already handles wrapping for fixed-length strings
+                    Ok(format!("(qb_string_compare({}, {}) == 0)", test_wrapped, val))
                 } else {
                     Ok(format!("({} == {})", test_var, val))
                 }
@@ -580,9 +587,14 @@ impl super::StmtEmitter {
                 let to_code = self.emit_expr(to)?;
                 if is_string {
                     // String range: lexicographic comparison
+                    let test_wrapped = if matches!(test_type, BasicType::FixedString(_)) {
+                        format!("qb_str_from_c({})", test_var)
+                    } else {
+                        test_var.to_string()
+                    };
                     Ok(format!(
                         "(qb_string_compare({}, {}) >= 0 && qb_string_compare({}, {}) <= 0)",
-                        test_var, from_code, test_var, to_code
+                        test_wrapped, from_code, test_wrapped, to_code
                     ))
                 } else {
                     Ok(format!(
@@ -595,7 +607,12 @@ impl super::StmtEmitter {
                 let val = self.emit_expr(value)?;
                 if is_string {
                     // String comparison: use qb_string_compare result
-                    let cmp_expr = format!("qb_string_compare({}, {})", test_var, val);
+                    let test_wrapped = if matches!(test_type, BasicType::FixedString(_)) {
+                        format!("qb_str_from_c({})", test_var)
+                    } else {
+                        test_var.to_string()
+                    };
+                    let cmp_expr = format!("qb_string_compare({}, {})", test_wrapped, val);
                     let c_op = match op {
                         TypedCaseCompareOp::Equal => "== 0",
                         TypedCaseCompareOp::NotEqual => "!= 0",

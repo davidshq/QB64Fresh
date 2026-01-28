@@ -862,7 +862,7 @@ pub(super) fn emit_graphics_stubs(output: &mut String) -> Result<(), CodeGenErro
     )?;
     writeln_code!(
         output,
-        "void qb_title_set(qb_string* title) {{ if (title && title->data) strncpy(_qb_window_title, title->data, 255); }}"
+        "void qb_title_set(qb_string* title) {{ if (title && qb_string_data(title)) strncpy(_qb_window_title, qb_string_data(title), 255); }}"
     )?;
     // _WINDOWHANDLE - Windows only, returns HWND
     writeln_code!(output, "int64_t qb_windowhandle(void) {{")?;
@@ -1257,7 +1257,7 @@ pub(super) fn emit_graphics_stubs(output: &mut String) -> Result<(), CodeGenErro
     )?;
     writeln_code!(
         output,
-        "    return MessageBoxA(NULL, msg ? msg->data : \"\", title ? title->data : \"\", MB_OK);"
+        "    return MessageBoxA(NULL, msg ? qb_string_data(msg) : \"\", title ? qb_string_data(title) : \"\", MB_OK);"
     )?;
     writeln_code!(output, "}}")?;
     writeln_code!(output, "#else")?;
@@ -1267,7 +1267,7 @@ pub(super) fn emit_graphics_stubs(output: &mut String) -> Result<(), CodeGenErro
     )?;
     writeln_code!(
         output,
-        "    printf(\"[%s] %s\\n\", title ? title->data : \"\", msg ? msg->data : \"\");"
+        "    printf(\"[%s] %s\\n\", title ? qb_string_data(title) : \"\", msg ? qb_string_data(msg) : \"\");"
     )?;
     writeln_code!(output, "    return 1;")?;
     writeln_code!(output, "}}")?;

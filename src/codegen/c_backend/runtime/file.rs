@@ -558,33 +558,33 @@ pub(super) fn emit_file_io_functions(output: &mut String) -> Result<(), CodeGenE
     )?;
     writeln_code!(output, "    if (*var) qb_string_release(*var);")?;
     writeln_code!(output, "    *var = qb_string_new_len(width);")?;
-    writeln_code!(output, "    memset((*var)->data, ' ', width);")?;
+    writeln_code!(output, "    memset(qb_string_data(*var), ' ', width);")?;
     writeln_code!(output, "}}")?;
     writeln_code!(output)?;
 
     // qb_lset - Left-justify a string value into a fixed-length string variable
     writeln_code!(output, "void qb_lset(qb_string** var, qb_string* value) {{")?;
     writeln_code!(output, "    if (!*var || !value) return;")?;
-    writeln_code!(output, "    int32_t var_len = (*var)->len;")?;
-    writeln_code!(output, "    int32_t val_len = value->len;")?;
+    writeln_code!(output, "    int32_t var_len = (int32_t)qb_string_len(*var);")?;
+    writeln_code!(output, "    int32_t val_len = (int32_t)qb_string_len(value);")?;
     writeln_code!(output, "    /* Fill with spaces first */")?;
-    writeln_code!(output, "    memset((*var)->data, ' ', var_len);")?;
+    writeln_code!(output, "    memset(qb_string_data(*var), ' ', var_len);")?;
     writeln_code!(output, "    /* Copy value left-justified */")?;
     writeln_code!(
         output,
         "    int32_t copy_len = val_len < var_len ? val_len : var_len;"
     )?;
-    writeln_code!(output, "    memcpy((*var)->data, value->data, copy_len);")?;
+    writeln_code!(output, "    memcpy(qb_string_data(*var), qb_string_data(value), copy_len);")?;
     writeln_code!(output, "}}")?;
     writeln_code!(output)?;
 
     // qb_rset - Right-justify a string value into a fixed-length string variable
     writeln_code!(output, "void qb_rset(qb_string** var, qb_string* value) {{")?;
     writeln_code!(output, "    if (!*var || !value) return;")?;
-    writeln_code!(output, "    int32_t var_len = (*var)->len;")?;
-    writeln_code!(output, "    int32_t val_len = value->len;")?;
+    writeln_code!(output, "    int32_t var_len = (int32_t)qb_string_len(*var);")?;
+    writeln_code!(output, "    int32_t val_len = (int32_t)qb_string_len(value);")?;
     writeln_code!(output, "    /* Fill with spaces first */")?;
-    writeln_code!(output, "    memset((*var)->data, ' ', var_len);")?;
+    writeln_code!(output, "    memset(qb_string_data(*var), ' ', var_len);")?;
     writeln_code!(output, "    /* Copy value right-justified */")?;
     writeln_code!(
         output,
@@ -593,7 +593,7 @@ pub(super) fn emit_file_io_functions(output: &mut String) -> Result<(), CodeGenE
     writeln_code!(output, "    int32_t offset = var_len - copy_len;")?;
     writeln_code!(
         output,
-        "    memcpy((*var)->data + offset, value->data, copy_len);"
+        "    memcpy(qb_string_data(*var) + offset, qb_string_data(value), copy_len);"
     )?;
     writeln_code!(output, "}}")?;
     writeln_code!(output)?;
