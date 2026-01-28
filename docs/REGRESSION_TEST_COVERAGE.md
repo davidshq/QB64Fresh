@@ -188,8 +188,8 @@ This document catalogs major problems encountered and fixed in QB64Fresh, analyz
   - Added error checking for runtime initialization and shutdown
   - Improved codegen error handling and comments
 - **Impact:** Fixed pointer truncation crash
-- **Test Status:** ❌ **Gap** - No explicit test for FFI function declaration completeness
-- **Test Location:** N/A (gap identified)
+- **Test Status:** ✅ **Covered** - Regression test verifies critical FFI functions are declared
+- **Test Location:** `tests/bootstrap_tests.rs:regression_tests::ffi_declaration_completeness`
 - **Related:** Session 065 documented GDB debugging session
 
 #### 4.2 MID$ Assignment for Fixed-Length Strings
@@ -385,9 +385,10 @@ These gaps could lead to compilation errors or runtime crashes:
    - **Impact:** Runtime initialization fix
    - **Test Needed:** Test that runtime is initialized before use
 
-8. **FFI declaration completeness check** (4.1)
+8. ~~**FFI declaration completeness check** (4.1)~~ ✅ **COMPLETED**
    - **Impact:** Pointer truncation crash fix
-   - **Test Needed:** Automated check that all FFI functions are declared in header
+   - **Test Added:** `tests/bootstrap_tests.rs:regression_tests::ffi_declaration_completeness`
+   - **Status:** Verifies critical FFI functions (especially qb_dir) are declared in header
 
 ### Medium Priority Gaps
 
@@ -439,9 +440,10 @@ These gaps are less critical but should be addressed:
    - Test array access with renamed variables
    - Test array field assignment with renamed variables
 
-5. **Add FFI declaration check** (could be a compile-time check or test)
-   - Verify all FFI functions used in codegen are declared in header
-   - Could be a static analysis tool or test
+5. ~~**Add FFI declaration check**~~ ✅ **COMPLETED**
+   - ✅ Verifies critical FFI functions are declared in header
+   - ✅ Specifically checks qb_dir() (the bug that was fixed)
+   - ✅ Tests other critical pointer-returning functions
 
 ### Medium-Term Actions
 
