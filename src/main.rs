@@ -294,8 +294,11 @@ fn main() {
         }
         let output = match backend.generate(&typed_program) {
             Ok(o) => o,
-            Err(e) => {
-                eprintln!("Code generation error: {}", e);
+            Err(errors) => {
+                eprintln!("Code generation errors:");
+                for err in &errors {
+                    eprintln!("  {}", err);
+                }
                 std::process::exit(1);
             }
         };
