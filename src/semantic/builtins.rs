@@ -767,10 +767,13 @@ impl SemanticAnalyzer {
         );
 
         // Phase 5: Networking
-        // _OPENHOST takes a port number (LONG)
-        // Note: QB64pe accepts connection strings like "TCP/IP:12345", but our runtime
-        // uses the simpler port-number-only API to match the header signature
-        self.register_builtin_function("_OPENHOST", &[("port", BasicType::Long)], BasicType::Long);
+        // _OPENHOST takes a connection string like "TCP/IP:12345" (STRING)
+        // The C function signature is int32 func__openhost(qbs *info) where qbs* is a string
+        self.register_builtin_function(
+            "_OPENHOST",
+            &[("info", BasicType::String)],
+            BasicType::Long,
+        );
         self.register_builtin_function(
             "_OPENCONNECTION",
             &[("host_handle", BasicType::Long)],

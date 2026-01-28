@@ -757,6 +757,7 @@ impl<'a> TypeChecker<'a> {
                         position: i + 1,
                         expected: param.basic_type.to_string(),
                         found: typed_arg.basic_type.to_string(),
+                        function_name: Some(proc.name.clone()),
                         span: arg.span,
                     });
                 }
@@ -1004,6 +1005,7 @@ impl<'a> TypeChecker<'a> {
                         position: i + 1,
                         expected: expected_type.to_string(),
                         found: typed_arg.basic_type.to_string(),
+                        function_name: Some(name.to_string()),
                         span: arg.span,
                     });
                 }

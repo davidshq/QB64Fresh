@@ -320,7 +320,10 @@ pub enum SemanticError {
     ///
     /// PrintNum "hello"   ' Error: argument 1 type mismatch: expected INTEGER, found STRING
     /// ```
-    #[error("argument {position} type mismatch: expected {expected}, found {found}")]
+    #[error(
+        "argument {position} type mismatch in {function_name}: expected {expected}, found {found}",
+        function_name = function_name.as_deref().unwrap_or("function call")
+    )]
     ArgumentTypeMismatch {
         /// 1-based argument position.
         position: usize,
@@ -328,6 +331,8 @@ pub enum SemanticError {
         expected: String,
         /// Found type name.
         found: String,
+        /// Function or procedure name (if available).
+        function_name: Option<String>,
         /// Location of the argument.
         span: Span,
     },

@@ -35,7 +35,7 @@ fn compile_to_c(source: &str) -> Result<String, String> {
     let backend = CBackend::with_runtime_mode(RuntimeMode::External);
     let output = backend
         .generate(&typed_program)
-        .map_err(|e| format!("CodeGen error: {}", e))?;
+        .map_err(|e| format!("CodeGen error: {:?}", e))?;
 
     Ok(output.code)
 }
@@ -131,7 +131,7 @@ fn compile_to_c_inline(source: &str) -> Result<String, String> {
     let backend = CBackend::with_runtime_mode(RuntimeMode::Inline);
     let output = backend
         .generate(&typed_program)
-        .map_err(|e| format!("CodeGen error: {}", e))?;
+        .map_err(|e| format!("CodeGen error: {:?}", e))?;
 
     Ok(output.code)
 }
