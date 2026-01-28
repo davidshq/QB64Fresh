@@ -20,7 +20,7 @@
 //! BASIC allows type suffix characters in identifiers (`$`, `%`, `&`, etc.)
 //! which are invalid in C. These are converted to descriptive suffixes.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::semantic::types::BasicType;
 
@@ -95,28 +95,62 @@ pub(super) fn declare_scalar_var(
     basic_type: &BasicType,
     declared_vars: &mut HashSet<String>,
     decls: &mut Vec<String>,
+    variable_renames: Option<&mut HashMap<String, String>>,
+    array_names: Option<&HashSet<String>>,
 ) -> bool {
     let c_name = c_identifier(name);
-    if declared_vars.contains(&c_name) {
+    // Check if this name is already declared
+    // In BASIC's dual namespace, a scalar and array can coexist with the same name
+    // If the name is already declared AND it's an array, we need to rename the scalar
+    // If it's already a scalar, we shouldn't declare it again (return false)
+    let final_name = if declared_vars.contains(&c_name) {
+        // Check if this collision is with an array (which we should rename) or another scalar (which we shouldn't declare)
+        if let Some(arrays) = array_names {
+            if arrays.contains(&c_name) {
+                // Collision with an array - rename the scalar
+                let renamed = format!("{}_scalar", c_name);
+                // Track the rename so variable references use the correct name
+                if let Some(renames) = variable_renames {
+                    renames.insert(c_name.clone(), renamed.clone());
+                }
+                renamed
+            } else {
+                // Collision with another scalar - don't declare again
+                return false;
+            }
+        } else {
+            // No array info available - assume it's an array collision and rename
+            // (safer than assuming it's a scalar collision)
+            let renamed = format!("{}_scalar", c_name);
+            if let Some(renames) = variable_renames {
+                renames.insert(c_name.clone(), renamed.clone());
+            }
+            renamed
+        }
+    } else {
+        c_name.clone()
+    };
+
+    if declared_vars.contains(&final_name) {
         return false;
     }
 
     let decl = match basic_type {
-        BasicType::FixedString(len) => format!("char {}[{}] = \"\";", c_name, len + 1),
-        BasicType::String => format!("QbString* {} = NULL;", c_name),
+        BasicType::FixedString(len) => format!("char {}[{}] = \"\";", final_name, len + 1),
+        BasicType::String => format!("QbString* {} = NULL;", final_name),
         BasicType::UserDefined(_) => {
             let c_ty = c_type(basic_type);
-            format!("{} {} = {{0}};", c_ty, c_name)
+            format!("{} {} = {{0}};", c_ty, final_name)
         }
         _ => {
             let c_ty = c_type(basic_type);
             let init = default_init(basic_type);
-            format!("{} {} = {};", c_ty, c_name, init)
+            format!("{} {} = {};", c_ty, final_name, init)
         }
     };
 
     decls.push(decl);
-    declared_vars.insert(c_name);
+    declared_vars.insert(final_name);
     true
 }
 

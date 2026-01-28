@@ -62,7 +62,7 @@ mod type_registry;
 mod types;
 mod write_helpers;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::codegen::error::CodeGenError;
 use crate::codegen::{CodeGenContext, CodeGenerator, GeneratedOutput};
@@ -252,9 +252,9 @@ impl CodeGenerator for CBackend {
     fn generate(&self, program: &TypedProgram) -> Result<GeneratedOutput, Vec<CodeGenError>> {
         let mut ctx = CodeGenContext::new();
         let mut emitter = StmtEmitter::with_runtime_mode(self.runtime_mode);
-        emitter.debug_enabled = self.debug_enabled;
-        emitter.debug_source_file = self.source_file.clone();
-        emitter.no_shell = self.no_shell;
+        emitter.debug.enabled = self.debug_enabled;
+        emitter.debug.source_file = self.source_file.clone();
+        emitter.config.no_shell = self.no_shell;
         let mut output = String::new();
 
         // Create type registry and register built-in types
@@ -319,7 +319,7 @@ impl CodeGenerator for CBackend {
         // Collect and emit DATA pool
         let data_pool = collect_data_values(program);
         // Store label indices for RESTORE statement emission
-        emitter.data_label_indices = data_pool.label_indices;
+        emitter.data.label_indices = data_pool.label_indices;
 
         if !data_pool.values.is_empty() {
             collect_err!(ctx, writeln_code!(&mut output, "/* DATA Pool */"));
@@ -449,10 +449,10 @@ impl CodeGenerator for CBackend {
         }
 
         // Set global variable names on emitter for SUB/FUNCTION implicit local detection
-        emitter.global_var_names = global_var_names.clone();
-        emitter.global_array_names = global_array_names.clone();
-        emitter.shared_global_names = shared_global_names.clone();
-        emitter.global_const_names = global_const_names.clone();
+        emitter.globals.var_names = global_var_names.clone();
+        emitter.globals.array_names = global_array_names.clone();
+        emitter.globals.shared_names = shared_global_names.clone();
+        emitter.globals.const_names = global_const_names.clone();
 
         // SUB/FUNCTION definitions (emit before main)
         for stmt in &program.statements {
@@ -647,6 +647,9 @@ impl CodeGenerator for CBackend {
         // Pass empty always_exclude: main has no return variable
         // Pass shared_global_names: DIM SHARED vars shouldn't be re-declared
         // Pass global_const_names: CONST values must never be shadowed by locals
+        // Main program doesn't have an emitter, so create a temporary rename map
+        // (though main program typically doesn't have scalar/array collisions)
+        let mut main_renames = HashMap::new();
         let implicit_locals = collect_implicit_locals(
             &main_stmts_owned,
             &[],
@@ -656,6 +659,7 @@ impl CodeGenerator for CBackend {
             &shared_global_names,
             &global_const_names,
             true,
+            &mut main_renames,
         );
 
         // Emit implicit local declarations
@@ -670,7 +674,7 @@ impl CodeGenerator for CBackend {
             collect_err!(ctx, writeln_code!(&mut output));
         }
 
-        emitter.indent = 1;
+        emitter.codegen.indent = 1;
 
         // Emit main program statements (excluding SUB/FUNCTION definitions)
         // Each statement cleans up its temp strings to prevent memory growth
@@ -704,7 +708,7 @@ impl CodeGenerator for CBackend {
             writeln_code!(&mut output, "    goto _qb_strig_dispatch_end;")
         );
         collect_err!(ctx, writeln_code!(&mut output, "_qb_strig_dispatch:"));
-        if emitter.strig_handlers.is_empty() {
+        if emitter.events.strig_handlers.is_empty() {
             // No handlers registered - just return to caller
             collect_err!(
                 ctx,
@@ -715,7 +719,7 @@ impl CodeGenerator for CBackend {
                 ctx,
                 writeln_code!(&mut output, "    switch (_qb_strig_event_id) {{")
             );
-            for (event_id, label) in &emitter.strig_handlers {
+            for (event_id, label) in &emitter.events.strig_handlers {
                 collect_err!(
                     ctx,
                     writeln_code!(&mut output, "        case {}: goto {};", event_id, label)

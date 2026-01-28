@@ -81,31 +81,31 @@ impl super::StmtEmitter {
         let cond_code = self.emit_expr(condition)?;
         writeln_code!(output, "{}if ({}) {{", indent, cond_code)?;
 
-        self.indent += 1;
+        self.codegen.indent += 1;
         for stmt in then_branch {
             self.emit_stmt(stmt, output)?;
         }
-        self.indent -= 1;
+        self.codegen.indent -= 1;
 
         for (elseif_cond, elseif_body) in elseif_branches {
             let elseif_code = self.emit_expr(elseif_cond)?;
             writeln_code!(output, "{}}} else if ({}) {{", indent, elseif_code)?;
 
-            self.indent += 1;
+            self.codegen.indent += 1;
             for stmt in elseif_body {
                 self.emit_stmt(stmt, output)?;
             }
-            self.indent -= 1;
+            self.codegen.indent -= 1;
         }
 
         if let Some(else_body) = else_branch {
             writeln_code!(output, "{}}} else {{", indent)?;
 
-            self.indent += 1;
+            self.codegen.indent += 1;
             for stmt in else_body {
                 self.emit_stmt(stmt, output)?;
             }
-            self.indent -= 1;
+            self.codegen.indent -= 1;
         }
 
         writeln_code!(output, "{}}}", indent)?;
@@ -155,11 +155,11 @@ impl super::StmtEmitter {
                 writeln_code!(output, "{}if ({}) {{", indent, condition)?;
                 writeln_code!(output, "{}    {} = 1;", indent, matched_var)?;
 
-                self.indent += 1;
+                self.codegen.indent += 1;
                 for stmt in &case.body {
                     self.emit_stmt(stmt, output)?;
                 }
-                self.indent -= 1;
+                self.codegen.indent -= 1;
                 writeln_code!(output, "{}}}", indent)?;
             }
 
@@ -167,11 +167,11 @@ impl super::StmtEmitter {
             if let Some(else_body) = case_else {
                 writeln_code!(output, "{}if (!{}) {{", indent, matched_var)?;
 
-                self.indent += 1;
+                self.codegen.indent += 1;
                 for stmt in else_body {
                     self.emit_stmt(stmt, output)?;
                 }
-                self.indent -= 1;
+                self.codegen.indent -= 1;
                 writeln_code!(output, "{}}}", indent)?;
             }
         } else {
@@ -188,21 +188,21 @@ impl super::StmtEmitter {
                     writeln_code!(output, "{}}} else if ({}) {{", indent, condition)?;
                 }
 
-                self.indent += 1;
+                self.codegen.indent += 1;
                 for stmt in &case.body {
                     self.emit_stmt(stmt, output)?;
                 }
-                self.indent -= 1;
+                self.codegen.indent -= 1;
             }
 
             if let Some(else_body) = case_else {
                 writeln_code!(output, "{}}} else {{", indent)?;
 
-                self.indent += 1;
+                self.codegen.indent += 1;
                 for stmt in else_body {
                     self.emit_stmt(stmt, output)?;
                 }
-                self.indent -= 1;
+                self.codegen.indent -= 1;
             }
 
             if !first {
@@ -288,9 +288,9 @@ impl super::StmtEmitter {
             step_var
         )?;
 
-        self.indent += 1;
+        self.codegen.indent += 1;
         // STRIG event check at loop iteration
-        let inner_indent = "    ".repeat(self.indent);
+        let inner_indent = "    ".repeat(self.codegen.indent);
         self.emit_strig_check(&inner_indent, output)?;
         // Clean up temporary strings from previous iteration (scoped to this loop only)
         writeln_code!(output, "{}qbs_cleanup({}, 0);", inner_indent, loop_base)?;
@@ -299,7 +299,7 @@ impl super::StmtEmitter {
         }
         // Clean up strings created during this iteration
         writeln_code!(output, "{}qbs_cleanup({}, 0);", inner_indent, loop_base)?;
-        self.indent -= 1;
+        self.codegen.indent -= 1;
 
         writeln_code!(output, "{}}}", indent)?;
         writeln_code!(output, "{}{}:;", indent, break_label)?;
@@ -343,9 +343,9 @@ impl super::StmtEmitter {
         )?;
         writeln_code!(output, "{}while ({}) {{", indent, cond_code)?;
 
-        self.indent += 1;
+        self.codegen.indent += 1;
         // STRIG event check at loop iteration
-        let inner_indent = "    ".repeat(self.indent);
+        let inner_indent = "    ".repeat(self.codegen.indent);
         self.emit_strig_check(&inner_indent, output)?;
         // Clean up temporary strings from previous iteration (scoped to this loop only)
         writeln_code!(output, "{}qbs_cleanup({}, 0);", inner_indent, loop_base)?;
@@ -354,7 +354,7 @@ impl super::StmtEmitter {
         }
         // Clean up strings created during this iteration before checking condition again
         writeln_code!(output, "{}qbs_cleanup({}, 0);", inner_indent, loop_base)?;
-        self.indent -= 1;
+        self.codegen.indent -= 1;
 
         writeln_code!(output, "{}}}", indent)?;
         writeln_code!(output, "{}{}:;", indent, break_label)?;
@@ -421,9 +421,9 @@ impl super::StmtEmitter {
             }
         }
 
-        self.indent += 1;
+        self.codegen.indent += 1;
         // STRIG event check at loop iteration
-        let inner_indent = "    ".repeat(self.indent);
+        let inner_indent = "    ".repeat(self.codegen.indent);
         self.emit_strig_check(&inner_indent, output)?;
         // Clean up temporary strings from previous iteration (scoped to this loop only)
         writeln_code!(output, "{}qbs_cleanup({}, 0);", inner_indent, loop_base)?;
@@ -432,7 +432,7 @@ impl super::StmtEmitter {
         }
         // Clean up strings created during this iteration
         writeln_code!(output, "{}qbs_cleanup({}, 0);", inner_indent, loop_base)?;
-        self.indent -= 1;
+        self.codegen.indent -= 1;
 
         if let Some(post) = post_condition {
             let cond = self.emit_do_condition(post)?;
@@ -472,16 +472,16 @@ impl super::StmtEmitter {
 
         if let Some(label) = label {
             writeln_code!(output, "{}goto {};", indent, label)?;
-        } else if let Some(ret_var) = &self.current_func_ret_var {
+        } else if let Some(ret_var) = &self.procedure.current_func_ret_var {
             // EXIT FUNCTION - write back byref STRING parameters first
-            for param_name in &self.current_func_byref_strings {
+            for param_name in &self.procedure.current_func_byref_strings {
                 writeln_code!(output, "{}*{}_ref = {};", indent, param_name, param_name)?;
             }
             // Then return the function's return variable
             writeln_code!(output, "{}return {};", indent, ret_var)?;
         } else {
             // EXIT SUB - write back byref STRING parameters first
-            for param_name in &self.current_func_byref_strings {
+            for param_name in &self.procedure.current_func_byref_strings {
                 writeln_code!(output, "{}*{}_ref = {};", indent, param_name, param_name)?;
             }
             // Then return

@@ -34,7 +34,7 @@ impl super::StmtEmitter {
 
         // Apply variable rename if this variable was renamed to avoid shadowing
         // Scalar variables can shadow array variables, so check renames
-        if let Some(renamed) = self.variable_renames.get(&c_name) {
+        if let Some(renamed) = self.procedure.variable_renames.get(&c_name) {
             c_name = renamed.clone();
         }
 
@@ -45,7 +45,7 @@ impl super::StmtEmitter {
             // For fixed-length strings, we need to copy the string content
             // The value is a QbString*, we need to copy its data into the char array
             // Note: Don't free _tmp here - it will be cleaned up by qbs_cleanup at statement end
-            let data_access = match self.runtime_mode {
+            let data_access = match self.config.runtime_mode {
                 super::super::RuntimeMode::External => "qb_string_data(_tmp)",
                 super::super::RuntimeMode::Inline => "_tmp->data",
             };
@@ -96,7 +96,7 @@ impl super::StmtEmitter {
 
         // Array assignment always refers to the local array variable, not a parameter.
         // If the variable was renamed to avoid shadowing, use the renamed version.
-        if let Some(renamed) = self.variable_renames.get(&c_name) {
+        if let Some(renamed) = self.procedure.variable_renames.get(&c_name) {
             c_name = renamed.clone();
         }
         let value_code = self.emit_expr(value)?;
@@ -140,7 +140,7 @@ impl super::StmtEmitter {
             // For fixed-length strings, we need to copy the string content
             // The value is a QbString*, we need to copy its data into the char array
             // Note: Don't free _tmp here - it will be cleaned up by qbs_cleanup at statement end
-            let data_access = match self.runtime_mode {
+            let data_access = match self.config.runtime_mode {
                 super::super::RuntimeMode::External => "qb_string_data(_tmp)",
                 super::super::RuntimeMode::Inline => "_tmp->data",
             };
@@ -213,7 +213,7 @@ impl super::StmtEmitter {
 
         // Array field assignment always refers to the local array variable, not a parameter.
         // If the variable was renamed to avoid shadowing, use the renamed version.
-        if let Some(renamed) = self.variable_renames.get(&c_name) {
+        if let Some(renamed) = self.procedure.variable_renames.get(&c_name) {
             c_name = renamed.clone();
         }
         let value_code = self.emit_expr(value)?;
@@ -255,7 +255,7 @@ impl super::StmtEmitter {
         if let BasicType::FixedString(len) = field_type {
             // For fixed-length strings, we need to copy the string content
             // The value is a QbString*, we need to copy its data into the char array
-            let data_access = match self.runtime_mode {
+            let data_access = match self.config.runtime_mode {
                 super::super::RuntimeMode::External => "qb_string_data(_tmp)",
                 super::super::RuntimeMode::Inline => "_tmp->data",
             };
@@ -329,7 +329,7 @@ impl super::StmtEmitter {
         if let BasicType::FixedString(len) = field_type {
             // For fixed-length strings, we need to copy the string content
             // The value is a QbString*, we need to copy its data into the char array
-            let data_access = match self.runtime_mode {
+            let data_access = match self.config.runtime_mode {
                 super::super::RuntimeMode::External => "qb_string_data(_tmp)",
                 super::super::RuntimeMode::Inline => "_tmp->data",
             };

@@ -57,12 +57,12 @@ impl StmtEmitter {
 
         // For external runtime, use qb_file_open_str which accepts QbString* directly
         // For inline runtime, use ->data access
-        let filename_access = match self.runtime_mode {
+        let filename_access = match self.config.runtime_mode {
             super::RuntimeMode::External => filename_code.to_string(),
             super::RuntimeMode::Inline => format!("{}->data", filename_code),
         };
 
-        match self.runtime_mode {
+        match self.config.runtime_mode {
             super::RuntimeMode::External => {
                 writeln_code!(
                     output,
@@ -117,11 +117,11 @@ impl StmtEmitter {
         // The mode is a string expression that we'll pass to a runtime function
         // that interprets "O", "I", "A", "R", "B" at runtime
         // For external runtime, we need to use qb_string_data() to get const char*
-        let mode_access = match self.runtime_mode {
+        let mode_access = match self.config.runtime_mode {
             super::RuntimeMode::External => format!("qb_string_data({})", mode_code),
             super::RuntimeMode::Inline => format!("{}->data", mode_code),
         };
-        let filename_access = match self.runtime_mode {
+        let filename_access = match self.config.runtime_mode {
             super::RuntimeMode::External => format!("qb_string_data({})", filename_code),
             super::RuntimeMode::Inline => format!("{}->data", filename_code),
         };

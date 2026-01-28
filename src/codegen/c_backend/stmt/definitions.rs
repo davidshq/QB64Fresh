@@ -211,7 +211,7 @@ impl super::StmtEmitter {
         writeln_code!(output, "{}void {}({}) {{", indent, c_name, params_str)?;
 
         // Emit debug entry hook
-        if self.debug_enabled {
+        if self.debug.enabled {
             // Estimate line number from first statement's span if available
             let entry_line = body.first().map(|s| s.span.start).unwrap_or(0);
             writeln_code!(
@@ -235,12 +235,13 @@ impl super::StmtEmitter {
         let implicit_locals = collect_implicit_locals(
             body,
             params,
-            &self.global_var_names,
+            &self.globals.var_names,
             &HashSet::new(),
-            &self.global_array_names,
-            &self.shared_global_names,
-            &self.global_const_names,
+            &self.globals.array_names,
+            &self.globals.shared_names,
+            &self.globals.const_names,
             false,
+            &mut self.procedure.variable_renames,
         );
         for decl in &implicit_locals {
             writeln_code!(output, "    {}", decl)?;
@@ -250,33 +251,31 @@ impl super::StmtEmitter {
         }
 
         // Set current procedure name for unique label generation
-        self.current_proc = Some(c_name.clone());
+        self.procedure.current_proc = Some(c_name.clone());
         // Track byref STRING parameters for EXIT SUB writebacks
-        self.current_func_byref_strings = params
+        self.procedure.current_func_byref_strings = params
             .iter()
             .filter(|p| !p.by_val && p.basic_type == BasicType::String && !p.is_array)
             .map(|p| c_identifier(&p.name))
             .collect();
         // Track all parameter names (BYVAL parameters don't get _ref suffix, so they can be shadowed)
         // We need to rename local variables that shadow BYVAL parameters to avoid C compilation errors
-        self.current_func_param_names = params.iter().map(|p| c_identifier(&p.name)).collect();
+        self.procedure.current_func_param_names =
+            params.iter().map(|p| c_identifier(&p.name)).collect();
 
         // Save temp pool base for this procedure - cleanup after each statement
         writeln_code!(output, "    uint64_t _qbs_proc_base = qbs_tmp_base_get();")?;
         writeln_code!(output)?;
 
-        self.indent += 1;
+        self.codegen.indent += 1;
         for stmt in body {
             self.emit_stmt(stmt, output)?;
             // Clean up temp strings after each statement
             writeln_code!(output, "    qbs_cleanup(_qbs_proc_base, 0);")?;
         }
-        self.indent -= 1;
+        self.codegen.indent -= 1;
 
-        self.current_proc = None;
-        self.current_func_byref_strings.clear();
-        self.current_func_param_names.clear();
-        self.variable_renames.clear();
+        self.procedure.clear();
 
         // Write back STRING byref parameters to caller's variables
         // Only strings need writeback - they use reference counting and local copies
@@ -290,7 +289,7 @@ impl super::StmtEmitter {
         writeln_code!(output, "_qb_strig_dispatch_end:")?;
 
         // Emit debug exit hook
-        if self.debug_enabled {
+        if self.debug.enabled {
             writeln_code!(output, "    qb_dbg_exit_proc(\"{}\");", name)?;
         }
 
@@ -341,7 +340,7 @@ impl super::StmtEmitter {
         )?;
 
         // Emit debug entry hook
-        if self.debug_enabled {
+        if self.debug.enabled {
             let entry_line = body.first().map(|s| s.span.start).unwrap_or(0);
             writeln_code!(
                 output,
@@ -374,12 +373,13 @@ impl super::StmtEmitter {
         let implicit_locals = collect_implicit_locals(
             body,
             params,
-            &self.global_var_names,
+            &self.globals.var_names,
             &always_exclude,
-            &self.global_array_names,
-            &self.shared_global_names,
-            &self.global_const_names,
+            &self.globals.array_names,
+            &self.globals.shared_names,
+            &self.globals.const_names,
             false,
+            &mut self.procedure.variable_renames,
         );
         for decl in &implicit_locals {
             writeln_code!(output, "    {}", decl)?;
@@ -389,34 +389,34 @@ impl super::StmtEmitter {
         }
 
         // Set current procedure name for unique label generation
-        self.current_proc = Some(c_name.clone());
+        self.procedure.current_proc = Some(c_name.clone());
         // Set return variable for EXIT FUNCTION
-        self.current_func_ret_var = Some(ret_var.clone());
+        self.procedure.current_func_ret_var = Some(ret_var.clone());
         // Track byref STRING parameters for EXIT FUNCTION writebacks
-        self.current_func_byref_strings = params
+        self.procedure.current_func_byref_strings = params
             .iter()
             .filter(|p| !p.by_val && p.basic_type == BasicType::String && !p.is_array)
             .map(|p| c_identifier(&p.name))
             .collect();
         // Track all parameter names (BYVAL parameters don't get _ref suffix, so they can be shadowed)
         // We need to rename local variables that shadow BYVAL parameters to avoid C compilation errors
-        self.current_func_param_names = params.iter().map(|p| c_identifier(&p.name)).collect();
+        self.procedure.current_func_param_names =
+            params.iter().map(|p| c_identifier(&p.name)).collect();
 
         // Save temp pool base for this function - cleanup after each statement
         writeln_code!(output, "    uint64_t _qbs_proc_base = qbs_tmp_base_get();")?;
         writeln_code!(output)?;
 
-        self.indent += 1;
+        self.codegen.indent += 1;
         for stmt in body {
             self.emit_stmt(stmt, output)?;
             // Clean up temp strings after each statement
             writeln_code!(output, "    qbs_cleanup(_qbs_proc_base, 0);")?;
         }
-        self.indent -= 1;
+        self.codegen.indent -= 1;
 
-        self.current_proc = None;
-        self.current_func_ret_var = None;
-        self.current_func_byref_strings.clear();
+        // Clear procedure context (ret_var is a local variable, not from the context)
+        self.procedure.clear();
 
         // Write back STRING byref parameters to caller's variables
         // Only strings need writeback - they use reference counting and local copies
@@ -430,7 +430,7 @@ impl super::StmtEmitter {
         writeln_code!(output, "_qb_strig_dispatch_end:")?;
 
         // Emit debug exit hook
-        if self.debug_enabled {
+        if self.debug.enabled {
             writeln_code!(output, "    qb_dbg_exit_proc(\"{}\");", name)?;
         }
 
@@ -471,10 +471,11 @@ impl super::StmtEmitter {
         // Check if this variable shadows a function parameter
         // In BASIC, local variables can shadow parameters, but in C this causes compilation errors
         // Rename the local variable to avoid the collision
-        if self.current_func_param_names.contains(&c_name) {
+        if self.procedure.current_func_param_names.contains(&c_name) {
             c_name = format!("{}_local", c_name);
             // Track the renaming so we can update all references to this variable
-            self.variable_renames
+            self.procedure
+                .variable_renames
                 .insert(original_c_name.clone(), c_name.clone());
         }
 
@@ -491,7 +492,8 @@ impl super::StmtEmitter {
             // Determine if we should use an existing global:
             // - In main (current_proc is None): use global if it exists (for arrays shared across functions)
             // - In SUB/FUNCTION: always create local (DIM inside procedure = local scope)
-            let use_global = self.current_proc.is_none() && self.global_var_names.contains(&c_name);
+            let use_global =
+                self.procedure.current_proc.is_none() && self.globals.var_names.contains(&c_name);
 
             // Arrays - handle fixed-length string arrays specially
             if let BasicType::FixedString(len) = basic_type {
