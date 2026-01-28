@@ -208,8 +208,8 @@ This document catalogs major problems encountered and fixed in QB64Fresh, analyz
 - **Problem:** Runtime not properly initialized before use
 - **Root Cause:** Missing `qb_runtime_init()` and `qb_runtime_shutdown()` calls for external runtime mode
 - **Fix Applied:** Added runtime initialization and shutdown calls
-- **Test Status:** ❌ **Gap** - No explicit test for runtime initialization order
-- **Test Location:** N/A (gap identified)
+- **Test Status:** ✅ **Covered** - Regression test verifies initialization order in main function
+- **Test Location:** `tests/bootstrap_tests.rs:regression_tests::runtime_initialization_order`
 
 #### 4.4 FFI Error Reporting
 - **Session:** 067 (2026-01-27)
@@ -381,9 +381,10 @@ These gaps could lead to compilation errors or runtime crashes:
    - **Impact:** Variable shadowing fix
    - **Test Needed:** Test array access with renamed variables
 
-7. **Runtime initialization order test** (4.3)
+7. ~~**Runtime initialization order test** (4.3)~~ ✅ **COMPLETED**
    - **Impact:** Runtime initialization fix
-   - **Test Needed:** Test that runtime is initialized before use
+   - **Test Added:** `tests/bootstrap_tests.rs:regression_tests::runtime_initialization_order`
+   - **Status:** Verifies qb_runtime_init() is called before runtime functions in main
 
 8. ~~**FFI declaration completeness check** (4.1)~~ ✅ **COMPLETED**
    - **Impact:** Pointer truncation crash fix
