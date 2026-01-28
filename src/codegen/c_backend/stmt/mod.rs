@@ -44,7 +44,7 @@ use crate::semantic::typed_ir::{
 use crate::semantic::types::BasicType;
 use crate::writeln_code;
 
-use super::expr::{emit_expr, emit_string_data_access, escape_string, unwrap_qb_str_from_c};
+use super::expr::{emit_string_data_access, escape_string, unwrap_qb_str_from_c};
 use super::types::{c_identifier, c_type, default_init};
 
 /// Context for the current loop (for EXIT statement handling).
@@ -148,9 +148,9 @@ impl StmtEmitter {
     }
     
     /// Helper method to emit an expression with variable renamings applied.
-    /// This wraps `emit_expr` and automatically passes the current variable renamings.
+    /// This wraps `emit_expr` and automatically passes the current variable renamings and parameter names.
     pub(super) fn emit_expr(&self, expr: &crate::semantic::typed_ir::TypedExpr) -> Result<String, crate::codegen::error::CodeGenError> {
-        super::expr::emit_expr(expr, self.no_shell, &self.variable_renames)
+        super::expr::emit_expr(expr, self.no_shell, &self.variable_renames, &self.current_func_param_names)
     }
 
     /// Converts a BASIC label to a C label, prefixing with procedure name if in a procedure.
@@ -298,11 +298,17 @@ impl StmtEmitter {
                 let target_code_raw = self.emit_expr(target)?;
                 // For fixed-length strings used with strlen/strncpy, we need the raw char array,
                 // not the qb_str_from_c() wrapped version
+                // Unwrap multiple levels if needed (e.g., qb_str_from_c(qb_str_from_c(...)))
                 let target_code = if matches!(
                     target.basic_type,
                     crate::semantic::types::BasicType::FixedString(_)
                 ) {
-                    unwrap_qb_str_from_c(&target_code_raw)
+                    let mut unwrapped = unwrap_qb_str_from_c(&target_code_raw);
+                    // Handle double-wrapping: qb_str_from_c(qb_str_from_c(...))
+                    while unwrapped.starts_with("qb_str_from_c(") {
+                        unwrapped = unwrap_qb_str_from_c(&unwrapped);
+                    }
+                    unwrapped
                 } else {
                     target_code_raw
                 };
