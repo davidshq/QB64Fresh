@@ -350,8 +350,10 @@ pub(super) fn emit_input_functions(output: &mut String) -> Result<(), CodeGenErr
 /// - `qb_iif_str` - _IIF$ function: inline conditional for string values
 pub(super) fn emit_utility_functions(output: &mut String) -> Result<(), CodeGenError> {
     // qb_str_from_c - create qb_string from C string (alias for qb_string_new)
-    writeln_code!(output, "qb_string* qb_str_from_c(const char* s) {{")?;
-    writeln_code!(output, "    return qb_string_new(s);")?;
+    // Use QbString* to match header signature
+    // Cast qb_string* to QbString* for compatibility (they're the same type via typedef)
+    writeln_code!(output, "QbString* qb_str_from_c(const char* s) {{")?;
+    writeln_code!(output, "    return (QbString*)qb_string_new(s);")?;
     writeln_code!(output, "}}")?;
     writeln_code!(output)?;
 

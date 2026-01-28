@@ -20,7 +20,6 @@ use crate::semantic::typed_ir::{
 use crate::semantic::types::BasicType;
 use crate::writeln_code;
 
-use super::super::expr::emit_expr;
 use super::super::types::{c_identifier, c_type};
 use super::LoopContext;
 
@@ -577,7 +576,10 @@ impl super::StmtEmitter {
                         test_var.to_string()
                     };
                     // val is from emit_expr which already handles wrapping for fixed-length strings
-                    Ok(format!("(qb_string_compare({}, {}) == 0)", test_wrapped, val))
+                    Ok(format!(
+                        "(qb_string_compare({}, {}) == 0)",
+                        test_wrapped, val
+                    ))
                 } else {
                     Ok(format!("({} == {})", test_var, val))
                 }

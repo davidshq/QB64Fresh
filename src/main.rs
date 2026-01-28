@@ -205,7 +205,10 @@ fn main() {
         }
     };
     if args.verbose {
-        eprintln!("[2/4] Parsing complete: {} statements", program.statements.len());
+        eprintln!(
+            "[2/4] Parsing complete: {} statements",
+            program.statements.len()
+        );
     }
 
     if args.ast {
@@ -242,7 +245,10 @@ fn main() {
         }
     };
     if args.verbose {
-        eprintln!("[3/4] Semantic analysis complete: {} typed statements", typed_program.statements.len());
+        eprintln!(
+            "[3/4] Semantic analysis complete: {} typed statements",
+            typed_program.statements.len()
+        );
     }
 
     if args.typed_ir {

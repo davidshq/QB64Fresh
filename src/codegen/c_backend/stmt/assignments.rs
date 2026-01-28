@@ -19,7 +19,6 @@ use crate::semantic::typed_ir::TypedArrayDimension;
 use crate::semantic::types::BasicType;
 use crate::writeln_code;
 
-use super::super::expr::emit_expr;
 use super::super::types::{c_identifier, c_type};
 
 impl super::StmtEmitter {
@@ -31,7 +30,14 @@ impl super::StmtEmitter {
         target_type: &BasicType,
         output: &mut String,
     ) -> Result<(), CodeGenError> {
-        let c_name = c_identifier(name);
+        let mut c_name = c_identifier(name);
+
+        // Apply variable rename if this variable was renamed to avoid shadowing
+        // Scalar variables can shadow array variables, so check renames
+        if let Some(renamed) = self.variable_renames.get(&c_name) {
+            c_name = renamed.clone();
+        }
+
         let value_code = self.emit_expr(value)?;
 
         // Handle fixed-length string assignment specially
@@ -87,7 +93,7 @@ impl super::StmtEmitter {
         output: &mut String,
     ) -> Result<(), CodeGenError> {
         let mut c_name = c_identifier(name);
-        
+
         // Array assignment always refers to the local array variable, not a parameter.
         // If the variable was renamed to avoid shadowing, use the renamed version.
         if let Some(renamed) = self.variable_renames.get(&c_name) {
@@ -204,7 +210,7 @@ impl super::StmtEmitter {
         output: &mut String,
     ) -> Result<(), CodeGenError> {
         let mut c_name = c_identifier(name);
-        
+
         // Array field assignment always refers to the local array variable, not a parameter.
         // If the variable was renamed to avoid shadowing, use the renamed version.
         if let Some(renamed) = self.variable_renames.get(&c_name) {
@@ -212,10 +218,7 @@ impl super::StmtEmitter {
         }
         let value_code = self.emit_expr(value)?;
 
-        let indices_code: Result<Vec<_>, _> = indices
-            .iter()
-            .map(|e| self.emit_expr(e))
-            .collect();
+        let indices_code: Result<Vec<_>, _> = indices.iter().map(|e| self.emit_expr(e)).collect();
         let indices_code = indices_code?;
 
         // Calculate linear index for multi-dimensional arrays

@@ -19,7 +19,7 @@ use crate::codegen::error::CodeGenError;
 use crate::semantic::typed_ir::{TypedInputTarget, TypedPrintItem};
 use crate::writeln_code;
 
-use super::super::expr::{emit_expr, escape_string};
+use super::super::expr::escape_string;
 use super::super::types::c_identifier;
 
 impl super::StmtEmitter {

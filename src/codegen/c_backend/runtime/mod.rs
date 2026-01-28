@@ -160,21 +160,48 @@ pub(in crate::codegen) fn emit_header_with_debug(
             // Emit full struct definition for compilation of generated code
             // See docs/FIX_REMAINING_ERRORS_DISCUSSION.md for rationale
             // IMPORTANT: This must come immediately after the include, before any code uses qb_string
-            writeln_code!(output, "/* ============================================================================")?;
-            writeln_code!(output, " * qb_string Structure Definition (Compilation Only)")?;
-            writeln_code!(output, " * ============================================================================")?;
-            writeln_code!(output, " * This structure definition is provided for compilation of generated code")?;
-            writeln_code!(output, " * that accesses struct members (e.g., in UDTs containing qb_string* fields).")?;
+            writeln_code!(
+                output,
+                "/* ============================================================================"
+            )?;
+            writeln_code!(
+                output,
+                " * qb_string Structure Definition (Compilation Only)"
+            )?;
+            writeln_code!(
+                output,
+                " * ============================================================================"
+            )?;
+            writeln_code!(
+                output,
+                " * This structure definition is provided for compilation of generated code"
+            )?;
+            writeln_code!(
+                output,
+                " * that accesses struct members (e.g., in UDTs containing qb_string* fields)."
+            )?;
             writeln_code!(output, " *")?;
-            writeln_code!(output, " * IMPORTANT: For runtime code, use the API functions:")?;
+            writeln_code!(
+                output,
+                " * IMPORTANT: For runtime code, use the API functions:"
+            )?;
             writeln_code!(output, " *   - qb_string_data() instead of ->data")?;
             writeln_code!(output, " *   - qb_string_len() instead of ->len")?;
             writeln_code!(output, " *   - qb_string_release() for memory management")?;
             writeln_code!(output, " *")?;
-            writeln_code!(output, " * Direct struct member access is an implementation detail and may change")?;
-            writeln_code!(output, " * in future versions. The API functions in qb64fresh_rt.h are the stable")?;
+            writeln_code!(
+                output,
+                " * Direct struct member access is an implementation detail and may change"
+            )?;
+            writeln_code!(
+                output,
+                " * in future versions. The API functions in qb64fresh_rt.h are the stable"
+            )?;
             writeln_code!(output, " * interface.")?;
-            writeln_code!(output, " * ============================================================================")?;
+            writeln_code!(
+                output,
+                " * ============================================================================"
+            )?;
             writeln_code!(output)?;
             types::emit_string_type(output)?;
             // Note: emit_string_type() already creates the qb_string typedef
@@ -316,10 +343,7 @@ pub(in crate::codegen) fn emit_header_with_debug(
             writeln_code!(output, "}}")?;
             writeln_code!(output)?;
             // qb_instr2 - 2-argument INSTR (starts at beginning)
-            writeln_code!(
-                output,
-                "int32_t qb_instr2(QbString* s, QbString* find) {{"
-            )?;
+            writeln_code!(output, "int32_t qb_instr2(QbString* s, QbString* find) {{")?;
             writeln_code!(output, "    return qb_instr(1, s, find);")?;
             writeln_code!(output, "}}")?;
             writeln_code!(output)?;
@@ -923,10 +947,8 @@ pub(in crate::codegen) fn emit_header_with_debug(
                 "int32_t qb_shellhide(QbString* cmd) {{ (void)cmd; return 0; }}"
             )?;
             // Network functions (stubs - no actual network support)
-            // Note: qb_net_openhost is declared in qb64fresh_rt.h but with different signature (int64_t port)
-            // QB64pe calls this with a string argument (host:port format), so we provide a wrapper
-            // Only generate in External mode if header signature doesn't match usage
-            // For now, skip generation - runtime library should provide correct implementation
+            // Note: qb_net_openhost signature matches header (int64_t port)
+            // Inline runtime stub is generated in system.rs
             writeln_code!(
                 output,
                 "void qb_sub_set_foreground_window(intptr_t hwnd) {{ (void)hwnd; }}"
