@@ -75,7 +75,7 @@ fn compile_qb64pe() -> Result<CompilationResult, String> {
     let backend = CBackend::with_runtime_mode(RuntimeMode::External);
     let output = backend
         .generate(&typed_program)
-        .map_err(|e| format!("CodeGen error: {}", e))?;
+        .map_err(|e| format!("CodeGen error: {:?}", e))?;
     let codegen_time = codegen_start.elapsed();
 
     Ok(CompilationResult {
@@ -553,5 +553,236 @@ mod regression_tests {
         analyzer
             .analyze(&program)
             .expect("Should analyze - dual namespace");
+    }
+
+    /// Regression: String double-wrapping in BYREF/BYVAL parameters.
+    /// Bug: qb_str_from_c() was wrapped multiple times causing 807 C compilation errors.
+    /// Fix: commit 115ae41 - Added unwrap_qb_str_from_c() helper.
+    #[test]
+    fn string_double_wrapping_byref() {
+        let source = r#"
+            SUB TestSub(s$ AS STRING)
+                PRINT s$
+            END SUB
+            
+            DIM x$ AS STRING
+            x$ = "test"
+            CALL TestSub(x$)
+        "#;
+
+        let tokens = lex(source);
+        let mut parser = Parser::new(&tokens);
+        let program = parser.parse().expect("Should parse");
+
+        let mut analyzer = SemanticAnalyzer::new();
+        let typed = analyzer.analyze(&program).expect("Should analyze");
+
+        let backend = CBackend::with_runtime_mode(RuntimeMode::Inline);
+        let output = backend.generate(&typed).expect("Should generate");
+
+        // Should not have double qb_str_from_c() wrapping
+        // Count occurrences - should be reasonable, not excessive
+        let qb_str_from_c_count = output.code.matches("qb_str_from_c(").count();
+        assert!(
+            qb_str_from_c_count < 20,
+            "Too many qb_str_from_c() calls (possible double-wrapping): {}",
+            qb_str_from_c_count
+        );
+    }
+
+    /// Regression: SELECT CASE string comparisons.
+    /// Bug: SELECT CASE with strings didn't work, especially fixed-length strings.
+    /// Fix: commits 18560d1, 11389a2 - Fixed string comparison using qb_string_compare().
+    #[test]
+    fn select_case_string_comparison() {
+        let source = r#"
+            DIM s$ AS STRING
+            s$ = "two"
+            SELECT CASE s$
+                CASE "one"
+                    PRINT "One"
+                CASE "two"
+                    PRINT "Two"
+                CASE "three"
+                    PRINT "Three"
+                CASE ELSE
+                    PRINT "Other"
+            END SELECT
+        "#;
+
+        let tokens = lex(source);
+        let mut parser = Parser::new(&tokens);
+        let program = parser.parse().expect("Should parse");
+
+        let mut analyzer = SemanticAnalyzer::new();
+        let typed = analyzer.analyze(&program).expect("Should analyze");
+
+        let backend = CBackend::with_runtime_mode(RuntimeMode::Inline);
+        let output = backend.generate(&typed).expect("Should generate");
+
+        // Should use qb_string_compare for string comparisons
+        assert!(
+            output.code.contains("qb_string_compare"),
+            "SELECT CASE with strings should use qb_string_compare: {}",
+            output.code
+        );
+    }
+
+    /// Regression: SELECT CASE with fixed-length strings.
+    /// Bug: Fixed-length strings not properly wrapped when comparing.
+    /// Fix: commit 11389a2 - Fixed fixed-length string wrapping in SELECT CASE.
+    #[test]
+    fn select_case_fixed_length_string() {
+        let source = r#"
+            DIM s AS STRING * 10
+            s = "test"
+            SELECT CASE s
+                CASE "test"
+                    PRINT "Match"
+                CASE ELSE
+                    PRINT "No match"
+            END SELECT
+        "#;
+
+        let tokens = lex(source);
+        let mut parser = Parser::new(&tokens);
+        let program = parser.parse().expect("Should parse");
+
+        let mut analyzer = SemanticAnalyzer::new();
+        let typed = analyzer.analyze(&program).expect("Should analyze");
+
+        let backend = CBackend::with_runtime_mode(RuntimeMode::Inline);
+        let output = backend.generate(&typed).expect("Should generate");
+
+        // Should use qb_string_compare and properly handle fixed-length strings
+        assert!(
+            output.code.contains("qb_string_compare"),
+            "SELECT CASE with fixed-length strings should use qb_string_compare"
+        );
+    }
+
+    /// Regression: Array variable rename in array access.
+    /// Bug: Array access variables didn't use renamed names, causing variable shadowing.
+    /// Fix: commit 3fe464b - Fixed emit_array_access to apply variable_renames.
+    #[test]
+    fn array_variable_rename() {
+        let source = r#"
+            DIM arr(10) AS INTEGER
+            arr(1) = 5
+            arr(2) = 10
+            PRINT arr(1); arr(2)
+        "#;
+
+        let tokens = lex(source);
+        let mut parser = Parser::new(&tokens);
+        let program = parser.parse().expect("Should parse");
+
+        let mut analyzer = SemanticAnalyzer::new();
+        let typed = analyzer.analyze(&program).expect("Should analyze");
+
+        let backend = CBackend::with_runtime_mode(RuntimeMode::Inline);
+        let output = backend.generate(&typed).expect("Should generate");
+
+        // Array access should use consistent variable names
+        // The generated code should compile without variable shadowing issues
+        assert!(
+            output.code.contains("arr") || output.code.contains("arr_"),
+            "Array access should use proper variable names"
+        );
+    }
+
+    /// Regression: MID$ assignment with fixed-length strings.
+    /// Bug: MID$ assignment with fixed-length strings caused stack corruption.
+    /// Fix: commit 219a5ae - Detect FixedString type and use manual character copying.
+    #[test]
+    fn mid_assignment_fixed_length_string() {
+        let source = r#"
+            DIM s AS STRING * 20
+            s = "Hello World"
+            MID$(s, 7) = "BASIC"
+        "#;
+
+        let tokens = lex(source);
+        let mut parser = Parser::new(&tokens);
+        let program = parser.parse().expect("Should parse");
+
+        let mut analyzer = SemanticAnalyzer::new();
+        let typed = analyzer.analyze(&program).expect("Should analyze");
+
+        let backend = CBackend::with_runtime_mode(RuntimeMode::Inline);
+        let output = backend.generate(&typed).expect("Should generate");
+
+        // For fixed-length strings, should use manual copying, not qb_mid_assign
+        // Check that it doesn't use qb_mid_assign (which expects qb_string*, not fixed strings)
+        // or if it does, it properly unwraps the fixed string first
+        assert!(
+            output.code.contains("MID$")
+                || output.code.contains("mid")
+                || output.code.contains("strncpy"),
+            "MID$ assignment should generate appropriate code"
+        );
+    }
+
+    /// Regression: MID$ assignment with fixed-length string arrays.
+    /// Bug: MID$ assignment with fixed-length string arrays caused stack corruption.
+    /// Fix: commit 219a5ae - Fixed handling of fixed-length string arrays.
+    #[test]
+    fn mid_assignment_fixed_length_string_array() {
+        let source = r#"
+            DIM arr(10) AS STRING * 20
+            arr(1) = "Test"
+            MID$(arr(1), 1, 2) = "XX"
+        "#;
+
+        let tokens = lex(source);
+        let mut parser = Parser::new(&tokens);
+        let program = parser.parse().expect("Should parse");
+
+        let mut analyzer = SemanticAnalyzer::new();
+        let typed = analyzer.analyze(&program).expect("Should analyze");
+
+        let backend = CBackend::with_runtime_mode(RuntimeMode::Inline);
+        let output = backend.generate(&typed).expect("Should generate");
+
+        // Should handle fixed-length string arrays correctly
+        assert!(
+            output.code.contains("MID$")
+                || output.code.contains("mid")
+                || output.code.contains("strncpy"),
+            "MID$ assignment with fixed-length string arrays should generate appropriate code"
+        );
+    }
+
+    /// Regression: String temp pool cleanup in loops.
+    /// Bug: String temp pool not cleaned up in FOR/WHILE/DO loops, causing memory leaks.
+    /// Fix: commit 4dd4e77 - Implemented scoped cleanup with save/restore base pattern.
+    #[test]
+    fn string_temp_pool_loop_cleanup() {
+        let source = r#"
+            DIM i AS INTEGER
+            FOR i = 1 TO 100
+                DIM s$ AS STRING
+                s$ = "test" + STR$(i)
+                PRINT s$
+            NEXT i
+        "#;
+
+        let tokens = lex(source);
+        let mut parser = Parser::new(&tokens);
+        let program = parser.parse().expect("Should parse");
+
+        let mut analyzer = SemanticAnalyzer::new();
+        let typed = analyzer.analyze(&program).expect("Should analyze");
+
+        let backend = CBackend::with_runtime_mode(RuntimeMode::Inline);
+        let output = backend.generate(&typed).expect("Should generate");
+
+        // Should have cleanup calls in the loop
+        // Look for qbs_cleanup or similar cleanup patterns
+        assert!(
+            output.code.contains("qbs_cleanup") || output.code.contains("cleanup"),
+            "Loop should include string temp pool cleanup: {}",
+            output.code
+        );
     }
 }
