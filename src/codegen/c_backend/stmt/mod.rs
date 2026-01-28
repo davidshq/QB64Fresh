@@ -146,11 +146,19 @@ impl StmtEmitter {
         self.label_counter += 1;
         label
     }
-    
+
     /// Helper method to emit an expression with variable renamings applied.
     /// This wraps `emit_expr` and automatically passes the current variable renamings and parameter names.
-    pub(super) fn emit_expr(&self, expr: &crate::semantic::typed_ir::TypedExpr) -> Result<String, crate::codegen::error::CodeGenError> {
-        super::expr::emit_expr(expr, self.no_shell, &self.variable_renames, &self.current_func_param_names)
+    pub(super) fn emit_expr(
+        &self,
+        expr: &crate::semantic::typed_ir::TypedExpr,
+    ) -> Result<String, crate::codegen::error::CodeGenError> {
+        super::expr::emit_expr(
+            expr,
+            self.no_shell,
+            &self.variable_renames,
+            &self.current_func_param_names,
+        )
     }
 
     /// Converts a BASIC label to a C label, prefixing with procedure name if in a procedure.
@@ -1467,10 +1475,7 @@ impl StmtEmitter {
                     .unwrap_or_else(|| "-1".to_string());
                 // Border is ignored in modern systems (was CGA/EGA text mode only)
                 // We accept it for compatibility but don't use it
-                let _border_code = border
-                    .as_ref()
-                    .map(|e| self.emit_expr(e))
-                    .transpose()?;
+                let _border_code = border.as_ref().map(|e| self.emit_expr(e)).transpose()?;
                 writeln_code!(
                     output,
                     "{}qb_gfx_color((int32_t){}, (int32_t){});",

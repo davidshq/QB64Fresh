@@ -20,7 +20,7 @@ use crate::semantic::typed_ir::{
 use crate::semantic::types::BasicType;
 use crate::writeln_code;
 
-use crate::codegen::c_backend::expr::{c_function_name, emit_expr};
+use crate::codegen::c_backend::expr::c_function_name;
 use crate::codegen::c_backend::implicit_vars::collect_implicit_locals;
 use crate::codegen::c_backend::types::{c_identifier, c_type, default_init};
 
@@ -259,10 +259,7 @@ impl super::StmtEmitter {
             .collect();
         // Track all parameter names (BYVAL parameters don't get _ref suffix, so they can be shadowed)
         // We need to rename local variables that shadow BYVAL parameters to avoid C compilation errors
-        self.current_func_param_names = params
-            .iter()
-            .map(|p| c_identifier(&p.name))
-            .collect();
+        self.current_func_param_names = params.iter().map(|p| c_identifier(&p.name)).collect();
 
         // Save temp pool base for this procedure - cleanup after each statement
         writeln_code!(output, "    uint64_t _qbs_proc_base = qbs_tmp_base_get();")?;
@@ -403,10 +400,7 @@ impl super::StmtEmitter {
             .collect();
         // Track all parameter names (BYVAL parameters don't get _ref suffix, so they can be shadowed)
         // We need to rename local variables that shadow BYVAL parameters to avoid C compilation errors
-        self.current_func_param_names = params
-            .iter()
-            .map(|p| c_identifier(&p.name))
-            .collect();
+        self.current_func_param_names = params.iter().map(|p| c_identifier(&p.name)).collect();
 
         // Save temp pool base for this function - cleanup after each statement
         writeln_code!(output, "    uint64_t _qbs_proc_base = qbs_tmp_base_get();")?;
@@ -473,14 +467,15 @@ impl super::StmtEmitter {
     ) -> Result<(), CodeGenError> {
         let mut c_name = c_identifier(name);
         let original_c_name = c_name.clone();
-        
+
         // Check if this variable shadows a function parameter
         // In BASIC, local variables can shadow parameters, but in C this causes compilation errors
         // Rename the local variable to avoid the collision
         if self.current_func_param_names.contains(&c_name) {
             c_name = format!("{}_local", c_name);
             // Track the renaming so we can update all references to this variable
-            self.variable_renames.insert(original_c_name.clone(), c_name.clone());
+            self.variable_renames
+                .insert(original_c_name.clone(), c_name.clone());
         }
 
         if dimensions.is_empty() {

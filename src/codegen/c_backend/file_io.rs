@@ -14,7 +14,6 @@ use crate::ast::{FileAccess, FileLock, FileMode, PrintSeparator};
 use crate::semantic::typed_ir::{TypedExpr, TypedInputTarget, TypedPrintItem};
 use crate::semantic::types::BasicType;
 
-use super::expr::emit_expr;
 use super::stmt::StmtEmitter;
 use super::types::c_identifier;
 
@@ -193,7 +192,8 @@ impl StmtEmitter {
                         // Already wrapped - check for double-wrapping
                         if expr_code.starts_with("qb_str_from_c(qb_str_from_c(") {
                             // Double-wrapped - unwrap one level
-                            expr_code.strip_prefix("qb_str_from_c(")
+                            expr_code
+                                .strip_prefix("qb_str_from_c(")
                                 .and_then(|s| s.strip_suffix(")"))
                                 .unwrap_or(&expr_code)
                                 .to_string()

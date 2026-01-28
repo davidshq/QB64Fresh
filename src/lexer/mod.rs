@@ -142,29 +142,32 @@ impl<'source> Lexer<'source> {
             self.current_line += newlines;
             self.last_newline_offset = byte_span.start;
         }
-        
-        // If this token contains newlines, update line number
-        if byte_span.start < byte_span.end {
-            let newlines_in_token = self.source[byte_span.start..byte_span.end]
+
+        // Check if this token contains newlines (before creating span)
+        let newlines_in_token = if byte_span.start < byte_span.end {
+            self.source[byte_span.start..byte_span.end]
                 .chars()
                 .filter(|&c| c == '\n')
-                .count();
-            if newlines_in_token > 0 {
-                self.current_line += newlines_in_token;
-                // Find the last newline in this token
-                if let Some(last_nl) = self.source[byte_span.start..byte_span.end]
-                    .rfind('\n')
-                {
-                    self.last_newline_offset = byte_span.start + last_nl + 1;
-                }
+                .count()
+        } else {
+            0
+        };
+
+        // Create span with current line number (before incrementing for newlines)
+        // The newline token itself is on the line it ends, not the next line
+        let span = Span::new(byte_span.start, byte_span.end, self.current_line);
+
+        // After creating the span, update line number for next token
+        if newlines_in_token > 0 {
+            self.current_line += newlines_in_token;
+            // Find the last newline in this token
+            if let Some(last_nl) = self.source[byte_span.start..byte_span.end].rfind('\n') {
+                self.last_newline_offset = byte_span.start + last_nl + 1;
             }
         }
 
-        let span = Span::new(byte_span.start, byte_span.end, self.current_line);
-
         Some(Token::new(token_kind, span, text))
     }
-
 
     /// Collect all remaining tokens into a vector.
     ///
@@ -214,30 +217,34 @@ pub fn lex_with_progress(source: &str, verbose: bool) -> Vec<Token> {
     if !verbose {
         return lex(source);
     }
-    
+
     let mut lexer = Lexer::new(source);
     let mut tokens = Vec::new();
     let mut last_report = 0;
-    
+
     while let Some(token) = lexer.next_token() {
         tokens.push(token);
-        
+
         // Report progress periodically
         if tokens.len() - last_report >= 10000 {
             let progress_pct = ((tokens.len() as f64 / source.len() as f64) * 100.0) as usize;
-            eprint!("\r[1/4] Lexing... {} tokens (~{}%)", tokens.len(), progress_pct.min(100));
+            eprint!(
+                "\r[1/4] Lexing... {} tokens (~{}%)",
+                tokens.len(),
+                progress_pct.min(100)
+            );
             use std::io::Write;
             let _ = std::io::stderr().flush();
             last_report = tokens.len();
         }
     }
-    
+
     if verbose {
         eprintln!("\r[1/4] Lexing complete: {} tokens", tokens.len());
         use std::io::Write;
         let _ = std::io::stderr().flush();
     }
-    
+
     tokens
 }
 

@@ -32,24 +32,37 @@ if command -v stdbuf >/dev/null 2>&1; then
     timeout 600 bash -c "
         stdbuf -oL -eL cargo run --bin qb64fresh -- '$QB64PE_SOURCE' --emit-c -o '$OUTPUT_FILE' --verbose 2>&1 | tee '$LOG_FILE'
     " || {
+        EXIT_CODE=$?
+        if [ $EXIT_CODE -eq 124 ]; then
+            echo ""
+            echo "⚠️  TIMEOUT: Compilation took longer than 10 minutes"
+            echo "   This is expected for the full QB64pe (~24K lines)"
+            echo "   Check $LOG_FILE for progress"
+        else
+            echo ""
+            echo "❌ Compilation failed with exit code $EXIT_CODE"
+            echo "   Check $LOG_FILE for errors"
+        fi
+        exit $EXIT_CODE
+    }
 else
     timeout 600 bash -c "
         cargo run --bin qb64fresh -- '$QB64PE_SOURCE' --emit-c -o '$OUTPUT_FILE' --verbose 2>&1 | tee '$LOG_FILE'
     " || {
+        EXIT_CODE=$?
+        if [ $EXIT_CODE -eq 124 ]; then
+            echo ""
+            echo "⚠️  TIMEOUT: Compilation took longer than 10 minutes"
+            echo "   This is expected for the full QB64pe (~24K lines)"
+            echo "   Check $LOG_FILE for progress"
+        else
+            echo ""
+            echo "❌ Compilation failed with exit code $EXIT_CODE"
+            echo "   Check $LOG_FILE for errors"
+        fi
+        exit $EXIT_CODE
+    }
 fi
-    EXIT_CODE=$?
-    if [ $EXIT_CODE -eq 124 ]; then
-        echo ""
-        echo "⚠️  TIMEOUT: Compilation took longer than 10 minutes"
-        echo "   This is expected for the full QB64pe (~24K lines)"
-        echo "   Check $LOG_FILE for progress"
-    else
-        echo ""
-        echo "❌ Compilation failed with exit code $EXIT_CODE"
-        echo "   Check $LOG_FILE for errors"
-    fi
-    exit $EXIT_CODE
-}
 
 echo ""
 echo "=========================================="

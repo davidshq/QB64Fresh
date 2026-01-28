@@ -17,7 +17,6 @@ use crate::semantic::typed_ir::{TypedExpr, TypedParameter, TypedStatement};
 use crate::semantic::types::BasicType;
 use crate::writeln_code;
 
-use crate::codegen::c_backend::expr::emit_expr;
 use crate::codegen::c_backend::types::{c_identifier, c_type, default_init};
 
 impl super::StmtEmitter {

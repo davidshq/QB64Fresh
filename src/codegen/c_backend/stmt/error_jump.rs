@@ -17,8 +17,6 @@ use crate::codegen::error::CodeGenError;
 use crate::semantic::typed_ir::TypedExpr;
 use crate::writeln_code;
 
-use super::super::expr::emit_expr;
-
 impl super::StmtEmitter {
     /// Emits ON ERROR GOTO.
     ///

@@ -250,9 +250,9 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
         "int32_t qb_console(int32_t mode) {{ (void)mode; return 1; }}"
     )?;
 
-    writeln_code!(output, "int32_t qb_shell(QbString* cmd) {{")?;
-    writeln_code!(output, "    if (!cmd || !cmd->data) return -1;")?;
-    writeln_code!(output, "    return system(cmd->data);")?;
+    writeln_code!(output, "int32_t qb_shell(const char* cmd) {{")?;
+    writeln_code!(output, "    if (!cmd) return -1;")?;
+    writeln_code!(output, "    return system(cmd);")?;
     writeln_code!(output, "}}")?;
 
     writeln_code!(
@@ -566,7 +566,7 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
     // QB64pe calls this with a string argument (host:port format)
     writeln_code!(
         output,
-        "static int64_t qb_net_openhost(QbString* hostport) {{ (void)hostport; return 0; }}"
+        "static int64_t qb_net_openhost(int64_t port) {{ (void)port; return 0; }}"
     )?;
     writeln_code!(
         output,

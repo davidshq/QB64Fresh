@@ -20,7 +20,6 @@ use crate::semantic::typed_ir::TypedReadTarget;
 use crate::semantic::types::BasicType;
 use crate::writeln_code;
 
-use super::super::expr::emit_expr;
 use super::super::types::{c_identifier, c_type};
 
 impl super::StmtEmitter {
