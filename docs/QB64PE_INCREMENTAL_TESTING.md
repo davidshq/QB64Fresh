@@ -1,8 +1,13 @@
 # QB64pe Incremental Testing Strategy
 
+**Last Updated:** 2026-01-28  
+**Status:** Full compiler compilation successful through all QB64Fresh phases ⚠️ (69 C compilation errors remaining)
+
 ## Problem
 
-QB64pe is **~24,757 lines** of BASIC code, which makes compilation very slow (~5+ minutes). This prevents rapid iteration cycles (compile → find error → fix → repeat).
+QB64pe is **~59,000 lines** of BASIC code (39 files with all includes), which makes compilation very slow (~5+ minutes). This prevents rapid iteration cycles (compile → find error → fix → repeat).
+
+**Update (2026-01-28):** QB64Fresh can now compile the full QB64pe through all phases (preprocessing, lexing, parsing, semantic analysis, code generation). The generated C code (114,924 lines) compiles with **69 errors remaining** (down from 807, a 91% reduction). See [QB64PE_COMPILATION_STATUS.md](QB64PE_COMPILATION_STATUS.md) for full status.
 
 ## Solution: Progressive Module Testing
 
@@ -65,20 +70,37 @@ Add the built-in function definitions:
 
 **Recommendation:** Test as part of Phase 4 (core compiler) instead
 
-### Phase 4: Core Compiler (Medium - ~10s)
+### Phase 4: Core Compiler (Fast - ~800ms) ✅
 Main compiler logic without IDE:
 - All includes except `ide/*`
 
-**Test file:** `tests/qb64pe_incremental/04_core_compiler.bas`
-**Status:** Not yet tested
-**Note:** This is the sweet spot for iteration - core compiler without IDE overhead
+**Test file:** `tests/qb64pe_incremental/04_core_compiler.bas`  
+**Status:** ✅ **COMPILES SUCCESSFULLY** (tested as part of full compiler)
 
-### Phase 5: Full Compiler (Slow - ~5min)
+**Note:** Since the full compiler (Phase 5) now compiles successfully, Phase 4 is validated. The core compiler without IDE is the sweet spot for iteration, but full compiler compilation is now fast enough (~800ms) for regular testing.
+
+### Phase 5: Full Compiler (Fast - ~800ms) ✅
 Complete QB64pe including IDE:
-- Everything
+- Everything (39 files, ~59,000 lines)
 
-**Test file:** `tests/qb64pe_incremental/05_full_compiler.bas` (symlink to original)
-**Status:** Not yet tested (too slow for regular iteration)
+**Test file:** `tests/qb64pe_incremental/05_full_compiler.bas` (symlink to original)  
+**Status:** ✅ **COMPILES SUCCESSFULLY** through all QB64Fresh phases
+
+**Results:**
+- ✅ Preprocessing: All `$INCLUDE` directives processed (39 files)
+- ✅ Lexing: 0 tokenization errors
+- ✅ Parsing: 0 parse errors
+- ✅ Semantic Analysis: 0 type checking errors
+- ✅ Code Generation: 114,924 lines of C code generated
+- ⚠️ C Compilation: 69 errors remaining (down from 807, 91% reduction)
+
+**Compilation Time:** ~800ms (much faster than expected!)
+
+**Note:** The incremental testing strategy is still valuable for:
+- Debugging specific modules in isolation
+- Understanding module dependencies
+- Fast iteration on utility functions
+- But the full compiler now compiles successfully through QB64Fresh phases!
 
 ## Usage
 
@@ -102,8 +124,11 @@ cargo run --bin qb64fresh -- tests/qb64pe_incremental/04_core_compiler.bas --emi
 
 ### Full Validation (Phase 5)
 ```bash
-# Test complete QB64pe (run in background)
-bash -c 'ulimit -v 16777216 && cargo run --bin qb64fresh -- tests/qb64pe_incremental/05_full_compiler.bas --emit-c -o /tmp/qb64pe_full.c' &
+# Test complete QB64pe (fast - ~800ms)
+bash -c 'ulimit -v 16777216 && cargo run --bin qb64fresh -- tests/qb64pe_incremental/05_full_compiler.bas --emit-c -o /tmp/qb64pe_full.c'
+
+# Or use the bootstrap test
+cargo test --test bootstrap_tests qb64pe_compiles_successfully
 ```
 
 ### Using the Helper Script
@@ -147,8 +172,11 @@ test = 1
 1. **Start with Phase 1** - Get core infrastructure working ✅
 2. **Test Phase 2 utilities** - Test isolated utilities (hash works, const_eval partial) ✅
 3. **Skip Phase 3** - Built-in functions blocked (needs main compiler) ❌
-4. **Build Phase 4** - Extract core compiler sections incrementally ⏳
-5. **Final validation** - Run Phase 5 (full compiler) when ready
+4. **Phase 4 validated** - Core compiler compiles successfully ✅
+5. **Phase 5 validated** - Full compiler compiles successfully through all QB64Fresh phases ✅
+6. **Current focus** - Fix remaining 69 C compilation errors (see [QB64PE_COMPILATION_BLOCKING_ISSUES.md](QB64PE_COMPILATION_BLOCKING_ISSUES.md))
+
+**Note:** The incremental testing strategy remains valuable for debugging specific modules, but the full compiler now compiles successfully through all QB64Fresh phases. The remaining work is fixing C compilation errors (type system issues, runtime function signature mismatches).
 
 ## Current Test Results
 
@@ -158,8 +186,10 @@ test = 1
 | Phase 2: Hash Utility | ✅ PASSES | 0.7s | Requires hash.bi header |
 | Phase 2: Const Eval Utility | ⚠️ PARTIAL | 0.1s | Dependencies resolved, some errors remain |
 | Phase 3: Built-in Functions | ❌ BLOCKED | N/A | Needs main compiler infrastructure |
-| Phase 4: Core Compiler | ⏳ TODO | ~10s | Need to extract sections from qb64pe.bas |
-| Phase 5: Full Compiler | ⏳ TODO | ~5min | Final validation only |
+| Phase 4: Core Compiler | ✅ PASSES | ~800ms | Validated as part of full compiler |
+| Phase 5: Full Compiler | ✅ PASSES (QB64Fresh) ⚠️ (C compile) | ~800ms | All QB64Fresh phases pass; 69 C compilation errors remain |
+
+**Major Achievement (2026-01-28):** Phase 5 (full compiler) now compiles successfully through all QB64Fresh phases! The generated C code (114,924 lines) compiles with 69 errors remaining (down from 807, 91% reduction). See [QB64PE_COMPILATION_STATUS.md](QB64PE_COMPILATION_STATUS.md) for details.
 
 ## Key Learnings
 
@@ -181,3 +211,27 @@ When a test fails, check:
 - Each test file should have **minimal executable code** to exercise includes
 - Use `--emit-c` flag to see generated C (faster than full compilation)
 - See `tests/qb64pe_incremental/TESTING_NOTES.md` for detailed test results and findings
+
+## Current Status Summary
+
+**QB64Fresh Compilation Phases:** ✅ **ALL PASSING**
+- Preprocessing: ✅ Complete (39 files, ~59K lines)
+- Lexing: ✅ Complete (0 errors)
+- Parsing: ✅ Complete (0 errors)
+- Semantic Analysis: ✅ Complete (0 errors)
+- Code Generation: ✅ Complete (114,924 lines of C)
+
+**C Compilation:** ⚠️ **69 errors remaining** (91% reduction from 807)
+- Type system issues (ParseNum UDT compatibility)
+- Runtime function signature mismatches
+- Function pointer assignment issues
+
+**Next Steps:**
+1. Fix remaining C compilation errors (see [QB64PE_COMPILATION_BLOCKING_ISSUES.md](QB64PE_COMPILATION_BLOCKING_ISSUES.md))
+2. Build executable once C compilation succeeds
+3. Test bootstrapped QB64pe execution
+
+**Related Documentation:**
+- [QB64PE_COMPILATION_STATUS.md](QB64PE_COMPILATION_STATUS.md) - Full compilation status and metrics
+- [QB64PE_COMPILATION_BLOCKING_ISSUES.md](QB64PE_COMPILATION_BLOCKING_ISSUES.md) - Detailed error analysis
+- [QB64PE_COMPILATION_PLAN.md](QB64PE_COMPILATION_PLAN.md) - Original implementation plan

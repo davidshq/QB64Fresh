@@ -687,32 +687,37 @@ impl<'a> Parser<'a> {
             let start_token = self.expect(&TokenKind::Identifier, "letter")?;
             let start_text = start_token.text.to_uppercase();
 
-            if start_text.len() != 1 || !start_text.chars().next().unwrap().is_ascii_alphabetic() {
-                let span: Span = start_token.span;
-                self.errors.push(ParseError::syntax(
-                    "expected single letter for DEF range".to_string(),
-                    span,
-                ));
-                return Err(());
-            }
-
-            let start_char = start_text.chars().next().unwrap();
+            // Extract first character safely
+            let start_char = match start_text.chars().next() {
+                Some(ch) if start_text.len() == 1 && ch.is_ascii_alphabetic() => ch,
+                _ => {
+                    let span: Span = start_token.span;
+                    self.errors.push(ParseError::syntax(
+                        "expected single letter for DEF range".to_string(),
+                        span,
+                    ));
+                    return Err(());
+                }
+            };
 
             // Check for range: A-Z
             if self.match_token(&TokenKind::Minus) {
                 let end_token = self.expect(&TokenKind::Identifier, "letter")?;
                 let end_text = end_token.text.to_uppercase();
 
-                if end_text.len() != 1 || !end_text.chars().next().unwrap().is_ascii_alphabetic() {
-                    let span: Span = end_token.span;
-                    self.errors.push(ParseError::syntax(
-                        "expected single letter for DEF range end".to_string(),
-                        span,
-                    ));
-                    return Err(());
-                }
+                // Extract first character safely
+                let end_char = match end_text.chars().next() {
+                    Some(ch) if end_text.len() == 1 && ch.is_ascii_alphabetic() => ch,
+                    _ => {
+                        let span: Span = end_token.span;
+                        self.errors.push(ParseError::syntax(
+                            "expected single letter for DEF range end".to_string(),
+                            span,
+                        ));
+                        return Err(());
+                    }
+                };
 
-                let end_char = end_text.chars().next().unwrap();
                 ranges.push((start_char, end_char));
             } else {
                 // Single letter: 'A' becomes ('A', 'A')

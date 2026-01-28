@@ -246,8 +246,21 @@ impl<'a> Parser<'a> {
             // This looks like "identifier:" but in single-line IF context
             // it's actually a procedure call followed by statement separator.
             // Parse as procedure call without arguments.
-            let start = self.peek().unwrap().span.start;
-            let name_token = self.advance().expect("identifier");
+            let start = match self.peek() {
+                Some(token) => token.span.start,
+                None => {
+                    // Should not happen since check() returned true, but handle gracefully
+                    self.errors.push(ParseError::eof("identifier"));
+                    return Err(());
+                }
+            };
+            let name_token = match self.advance() {
+                Some(token) => token,
+                None => {
+                    self.errors.push(ParseError::eof("identifier"));
+                    return Err(());
+                }
+            };
             let name = name_token.text.to_string();
             let span = self.span_from(start);
             return Ok(Statement::new(

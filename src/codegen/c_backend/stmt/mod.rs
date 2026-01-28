@@ -265,7 +265,7 @@ impl StmtEmitter {
     /// Creates a new statement emitter.
     #[allow(dead_code)]
     pub fn new() -> Self {
-        Self::with_runtime_mode(super::RuntimeMode::Inline)
+        Self::with_runtime_mode(super::RuntimeMode::inline())
     }
 
     /// Creates a new statement emitter with the specified runtime mode.
@@ -477,10 +477,7 @@ impl StmtEmitter {
                         // No length specified - replace rest of string
                         format!("(int32_t)(strlen({}) - ({} - 1))", target_code, start_code)
                     };
-                    let data_access = match self.config.runtime_mode {
-                        super::RuntimeMode::External => "qb_string_data(_mid_val)",
-                        super::RuntimeMode::Inline => "_mid_val->data",
-                    };
+                    let data_access = self.config.runtime_mode.string_data_access("_mid_val");
                     writeln_code!(
                         output,
                         "{} {{ QbString* _mid_val = {}; if (_mid_val) {{ int32_t _mid_start = {} - 1; int32_t _mid_len = {}; int32_t _mid_copy_len = _mid_len < (int32_t)strlen({}) ? _mid_len : (int32_t)strlen({}); if (_mid_start >= 0 && _mid_start < (int32_t)strlen({})) {{ strncpy({} + _mid_start, {}, _mid_copy_len); }} }} }}",
@@ -1278,13 +1275,17 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::Swap { left, right } => {
-                let left_code = self.emit_expr(left)?;
-                let right_code = self.emit_expr(right)?;
+                let mut left_code = self.emit_expr(left)?;
+                let mut right_code = self.emit_expr(right)?;
                 let temp_var = self.next_label("swap_temp");
 
                 // Fixed-length strings need special handling (C arrays can't be assigned directly)
                 if let BasicType::FixedString(n) = &left.basic_type {
                     // For fixed-length strings, use strcpy for the swap
+                    // Unwrap qb_str_from_c() wrappers since strcpy expects char* (array names)
+                    use crate::codegen::c_backend::expr::unwrap_qb_str_from_c;
+                    left_code = unwrap_qb_str_from_c(&left_code);
+                    right_code = unwrap_qb_str_from_c(&right_code);
                     writeln_code!(output, "{}{{ char {}[{}];", indent, temp_var, n + 1)?;
                     writeln_code!(output, "{}    strcpy({}, {});", indent, temp_var, left_code)?;
                     writeln_code!(
@@ -2244,7 +2245,8 @@ impl StmtEmitter {
                 let y_code = self.emit_expr(y)?;
                 let text_code = self.emit_expr(text)?;
                 // qb_gfx_printstring expects const char*, not qb_string*
-                let text_data = emit_string_data_access(text, &text_code, self.config.runtime_mode);
+                let text_data =
+                    emit_string_data_access(text, &text_code, &self.config.runtime_mode);
                 writeln_code!(
                     output,
                     "{}qb_gfx_printstring((int32_t){}, (int32_t){}, {});",
@@ -2403,7 +2405,7 @@ impl StmtEmitter {
                     .transpose()?
                     .unwrap_or_else(|| "0.0".to_string());
                 let filename_access =
-                    emit_string_data_access(filename, &filename_code, self.config.runtime_mode);
+                    emit_string_data_access(filename, &filename_code, &self.config.runtime_mode);
                 writeln_code!(
                     output,
                     "{}qb_sndplayfile({}, (double){}, (double){}, (double){}, (double){});",
@@ -2448,7 +2450,7 @@ impl StmtEmitter {
             TypedStatementKind::Kill { filename } => {
                 let filename_code = self.emit_expr(filename)?;
                 let filename_access =
-                    emit_string_data_access(filename, &filename_code, self.config.runtime_mode);
+                    emit_string_data_access(filename, &filename_code, &self.config.runtime_mode);
                 writeln_code!(output, "{}qb_file_kill({});", indent, filename_access)?;
             }
 
@@ -2456,9 +2458,9 @@ impl StmtEmitter {
                 let old_code = self.emit_expr(old_name)?;
                 let new_code = self.emit_expr(new_name)?;
                 let old_access =
-                    emit_string_data_access(old_name, &old_code, self.config.runtime_mode);
+                    emit_string_data_access(old_name, &old_code, &self.config.runtime_mode);
                 let new_access =
-                    emit_string_data_access(new_name, &new_code, self.config.runtime_mode);
+                    emit_string_data_access(new_name, &new_code, &self.config.runtime_mode);
                 writeln_code!(
                     output,
                     "{}qb_file_rename({}, {});",
@@ -2471,21 +2473,21 @@ impl StmtEmitter {
             TypedStatementKind::Mkdir { path } => {
                 let path_code = self.emit_expr(path)?;
                 let path_access =
-                    emit_string_data_access(path, &path_code, self.config.runtime_mode);
+                    emit_string_data_access(path, &path_code, &self.config.runtime_mode);
                 writeln_code!(output, "{}qb_mkdir({});", indent, path_access)?;
             }
 
             TypedStatementKind::Rmdir { path } => {
                 let path_code = self.emit_expr(path)?;
                 let path_access =
-                    emit_string_data_access(path, &path_code, self.config.runtime_mode);
+                    emit_string_data_access(path, &path_code, &self.config.runtime_mode);
                 writeln_code!(output, "{}qb_rmdir({});", indent, path_access)?;
             }
 
             TypedStatementKind::Chdir { path } => {
                 let path_code = self.emit_expr(path)?;
                 let path_access =
-                    emit_string_data_access(path, &path_code, self.config.runtime_mode);
+                    emit_string_data_access(path, &path_code, &self.config.runtime_mode);
                 writeln_code!(output, "{}qb_chdir({});", indent, path_access)?;
             }
 
@@ -2504,7 +2506,7 @@ impl StmtEmitter {
                     let cmd_code = self.emit_expr(cmd)?;
                     // qb_shell expects const char*, not qb_string*
                     let cmd_data =
-                        emit_string_data_access(cmd, &cmd_code, self.config.runtime_mode);
+                        emit_string_data_access(cmd, &cmd_code, &self.config.runtime_mode);
                     writeln_code!(output, "{}qb_shell({});", indent, cmd_data)?;
                 } else {
                     writeln_code!(output, "{}qb_shell(NULL);", indent)?;
@@ -2524,7 +2526,7 @@ impl StmtEmitter {
             TypedStatementKind::Bload { filename, address } => {
                 let filename_code = self.emit_expr(filename)?;
                 let filename_access =
-                    emit_string_data_access(filename, &filename_code, self.config.runtime_mode);
+                    emit_string_data_access(filename, &filename_code, &self.config.runtime_mode);
                 if let Some(addr) = address {
                     let addr_code = self.emit_expr(addr)?;
                     writeln_code!(
@@ -2546,7 +2548,7 @@ impl StmtEmitter {
             } => {
                 let filename_code = self.emit_expr(filename)?;
                 let filename_access =
-                    emit_string_data_access(filename, &filename_code, self.config.runtime_mode);
+                    emit_string_data_access(filename, &filename_code, &self.config.runtime_mode);
                 let addr_code = self.emit_expr(address)?;
                 let len_code = self.emit_expr(length)?;
                 writeln_code!(
@@ -2607,7 +2609,7 @@ impl StmtEmitter {
             TypedStatementKind::ClipboardSet { text } => {
                 let text_code = self.emit_expr(text)?;
                 let text_access =
-                    emit_string_data_access(text, &text_code, self.config.runtime_mode);
+                    emit_string_data_access(text, &text_code, &self.config.runtime_mode);
                 writeln_code!(output, "{}qb_clipboard_set({});", indent, text_access)?;
             }
 

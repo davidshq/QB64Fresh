@@ -257,11 +257,11 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
 
     writeln_code!(
         output,
-        "int32_t qb_shell_hide(QbString* cmd) {{ return qb_shell(cmd); }}"
+        "int32_t qb_shell_hide(QbString* cmd) {{ return qb_shell(cmd ? qb_string_data(cmd) : NULL); }}"
     )?;
     writeln_code!(
         output,
-        "int32_t qb_shellhide(QbString* cmd) {{ return qb_shell(cmd); }}"
+        "int32_t qb_shellhide(QbString* cmd) {{ return qb_shell(cmd ? qb_string_data(cmd) : NULL); }}"
     )?;
     writeln_code!(
         output,

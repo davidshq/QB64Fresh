@@ -151,6 +151,37 @@ impl TypeRegistry {
     }
 }
 
+impl std::fmt::Debug for TypeRegistry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TypeRegistry")
+            .field("emitted_types", &self.emitted_types)
+            .field("type_dependencies", &self.type_dependencies)
+            .field(
+                "type_emitters",
+                &format!("<{} emitters>", self.type_emitters.len()),
+            )
+            .finish()
+    }
+}
+
+impl Clone for TypeRegistry {
+    fn clone(&self) -> Self {
+        // Clone the structure but create new emitters (they're not needed for cloning)
+        // The emitted_types and dependencies are what matter for tracking state
+        //
+        // NOTE: This creates an empty type_emitters map. Cloned registries cannot
+        // emit types unless types are re-registered. This is intentional - cloned
+        // registries are only used for tracking emitted state, not for emitting.
+        // The emitter's runtime_mode clone is only used for string_data_access(),
+        // not for type operations.
+        Self {
+            emitted_types: self.emitted_types.clone(),
+            type_dependencies: self.type_dependencies.clone(),
+            type_emitters: HashMap::new(), // Emitters will be re-registered if needed
+        }
+    }
+}
+
 impl Default for TypeRegistry {
     fn default() -> Self {
         Self::new()
@@ -191,7 +222,7 @@ mod tests {
 
         // Register qb_string (depends on QbString)
         registry.register_type("qb_string", &["QbString"], |output| {
-            output.push_str("typedef QbString qb_string;\n");
+            output.push_str("typedef struct QbString qb_string;\n");
             Ok(())
         });
 
@@ -201,7 +232,7 @@ mod tests {
             .unwrap();
 
         // Check ordering: QbString should come before qb_string
-        let qb_string_pos = output.find("typedef QbString qb_string").unwrap();
+        let qb_string_pos = output.find("typedef struct QbString qb_string").unwrap();
         let qb_string_struct_pos = output.find("struct QbString").unwrap();
         assert!(qb_string_struct_pos < qb_string_pos);
     }

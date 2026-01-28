@@ -1,7 +1,7 @@
 # Testing Infrastructure Plan - Remaining Work
 
 **Created:** 2026-01-18
-**Updated:** 2026-01-26
+**Updated:** 2026-01-28
 **Purpose:** Track remaining testing infrastructure work for QB64Fresh
 
 > **Note:** 
@@ -33,13 +33,13 @@ The **runtime library** has comprehensive test coverage:
 | **Execution tests** | **27** | ✅ passing | `cargo test --test execution_tests` |
 | QB64pe compat | 114/115 files | 99.1% | `cargo test --test qb45_compat -- --nocapture` |
 
-### Current Test Failures (as of 2026-01-27)
+### Current Test Failures (as of 2026-01-28)
 
 - **Golden tests:** All 10 passing ✅ (previously failing tests have been fixed)
 - **QB64pe compatibility:** 1 remaining failure (misc/frog.bas - bug in original code, not compiler limitation)
 - **Other suites:** All passing. Remaining work is in "Remaining Gaps" and "Remaining QB64pe Failures" below.
 
-### Runtime Test Distribution (Updated 2026-01-27)
+### Runtime Test Distribution (Updated 2026-01-28)
 | Module | Lines | Tests | Status |
 |--------|-------|-------|--------|
 | string.rs | 1700+ | **90+** | ✅ Comprehensive (null, refcount, edge cases) |
@@ -73,6 +73,16 @@ The **runtime library** has comprehensive test coverage:
 
 ## Remaining Work
 
+### Short Term (High Priority)
+
+- [ ] **Error Recovery Tests** ⚠️ **CODE QUALITY** (2-3 days)
+  - Test parser continues after errors (doesn't stop at first error)
+  - Test semantic errors are collected, not just first error
+  - Test error messages are helpful (not confusing cascades)
+  - Validate error recovery behavior doesn't cause incorrect cascades
+  - **Priority:** Medium - Improves developer experience when debugging
+  - **Reference:** See [NEXT_STEPS_ANALYSIS.md](../NEXT_STEPS_ANALYSIS.md) for details
+
 ### Medium Term
 
 - [x] Restore coverage reporting and verify 80%+ coverage *(command `cargo llvm-cov --workspace` and CI job verified 2026-01-25; **81.63%** achieved, CI configured in `.github/workflows/ci.yml`)*
@@ -100,6 +110,8 @@ The **runtime library** has comprehensive test coverage:
 
 - **Testing Guide:** [TESTING.md](../TESTING.md) - Comprehensive testing documentation
 - **Completed Items:** [archive/TESTING-COMPLETED.md](../archive/TESTING-COMPLETED.md)
+- **Next Steps Analysis:** [NEXT_STEPS_ANALYSIS.md](../NEXT_STEPS_ANALYSIS.md) - Current priorities and recommendations
+- **QB64pe Compilation Status:** [QB64PE_COMPILATION_STATUS.md](../QB64PE_COMPILATION_STATUS.md) - Bootstrap validation status
 - QB64PE Testing Framework: `QB64pe/docs/testing.md`
 - QB64PE Test Cases: `QB64pe/tests/compile_tests/`
 - QB45 Compatibility Report: `docs/QB45_COMPATIBILITY_REPORT.md`
@@ -117,3 +129,4 @@ The **runtime library** has comprehensive test coverage:
 *Updated: 2026-01-26 - Reviewed and verified current state matches codebase*
 *Updated: 2026-01-27 - Updated test counts: 405 unit, 727 integration, 210 runtime; 99.1% QB64pe compatibility (114/115); all golden tests passing*
 *Updated: 2026-01-27 - ✅ Implemented STRING * n implicit conversion - assignments now automatically convert between STRING and FixedString types*
+*Updated: 2026-01-28 - Added Error Recovery Tests to short-term priorities based on NEXT_STEPS_ANALYSIS.md*

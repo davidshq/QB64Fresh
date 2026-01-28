@@ -42,9 +42,10 @@ impl<'a> TypeChecker<'a> {
 
             ExprKind::Grouped(inner) => {
                 let typed_inner = self.check_expr(inner);
+                let basic_type = typed_inner.basic_type.clone();
                 TypedExpr::new(
-                    TypedExprKind::Grouped(Box::new(typed_inner.clone())),
-                    typed_inner.basic_type,
+                    TypedExprKind::Grouped(Box::new(typed_inner)),
+                    basic_type,
                     expr.span,
                 )
             }
@@ -108,9 +109,10 @@ impl<'a> TypeChecker<'a> {
             ExprKind::CvFunc { target_type, value } => {
                 let typed_value = self.check_expr(value);
                 let basic_type = self.parse_type_name(target_type);
+                let target_type_clone = basic_type.clone();
                 TypedExpr::new(
                     TypedExprKind::CvFunc {
-                        target_type: basic_type.clone(),
+                        target_type: target_type_clone,
                         value: Box::new(typed_value),
                     },
                     basic_type,
@@ -135,9 +137,10 @@ impl<'a> TypeChecker<'a> {
             ExprKind::CastFunc { target_type, value } => {
                 let typed_value = self.check_expr(value);
                 let basic_type = self.parse_type_name(target_type);
+                let target_type_clone = basic_type.clone();
                 TypedExpr::new(
                     TypedExprKind::CastFunc {
-                        target_type: basic_type.clone(),
+                        target_type: target_type_clone,
                         value: Box::new(typed_value),
                     },
                     basic_type,
@@ -189,8 +192,64 @@ impl<'a> TypeChecker<'a> {
     ///
     /// When a symbol is found via suffix fallback (e.g., `x$` matches `x AS STRING`),
     /// we use the symbol's declared name to ensure consistent C code generation.
+    ///
+    /// **Important:** External functions are checked BEFORE variables to handle shadowing.
+    /// If a local variable shadows an external function name, the external function
+    /// should still be callable (BASIC semantics: function calls take precedence).
     fn check_identifier(&mut self, name: &str, span: crate::ast::Span) -> TypedExpr {
+        // CRITICAL: Check for external functions FIRST, before checking for variables.
+        // This handles the case where a local variable shadows an external function name.
+        // In BASIC, when a name could be either a variable or a zero-arg function call,
+        // the function call interpretation takes precedence.
+        //
+        // We check the global scope first (where DECLARE LIBRARY functions are typically
+        // declared), then the current scope, to ensure we find external functions even
+        // if they're shadowed by local variables.
+        let mut external_func_found = None;
+
+        // Check global scope first for external functions
+        if let Some(symbol) = self.symbols.lookup_global_symbol(name)
+            && let SymbolKind::ExternalFunction {
+                c_name,
+                params,
+                return_type,
+            } = &symbol.kind
+            && params.is_empty()
+        {
+            external_func_found = Some((c_name.clone(), return_type.clone()));
+        }
+
+        // If not found in global scope, check current scope (external functions can
+        // be declared inside procedures too)
+        if external_func_found.is_none()
+            && let Some(symbol) = self.symbols.lookup_scalar(name)
+            && let SymbolKind::ExternalFunction {
+                c_name,
+                params,
+                return_type,
+            } = &symbol.kind
+            && params.is_empty()
+        {
+            external_func_found = Some((c_name.clone(), return_type.clone()));
+        }
+
+        // If we found a zero-arg external function, use it (even if a variable shadows it)
+        if let Some((c_name, return_type)) = external_func_found {
+            return TypedExpr::new(
+                TypedExprKind::ExternalFunctionCall {
+                    name: name.to_string(),
+                    c_name,
+                    args: vec![],
+                    params: vec![],
+                },
+                return_type,
+                span,
+            );
+        }
+
         // Check if it's an existing variable (exact match or suffix fallback)
+        // Note: This will find local variables even if they shadow external functions,
+        // but we've already handled the zero-arg external function case above.
         if let Some(symbol) = self.symbols.lookup_symbol(name) {
             // Use the symbol's declared name, not the reference name.
             // This ensures consistency when a suffixed reference (e.g., `x$`)
@@ -213,35 +272,12 @@ impl<'a> TypeChecker<'a> {
         // Check if it's a parameterless function call (or function with all optional params)
         if let Some(proc) = self.symbols.lookup_procedure(name)
             && proc.required_param_count() == 0
-            && proc.return_type.is_some()
+            && let Some(return_type) = &proc.return_type
         {
             return TypedExpr::new(
                 TypedExprKind::FunctionCall {
                     // Use canonical procedure name with type suffix
                     name: proc.name.clone(),
-                    args: vec![],
-                    params: vec![],
-                },
-                proc.return_type.clone().unwrap(),
-                span,
-            );
-        }
-
-        // Check if it's a zero-arg external function (DECLARE LIBRARY)
-        // External functions are stored as scalars with SymbolKind::ExternalFunction
-        if let Some(symbol) = self.symbols.lookup_scalar(name)
-            && let SymbolKind::ExternalFunction {
-                c_name,
-                params,
-                return_type,
-            } = &symbol.kind
-            && params.is_empty()
-        {
-            // Generate external function call, not a variable reference
-            return TypedExpr::new(
-                TypedExprKind::ExternalFunctionCall {
-                    name: name.to_string(),
-                    c_name: c_name.clone(),
                     args: vec![],
                     params: vec![],
                 },

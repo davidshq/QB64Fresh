@@ -476,7 +476,7 @@ mod tests {
         let result = SemanticAnalyzer::new().analyze(&program);
 
         assert!(result.is_ok());
-        let typed = result.unwrap();
+        let typed = result.expect("analyzing simple program should succeed");
         assert_eq!(typed.statements.len(), 1);
     }
 
@@ -511,7 +511,7 @@ mod tests {
             true_sym.is_some(),
             "_TRUE should exist as built-in constant"
         );
-        let true_sym = true_sym.unwrap();
+        let true_sym = true_sym.expect("_TRUE should exist as built-in constant");
         assert!(!true_sym.is_mutable, "_TRUE should be immutable");
         assert!(
             matches!(
@@ -530,7 +530,7 @@ mod tests {
             false_sym.is_some(),
             "_FALSE should exist as built-in constant"
         );
-        let false_sym = false_sym.unwrap();
+        let false_sym = false_sym.expect("_FALSE should exist as built-in constant");
         assert!(!false_sym.is_mutable, "_FALSE should be immutable");
         assert!(
             matches!(
@@ -558,7 +558,7 @@ mod tests {
         let check_error_const = |name: &str, expected_value: i64| {
             let sym = analyzer.symbols.lookup_symbol(name);
             assert!(sym.is_some(), "{} should exist as built-in constant", name);
-            let sym = sym.unwrap();
+            let sym = sym.expect(&format!("{} should exist as built-in constant", name));
             assert!(!sym.is_mutable, "{} should be immutable", name);
             assert!(
                 matches!(

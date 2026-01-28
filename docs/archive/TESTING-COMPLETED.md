@@ -1,10 +1,24 @@
 # Testing Infrastructure - Completed Items
 
 **Created:** 2026-01-20
-**Updated:** 2026-01-25
+**Updated:** 2026-01-28
 **Purpose:** Archive of completed testing infrastructure milestones for QB64Fresh
 
 ---
+
+## Resolved 2026-01-28 (Recent Completions)
+
+### ✅ Coverage Reporting Restored (2026-01-25)
+- **Coverage tool:** `cargo llvm-cov --workspace` verified working
+- **CI integration:** Coverage job configured in `.github/workflows/ci.yml`
+- **Coverage target:** **81.63%** achieved (exceeds 80% target)
+- **Status:** Complete and tracked in CI
+
+### ✅ STRING * n Implicit Conversion (2026-01-27)
+- **Implementation:** Implicit conversion between STRING and FixedString (STRING * n) types
+- **Scope:** Assignments now automatically convert between STRING ↔ STRING * n
+- **Impact:** Resolves type compatibility issues in assignments
+- **Status:** Complete and tested
 
 ## Resolved 2026-01-25 (Blocking Failures → All Passing)
 
@@ -464,6 +478,9 @@ The testing infrastructure was built incrementally across many sessions:
 - **Session 034:** Added 28 QB64 extension keywords/functions; 526 integration tests
 - **Session 035:** Added date/time functions, console functions, memory SUBs; 539 integration tests
 - **Session 036:** Synchronized test counts (730+ tests total)
+- **Session 041-042:** Runtime test coverage gaps resolved (io.rs 60+ tests, string.rs 80+ tests, execution tests 27)
+- **2026-01-25:** Coverage reporting restored, 81.63% coverage achieved (CI configured)
+- **2026-01-27:** STRING * n implicit conversion implemented
 
 ---
 
