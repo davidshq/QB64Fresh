@@ -923,6 +923,93 @@ mod regression_tests {
         );
     }
 
+    /// Regression: Runtime initialization order.
+    /// Bug: Runtime not properly initialized before use, causing crashes.
+    /// Fix: commit 219a5ae - Added qb_runtime_init() and qb_runtime_shutdown() calls.
+    #[test]
+    fn runtime_initialization_order() {
+        // Create a simple program that uses runtime functions
+        let source = r#"
+            PRINT "Hello"
+            DIM s$ AS STRING
+            s$ = "test"
+        "#;
+
+        let tokens = lex(source);
+        let mut parser = Parser::new(&tokens);
+        let program = parser.parse().expect("Should parse");
+
+        let mut analyzer = SemanticAnalyzer::new();
+        let typed = analyzer.analyze(&program).expect("Should analyze");
+
+        // Use external runtime mode (where initialization is required)
+        let backend = CBackend::with_runtime_mode(RuntimeMode::External);
+        let output = backend.generate(&typed).expect("Should generate");
+
+        // Verify qb_runtime_init() is called
+        assert!(
+            output.code.contains("qb_runtime_init()"),
+            "qb_runtime_init() must be called in external runtime mode"
+        );
+
+        // Find the main function to check initialization order within it
+        // (string constants are defined before main, so we need to check within main)
+        let main_start = output.code.find("int main(");
+        if main_start.is_none() {
+            panic!("main function not found in generated code");
+        }
+        let main_start = main_start.unwrap();
+
+        // Find where main function ends (look for the closing brace at the same indentation level)
+        // For simplicity, just check a reasonable portion after main starts
+        let main_section = if let Some(main_end) = output.code[main_start..].find("\n}") {
+            &output.code[main_start..main_start + main_end]
+        } else {
+            // If we can't find the end, just use a large chunk
+            &output.code[main_start..]
+        };
+
+        // Verify initialization order within main function
+        let init_pos = main_section.find("qb_runtime_init()");
+        if init_pos.is_none() {
+            panic!("qb_runtime_init() not found in main function for external runtime mode");
+        }
+        let init_pos = init_pos.unwrap();
+
+        // Verify qb_init_args comes after qb_runtime_init (within main)
+        if let Some(args_pos) = main_section.find("qb_init_args") {
+            assert!(
+                init_pos < args_pos,
+                "qb_init_args() should come after qb_runtime_init() in main function"
+            );
+        }
+
+        // Verify qb_init_startdir comes after qb_runtime_init (within main)
+        if let Some(startdir_pos) = main_section.find("qb_init_startdir") {
+            assert!(
+                init_pos < startdir_pos,
+                "qb_init_startdir() should come after qb_runtime_init() in main function"
+            );
+        }
+
+        // Verify error checking after qb_runtime_init
+        let init_end = init_pos + "qb_runtime_init()".len();
+        let after_init = &main_section[init_end..];
+        assert!(
+            after_init.contains("_qb_err != 0") || after_init.contains("_qb_err == 0"),
+            "Error checking should be present after qb_runtime_init() call"
+        );
+
+        // Verify that runtime function calls (like qb_print_string) come after initialization
+        // Find first qb_print_string call in main (not in string constant definitions)
+        if let Some(print_pos) = main_section.find("qb_print_string") {
+            assert!(
+                init_pos < print_pos,
+                "qb_runtime_init() must be called before qb_print_string() in main function"
+            );
+        }
+    }
+
     /// Regression: String temp pool overflow tracking.
     /// Bug: String temp pool overflowed without proper tracking when main pool was full,
     /// causing 39.8GB memory usage. Fix: commit 5c4d469 - Added overflow tracking.
