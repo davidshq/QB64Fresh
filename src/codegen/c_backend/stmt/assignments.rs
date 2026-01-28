@@ -37,7 +37,7 @@ impl super::StmtEmitter {
         // Handle fixed-length string assignment specially
         if let BasicType::FixedString(len) = target_type {
             // For fixed-length strings, we need to copy the string content
-            // The value is a qb_string*, we need to copy its data into the char array
+            // The value is a QbString*, we need to copy its data into the char array
             // Note: Don't free _tmp here - it will be cleaned up by qbs_cleanup at statement end
             let data_access = match self.runtime_mode {
                 super::super::RuntimeMode::External => "qb_string_data(_tmp)",
@@ -45,7 +45,7 @@ impl super::StmtEmitter {
             };
             writeln_code!(
                 output,
-                "{}{{ qb_string* _tmp = {}; strncpy({}, _tmp ? {} : \"\", {}); {}[{}] = '\\0'; }}",
+                "{}{{ QbString* _tmp = {}; strncpy({}, _tmp ? {} : \"\", {}); {}[{}] = '\\0'; }}",
                 indent,
                 value_code,
                 c_name,
@@ -59,7 +59,7 @@ impl super::StmtEmitter {
             // This ensures proper refcount management for temp string cleanup
             writeln_code!(
                 output,
-                "{}{{ qb_string* _new = {}; if ({} != _new) {{ qb_string_release({}); {} = qb_string_retain(_new); }} }}",
+                "{}{{ QbString* _new = {}; if ({} != _new) {{ qb_string_release({}); {} = qb_string_retain(_new); }} }}",
                 indent,
                 value_code,
                 c_name,
@@ -86,7 +86,13 @@ impl super::StmtEmitter {
         element_type: &BasicType,
         output: &mut String,
     ) -> Result<(), CodeGenError> {
-        let c_name = c_identifier(name);
+        let mut c_name = c_identifier(name);
+        
+        // Array assignment always refers to the local array variable, not a parameter.
+        // If the variable was renamed to avoid shadowing, use the renamed version.
+        if let Some(renamed) = self.variable_renames.get(&c_name) {
+            c_name = renamed.clone();
+        }
         let value_code = self.emit_expr(value)?;
 
         // Cast indices to int64_t to ensure integer subscripts
@@ -126,7 +132,7 @@ impl super::StmtEmitter {
         // Handle fixed-length string array elements specially
         if let BasicType::FixedString(len) = element_type {
             // For fixed-length strings, we need to copy the string content
-            // The value is a qb_string*, we need to copy its data into the char array
+            // The value is a QbString*, we need to copy its data into the char array
             // Note: Don't free _tmp here - it will be cleaned up by qbs_cleanup at statement end
             let data_access = match self.runtime_mode {
                 super::super::RuntimeMode::External => "qb_string_data(_tmp)",
@@ -134,7 +140,7 @@ impl super::StmtEmitter {
             };
             writeln_code!(
                 output,
-                "{}{{ qb_string* _tmp = {}; strncpy({}[{}], _tmp ? {} : \"\", {}); {}[{}][{}] = '\\0'; }}",
+                "{}{{ QbString* _tmp = {}; strncpy({}[{}], _tmp ? {} : \"\", {}); {}[{}][{}] = '\\0'; }}",
                 indent,
                 value_code,
                 c_name,
@@ -150,7 +156,7 @@ impl super::StmtEmitter {
             // This ensures proper refcount management for temp string cleanup
             writeln_code!(
                 output,
-                "{}{{ qb_string* _new = {}; if ({}[{}] != _new) {{ qb_string_release({}[{}]); {}[{}] = qb_string_retain(_new); }} }}",
+                "{}{{ QbString* _new = {}; if ({}[{}] != _new) {{ qb_string_release({}[{}]); {}[{}] = qb_string_retain(_new); }} }}",
                 indent,
                 value_code,
                 c_name,
@@ -197,7 +203,13 @@ impl super::StmtEmitter {
         field_type: &BasicType,
         output: &mut String,
     ) -> Result<(), CodeGenError> {
-        let c_name = c_identifier(name);
+        let mut c_name = c_identifier(name);
+        
+        // Array field assignment always refers to the local array variable, not a parameter.
+        // If the variable was renamed to avoid shadowing, use the renamed version.
+        if let Some(renamed) = self.variable_renames.get(&c_name) {
+            c_name = renamed.clone();
+        }
         let value_code = self.emit_expr(value)?;
 
         let indices_code: Result<Vec<_>, _> = indices
@@ -239,14 +251,14 @@ impl super::StmtEmitter {
         // Handle fixed-length string fields specially
         if let BasicType::FixedString(len) = field_type {
             // For fixed-length strings, we need to copy the string content
-            // The value is a qb_string*, we need to copy its data into the char array
+            // The value is a QbString*, we need to copy its data into the char array
             let data_access = match self.runtime_mode {
                 super::super::RuntimeMode::External => "qb_string_data(_tmp)",
                 super::super::RuntimeMode::Inline => "_tmp->data",
             };
             writeln_code!(
                 output,
-                "{}{{ qb_string* _tmp = {}; strncpy({}[{}]{}, _tmp ? {} : \"\", {}); {}[{}]{}[{}] = '\\0'; }}",
+                "{}{{ QbString* _tmp = {}; strncpy({}[{}]{}, _tmp ? {} : \"\", {}); {}[{}]{}[{}] = '\\0'; }}",
                 indent,
                 value_code,
                 c_name,
@@ -263,7 +275,7 @@ impl super::StmtEmitter {
             // For dynamic string UDT fields in arrays: release old, retain new
             writeln_code!(
                 output,
-                "{}{{ qb_string* _new = {}; if ({}[{}]{} != _new) {{ qb_string_release({}[{}]{}); {}[{}]{} = qb_string_retain(_new); }} }}",
+                "{}{{ QbString* _new = {}; if ({}[{}]{} != _new) {{ qb_string_release({}[{}]{}); {}[{}]{} = qb_string_retain(_new); }} }}",
                 indent,
                 value_code,
                 c_name,
@@ -313,14 +325,14 @@ impl super::StmtEmitter {
         // Handle fixed-length string fields specially
         if let BasicType::FixedString(len) = field_type {
             // For fixed-length strings, we need to copy the string content
-            // The value is a qb_string*, we need to copy its data into the char array
+            // The value is a QbString*, we need to copy its data into the char array
             let data_access = match self.runtime_mode {
                 super::super::RuntimeMode::External => "qb_string_data(_tmp)",
                 super::super::RuntimeMode::Inline => "_tmp->data",
             };
             writeln_code!(
                 output,
-                "{}{{ qb_string* _tmp = {}; strncpy({}{}, _tmp ? {} : \"\", {}); {}{}[{}] = '\\0'; }}",
+                "{}{{ QbString* _tmp = {}; strncpy({}{}, _tmp ? {} : \"\", {}); {}{}[{}] = '\\0'; }}",
                 indent,
                 value_code,
                 c_name,
@@ -335,7 +347,7 @@ impl super::StmtEmitter {
             // For dynamic string UDT fields: release old, retain new
             writeln_code!(
                 output,
-                "{}{{ qb_string* _new = {}; if ({}{} != _new) {{ qb_string_release({}{}); {}{} = qb_string_retain(_new); }} }}",
+                "{}{{ QbString* _new = {}; if ({}{} != _new) {{ qb_string_release({}{}); {}{} = qb_string_retain(_new); }} }}",
                 indent,
                 value_code,
                 c_name,
