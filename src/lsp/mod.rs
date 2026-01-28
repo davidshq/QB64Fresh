@@ -547,9 +547,15 @@ impl LanguageServer for QbLanguageServer {
     async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
-                // Document sync - we want full content on each change
-                text_document_sync: Some(TextDocumentSyncCapability::Kind(
-                    TextDocumentSyncKind::FULL,
+                // Document sync - use incremental updates for better performance
+                text_document_sync: Some(TextDocumentSyncCapability::Options(
+                    TextDocumentSyncOptions {
+                        open_close: Some(true),
+                        change: Some(TextDocumentSyncKind::INCREMENTAL),
+                        will_save: None,
+                        will_save_wait_until: None,
+                        save: None,
+                    },
                 )),
                 // Hover support
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
@@ -639,40 +645,83 @@ impl LanguageServer for QbLanguageServer {
         let uri = params.text_document.uri;
         let version = params.text_document.version;
 
-        // Get the new content (we're using FULL sync, so there's one change with full content)
-        if let Some(change) = params.content_changes.into_iter().next() {
-            let content = change.text;
+        // Get the old document state
+        let (old_content, old_cache) = {
+            let state = self.state.read().await;
+            if let Some(doc) = state.documents.get(&uri) {
+                (doc.content.clone(), doc.analysis.as_ref().map(Arc::clone))
+            } else {
+                // Document doesn't exist - this shouldn't happen per LSP spec,
+                // but handle gracefully by treating as new document
+                (String::new(), None)
+            }
+        };
 
-            // Update document state and analyze
-            let cache = Arc::new(AnalysisCache::analyze_document(&content, version));
-            let diagnostics = cache.diagnostics.clone();
+        // Process incremental changes
+        let mut new_content = old_content.clone();
+        let cache = if let Some(old_cache) = old_cache {
+            // Try incremental update for each change
+            let mut current_cache_opt: Option<AnalysisCache> = None;
 
-            // Store the cache and update document
-            {
-                let mut state = self.state.write().await;
-                if let Some(doc) = state.documents.get_mut(&uri) {
-                    doc.content = content;
-                    doc.version = version;
-                    doc.analysis = Some(Arc::clone(&cache));
+            for change_event in &params.content_changes {
+                if let Some(change) =
+                    crate::lsp::analysis::ChangedRegion::from_lsp_change(change_event, &new_content)
+                {
+                    new_content = change.apply(&new_content);
+                    // Update cache incrementally
+                    let cache_to_update = current_cache_opt.as_ref().unwrap_or(&*old_cache);
+                    let updated_cache =
+                        cache_to_update.update_incremental(&change, &new_content, version);
+                    current_cache_opt = Some(updated_cache);
                 } else {
-                    // Document doesn't exist - this shouldn't happen per LSP spec,
-                    // but handle gracefully by creating the document entry
-                    state.documents.insert(
-                        uri.clone(),
-                        DocumentState {
-                            content,
-                            version,
-                            analysis: Some(Arc::clone(&cache)),
-                        },
-                    );
+                    // Full document replacement - fallback to full analysis
+                    new_content = change_event.text.clone();
+                    current_cache_opt =
+                        Some(AnalysisCache::analyze_document(&new_content, version));
+                    break;
                 }
             }
 
-            // Publish diagnostics
-            self.client
-                .publish_diagnostics(uri, diagnostics, Some(version))
-                .await;
+            if let Some(current_cache) = current_cache_opt {
+                Arc::new(current_cache)
+            } else {
+                // No changes processed - keep old cache but update version
+                old_cache
+            }
+        } else {
+            // No old cache - do full analysis
+            if let Some(change) = params.content_changes.into_iter().next() {
+                new_content = change.text;
+            }
+            Arc::new(AnalysisCache::analyze_document(&new_content, version))
+        };
+
+        let diagnostics = cache.diagnostics.clone();
+
+        // Store the cache and update document
+        {
+            let mut state = self.state.write().await;
+            if let Some(doc) = state.documents.get_mut(&uri) {
+                doc.content = new_content;
+                doc.version = version;
+                doc.analysis = Some(Arc::clone(&cache));
+            } else {
+                // Document doesn't exist - create it
+                state.documents.insert(
+                    uri.clone(),
+                    DocumentState {
+                        content: new_content,
+                        version,
+                        analysis: Some(Arc::clone(&cache)),
+                    },
+                );
+            }
         }
+
+        // Publish diagnostics
+        self.client
+            .publish_diagnostics(uri, diagnostics, Some(version))
+            .await;
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
