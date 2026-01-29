@@ -1230,23 +1230,23 @@ mod tests {
 
         // Check that library files were included
         assert!(
-            result.contains("CONST LIB_VERSION = 1"),
+            result.source.contains("CONST LIB_VERSION = 1"),
             "AtTop.bas should be included"
         );
         assert!(
-            result.contains("SUB LibraryInit"),
+            result.source.contains("SUB LibraryInit"),
             "AfterMain.bas should be included"
         );
         assert!(
-            result.contains("PRINT \"Start\""),
+            result.source.contains("PRINT \"Start\""),
             "Main code should be present"
         );
         assert!(
-            result.contains("PRINT \"End\""),
+            result.source.contains("PRINT \"End\""),
             "Main code should be present"
         );
         assert!(
-            result.contains(">>> $USELIBRARY:'test/lib'"),
+            result.source.contains(">>> $USELIBRARY:'test/lib'"),
             "Library inclusion markers should be present"
         );
     }
@@ -1256,7 +1256,7 @@ mod tests {
         let source = "PRINT \"Hello\"\nx = 42\n";
         let result = preprocess(source, Path::new("."), None)
             .expect("preprocessing simple source without includes should succeed");
-        assert_eq!(result, "PRINT \"Hello\"\nx = 42\n");
+        assert_eq!(result.source, "PRINT \"Hello\"\nx = 42\n");
     }
 
     #[test]
@@ -1279,11 +1279,11 @@ mod tests {
             .expect("preprocessing source with valid include should succeed");
 
         // Check that the include was expanded
-        assert!(result.contains("CONST VERSION = 1"));
-        assert!(result.contains("PRINT \"Start\""));
-        assert!(result.contains("PRINT \"End\""));
-        assert!(result.contains(">>> $INCLUDE: 'header.bi'"));
-        assert!(result.contains("<<< END $INCLUDE: 'header.bi'"));
+        assert!(result.source.contains("CONST VERSION = 1"));
+        assert!(result.source.contains("PRINT \"Start\""));
+        assert!(result.source.contains("PRINT \"End\""));
+        assert!(result.source.contains(">>> $INCLUDE: 'header.bi'"));
+        assert!(result.source.contains("<<< END $INCLUDE: 'header.bi'"));
     }
 
     #[test]
@@ -1312,9 +1312,9 @@ mod tests {
         let result = preprocess(source, temp_path, None)
             .expect("preprocessing source with nested includes should succeed");
 
-        assert!(result.contains("CONST LEVEL1 = 1"));
-        assert!(result.contains("CONST LEVEL2 = 2"));
-        assert!(result.contains("PRINT LEVEL1 + LEVEL2"));
+        assert!(result.source.contains("CONST LEVEL1 = 1"));
+        assert!(result.source.contains("CONST LEVEL2 = 2"));
+        assert!(result.source.contains("PRINT LEVEL1 + LEVEL2"));
     }
 
     #[test]

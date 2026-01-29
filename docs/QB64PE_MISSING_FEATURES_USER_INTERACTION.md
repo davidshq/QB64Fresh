@@ -68,7 +68,7 @@ This document lists features that need design decisions, tooling choices, or use
 
 ### 1.2 `$EMBED:'filename'`
 
-**Status:** ⚠️ Parsed but not implemented
+**Status:** ✅ **IMPLEMENTED**
 
 **What it does:** Embeds binary files into the compiled executable. The `_EMBEDDED$` function can retrieve embedded content at runtime.
 
@@ -89,60 +89,75 @@ This document lists features that need design decisions, tooling choices, or use
   - Code generation: generates `embedded.cpp` file
   - Runtime: `func__embedded()` function in generated code
 
-**What needs to be decided:**
-1. **Embedding mechanism:** 
-   - Option A: Embed as C string literals (simple, but large files bloat source)
-   - Option B: Embed as binary data in C arrays (better for binary files)
-   - Option C: Use linker sections (requires platform-specific tooling)
-2. **Runtime retrieval:** How does `_EMBEDDED$` access embedded data?
-3. **File size limits:** Should there be a maximum embedded file size?
+**QB64Fresh Implementation:**
+- **Syntax:** `$EMBED:'filename','handle'` (matches QB64pe format)
+- **Embedding mechanism:** 
+  - Preprocessor reads file as binary during preprocessing (`src/preprocessor.rs`)
+  - Codegen emits embedded data as C binary arrays: `static const unsigned char _qb_embed_0[] = { ... }`
+  - Creates lookup table `_qb_embed_table[]` mapping handles to data
+  - Generates `qb_embedded(const char* handle)` function that searches the table
+- **Runtime function:** `_EMBEDDED$(handle$)` calls `qb_embedded()` with handle string
+- **Error handling:** 
+  - ✅ Validates file exists during preprocessing (returns `EmbeddedFileNotFound` error)
+  - ✅ Checks for duplicate handles (returns `DuplicateEmbedHandle` error)
+  - ✅ Raises runtime error (error code 5: "Illegal function call") if handle not found, matching QB64pe behavior
+- **Implementation details:**
+  - Files are embedded inline in the generated C code (not separate file like QB64pe)
+  - Data is emitted as hex bytes (16 per line for readability)
+  - Uses `qb_string_from_bytes()` to create QB64 string from binary data
+  - Supports binary files of any size (no explicit limit)
 
-**Recommendation:** Use C binary arrays (`unsigned char embed_data[] = { ... }`) for binary files, and add a runtime function `qb_embedded(const char* filename)` that returns a pointer to the embedded data.
-
-**Files to modify:**
-- `src/preprocessor.rs` — Read and encode binary files during preprocessing
-- `src/codegen/c_backend/runtime/` — Add `qb_embedded()` function
-- `src/semantic/builtins.rs` — Register `_EMBEDDED$` builtin (if not already)
-- `src/codegen/c_backend/expr.rs` — Codegen for `_EMBEDDED$`
+**Files implemented:**
+- ✅ `src/preprocessor.rs` — Parses `$EMBED` directive, reads files, stores in `EmbeddedFile` struct
+- ✅ `src/codegen/c_backend/mod.rs` — Emits embedded data arrays and `qb_embedded()` function
+- ✅ `src/semantic/builtins.rs` — Registers `_EMBEDDED$` builtin
+- ✅ `src/codegen/c_backend/expr.rs` — Codegen for `_EMBEDDED$` function calls
 
 ---
 
 ### 1.3 `$VERSIONINFO:key=value` and `$EXEICON:'filename'`
 
-**Status:** ⚠️ Parsed but not emitted to C
+**Status:** ✅ **FULLY IMPLEMENTED**
 
 **What it does:** Windows resource file generation for executable metadata (version, icon, description, etc.).
 
-**QB64pe Implementation:**
+**QB64Fresh Implementation:**
 - **$VERSIONINFO keys supported:**
   - `FILEVERSION#` and `PRODUCTVERSION#` — numeric versions (e.g., `4,3,0,0`)
   - `CompanyName`, `FileDescription`, `FileVersion`, `InternalName`
   - `LegalCopyright`, `LegalTrademarks`, `OriginalFilename`
   - `ProductName`, `ProductVersion`, `Comments`, `Web`
 - **Resource file generation:**
-  - Generates `icon.rc` file in temp directory
-  - For `$EXEICON`: Copies icon file to `tmpdir/icon.ico`, adds `0 ICON "icon.ico"` to `.rc`
+  - Generates `icon.rc` file with icon and version info
+  - For `$EXEICON`: Adds `0 ICON "filename"` to `.rc` file
   - For `$VERSIONINFO`: Generates full `VERSIONINFO` block with all string values
-  - Also generates `manifest.h` and `.manifest` XML file for Windows manifest
-  - Uses absolute paths (copies icon to temp dir to ensure absolute path works)
+  - Also generates `manifest.h` and `{basename}.manifest` XML file for Windows manifest
+  - Resource files are written alongside the generated C code
 - **Error handling:**
   - `$EXEICON` can only be set once (error if already defined)
-  - Validates icon file exists and can be copied
-- **Code location:** `source/qb64pe.bas` lines 12499-12588
+  - Validates numeric version format for `FILEVERSION#` and `PRODUCTVERSION#`
+  - Validates version info keys (rejects unknown keys)
+- **Implementation details:**
+  - Resource collection: `src/codegen/c_backend/resources.rs::ResourceInfo::collect_from_program()`
+  - Resource generation: `src/codegen/c_backend/resources.rs::generate_resource_files()`
+  - Integration: `src/codegen/c_backend/mod.rs` lines 1104-1142
+  - CLI writes resource files: `src/main.rs` lines 318-337
 
-**What needs to be decided:**
-1. **Platform support:** Windows-only, or cross-platform metadata?
-2. **Tooling:** 
-   - Option A: Generate `.rc` files and use `windres` (GCC) or `rc.exe` (MSVC)
-   - Option B: Use `llvm-rc` (cross-platform, but requires LLVM)
-   - Option C: Embed resources directly in C code (limited, but portable)
-3. **Build integration:** Should QB64Fresh call the resource compiler, or just emit `.rc` files?
+**Usage:**
+```basic
+$EXEICON:'app.ico'
+$VERSIONINFO:CompanyName="My Company"
+$VERSIONINFO:ProductName="My App"
+$VERSIONINFO:FileVersion="1.0.0.0"
+$VERSIONINFO:FILEVERSION#=1,0,0,0
+```
 
-**Recommendation:** Emit Windows `.rc` files and document that users need to compile them separately, or integrate with build system to call `windres`/`rc.exe` automatically.
+When compiling with `--emit-c`, QB64Fresh generates:
+- `icon.rc` - Windows resource script
+- `manifest.h` - Header with manifest definitions
+- `{basename}.manifest` - XML manifest file
 
-**Files to modify:**
-- `src/codegen/c_backend/stmt/meta.rs` — Emit `.rc` file content or call resource compiler
-- Potentially create `src/codegen/c_backend/resources.rs` for resource file generation
+These files can be compiled with `windres` (GCC) or `rc.exe` (MSVC) and linked into the executable.
 
 ---
 
@@ -391,10 +406,10 @@ This document lists features that need design decisions, tooling choices, or use
 ### Medium Priority (Causes Incorrect Behavior)
 1. ~~**Event trapping**~~ — ✅ **IMPLEMENTED** (2026-01-29)
 2. ~~**`$USELIBRARY`**~~ — ✅ **IMPLEMENTED** (2026-01-29)
-3. **`$EMBED`** — ⚠️ **PARSED BUT NOT IMPLEMENTED** — Requires embedding mechanism decision
+3. ~~**`$EMBED`**~~ — ✅ **IMPLEMENTED** (2026-01-29) — Embeds files as C binary arrays with `qb_embedded()` runtime function
 
 ### Low Priority (Nice to Have)
-1. **`$VERSIONINFO` / `$EXEICON`** — ⚠️ **PARSED BUT NOT EMITTED** — Windows resource generation
+1. ~~**`$VERSIONINFO` / `$EXEICON`**~~ — ✅ **IMPLEMENTED** (2026-01-29) — Windows resource file generation (`.rc`, `manifest.h`, `.manifest`)
 2. ~~**`$COLOR`**~~ — ✅ **IMPLEMENTED** (metadata for LSP)
 3. ~~**`$ASSERTS`**~~ — ✅ **IMPLEMENTED** (2026-01-29)
 4. ~~**`$STATIC` / `$DYNAMIC`**~~ — ✅ **IMPLEMENTED** (2026-01-29)
@@ -406,8 +421,8 @@ This document lists features that need design decisions, tooling choices, or use
 1. ~~**Test graphics and file I/O**~~ — ✅ **COMPLETE** — Graphics initialization and file I/O path resolution are implemented
 2. ~~**Design event trapping system**~~ — ✅ **COMPLETE** — Event system implemented with polling-based architecture
 3. ~~**Design library system**~~ — ✅ **COMPLETE** — `$USELIBRARY` implemented with QB64pe-compatible format
-4. **Implement `$EMBED`** — ⚠️ **PENDING** — Choose embedding mechanism (C binary arrays recommended) and implement
-5. **Implement `$VERSIONINFO` / `$EXEICON`** — ⚠️ **PENDING** — Emit Windows `.rc` files or integrate resource compiler
+4. ~~**Implement `$EMBED`**~~ — ✅ **COMPLETE** (2026-01-29) — Embeds files as C binary arrays with `qb_embedded()` runtime function
+5. ~~**Implement `$VERSIONINFO` / `$EXEICON`**~~ — ✅ **COMPLETE** (2026-01-29) — Generates Windows `.rc`, `manifest.h`, and `.manifest` files
 
 ---
 
@@ -419,7 +434,8 @@ This document lists features that need design decisions, tooling choices, or use
   - Event trapping system (ON KEY, ON TIMER, ON UEVENT) ✅
   - `$USELIBRARY` library system ✅
   - `$STATIC` / `$DYNAMIC` array modes ✅
+  - `$EMBED` file embedding with `_EMBEDDED$()` function ✅
   - `$ASSERTS` and `$ASSERTS:CONSOLE` ✅
   - `$COLOR` directives (LSP metadata) ✅
-- **Remaining items:** Only `$EMBED` and `$VERSIONINFO`/`$EXEICON` remain as pending implementation
+- **Remaining items:** All high-priority and low-priority items have been implemented ✅
 - **Testing:** Focus on testing with actual QB64pe source to verify all implemented features work correctly

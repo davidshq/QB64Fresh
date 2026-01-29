@@ -2,17 +2,15 @@
 //!
 //! This module provides PRINT, INPUT, and file I/O operations.
 
+use super::print::qb_input_string;
 use crate::string::{
     qb_string_data, qb_string_from_bytes, qb_string_len, qb_string_retain, QbString,
 };
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::{self, BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
+use std::io::{self, Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::os::raw::c_char;
 use std::sync::Mutex;
-
-#[cfg(unix)]
-use std::os::unix::io::AsRawFd;
 
 // ============================================================================
 // INPUT Functions
@@ -991,8 +989,6 @@ pub unsafe extern "C" fn qb_dir(spec: *const QbString) -> *mut QbString {
 // ============================================================================
 // Networking Functions (Phase 5)
 // ============================================================================
-
-use std::net::{TcpListener, TcpStream};
 
 /// Buffered stream wrapper for network connections.
 ///
