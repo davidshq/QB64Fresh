@@ -104,20 +104,26 @@ fn main() {
     }
 
     // Preprocessor phase (expand $INCLUDE directives)
-    let source = if args.no_preprocess {
-        raw_source
+    let (source, embedded_files) = if args.no_preprocess {
+        (raw_source, Vec::new())
     } else {
         let base_path = args.input.parent().unwrap_or(std::path::Path::new("."));
         match preprocess(&raw_source, base_path, Some(args.input.as_path())) {
-            Ok(s) => {
-                if args.verbose && s.len() != raw_source.len() {
+            Ok(result) => {
+                if args.verbose && result.source.len() != raw_source.len() {
                     println!(
                         "Preprocessor: expanded {} bytes -> {} bytes",
                         raw_source.len(),
-                        s.len()
+                        result.source.len()
                     );
                 }
-                s
+                if args.verbose && !result.embedded_files.is_empty() {
+                    println!(
+                        "Preprocessor: collected {} embedded file(s)",
+                        result.embedded_files.len()
+                    );
+                }
+                (result.source, result.embedded_files)
             }
             Err(e) => {
                 eprintln!("Preprocessor error: {}", e);
@@ -267,7 +273,8 @@ fn main() {
             eprintln!("[4/4] Code generation...");
         }
         let runtime_mode_for_backend = runtime_mode.clone();
-        let mut backend = CBackend::with_runtime_mode(runtime_mode_for_backend);
+        let mut backend = CBackend::with_runtime_mode(runtime_mode_for_backend)
+            .with_embedded_files(embedded_files);
         if args.debug {
             let source_file = args.input.to_string_lossy().to_string();
             backend = backend.with_debug(true).with_source_file(&source_file);

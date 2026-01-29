@@ -41,6 +41,26 @@ use std::path::{Path, PathBuf};
 
 use crate::library::LibraryManager;
 
+/// Embedded file data for $EMBED directive.
+#[derive(Debug, Clone)]
+pub struct EmbeddedFile {
+    /// The handle identifier used to retrieve this file.
+    pub handle: String,
+    /// The original filename.
+    pub filename: String,
+    /// The binary data of the file.
+    pub data: Vec<u8>,
+}
+
+/// Result of preprocessing, containing both the processed source and embedded files.
+#[derive(Debug, Clone)]
+pub struct PreprocessResult {
+    /// The preprocessed source code.
+    pub source: String,
+    /// Embedded files collected from $EMBED directives.
+    pub embedded_files: Vec<EmbeddedFile>,
+}
+
 /// Preprocessor error types.
 #[derive(Debug, Clone)]
 pub enum PreprocessorError {
@@ -71,6 +91,27 @@ pub enum PreprocessorError {
         max_depth: usize,
         /// The path that would exceed the limit.
         path: PathBuf,
+    },
+    /// Embedded file not found.
+    EmbeddedFileNotFound {
+        /// The path that was requested.
+        path: String,
+        /// The file that requested the embed.
+        from_file: PathBuf,
+    },
+    /// Error reading an embedded file.
+    EmbeddedReadError {
+        /// The path that failed.
+        path: PathBuf,
+        /// The underlying error message.
+        message: String,
+    },
+    /// Duplicate embedded file handle.
+    DuplicateEmbedHandle {
+        /// The duplicate handle.
+        handle: String,
+        /// The file that defined it.
+        from_file: PathBuf,
     },
 }
 
@@ -107,6 +148,30 @@ impl std::fmt::Display for PreprocessorError {
                     path.display()
                 )
             }
+            PreprocessorError::EmbeddedFileNotFound { path, from_file } => {
+                write!(
+                    f,
+                    "Embedded file not found: '{}' (embedded from {})",
+                    path,
+                    from_file.display()
+                )
+            }
+            PreprocessorError::EmbeddedReadError { path, message } => {
+                write!(
+                    f,
+                    "Error reading embedded file '{}': {}",
+                    path.display(),
+                    message
+                )
+            }
+            PreprocessorError::DuplicateEmbedHandle { handle, from_file } => {
+                write!(
+                    f,
+                    "Duplicate embedded file handle '{}' (defined in {})",
+                    handle,
+                    from_file.display()
+                )
+            }
         }
     }
 }
@@ -130,6 +195,10 @@ struct PreprocessContext {
     library_manager: LibraryManager,
     /// Current line number (for referrer tracking).
     line_number: usize,
+    /// Embedded files collected from $EMBED directives.
+    embedded_files: Vec<EmbeddedFile>,
+    /// Set of embedded file handles (for duplicate detection).
+    embedded_handles: HashSet<String>,
 }
 
 impl PreprocessContext {
@@ -145,6 +214,8 @@ impl PreprocessContext {
             depth: 0,
             library_manager: LibraryManager::new(base_path),
             line_number: 1,
+            embedded_files: Vec::new(),
+            embedded_handles: HashSet::new(),
         }
     }
 
@@ -313,7 +384,7 @@ fn is_line_continuation(line: &str) -> bool {
 /// Preprocesses BASIC source code, expanding `$INCLUDE` directives.
 ///
 /// This function recursively processes include directives, replacing them with
-/// the contents of the included files.
+/// the contents of the included files, and collects embedded files from `$EMBED` directives.
 ///
 /// # Arguments
 ///
@@ -326,7 +397,8 @@ fn is_line_continuation(line: &str) -> bool {
 ///
 /// # Returns
 ///
-/// The preprocessed source with all includes expanded, or an error if processing fails.
+/// A `PreprocessResult` containing the preprocessed source with all includes expanded
+/// and any embedded files collected from `$EMBED` directives, or an error if processing fails.
 ///
 /// # Example
 ///
@@ -335,16 +407,18 @@ fn is_line_continuation(line: &str) -> bool {
 /// use qb64fresh::preprocessor::preprocess;
 ///
 /// // With known source file (e.g. from CLI):
-/// let result = preprocess("$INCLUDE: 'header.bi'", Path::new("."), Some(Path::new("myapp.bas")));
+/// let result = preprocess("$INCLUDE: 'header.bi'", Path::new("."), Some(Path::new("myapp.bas")))?;
+/// println!("Preprocessed: {}", result.source);
+/// println!("Embedded files: {}", result.embedded_files.len());
 ///
 /// // Without source path (backward compatible):
-/// let result = preprocess("$INCLUDE: 'header.bi'", Path::new("."), None);
+/// let result = preprocess("$INCLUDE: 'header.bi'", Path::new("."), None)?;
 /// ```
 pub fn preprocess(
     source: &str,
     base_path: &Path,
     source_path: Option<&Path>,
-) -> Result<String, PreprocessorError> {
+) -> Result<PreprocessResult, PreprocessorError> {
     // First, join continued lines (lines ending with ` _`)
     let joined = join_continued_lines(source);
 
@@ -463,7 +537,13 @@ pub fn preprocess(
         ));
     }
 
-    Ok(final_output)
+    // Collect embedded files from context
+    let embedded_files = context.embedded_files.clone();
+
+    Ok(PreprocessResult {
+        source: final_output,
+        embedded_files,
+    })
 }
 
 /// Preprocesses a file by path.
@@ -476,8 +556,9 @@ pub fn preprocess(
 ///
 /// # Returns
 ///
-/// The preprocessed source with all includes expanded.
-pub fn preprocess_file(path: &Path) -> Result<String, PreprocessorError> {
+/// A `PreprocessResult` containing the preprocessed source with all includes expanded
+/// and any embedded files collected from `$EMBED` directives.
+pub fn preprocess_file(path: &Path) -> Result<PreprocessResult, PreprocessorError> {
     // Read file as bytes and convert with lossy UTF-8 to handle legacy encodings
     // (some QB64pe source files contain Windows-1252 or Code Page 437 characters)
     let bytes = fs::read(path).map_err(|e| PreprocessorError::ReadError {
@@ -543,8 +624,22 @@ pub fn preprocess_file(path: &Path) -> Result<String, PreprocessorError> {
         // Use a new context for library files to avoid include stack conflicts
         let lib_base = lib_path.parent().unwrap_or(base_path);
         let lib_canonical = lib_path.canonicalize().unwrap_or(lib_path.clone());
+        let lib_canonical_for_error = lib_canonical.clone();
         let mut lib_context = PreprocessContext::new(lib_canonical, lib_base);
         let processed = preprocess_internal(&content, lib_base, &mut lib_context)?;
+        // Merge embedded files from library context into main context
+        for embed in lib_context.embedded_files {
+            let handle_clone = embed.handle.clone();
+            if !context.embedded_handles.contains(&handle_clone) {
+                context.embedded_handles.insert(handle_clone.clone());
+                context.embedded_files.push(embed);
+            } else {
+                return Err(PreprocessorError::DuplicateEmbedHandle {
+                    handle: handle_clone,
+                    from_file: lib_canonical_for_error,
+                });
+            }
+        }
         final_output.push_str(&processed);
         if !processed.ends_with('\n') {
             final_output.push('\n');
@@ -567,8 +662,22 @@ pub fn preprocess_file(path: &Path) -> Result<String, PreprocessorError> {
         // Use a new context for library files to avoid include stack conflicts
         let lib_base = lib_path.parent().unwrap_or(base_path);
         let lib_canonical = lib_path.canonicalize().unwrap_or(lib_path.clone());
+        let lib_canonical_for_error = lib_canonical.clone();
         let mut lib_context = PreprocessContext::new(lib_canonical, lib_base);
         let processed = preprocess_internal(&content, lib_base, &mut lib_context)?;
+        // Merge embedded files from library context into main context
+        for embed in lib_context.embedded_files {
+            let handle_clone = embed.handle.clone();
+            if !context.embedded_handles.contains(&handle_clone) {
+                context.embedded_handles.insert(handle_clone.clone());
+                context.embedded_files.push(embed);
+            } else {
+                return Err(PreprocessorError::DuplicateEmbedHandle {
+                    handle: handle_clone,
+                    from_file: lib_canonical_for_error,
+                });
+            }
+        }
         final_output.push_str(&processed);
         if !processed.ends_with('\n') {
             final_output.push('\n');
@@ -591,8 +700,22 @@ pub fn preprocess_file(path: &Path) -> Result<String, PreprocessorError> {
         // Use a new context for library files to avoid include stack conflicts
         let lib_base = lib_path.parent().unwrap_or(base_path);
         let lib_canonical = lib_path.canonicalize().unwrap_or(lib_path.clone());
+        let lib_canonical_for_error = lib_canonical.clone();
         let mut lib_context = PreprocessContext::new(lib_canonical, lib_base);
         let processed = preprocess_internal(&content, lib_base, &mut lib_context)?;
+        // Merge embedded files from library context into main context
+        for embed in lib_context.embedded_files {
+            let handle_clone = embed.handle.clone();
+            if !context.embedded_handles.contains(&handle_clone) {
+                context.embedded_handles.insert(handle_clone.clone());
+                context.embedded_files.push(embed);
+            } else {
+                return Err(PreprocessorError::DuplicateEmbedHandle {
+                    handle: handle_clone,
+                    from_file: lib_canonical_for_error,
+                });
+            }
+        }
         final_output.push_str(&processed);
         if !processed.ends_with('\n') {
             final_output.push('\n');
@@ -603,7 +726,13 @@ pub fn preprocess_file(path: &Path) -> Result<String, PreprocessorError> {
         ));
     }
 
-    Ok(final_output)
+    // Collect embedded files from context
+    let embedded_files = context.embedded_files.clone();
+
+    Ok(PreprocessResult {
+        source: final_output,
+        embedded_files,
+    })
 }
 
 /// Internal preprocessing function with context tracking.
@@ -643,6 +772,55 @@ fn preprocess_internal(
                     return Err(e);
                 }
             }
+            continue;
+        }
+
+        // Check for $EMBED directive
+        if let Some((embed_filename, embed_handle)) = parse_embed_directive(line) {
+            // Resolve the path relative to the current file's directory
+            let embed_full_path = if Path::new(&embed_filename).is_absolute() {
+                PathBuf::from(&embed_filename)
+            } else {
+                base_path.join(&embed_filename)
+            };
+
+            // Check for duplicate handle
+            if context.embedded_handles.contains(&embed_handle) {
+                return Err(PreprocessorError::DuplicateEmbedHandle {
+                    handle: embed_handle,
+                    from_file: context.current_file().to_path_buf(),
+                });
+            }
+
+            // Check if file exists
+            if !embed_full_path.exists() {
+                return Err(PreprocessorError::EmbeddedFileNotFound {
+                    path: embed_filename,
+                    from_file: context.current_file().to_path_buf(),
+                });
+            }
+
+            // Read the file as binary
+            let file_data =
+                fs::read(&embed_full_path).map_err(|e| PreprocessorError::EmbeddedReadError {
+                    path: embed_full_path.clone(),
+                    message: e.to_string(),
+                })?;
+
+            // Store embedded file
+            let handle_clone = embed_handle.clone();
+            context.embedded_files.push(EmbeddedFile {
+                handle: handle_clone.clone(),
+                filename: embed_filename.clone(),
+                data: file_data,
+            });
+            context.embedded_handles.insert(handle_clone);
+
+            // Emit a comment in the preprocessed output (for debugging)
+            result.push_str(&format!(
+                "' >>> $EMBED:'{}','{}'\n",
+                embed_filename, embed_handle
+            ));
             continue;
         }
 
@@ -782,6 +960,77 @@ fn parse_include_directive(line: &str) -> Option<(String, bool)> {
     }
 
     None
+}
+
+/// Parses a line to extract filename and handle if it's a $EMBED directive.
+///
+/// Handles format: `$EMBED:'filename','handle'`
+///
+/// Returns `None` if the line is not a $EMBED directive, or `Some((filename, handle))`
+/// where both are extracted from the directive.
+fn parse_embed_directive(line: &str) -> Option<(String, String)> {
+    let trimmed = line.trim();
+
+    // Handle comment prefix (some BASIC dialects allow ' before $EMBED)
+    let content = trimmed
+        .strip_prefix('\'')
+        .map(|s| s.trim())
+        .unwrap_or(trimmed);
+
+    // Check for $EMBED (case-insensitive)
+    let upper = content.to_uppercase();
+    if !upper.starts_with("$EMBED") {
+        return None;
+    }
+
+    // Find the path within quotes
+    // Format: $EMBED: 'filename','handle' or $EMBED:'filename','handle'
+    let skip_len = 6; // "$EMBED"
+    let rest = &content[skip_len..];
+    let rest = rest.trim_start();
+
+    // Skip optional colon
+    let rest = rest.strip_prefix(':').unwrap_or(rest).trim_start();
+
+    // Extract filename from first quoted string
+    let filename = if let Some(start) = rest.find('\'') {
+        let after_quote = &rest[start + 1..];
+        if let Some(end) = after_quote.find('\'') {
+            after_quote[..end].to_string()
+        } else {
+            return None;
+        }
+    } else {
+        return None;
+    };
+
+    // Extract handle from second quoted string
+    let after_filename = &rest[rest.find('\'').unwrap() + 1..];
+    let after_filename = &after_filename[after_filename.find('\'').unwrap() + 1..];
+    let after_filename = after_filename.trim_start();
+
+    // Skip comma if present
+    let after_filename = after_filename
+        .strip_prefix(',')
+        .unwrap_or(after_filename)
+        .trim_start();
+
+    let handle = if let Some(start) = after_filename.find('\'') {
+        let after_quote = &after_filename[start + 1..];
+        if let Some(end) = after_quote.find('\'') {
+            after_quote[..end].to_string()
+        } else {
+            return None;
+        }
+    } else {
+        return None;
+    };
+
+    if !filename.is_empty() && !handle.is_empty() {
+        Some((filename, handle))
+    } else {
+        None
+    }
 }
 
 /// Parses a line to extract a library name if it's a $USELIBRARY directive.
