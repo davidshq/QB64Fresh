@@ -1296,12 +1296,16 @@ pub enum TokenKind {
     #[token("$DEBUG", ignore(ascii_case))]
     MetaDebug,
 
-    /// $ASSERTS:CONSOLE - enable assertions with console output
-    #[regex(r"\$ASSERTS\s*:\s*CONSOLE", ignore(ascii_case))]
+    /// $ASSERTS - enable assertion checking
+    /// NOTE: Due to a logos bug similar to $CONSOLE, the $ASSERTS:CONSOLE regex is disabled.
+    /// The parser has a workaround that handles MetaCommand tokens containing "$ASSERTS".
+    /// See parser/directives.rs parse_meta_command() for the workaround.
+    // #[regex(r"\$ASSERTS\s*:\s*CONSOLE", ignore(ascii_case))]  // Disabled - causes logos bug
     MetaAssertsConsole,
 
     /// $ASSERTS - enable assertion checking
-    #[token("$ASSERTS", ignore(ascii_case))]
+    /// NOTE: Disabled due to logos bug - see MetaAssertsConsole comment above.
+    // #[token("$ASSERTS", ignore(ascii_case))]  // Disabled - causes logos bug
     MetaAsserts,
 
     /// $INCLUDEONCE - include file only once

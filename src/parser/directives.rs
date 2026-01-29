@@ -163,6 +163,35 @@ impl<'a> Parser<'a> {
             }
         }
 
+        // Handle $ASSERTS / $ASSERTS:CONSOLE that may come through as MetaCommand
+        // due to lexer issues (similar to $CONSOLE workaround)
+        if command == "ASSERTS" {
+            // Check for :CONSOLE suffix (tokenized separately as Colon + identifier)
+            if self.check(&TokenKind::Colon) {
+                self.advance(); // consume ':'
+                if let Some(token) = self.peek()
+                    && token.text.to_uppercase() == "CONSOLE"
+                {
+                    self.advance(); // consume 'CONSOLE'
+                    return Ok(Statement::new(
+                        StatementKind::MetaAsserts { console: true },
+                        span,
+                    ));
+                }
+                // Colon without CONSOLE - just $ASSERTS with statement separator
+                // Return $ASSERTS and let the colon be handled by caller
+            }
+            return Ok(Statement::new(
+                StatementKind::MetaAsserts { console: false },
+                span,
+            ));
+        }
+        if let Some(rest) = command.strip_prefix("ASSERTS:") {
+            let arg = rest.trim().to_uppercase();
+            let console = arg == "CONSOLE";
+            return Ok(Statement::new(StatementKind::MetaAsserts { console }, span));
+        }
+
         // Other meta-commands (e.g., $DYNAMIC, $STATIC, $ERROR)
         // Parse any arguments on the rest of the line
         let args = self.parse_meta_command_args();
@@ -515,17 +544,6 @@ impl<'a> Parser<'a> {
         let span: Span = token.span;
 
         Ok(Statement::new(StatementKind::MetaDebug, span))
-    }
-
-    /// Parses a `$ASSERTS` or `$ASSERTS:CONSOLE` directive.
-    ///
-    /// - `$ASSERTS`: Enables assertions, sets `_ASSERTS_` preprocessor variable to 1
-    /// - `$ASSERTS:CONSOLE`: Enables assertions with console output, sets both `_ASSERTS_` and `_CONSOLE_` to 1
-    pub(super) fn parse_meta_asserts(&mut self, console: bool) -> Result<Statement, ()> {
-        let token = self.advance().expect("$ASSERTS token");
-        let span: Span = token.span;
-
-        Ok(Statement::new(StatementKind::MetaAsserts { console }, span))
     }
 
     /// Parses a `$INCLUDEONCE` directive.
