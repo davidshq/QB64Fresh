@@ -3,7 +3,7 @@
 //! This module provides cached analysis results for LSP operations, avoiding
 //! redundant parsing and semantic analysis on every request.
 
-use crate::ast::Program;
+use crate::ast::{Program, StatementKind};
 use crate::lexer::{Token, lex};
 use crate::parser::Parser;
 use crate::semantic::{SemanticAnalyzer, TypedProgram};
@@ -13,6 +13,26 @@ pub mod incremental;
 pub use incremental::{
     ChangedRegion, collect_diagnostics, incremental_analyze, incremental_parse, merge_tokens,
 };
+
+/// Extracts the color mode from a program's AST.
+///
+/// Scans the program statements for `$COLOR:0` or `$COLOR:32` directives.
+/// Returns the last color mode found, or None if no color directive is present.
+/// If multiple `$COLOR` directives are present, the last one wins (overwrites previous).
+fn extract_color_mode(program: &Program) -> Option<i64> {
+    let mut color_mode = None;
+
+    for stmt in &program.statements {
+        if let StatementKind::MetaColor { depth: Some(d) } = &stmt.kind {
+            // Only accept 0 or 32 as valid values
+            if *d == 0 || *d == 32 {
+                color_mode = Some(*d);
+            }
+        }
+    }
+
+    color_mode
+}
 
 /// Cached analysis results for a document.
 ///
@@ -33,6 +53,8 @@ pub struct AnalysisCache {
     pub tokens: Option<Vec<Token>>,
     /// The document content this cache corresponds to (for incremental updates).
     pub content: Option<String>,
+    /// Color mode from $COLOR directive (0 for EGA, 32 for RGBA, None if not set).
+    pub color_mode: Option<i64>,
 }
 
 impl AnalysisCache {
@@ -46,6 +68,7 @@ impl AnalysisCache {
             diagnostics: Vec::new(),
             tokens: None,
             content: None,
+            color_mode: None,
         }
     }
 
@@ -134,6 +157,12 @@ impl AnalysisCache {
         cache.diagnostics = diagnostics;
         cache.tokens = Some(tokens);
         cache.content = Some(source.to_string());
+
+        // Extract color mode from AST if present
+        if let Some(ref program) = cache.ast {
+            cache.color_mode = extract_color_mode(program);
+        }
+
         cache
     }
 
@@ -183,6 +212,7 @@ impl AnalysisCache {
                         let diagnostics =
                             collect_diagnostics(&parse_errors, &semantic_errors, new_content);
 
+                        let color_mode = extract_color_mode(&new_program);
                         return Self {
                             version,
                             ast: Some(new_program),
@@ -191,6 +221,7 @@ impl AnalysisCache {
                             diagnostics,
                             tokens: Some(merged_tokens),
                             content: Some(new_content.to_string()),
+                            color_mode,
                         };
                     }
                 }
@@ -204,5 +235,17 @@ impl AnalysisCache {
     /// Checks if this cache is valid for the given version.
     pub fn is_valid_for(&self, version: i32) -> bool {
         self.version == version
+    }
+
+    /// Gets the color mode from `$COLOR` directive, if present.
+    ///
+    /// Returns:
+    /// - `Some(0)` if `$COLOR:0` is present (EGA mode)
+    /// - `Some(32)` if `$COLOR:32` is present (32-bit color mode)
+    /// - `None` if no `$COLOR` directive is present
+    ///
+    /// This is used by the LSP server for IDE syntax highlighting configuration.
+    pub fn color_mode(&self) -> Option<i64> {
+        self.color_mode
     }
 }

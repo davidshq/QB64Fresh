@@ -1764,8 +1764,11 @@ pub enum TypedStatementKind {
         message: Option<TypedExpr>,
     },
 
-    /// $ASSERTS metacommand.
-    MetaAsserts,
+    /// $ASSERTS or $ASSERTS:CONSOLE metacommand.
+    MetaAsserts {
+        /// If true, assertion failures are sent to console (stderr)
+        console: bool,
+    },
 
     /// $NOPREFIX metacommand.
     MetaNoPrefix,

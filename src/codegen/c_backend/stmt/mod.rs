@@ -2090,7 +2090,7 @@ impl StmtEmitter {
             }
 
             // Meta directives (part 2)
-            k @ (TypedStatementKind::MetaAsserts
+            k @ (TypedStatementKind::MetaAsserts { .. }
             | TypedStatementKind::MetaNoPrefix
             | TypedStatementKind::MetaColor { .. }
             | TypedStatementKind::MetaResize { .. }

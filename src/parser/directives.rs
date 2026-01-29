@@ -99,6 +99,70 @@ impl<'a> Parser<'a> {
             return Ok(Statement::new(StatementKind::MetaConsole { only }, span));
         }
 
+        // Handle $COLOR:0 and $COLOR:32 directives
+        if command == "COLOR" {
+            // Check for :0 or :32 suffix (tokenized separately as Colon + IntegerLiteral)
+            if self.check(&TokenKind::Colon) {
+                self.advance(); // consume ':'
+                let next_token = self.peek().cloned();
+                if let Some(token) = next_token
+                    && token.kind == TokenKind::IntegerLiteral
+                {
+                    let depth_token = self.advance().expect("integer literal");
+                    let depth = depth_token.text.parse::<i64>().unwrap_or(0);
+                    let depth_span = depth_token.span;
+                    // Only accept 0 or 32 as valid values
+                    if depth == 0 || depth == 32 {
+                        return Ok(Statement::new(
+                            StatementKind::MetaColor { depth: Some(depth) },
+                            span,
+                        ));
+                    } else {
+                        self.errors.push(ParseError::syntax(
+                            format!("$COLOR:{} is invalid, must be 0 or 32", depth),
+                            depth_span,
+                        ));
+                        return Err(());
+                    }
+                }
+                // Colon without valid integer - error
+                self.errors.push(ParseError::syntax(
+                    "$COLOR: must be followed by 0 or 32",
+                    span,
+                ));
+                return Err(());
+            }
+            // $COLOR without colon - default to 0 (EGA mode)
+            return Ok(Statement::new(
+                StatementKind::MetaColor { depth: Some(0) },
+                span,
+            ));
+        }
+        if let Some(rest) = command.strip_prefix("COLOR:") {
+            // Handle $COLOR:0 or $COLOR:32 when colon is part of the token
+            let depth_str = rest.trim();
+            if let Ok(depth) = depth_str.parse::<i64>() {
+                if depth == 0 || depth == 32 {
+                    return Ok(Statement::new(
+                        StatementKind::MetaColor { depth: Some(depth) },
+                        span,
+                    ));
+                } else {
+                    self.errors.push(ParseError::syntax(
+                        format!("$COLOR:{} is invalid, must be 0 or 32", depth),
+                        span,
+                    ));
+                    return Err(());
+                }
+            } else {
+                self.errors.push(ParseError::syntax(
+                    format!("$COLOR:{} is invalid, must be 0 or 32", depth_str),
+                    span,
+                ));
+                return Err(());
+            }
+        }
+
         // Other meta-commands (e.g., $DYNAMIC, $STATIC, $ERROR)
         // Parse any arguments on the rest of the line
         let args = self.parse_meta_command_args();
@@ -451,6 +515,17 @@ impl<'a> Parser<'a> {
         let span: Span = token.span;
 
         Ok(Statement::new(StatementKind::MetaDebug, span))
+    }
+
+    /// Parses a `$ASSERTS` or `$ASSERTS:CONSOLE` directive.
+    ///
+    /// - `$ASSERTS`: Enables assertions, sets `_ASSERTS_` preprocessor variable to 1
+    /// - `$ASSERTS:CONSOLE`: Enables assertions with console output, sets both `_ASSERTS_` and `_CONSOLE_` to 1
+    pub(super) fn parse_meta_asserts(&mut self, console: bool) -> Result<Statement, ()> {
+        let token = self.advance().expect("$ASSERTS token");
+        let span: Span = token.span;
+
+        Ok(Statement::new(StatementKind::MetaAsserts { console }, span))
     }
 
     /// Parses a `$INCLUDEONCE` directive.

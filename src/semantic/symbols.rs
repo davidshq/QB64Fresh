@@ -435,6 +435,33 @@ impl SymbolTable {
         Ok(())
     }
 
+    /// Defines a `$LET` preprocessor variable as a constant in the global scope.
+    ///
+    /// `$LET` variables are compile-time constants that can be checked in `$IF` directives.
+    /// They are always defined in the global scope and can be updated (unlike regular CONST).
+    pub fn define_meta_let(&mut self, name: &str, value: i64, span: Span) {
+        use crate::semantic::symbols::{ConstValue, SymbolKind};
+        let global_scope = self
+            .scopes
+            .get_mut(&ScopeId::GLOBAL)
+            .expect("global scope must exist");
+        let name_upper = name.to_uppercase();
+
+        // Create or update the constant symbol
+        let symbol = Symbol {
+            name: name.to_string(),
+            kind: SymbolKind::Constant {
+                value: ConstValue::Integer(value),
+            },
+            basic_type: BasicType::Long,
+            span,
+            is_mutable: false,
+        };
+
+        // Update or insert (allows redefinition of $LET variables)
+        global_scope.scalars.insert(name_upper, symbol);
+    }
+
     /// Updates an existing symbol or defines a new one in the current scope.
     ///
     /// This is used for REDIM which can resize an existing array (including

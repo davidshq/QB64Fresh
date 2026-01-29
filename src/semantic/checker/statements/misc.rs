@@ -113,13 +113,17 @@ pub(super) fn check_misc_stmt(
             span,
         ),
 
-        StatementKind::MetaLet { name, value } => TypedStatement::new(
-            TypedStatementKind::MetaLet {
-                name: name.clone(),
-                value: *value,
-            },
-            span,
-        ),
+        StatementKind::MetaLet { name, value } => {
+            // Store $LET variable as a constant in the symbol table
+            checker.symbols.define_meta_let(name, *value, span);
+            TypedStatement::new(
+                TypedStatementKind::MetaLet {
+                    name: name.clone(),
+                    value: *value,
+                },
+                span,
+            )
+        }
 
         StatementKind::MetaChecking { enabled } => {
             TypedStatement::new(TypedStatementKind::MetaChecking { enabled: *enabled }, span)
