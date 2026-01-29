@@ -3,6 +3,8 @@
 **Last Updated:** 2026-01-29  
 **Purpose:** Document language features that QB64pe uses but are not yet implemented or fully supported in QB64Fresh. This helps prioritize development and understand compatibility gaps.
 
+**Note:** This document is updated to reflect the current codebase status as of 2026-01-29. Many features previously marked as "not implemented" have since been added.
+
 **Related Documents:**
 - [BASIC_TO_C_PROBLEMATIC_LANGUAGE_ITEMS.md](BASIC_TO_C_PROBLEMATIC_LANGUAGE_ITEMS.md) — Items that are tricky to implement
 - [PARTIAL_IMPLEMENTATIONS.md](ThingsToDo/PARTIAL_IMPLEMENTATIONS.md) — Partially implemented features
@@ -33,16 +35,16 @@ This document catalogs the missing features based on analysis of `qb64pe.bas` an
 
 | Metacommand | Usage in QB64pe | Status | Notes |
 |-------------|-----------------|--------|-------|
-| `$COLOR:0` | Used for syntax highlighting | ❌ Not implemented | Color mode for IDE output |
-| `$COLOR:32` | Used for syntax highlighting | ❌ Not implemented | Color mode for IDE output |
-| `$ASSERTS` | Debug assertions | ❌ Not implemented | Enable assertion checking |
-| `$ASSERTS:CONSOLE` | Console assertions | ❌ Not implemented | Assertions to console |
-| `$NOPREFIX` | Deprecated feature flag | ❌ Not implemented | Legacy compatibility |
-| `$USELIBRARY:'author/library'` | Library loading system | ⚠️ Parsed but not implemented | Complex library system with AtTop/AfterMain files |
+| `$COLOR:0` | Used for syntax highlighting | ✅ Parsed | Generates comment in codegen (runtime behavior may differ) |
+| `$COLOR:32` | Used for syntax highlighting | ✅ Parsed | Generates comment in codegen (runtime behavior may differ) |
+| `$ASSERTS` | Debug assertions | ✅ Implemented | Emits C code to enable assertions |
+| `$ASSERTS:CONSOLE` | Console assertions | ✅ Implemented | Emits C code to enable console assertions |
+| `$NOPREFIX` | Deprecated feature flag | ✅ Parsed | Generates comment in codegen |
+| `$USELIBRARY:'author/library'` | Library loading system | ✅ Implemented | Parsed, library files included during preprocessing (see [QB64PE_MISSING_FEATURES_USER_INTERACTION.md](QB64PE_MISSING_FEATURES_USER_INTERACTION.md)) |
 | `$INCLUDEONCE` | Prevent duplicate includes | ✅ Implemented | Tracks included files and skips duplicates |
-| `$DYNAMIC` | Dynamic array allocation | ⚠️ Parsed but not implemented | Currently all arrays are dynamic |
-| `$STATIC` | Static array allocation | ⚠️ Parsed but not implemented | Static arrays not supported |
-| `$EMBED:'filename'` | Embed binary files | ⚠️ Parsed but not implemented | Requires binary embedding in C output |
+| `$DYNAMIC` | Dynamic array allocation | ✅ Parsed | Generates comment in codegen (currently all arrays are dynamic) |
+| `$STATIC` | Static array allocation | ✅ Parsed | Generates comment in codegen (static arrays not yet supported) |
+| `$EMBED:'filename'` | Embed binary files | ✅ Implemented | Parsed, files collected, codegen emits embedded data as C arrays (see [QB64PE_MISSING_FEATURES_USER_INTERACTION.md](QB64PE_MISSING_FEATURES_USER_INTERACTION.md)) |
 | `$MIDISOUNDFONT:'file.sf2'` | MIDI soundfont | ⚠️ Parsed but not implemented | Deprecated in favor of `_MIDISOUNDBANK` |
 | `$UNSTABLE:feature` | Unstable feature flag | ⚠️ Parsed but not implemented | Feature gating |
 | `$FORMAT` | Code formatting directive | ⚠️ Parsed but not implemented | Formatting control |
@@ -51,8 +53,8 @@ This document catalogs the missing features based on analysis of `qb64pe.bas` an
 
 | Metacommand | QB64Fresh Status | QB64pe Usage | Gap |
 |-------------|------------------|--------------|-----|
-| `$VERSIONINFO:key=value` | ✅ Parsed | Multiple keys (CompanyName, FileDescription, etc.) | ⚠️ Not emitted to C (Windows resource file generation) |
-| `$EXEICON:'filename'` | ✅ Parsed | Icon file path | ⚠️ Not emitted to C (Windows resource file generation) |
+| `$VERSIONINFO:key=value` | ✅ **FULLY IMPLEMENTED** | Multiple keys (CompanyName, FileDescription, etc.) | ✅ Generates `.rc`, `manifest.h`, `.manifest` files |
+| `$EXEICON:'filename'` | ✅ **FULLY IMPLEMENTED** | Icon file path | ✅ Generates `.rc` file with icon entry |
 | `$CONSOLE` | ✅ Parsed | Console window support | ⚠️ Runtime behavior may differ |
 | `$CONSOLE:ONLY` | ✅ Parsed | Console-only mode | ⚠️ Runtime behavior may differ |
 | `$SCREENHIDE` | ✅ Parsed | Hide graphics window | ⚠️ Runtime behavior may differ |
@@ -92,16 +94,16 @@ This document catalogs the missing features based on analysis of `qb64pe.bas` an
 
 | Feature | QB64pe Usage | QB64Fresh Status | Gap |
 |---------|--------------|-------------------|-----|
-| `ON ... GOTO` | 93 matches | ⚠️ Partially implemented | May not handle all cases |
-| `ON ... GOSUB` | Used | ⚠️ Partially implemented | May not handle all cases |
+| `ON ... GOTO` | 93 matches | ✅ Implemented | ✅ Fully implemented (parser, AST, codegen with switch statements) |
+| `ON ... GOSUB` | Used | ✅ Implemented | ✅ Fully implemented (parser, AST, codegen with switch statements) |
 | `ON ERROR GOTO label` | 11 matches | ✅ Implemented | ✅ Works (including `_NEWHANDLER`) |
 | `ON ERROR GOTO 0` | Used | ✅ Implemented | ✅ Works |
-| `ON KEY ... GOTO` | Used | ❌ Not implemented | Event trapping |
-| `ON TIMER ... GOTO` | Used | ❌ Not implemented | Timer events |
-| `ON UEVENT ... GOTO` | Used | ❌ Not implemented | User events |
-| `ON COM ... GOTO` | Used | ❌ Not implemented | Serial port events |
-| `ON STRIG ... GOTO` | Used | ❌ Not implemented | Joystick events |
-| `ON PEN ... GOTO` | Used | ❌ Not implemented | Light pen events |
+| `ON KEY ... GOTO` | Used | ✅ Implemented | ✅ Fully implemented (parser, AST, codegen, runtime) |
+| `ON TIMER ... GOTO` | Used | ✅ Implemented | ✅ Fully implemented (parser, AST, codegen, runtime) |
+| `ON UEVENT ... GOTO` | Used | ✅ Implemented | ✅ Fully implemented (parser, AST, codegen, runtime) |
+| `ON STRIG ... GOTO` | Used | ✅ Implemented | ✅ Fully implemented (parser, AST, codegen, runtime) |
+| `ON COM ... GOTO` | Used | ⚠️ Codegen only | Parser, AST, and codegen implemented; runtime functions not implemented |
+| `ON PEN ... GOTO` | Used | ⚠️ Codegen only | Parser, AST, and codegen implemented; runtime functions not implemented |
 
 **Note:** QB64pe uses `ON ERROR GOTO` extensively (11 matches) for error handling. QB64Fresh supports this, including the `_NEWHANDLER` extension.
 
@@ -164,7 +166,7 @@ This document catalogs the missing features based on analysis of `qb64pe.bas` an
 | `OPTION BASE 0/1` | Used | ✅ Implemented | ✅ Works |
 | Multi-dimensional arrays | Used | ✅ Implemented | ✅ Works |
 | `LBOUND` / `UBOUND` | Used | ✅ Implemented | Array bounds tracking with runtime functions |
-| Static arrays (`$STATIC`) | Not used in QB64pe | ❌ Not implemented | Static arrays not supported |
+| Static arrays (`$STATIC`) | Not used in QB64pe | ✅ Implemented | ✅ `$STATIC` directive parsed, static arrays emit fixed-size C arrays |
 
 ---
 
@@ -250,12 +252,13 @@ See [QB64PE_TO_QB64Fresh_BEHAVIORAL_DIFFERENCES.md](QB64pe/QB64PE_TO_QB64Fresh_B
 
 Based on the analysis, the most likely causes for QB64pe hanging when compiled with QB64Fresh:
 
-1. **Missing `DEFLNG A-Z`** — QB64pe assumes all variables without suffixes are LONG; QB64Fresh may treat them differently, causing type mismatches
-2. **Missing `_OS$` and platform detection** — QB64pe uses `$IF` blocks based on `_OS$`; if this isn't set correctly, wrong code paths may execute
-3. **Missing `Version$`** — Used in initialization; undefined value may cause issues
-4. **Event trapping not implemented** — `ON KEY`, `ON TIMER`, etc. may be called but not work, causing hangs
-5. **Graphics initialization** — QB64pe's IDE requires graphics; if initialization fails silently, it may hang
-6. **File I/O for internal files** — QB64pe reads from `internal/` directory; if paths are wrong, it may hang waiting for files
+1. ~~**Missing `DEFLNG A-Z`**~~ — ✅ **FIXED** — QB64pe assumes all variables without suffixes are LONG
+2. ~~**Missing `_OS$` and platform detection**~~ — ✅ **FIXED** — QB64pe uses `$IF` blocks based on `_OS$`
+3. ~~**Missing `Version$`**~~ — ✅ **FIXED** — Used in initialization
+4. ~~**Event trapping runtime not implemented**~~ — ✅ **FIXED** — `ON KEY`, `ON TIMER`, `ON UEVENT`, `ON STRIG` fully implemented with runtime support
+5. ~~**Graphics initialization**~~ — ✅ **IMPLEMENTED** — Graphics initialization via `init_graphics()` function in runtime
+6. ~~**File I/O for internal files**~~ — ✅ **IMPLEMENTED** — `resolve_file_path()` handles `internal/` directory relative to executable or CWD
+7. **Missing `ON COM` and `ON PEN` runtime** — Parser, AST, and codegen implemented; runtime functions not implemented
 
 ---
 
@@ -267,20 +270,21 @@ To make QB64pe compile and run, prioritize:
 1. ~~**`DEFLNG A-Z` and DEFTYPE**~~ — ✅ **FIXED** — Critical for variable type inference
 2. ~~**`_OS$` built-in**~~ — ✅ **FIXED** — Required for platform detection in `$IF` blocks
 3. ~~**`Version$` built-in**~~ — ✅ **FIXED** — Used in initialization
-4. **`$USELIBRARY` implementation** — QB64pe uses library system (see [QB64PE_MISSING_FEATURES_USER_INTERACTION.md](QB64PE_MISSING_FEATURES_USER_INTERACTION.md))
-5. **Graphics initialization fixes** — IDE requires graphics window (needs testing)
+4. ~~**`$USELIBRARY` implementation**~~ — ✅ **IMPLEMENTED** — Library system with AtTop/AfterMain/AtBottom inclusion (see [QB64PE_MISSING_FEATURES_USER_INTERACTION.md](QB64PE_MISSING_FEATURES_USER_INTERACTION.md))
+5. ~~**Graphics initialization**~~ — ✅ **IMPLEMENTED** — Graphics initialization via `init_graphics()` function in runtime
 
 ### Medium Priority (Causes Incorrect Behavior)
-1. **Event trapping (`ON KEY`, `ON TIMER`, etc.)** — May cause hangs if called (see [QB64PE_MISSING_FEATURES_USER_INTERACTION.md](QB64PE_MISSING_FEATURES_USER_INTERACTION.md))
+1. ~~**Event trapping runtime (`ON KEY`, `ON TIMER`, `ON UEVENT`, `ON STRIG`)**~~ — ✅ **IMPLEMENTED** — Fully implemented with runtime support (see [QB64PE_MISSING_FEATURES_USER_INTERACTION.md](QB64PE_MISSING_FEATURES_USER_INTERACTION.md))
 2. ~~**`$INCLUDEONCE`**~~ — ✅ **FIXED** — Prevents duplicate includes
-3. **`$EMBED`** — Used for embedding resources (see [QB64PE_MISSING_FEATURES_USER_INTERACTION.md](QB64PE_MISSING_FEATURES_USER_INTERACTION.md))
+3. ~~**`$EMBED`**~~ — ✅ **IMPLEMENTED** — Embedded files collected and emitted as C arrays (see [QB64PE_MISSING_FEATURES_USER_INTERACTION.md](QB64PE_MISSING_FEATURES_USER_INTERACTION.md))
 4. ~~**`_DIREXISTS` and file system functions**~~ — ✅ **FIXED** — Used for internal folder checks
+5. **`ON COM` and `ON PEN` runtime** — Parser, AST, and codegen implemented; runtime functions (`qb_on_com`, `qb_on_pen`) not implemented
 
 ### Low Priority (Nice to Have)
-1. **`$COLOR` directives** — IDE syntax highlighting
-2. **`$ASSERTS`** — Debug features
-3. **`$VERSIONINFO` / `$EXEICON`** — Windows resource generation
-4. **`$NOPREFIX`** — Deprecated feature
+1. ~~**`$COLOR` directives**~~ — ✅ **PARSED** — Generates comments in codegen (runtime behavior may differ)
+2. ~~**`$ASSERTS`**~~ — ✅ **IMPLEMENTED** — Emits C code to enable assertions
+3. ~~**`$VERSIONINFO` / `$EXEICON`**~~ — ✅ **IMPLEMENTED** — Windows resource generation (generates `.rc`, `manifest.h`, `.manifest` files)
+4. ~~**`$NOPREFIX`**~~ — ✅ **PARSED** — Generates comment in codegen
 
 ---
 

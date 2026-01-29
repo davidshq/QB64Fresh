@@ -639,7 +639,7 @@ impl CodeGenerator for CBackend {
                 ctx,
                 writeln_code!(
                     &mut output,
-                    "static qb_string* qb_embedded(const char* handle) {{"
+                    "static QbString* qb_embedded(const char* handle) {{"
                 )
             );
             collect_err!(
@@ -673,12 +673,35 @@ impl CodeGenerator for CBackend {
                 ctx,
                 writeln_code!(
                     &mut output,
-                    "    /* Handle not found - return empty string */"
+                    "    /* Handle not found - raise runtime error like QB64pe */"
+                )
+            );
+            collect_err!(ctx, writeln_code!(&mut output, "    char err_msg[256];"));
+            collect_err!(
+                ctx,
+                writeln_code!(
+                    &mut output,
+                    "    snprintf(err_msg, sizeof(err_msg), \"Embed-Handle '%s' is undefined (check your $EMBED lines)\", handle ? handle : \"(null)\");"
                 )
             );
             collect_err!(
                 ctx,
-                writeln_code!(&mut output, "    return qb_string_new(\"\");")
+                writeln_code!(&mut output, "    if (_qb_err_msg) free(_qb_err_msg);")
+            );
+            collect_err!(
+                ctx,
+                writeln_code!(&mut output, "    _qb_err_msg = strdup(err_msg);")
+            );
+            collect_err!(
+                ctx,
+                writeln_code!(&mut output, "    qb_error(5); /* Illegal function call */")
+            );
+            collect_err!(
+                ctx,
+                writeln_code!(
+                    &mut output,
+                    "    return qb_string_new(\"\"); /* Should not reach here, but return empty string as fallback */"
+                )
             );
             collect_err!(ctx, writeln_code!(&mut output, "}}"));
             collect_err!(ctx, writeln_code!(&mut output));
