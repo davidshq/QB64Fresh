@@ -68,6 +68,25 @@ cargo build --release
 cargo run --release -- examples/hello.bas --tokens
 ```
 
+### Memory Limits (Important)
+
+**QB64Fresh and QB64pe can consume 25GB+ memory during compilation.** Always use memory limits to prevent system crashes:
+
+```bash
+# Set 16GB virtual memory limit (recommended)
+ulimit -v 16777216
+
+# Then run compilation
+cargo run --release -- your_program.bas --emit-c
+```
+
+Or use a one-liner:
+```bash
+bash -c 'ulimit -v 16777216 && cargo run --release -- your_program.bas --emit-c'
+```
+
+See [docs/MEMORY_LIMITS.md](../MEMORY_LIMITS.md) for details.
+
 ### Editor Setup (VSCode)
 
 1. Copy `vscode-qb64fresh/` to your VSCode extensions folder
@@ -128,7 +147,7 @@ gcc output.c -o program -lqb64fresh_rt -lSDL2 -lm
 
 ### 2. Fixed-Length Strings in UDTs
 
-QB64 implicitly converts and pads strings when assigning to `STRING * n` fields. QB64Fresh requires exact type matching (being fixed in a future update).
+QB64 implicitly converts and pads strings when assigning to `STRING * n` fields. QB64Fresh requires explicit padding.
 
 ```basic
 ' QB64 (works):
@@ -138,9 +157,11 @@ END TYPE
 DIM p AS Person
 p.Name = "John"        ' Implicitly pads to 20 characters
 
-' QB64Fresh (current workaround):
+' QB64Fresh (workaround):
 p.Name = LEFT$("John" + SPACE$(20), 20)  ' Explicit padding
 ```
+
+**Note:** This is an intentional difference for type safety. See [INTENTIONAL_DIFFERENCES_FROM_QB64PE.md](../INTENTIONAL_DIFFERENCES_FROM_QB64PE.md) for details.
 
 ### 3. OpenGL Commands Not Supported
 
@@ -184,6 +205,44 @@ CALL ABSOLUTE(addr%)   ' Warning: flat memory model, no-op
 
 Legacy code using `CALL ABSOLUTE` for mouse drivers should use `_MOUSEINPUT` instead.
 
+### 6. Cross-Procedure GOTO
+
+QB64pe allows `GOTO` to labels in other procedures (creating a forward reference in the current scope). QB64Fresh requires labels to be in the same procedure.
+
+```basic
+' QB64pe (works):
+SUB Proc1
+    GOTO Label2  ' Label2 is in Proc2, but QB64pe creates it here
+END SUB
+
+SUB Proc2
+Label2:
+    PRINT "Hello"
+END SUB
+
+' QB64Fresh (error):
+' Error: undefined label 'Label2' - label must be in current procedure
+```
+
+**Rationale:** This stricter behavior catches typos and prevents scope confusion. See [INTENTIONAL_DIFFERENCES_FROM_QB64PE.md](../INTENTIONAL_DIFFERENCES_FROM_QB64PE.md) for details.
+
+### 7. Error Reporting
+
+QB64pe typically stops at the first error. QB64Fresh collects and reports multiple errors per compilation.
+
+```basic
+' Program with multiple errors:
+DIM x AS INTEGER
+x = "hello"     ' Error 1: type mismatch
+y = undefined   ' Error 2: undefined variable
+z$ = 42         ' Error 3: type mismatch
+
+' QB64pe: Reports only Error 1, stops
+' QB64Fresh: Reports all three errors at once
+```
+
+**Rationale:** Better debugging experience - see all issues at once rather than fixing one at a time.
+
 ---
 
 ## Compilation Workflow
@@ -210,13 +269,22 @@ qb64fresh program.bas --emit-c
 
 ```bash
 # Option 1: Inline runtime (self-contained C)
+# Graphics/audio are stubs; frame limiting prevents infinite loops
+ulimit -v 16777216  # Set memory limit first
 qb64fresh program.bas --emit-c --runtime=inline
 gcc output.c -o program -lSDL2 -lm
 
-# Option 2: External runtime (links against library)
+# Option 2: External runtime (links against library, full graphics/audio)
+ulimit -v 16777216  # Set memory limit first
 qb64fresh program.bas --emit-c --runtime=external
-gcc output.c -o program -L./target/release -lqb64fresh_rt -lSDL2 -lm
+gcc output.c -o program -I runtime/include -L./target/release -lqb64fresh_rt -lSDL2 -lm
 ```
+
+**Runtime Modes:**
+- **Inline:** Self-contained C with embedded runtime. Graphics/audio are stubs (no-op). Use for CI, headless testing, or when you don't need graphics.
+- **External:** Links against `libqb64fresh_rt` for full graphics/audio support via SDL2 and Rodio.
+
+**Important:** Never edit generated `.c` files directly. If compilation fails, fix the code generator, not the output. See [ADR-0017](../adrs/ADR-0017-generated-code-is-ephemeral.md) for details.
 
 ---
 
@@ -355,7 +423,7 @@ END IF
 | Cross-platform | ⚠️ | ✅ | Equal support all platforms |
 | DECLARE LIBRARY | ✅ | ✅ | Full C interop |
 | _THREAD | ✅ | ⚠️ | Planned |
-| Joystick | ✅ | ⚠️ | Planned |
+| Joystick | ✅ | ✅ | Full support in external runtime (STICK, STRIG, _DEVICES, _AXIS, _BUTTON) |
 | Networking | ✅ | ✅ | Full TCP/IP support (_OPENHOST, _OPENCLIENT, _CONNECTED) |
 
 ---
@@ -384,9 +452,12 @@ error[E0042]: type mismatch
 
 ### Resources
 
-- [QB64Fresh TODO.md](TODO.md) - Known issues and roadmap
-- [QB45 Compatibility Report](docs/QB45_COMPATIBILITY_REPORT.md) - Detailed test results
-- [DEVELOPMENT.md](DEVELOPMENT.md) - Contributing guide
+- [QB64Fresh TODO.md](../TODO.md) - Known issues and roadmap
+- [INTENTIONAL_DIFFERENCES_FROM_QB64PE.md](../INTENTIONAL_DIFFERENCES_FROM_QB64PE.md) - Deliberate behavioral differences
+- [QB64PE_TO_QB64Fresh_BEHAVIORAL_DIFFERENCES.md](QB64PE_TO_QB64Fresh_BEHAVIORAL_DIFFERENCES.md) - All behavioral differences (architectural and intentional)
+- [PARTIAL_IMPLEMENTATIONS.md](../ThingsToDo/PARTIAL_IMPLEMENTATIONS.md) - Implementation status by feature
+- [MEMORY_LIMITS.md](../MEMORY_LIMITS.md) - Memory limit requirements and usage
+- [DEVELOPMENT.md](../DEVELOPMENT.md) - Contributing guide
 - [QB64-PE Wiki](https://qb64phoenix.com/qb64wiki/) - Language reference (mostly compatible)
 
 ---
@@ -422,21 +493,34 @@ Options:
 
 ### Q: Is QB64Fresh stable enough for production?
 
-For most programs, yes. The 99.1% compatibility rate (114/115 test files) covers the vast majority of QB64 code. Check the [Known Issues](#changes-required) section for potential edge cases.
+For most programs, yes. The 99.1% compatibility rate (114/115 test files) covers the vast majority of QB64 code. QB64Fresh successfully compiles the 59K-line QB64pe compiler itself (bootstrap validation). Check the [Known Issues](#changes-required) section and [INTENTIONAL_DIFFERENCES_FROM_QB64PE.md](../INTENTIONAL_DIFFERENCES_FROM_QB64PE.md) for potential edge cases.
+
+### Q: Why does QB64Fresh behave differently in some cases?
+
+Some differences are **intentional** for safety, clarity, or portability:
+- Stricter GOTO scope (prevents bugs from typos)
+- Multiple error reporting (better debugging)
+- Different PRNG (implementation choice)
+- Excluded OpenGL commands (portability)
+
+See [INTENTIONAL_DIFFERENCES_FROM_QB64PE.md](../INTENTIONAL_DIFFERENCES_FROM_QB64PE.md) for the complete list and rationale.
 
 ---
 
 ## Migration Checklist
 
 - [ ] Install Rust and build QB64Fresh
+- [ ] **Set up memory limits** (see [MEMORY_LIMITS.md](../MEMORY_LIMITS.md))
 - [ ] Test compile your program with `--typed-ir` flag
 - [ ] Address any type errors (usually `STRING * n` issues)
+- [ ] Check for cross-procedure GOTO (must be in same procedure)
 - [ ] Replace any `_GL*` commands if used
 - [ ] Replace Windows-specific features if used
+- [ ] Review [INTENTIONAL_DIFFERENCES_FROM_QB64PE.md](../INTENTIONAL_DIFFERENCES_FROM_QB64PE.md) for behavioral differences
 - [ ] Set up your preferred editor with LSP (optional but recommended)
-- [ ] Compile to C and build executable
+- [ ] Compile to C and build executable (with memory limits)
 - [ ] Test the compiled program
 
 ---
 
-*Last updated: 2026-01-22*
+*Last updated: 2026-01-28*

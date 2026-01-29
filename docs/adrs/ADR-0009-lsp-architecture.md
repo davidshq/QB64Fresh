@@ -75,7 +75,7 @@ pub struct QbLanguageServer {
 
 | Capability | Status | Notes |
 |------------|--------|-------|
-| `textDocumentSync` | Full | Re-analyzes on every change |
+| `textDocumentSync` | Full | Full document content; analysis is incremental |
 | `hoverProvider` | Basic | Shows token kind and position |
 | `diagnosticProvider` | Complete | Lexer, parser, and semantic errors |
 | `definitionProvider` | Planned | Go-to-definition |
@@ -85,14 +85,15 @@ pub struct QbLanguageServer {
 | `referencesProvider` | Planned | Find all references |
 | `renameProvider` | Planned | Rename symbol |
 
-### Document Synchronization
+### Document Synchronization and Incremental Analysis
 
-The server uses **full synchronization** for simplicity:
-- On `didOpen`: Store full document, analyze
-- On `didChange`: Replace content, re-analyze
+The server uses **full document sync** (full content on each change) but **incremental analysis** for performance:
+
+- On `didOpen`: Store full document, run full analysis
+- On `didChange`: Replace content, then **incremental lex** (merge tokens), **incremental parse** (re-parse from first affected statement), **incremental semantic analysis** (re-collect declarations, re-check from affected point)
 - On `didClose`: Remove from cache, clear diagnostics
 
-This is simpler than incremental sync and acceptable for BASIC file sizes.
+Incremental parsing uses statement-boundary detection so only the tail of the file is re-parsed when edits occur. Incremental semantic analysis re-uses the public `SemanticAnalyzer::analyze()` API and returns diagnostics from both parse and semantic phases. See `src/lsp/analysis/incremental.rs` and [AgenticLogs/2026-01-28_session-072_lsp-incremental-parsing-complete.md](../../AgenticLogs/2026-01-28_session-072_lsp-incremental-parsing-complete.md).
 
 ### Span-to-Position Conversion
 
@@ -110,7 +111,7 @@ fn offset_to_position(source: &str, offset: usize) -> Position {
 1. **Separate binary**: Clean separation of concerns; editor doesn't need compiler internals
 2. **tower-lsp**: Battle-tested Rust LSP framework, handles JSON-RPC protocol
 3. **Async/tokio**: Non-blocking I/O for responsive editor experience
-4. **Full sync**: Simple implementation, adequate for BASIC programs
+4. **Incremental analysis**: Lex/parse/analyze only from the first affected statement (since 2026-01-28), adequate for BASIC file sizes
 5. **Library reuse**: Same lexer/parser/semantic as CLI compiler
 
 ### Alternatives Considered
@@ -131,11 +132,12 @@ fn offset_to_position(source: &str, offset: usize) -> Position {
 - Standard protocol means leveraging years of LSP ecosystem work
 - Async design keeps editor responsive
 - Same analysis code as compiler ensures consistency
+- Incremental analysis (since 2026-01-28) reduces re-parse/re-check cost on edits
 
 ### Negative
 
 - Two binaries to build and distribute
-- Full document sync may be slow for very large files
+- Full document content sync on each change; very large files may still incur noticeable latency
 - JSON-RPC overhead (minimal in practice)
 - LSP protocol complexity for advanced features
 
@@ -147,8 +149,8 @@ fn offset_to_position(source: &str, offset: usize) -> Position {
 
 ### Future Work
 
-1. **Incremental sync**: For large file performance
-2. **Incremental analysis**: Cache parsed AST, only re-analyze changed regions
+1. **Incremental sync**: Optional; full sync is acceptable for typical BASIC file sizes
+2. ~~**Incremental analysis**~~: **Done** (2026-01-28) — incremental lex/parse/semantic from first affected statement
 3. **Semantic tokens**: Syntax highlighting from compiler
 4. **Code actions**: Quick fixes for common errors
 5. **Workspace support**: Multi-file projects, $INCLUDE resolution

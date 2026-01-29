@@ -401,3 +401,5 @@ PRINT "Number:"; atoi(num)
 - `src/header_parser/parser.rs` - C function declaration parser
 
 **API Reference:** See [docs/reference/HEADER_PARSER_API.md](../reference/HEADER_PARSER_API.md) for complete programmatic API documentation.
+
+**Known limitations and problematic BASIC→C items:** See [BASIC_TO_C_PROBLEMATIC_LANGUAGE_ITEMS.md](../BASIC_TO_C_PROBLEMATIC_LANGUAGE_ITEMS.md) for documented edge cases (BYREF STRING, lock modes, string temporaries, etc.) and workarounds.

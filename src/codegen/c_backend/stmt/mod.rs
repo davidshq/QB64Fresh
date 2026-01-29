@@ -30,9 +30,9 @@ mod error_jump;
 mod io;
 
 // Re-export standalone functions for use by parent module
-pub(in crate::codegen::c_backend) use definitions::emit_params;
+pub(in crate::codegen::c_backend) use definitions::{emit_dynamic_library_section, emit_params};
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::ast::{
     AllowFullScreenMode, EventControlMode, ExitType, FullScreenMode, ImageScaleMode, PrintSeparator,
@@ -104,6 +104,14 @@ pub(super) struct ProcedureContext {
     /// In BASIC, local variables can shadow parameters, but in C this causes compilation errors.
     /// We need to rename local variables that shadow BYVAL parameters.
     pub current_func_param_names: std::collections::HashSet<String>,
+    /// Current function's BYREF scalar parameter names (for pointer dereferencing).
+    /// These are parameters that are passed by reference and need to be dereferenced when accessed.
+    /// Excludes arrays (which are already pointers) and strings (which have special writeback logic).
+    pub current_func_byref_scalar_names: std::collections::HashSet<String>,
+    /// Current function's BYREF UDT parameter names and local pointer variables (for pointer field access).
+    /// These are UDT parameters passed by reference or local variables that are pointers,
+    /// so field access must use -> instead of .
+    pub current_func_byref_udt_names: std::collections::HashSet<String>,
     /// Map of variable name renamings (original -> renamed) for variables that shadow parameters.
     /// When a local variable shadows a parameter, we rename it and track the mapping here.
     pub variable_renames: HashMap<String, String>,
@@ -117,6 +125,8 @@ impl ProcedureContext {
             current_func_ret_var: None,
             current_func_byref_strings: Vec::new(),
             current_func_param_names: std::collections::HashSet::new(),
+            current_func_byref_scalar_names: std::collections::HashSet::new(),
+            current_func_byref_udt_names: std::collections::HashSet::new(),
             variable_renames: HashMap::new(),
         }
     }
@@ -127,6 +137,8 @@ impl ProcedureContext {
         self.current_func_ret_var = None;
         self.current_func_byref_strings.clear();
         self.current_func_param_names.clear();
+        self.current_func_byref_scalar_names.clear();
+        self.current_func_byref_udt_names.clear();
         self.variable_renames.clear();
     }
 }
@@ -259,6 +271,8 @@ pub(super) struct StmtEmitter {
     pub debug: DebugContext,
     /// Compiler configuration.
     pub config: Config,
+    /// C names of external functions from DECLARE DYNAMIC LIBRARY (call via qb_dyn_<c_name>).
+    pub dynamic_external_c_names: HashSet<String>,
 }
 
 impl StmtEmitter {
@@ -279,6 +293,7 @@ impl StmtEmitter {
             events: EventContext::new(),
             debug: DebugContext::new(),
             config: Config::with_runtime_mode(runtime_mode),
+            dynamic_external_c_names: HashSet::new(),
         }
     }
 
@@ -289,16 +304,40 @@ impl StmtEmitter {
 
     /// Helper method to emit an expression with variable renamings applied.
     /// This wraps `emit_expr` and automatically passes the current variable renamings and parameter names.
+    ///
+    /// In external runtime mode, every string-returning expression (e.g. `qb_string_new`, `qb_string_concat`,
+    /// built-ins) comes from the runtime library and is not auto-registered. We wrap such expressions in
+    /// `qbs_tmp_register(...)` so the temp string pool can release them at scope cleanup, preventing
+    /// unbounded memory growth (IDE GUI memory leak).
     pub(super) fn emit_expr(
         &self,
         expr: &crate::semantic::typed_ir::TypedExpr,
     ) -> Result<String, crate::codegen::error::CodeGenError> {
-        super::expr::emit_expr(
-            expr,
-            self.config.no_shell,
-            &self.procedure.variable_renames,
-            &self.procedure.current_func_param_names,
-        )
+        // For external runtime, use emit_expr_external which wraps string temporaries
+        // with qbs_tmp_register() at the point of creation (nested expressions too).
+        // For inline runtime, use emit_expr which doesn't wrap (the inline C functions
+        // call qbs_tmp_register internally).
+        if self.config.runtime_mode.is_external() {
+            super::expr::emit_expr_external(
+                expr,
+                self.config.no_shell,
+                &self.procedure.variable_renames,
+                &self.procedure.current_func_param_names,
+                &self.procedure.current_func_byref_scalar_names,
+                &self.procedure.current_func_byref_udt_names,
+                &self.dynamic_external_c_names,
+            )
+        } else {
+            super::expr::emit_expr(
+                expr,
+                self.config.no_shell,
+                &self.procedure.variable_renames,
+                &self.procedure.current_func_param_names,
+                &self.procedure.current_func_byref_scalar_names,
+                &self.procedure.current_func_byref_udt_names,
+                &self.dynamic_external_c_names,
+            )
+        }
     }
 
     /// Converts a BASIC label to a C label, prefixing with procedure name if in a procedure.
@@ -871,8 +910,15 @@ impl StmtEmitter {
 
             TypedStatementKind::Erase { arrays } => {
                 for array_name in arrays {
-                    let c_name = c_identifier(array_name).to_lowercase();
-                    writeln_code!(output, "{}qb_array_erase(&arr_{});", indent, c_name)?;
+                    let mut c_name = c_identifier(array_name);
+                    // Use same name as DIM/array access (including parameter-shadow renames)
+                    if let Some(renamed) = self.procedure.variable_renames.get(&c_name)
+                        && !renamed.ends_with("_scalar")
+                    {
+                        c_name = renamed.clone();
+                    }
+                    // Pass the array pointer (variable value), not its address; registry key is the pointer from qb_array_register
+                    writeln_code!(output, "{}qb_array_erase({});", indent, c_name)?;
                 }
             }
 
@@ -889,11 +935,23 @@ impl StmtEmitter {
 
                 for (i, arg) in args.iter().enumerate() {
                     let arg_code = self.emit_expr(arg)?;
-                    // Check if this parameter is byref (and not an array ref which decays to pointer)
-                    let is_byref = params
-                        .get(i)
-                        .map(|p| !p.by_val && !p.is_array)
-                        .unwrap_or(false);
+                    // If the argument is our local UDT pointer (byref_udt_names), always pass as-is (pointer), never &.
+                    // BASIC is case-insensitive; compare lowercased C identifiers.
+                    let arg_is_udt_pointer = matches!(&arg.kind, TypedExprKind::Variable(name)
+                    if {
+                        let c_arg = c_identifier(name).to_lowercase();
+                        self.procedure.current_func_byref_udt_names.iter()
+                            .any(|s| s.to_lowercase() == c_arg)
+                    });
+                    // Check if this parameter is byref (and not an array ref which decays to pointer).
+                    // For UDT arguments that are already pointers (from BYREF UDT params in current function),
+                    // arg_is_udt_pointer is true and we skip adding &.
+                    // For regular UDT variables (not already pointers), we DO need to add & for BYREF params.
+                    let is_byref = !arg_is_udt_pointer
+                        && params
+                            .get(i)
+                            .map(|p| !p.by_val && !p.is_array)
+                            .unwrap_or(false);
                     if is_byref {
                         // For byref, we need to pass the address
                         // Check if expression is an lvalue (can take address of)
@@ -920,7 +978,32 @@ impl StmtEmitter {
 
                         if is_lvalue && types_match {
                             // Variable/array/field can be addressed directly
-                            args_codes.push(format!("&({})", arg_code));
+                            // Special case: If the variable is const (like HASHFLAG_*, DEPENDENCY_*),
+                            // we need to cast away const to match function signatures that expect non-const pointers
+                            let needs_parens = arg_code.contains(' ')
+                                || arg_code.contains('(')
+                                || arg_code.contains('[');
+
+                            // Check if this looks like a const variable (all uppercase with underscores)
+                            // Common patterns: HASHFLAG_*, DEPENDENCY_*
+                            let is_likely_const = !needs_parens
+                                && arg_code
+                                    .chars()
+                                    .all(|c| c.is_uppercase() || c == '_' || c.is_ascii_digit())
+                                && (arg_code.starts_with("HASHFLAG_")
+                                    || arg_code.starts_with("DEPENDENCY_")
+                                    || arg_code.contains("_FLAG")
+                                    || arg_code.contains("_DEPENDENCY"));
+
+                            if is_likely_const {
+                                // Cast away const: (int32_t*)&CONSTANT
+                                let c_ty = param_type
+                                    .map(c_type)
+                                    .unwrap_or_else(|| "int32_t".to_string());
+                                args_codes.push(format!("({}*)&{}", c_ty, arg_code));
+                            } else {
+                                args_codes.push(format!("&({})", arg_code));
+                            }
                         } else if is_lvalue && !types_match {
                             // Lvalue but types don't match - need temporary with correct type
                             // This handles cases like passing LONG to INTEGER% parameter
@@ -1725,11 +1808,16 @@ impl StmtEmitter {
                 // step1 = 0 (first point is absolute), step2 = whether endpoint is relative
                 let step2_flag = if *step2 { "1" } else { "0" };
 
-                // Style pattern: 16-bit value, 0xFFFF means no style (solid)
+                // Style pattern: 16-bit value specifying line pattern (e.g., 0xCCCC for dashed)
+                // - 0xFFFF = solid line (no pattern)
+                // - Other values = bit pattern that repeats along the line
                 // Only valid with box outlines (B), ignored for filled boxes (BF) and plain lines
+                // The runtime will apply the pattern for box outlines, ignore it for others
                 let style_code = if let Some(s) = style {
-                    // Cast to uint16_t to ensure proper type
-                    format!("(uint16_t)({})", self.emit_expr(s)?)
+                    // Cast to uint16_t to ensure proper type and mask to 16 bits
+                    // The style pattern is a 16-bit value where each bit represents
+                    // whether a pixel should be drawn (1) or skipped (0)
+                    format!("(uint16_t)(({}) & 0xFFFF)", self.emit_expr(s)?)
                 } else {
                     "0xFFFF".to_string() // No style = solid line
                 };
@@ -2619,31 +2707,27 @@ impl StmtEmitter {
                 is_dynamic,
                 declarations,
             } => {
-                // For static libraries, we just emit extern declarations
-                // For dynamic libraries, we would need to emit dlopen/LoadLibrary code
-                // at runtime, which is more complex and deferred for now.
-                //
-                // The actual function calls are handled in expression codegen
-                // when the external function is called.
+                // Static libraries: emit extern declarations here.
+                // Dynamic libraries: handle/pointers and init are emitted in the
+                // dynamic library section (qb_init_dynamic_libs); calls use qb_dyn_<c_name>.
                 if *is_dynamic {
                     writeln_code!(
                         output,
-                        "{}// DECLARE DYNAMIC LIBRARY (runtime loading not yet implemented)",
+                        "{}// DECLARE DYNAMIC LIBRARY (loaded in qb_init_dynamic_libs)",
                         indent
                     )?;
                     if let Some(lib) = library_name {
                         writeln_code!(output, "{}// Library: {}", indent, lib)?;
                     }
+                    // No extern declarations - we use function pointers (qb_dyn_<c_name>) emitted above.
                 } else {
                     writeln_code!(output, "{}// DECLARE LIBRARY - extern declarations", indent)?;
                     if let Some(lib) = library_name {
                         writeln_code!(output, "{}// Library: {}", indent, lib)?;
                     }
-                }
-
-                // Emit extern declarations for each function
-                for decl in declarations {
-                    self.emit_extern_declaration(&indent, decl, output)?;
+                    for decl in declarations {
+                        self.emit_extern_declaration(&indent, decl, output)?;
+                    }
                 }
             }
 
@@ -2658,7 +2742,7 @@ impl StmtEmitter {
 
             // ==================== Phase 7: Additional Statements ====================
             TypedStatementKind::Run { target } => {
-                // RUN restarts the program or runs another - stub implementation
+                // RUN: NULL = no-op (restart); non-NULL = run program then exit (minimal implementation)
                 if let Some(t) = target {
                     let target_code = self.emit_expr(t)?;
                     writeln_code!(output, "{}qb_run({});", indent, target_code)?;

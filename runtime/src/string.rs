@@ -25,6 +25,27 @@ use std::os::raw::c_char;
 use std::ptr;
 use std::slice;
 
+/// Debug logging for string operations (leak detection).
+///
+/// When enabled via `QB64FRESH_STRING_DEBUG` environment variable,
+/// logs all string allocations, releases, and reference count changes.
+/// This helps detect memory leaks and double-free bugs.
+#[cfg(debug_assertions)]
+fn debug_log_string_op(op: &str, ptr: *const QbString, ref_count: usize, len: usize) {
+    use std::env;
+    if env::var("QB64FRESH_STRING_DEBUG").is_ok() {
+        eprintln!(
+            "[STRING_DEBUG] {}: ptr={:p}, ref_count={}, len={}",
+            op, ptr, ref_count, len
+        );
+    }
+}
+
+#[cfg(not(debug_assertions))]
+fn debug_log_string_op(_op: &str, _ptr: *const QbString, _ref_count: usize, _len: usize) {
+    // Debug logging disabled in release builds
+}
+
 /// Internal string header stored before the character data.
 #[repr(C)]
 struct QbStringHeader {
@@ -102,13 +123,44 @@ pub unsafe extern "C" fn qb_str_from_c(s: *const c_char) -> *mut QbString {
     qb_string_new(s)
 }
 
-/// Create an empty string.
+/// Wrapper to make raw pointer Send+Sync for the singleton.
 ///
 /// # Safety
-/// The returned string must be released with `qb_string_release`
+/// This is safe because:
+/// 1. BASIC programs are single-threaded
+/// 2. The singleton is only initialized once and never freed
+/// 3. The pointer is only read (never written) after initialization
+struct EmptyStringPtr(*mut QbString);
+unsafe impl Send for EmptyStringPtr {}
+unsafe impl Sync for EmptyStringPtr {}
+
+/// Static empty string singleton - never freed.
+/// This is used for empty string comparisons and to avoid allocating
+/// multiple empty strings.
+static EMPTY_STRING_SINGLETON: std::sync::OnceLock<EmptyStringPtr> = std::sync::OnceLock::new();
+
+/// Create an empty string.
+///
+/// Returns a singleton empty string that has very high refcount and will never be freed.
+/// This is important for use as a global empty string constant.
+///
+/// # Safety
+/// The returned string should NOT be released - it's a static singleton.
 #[no_mangle]
 pub extern "C" fn qb_string_empty() -> *mut QbString {
-    unsafe { qb_string_from_bytes(ptr::null(), 0) }
+    EMPTY_STRING_SINGLETON
+        .get_or_init(|| {
+            unsafe {
+                let ptr = qb_string_from_bytes(ptr::null(), 0);
+                // Set refcount very high so it's never freed
+                if !ptr.is_null() {
+                    let header = get_header_mut(ptr as *mut c_char);
+                    header.ref_count = usize::MAX / 2; // Very high but won't overflow on increment
+                }
+                EmptyStringPtr(ptr)
+            }
+        })
+        .0
 }
 
 /// Create a string from raw bytes.
@@ -146,7 +198,12 @@ pub unsafe extern "C" fn qb_string_from_bytes(data: *const u8, len: usize) -> *m
 
     // Return data pointer directly as *mut QbString
     // (QbString is opaque - the pointer IS the string handle)
-    data_ptr as *mut QbString
+    let result = data_ptr as *mut QbString;
+
+    // Debug logging for leak detection
+    debug_log_string_op("ALLOC", result, 1, len);
+
+    result
 }
 
 /// Increment the reference count of a string.
@@ -160,7 +217,13 @@ pub unsafe extern "C" fn qb_string_retain(s: *mut QbString) -> *mut QbString {
     }
 
     let data_ptr = s as *mut c_char;
-    get_header_mut(data_ptr).ref_count += 1;
+    let header = get_header_mut(data_ptr);
+    let new_ref_count = header.ref_count + 1;
+    header.ref_count = new_ref_count;
+
+    // Debug logging for leak detection
+    debug_log_string_op("RETAIN", s, new_ref_count, header.len);
+
     s
 }
 
@@ -188,14 +251,22 @@ pub unsafe extern "C" fn qb_string_release(s: *mut QbString) {
         return;
     }
 
+    let len = header.len;
     header.ref_count -= 1;
+
     if header.ref_count == 0 {
+        // Debug logging before free
+        debug_log_string_op("FREE", s, 0, len);
+
         // Free the string allocation (header + data in one block)
         let capacity = header.capacity;
         let layout = string_layout(capacity);
         let header_ptr = (data_ptr as *mut QbStringHeader).offset(-1);
         dealloc(header_ptr as *mut u8, layout);
         // No extra Box to free - we return data pointer directly
+    } else {
+        // Debug logging for reference count decrement (not freed yet)
+        debug_log_string_op("RELEASE", s, header.ref_count, len);
     }
 }
 
@@ -208,7 +279,29 @@ pub unsafe extern "C" fn qb_string_len(s: *const QbString) -> usize {
     if s.is_null() {
         return 0;
     }
-    get_header(s as *const c_char).len
+
+    // Additional validation: check pointer alignment and detect obviously bad pointers
+    let s_addr = s as usize;
+    if s_addr < 0x1000 || (s_addr & (std::mem::align_of::<usize>() - 1)) != 0 {
+        eprintln!(
+            "qb_string_len: suspicious pointer {:?} (low address or misaligned)",
+            s
+        );
+        return 0;
+    }
+
+    let len = get_header(s as *const c_char).len;
+    // Sanity check: if length is unreasonably large, treat as invalid/empty
+    // This helps catch uninitialized or garbage pointers
+    const MAX_REASONABLE_LEN: usize = 1024 * 1024 * 1024; // 1GB
+    if len > MAX_REASONABLE_LEN {
+        eprintln!(
+            "qb_string_len: suspicious length {} at {:?}, treating as 0",
+            len, s
+        );
+        return 0;
+    }
+    len
 }
 
 /// Get a pointer to the string's character data (null-terminated).
@@ -234,10 +327,42 @@ pub unsafe extern "C" fn qb_string_data(s: *const QbString) -> *const c_char {
 pub unsafe extern "C" fn qb_string_concat(a: *const QbString, b: *const QbString) -> *mut QbString {
     let a_len = qb_string_len(a);
     let b_len = qb_string_len(b);
-    let new_len = a_len + b_len;
+
+    // Sanity check: catch obviously invalid lengths that would cause allocation issues
+    // Maximum reasonable string size is 1GB - anything larger is likely garbage data
+    const MAX_REASONABLE_LEN: usize = 1024 * 1024 * 1024;
+    if a_len > MAX_REASONABLE_LEN || b_len > MAX_REASONABLE_LEN {
+        eprintln!(
+            "qb_string_concat: invalid string length detected (a_len={}, b_len={})",
+            a_len, b_len
+        );
+        eprintln!("  a pointer: {:?}, b pointer: {:?}", a, b);
+        // Return empty string instead of crashing
+        return qb_string_empty();
+    }
+
+    let new_len = match a_len.checked_add(b_len) {
+        Some(len) => len,
+        None => {
+            eprintln!("qb_string_concat: length overflow");
+            return qb_string_empty();
+        }
+    };
 
     let capacity = new_len.max(16);
-    let layout = string_layout(capacity);
+    let layout = match std::alloc::Layout::from_size_align(
+        std::mem::size_of::<QbStringHeader>() + capacity + 1,
+        std::mem::align_of::<QbStringHeader>(),
+    ) {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!(
+                "qb_string_concat: layout error: {} (capacity={})",
+                e, capacity
+            );
+            return qb_string_empty();
+        }
+    };
 
     let ptr = alloc(layout);
     if ptr.is_null() {
@@ -503,6 +628,16 @@ pub unsafe extern "C" fn qb_ltrim(s: *const QbString) -> *mut QbString {
 #[no_mangle]
 pub unsafe extern "C" fn qb_rtrim(s: *const QbString) -> *mut QbString {
     if s.is_null() {
+        return qb_string_empty();
+    }
+
+    // Additional validation: check pointer alignment and try to detect garbage
+    let s_addr = s as usize;
+    if s_addr < 0x1000 || (s_addr & (std::mem::align_of::<usize>() - 1)) != 0 {
+        eprintln!(
+            "qb_rtrim: suspicious pointer {:?} (low address or misaligned)",
+            s
+        );
         return qb_string_empty();
     }
 

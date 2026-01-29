@@ -11,8 +11,8 @@ TEST_DIR="$PROJECT_ROOT/tests/qb64pe_incremental"
 
 cd "$PROJECT_ROOT"
 
-# Memory limit (16GB)
-ulimit -v 16777216
+# Memory limit (4GB; full QB64pe may still OOM - see docs/MEMORY_LIMITS.md)
+ulimit -v 4194304
 
 PHASE="${1:-all}"
 
@@ -61,7 +61,7 @@ case "$PHASE" in
         echo "=========================================="
         echo ""
         echo "To test full compiler (Phase 5), run:"
-        echo "  bash -c 'ulimit -v 16777216 && cargo run --bin qb64fresh -- tests/qb64pe_incremental/05_full_compiler.bas --emit-c -o /tmp/qb64pe_full.c &'"
+        echo "  bash -c 'ulimit -v 4194304 && cargo run --bin qb64fresh -- tests/qb64pe_incremental/05_full_compiler.bas --emit-c -o /tmp/qb64pe_full.c &'"
         ;;
     *)
         echo "Usage: $0 [1|2|3|4|5|all]"

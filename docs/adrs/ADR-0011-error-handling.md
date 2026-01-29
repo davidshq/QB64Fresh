@@ -175,23 +175,14 @@ fn get_diagnostics(&self, source: &str) -> Vec<Diagnostic> {
 }
 ```
 
-### Ariadne Integration (Planned)
+### Ariadne Integration (CLI)
 
-The `ariadne` crate is a dependency for future CLI pretty-printing:
+The `ariadne` crate is used for rich CLI diagnostics in `src/error_formatting.rs`:
 
-```rust
-// Future: Pretty terminal output
-use ariadne::{Report, ReportKind, Source, Label};
+- **Parse errors**: Formatted with source context, labels, and optional "did you mean" suggestions (e.g. keyword typos)
+- **Semantic errors**: Formatted with span highlighting and suggestion notes (e.g. undefined variable → similar names)
 
-Report::build(ReportKind::Error, filename, span.start)
-    .with_message("type mismatch")
-    .with_label(Label::new((filename, span.start..span.end))
-        .with_message(format!("expected {}, found {}", expected, found)))
-    .finish()
-    .print((filename, Source::from(source)));
-```
-
-Currently, errors flow directly to LSP. CLI error output uses simple formatting.
+CLI (`qb64fresh`) uses `error_formatting::format_parse_errors` and `format_semantic_errors` when emitting diagnostics. LSP continues to convert errors to LSP `Diagnostic` objects for the IDE.
 
 ### Rationale
 
@@ -224,7 +215,6 @@ Currently, errors flow directly to LSP. CLI error output uses simple formatting.
 
 - Span tracking adds complexity to parser
 - Error types grow as language features added
-- ariadne not yet used for CLI (future work)
 - No error codes yet (QB64pe uses numbered errors)
 
 ### Implementation Status
@@ -236,21 +226,22 @@ Currently, errors flow directly to LSP. CLI error output uses simple formatting.
 | CodeGenError | Complete |
 | LSP diagnostic conversion | Complete |
 | Error recovery in parser | Complete |
-| ariadne CLI output | Planned |
+| ariadne CLI output | Complete (`src/error_formatting.rs`) |
+| Suggestions ("did you mean") | Complete (parse: keyword typo; semantic: `suggestions` in checker) |
 | Error codes | Not started |
 
 ### Files
 
 - `src/parser/error.rs` - Parse error types
 - `src/semantic/error.rs` - Semantic error types
+- `src/semantic/suggestions.rs` - "Did you mean" for undefined variable/label/procedure
 - `src/codegen/error.rs` - Code generation errors
+- `src/error_formatting.rs` - ariadne-based CLI diagnostics
 - `src/ast/mod.rs` - Span type definition
 - `src/lsp/mod.rs` - Error-to-diagnostic conversion
 
 ### Future Work
 
-1. **ariadne CLI output**: Pretty terminal errors with source context
-2. **Error codes**: Numbered errors for documentation/searchability
-3. **Related information**: Show related locations (e.g., "first defined here")
-4. **Suggestions**: "Did you mean..." for typos
-5. **Warning levels**: Currently all errors, no warnings
+1. **Error codes**: Numbered errors for documentation/searchability
+2. **Related information**: Show related locations (e.g., "first defined here")
+3. **Warning levels**: Currently all errors, no warnings

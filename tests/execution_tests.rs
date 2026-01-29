@@ -32,7 +32,7 @@ fn compile_to_c(source: &str) -> Result<String, String> {
         .map_err(|errors| format!("Semantic errors: {:?}", errors))?;
 
     // Use external runtime mode for linking with runtime library
-    let backend = CBackend::with_runtime_mode(RuntimeMode::External);
+    let backend = CBackend::with_runtime_mode(RuntimeMode::external());
     let output = backend
         .generate(&typed_program)
         .map_err(|e| format!("CodeGen error: {:?}", e))?;
@@ -128,7 +128,7 @@ fn compile_to_c_inline(source: &str) -> Result<String, String> {
         .map_err(|errors| format!("Semantic errors: {:?}", errors))?;
 
     // Use inline runtime mode - all runtime code is embedded in the C output
-    let backend = CBackend::with_runtime_mode(RuntimeMode::Inline);
+    let backend = CBackend::with_runtime_mode(RuntimeMode::inline());
     let output = backend
         .generate(&typed_program)
         .map_err(|e| format!("CodeGen error: {:?}", e))?;
@@ -487,6 +487,33 @@ mod execution {
         assert!(
             output.contains("Hello from SUB"),
             "Output should contain 'Hello from SUB', got: {}",
+            output
+        );
+    }
+
+    /// Regression: BYREF scalar parameters must be visible to the caller when modified in a SUB.
+    /// SUB parameters are BYREF by default; codegen uses a pointer alias (e.g. int32_t* x = x_ref)
+    /// and dereferences on use. Modifications must write through so the caller sees the new value.
+    /// See FIXES_NEEDED_FROM_PROBLEMATIC_ITEMS.md §9.
+    #[test]
+    fn byref_scalar_sub_modifies_caller_variable() {
+        require_gcc!();
+
+        let source = r#"
+            SUB SetValue(n AS INTEGER)
+                n = 99
+            END SUB
+
+            DIM x AS INTEGER
+            x = 5
+            CALL SetValue(x)
+            PRINT x
+        "#;
+        let output = run_basic_program(source).expect("Program should execute");
+
+        assert!(
+            output.contains("99"),
+            "BYREF scalar: caller should see value 99 after SUB modifies parameter, got: {}",
             output
         );
     }

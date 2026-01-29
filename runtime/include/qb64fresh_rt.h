@@ -111,6 +111,22 @@ qb_mem qb_memimage(int32_t handle);
 qb_mem qb_memsound(int32_t handle);
 
 /* ============================================================================
+ * Array Bounds Registry (LBOUND, UBOUND)
+ * ============================================================================
+ * Tracks lower/upper bounds per dimension for DIM'd arrays.
+ * Generated code calls qb_array_register / qb_array_register_md on DIM,
+ * qb_array_update on REDIM, and qb_array_erase on ERASE.
+ */
+void qb_array_register(void* ptr, int32_t lower, int32_t upper);
+void qb_array_register_md(void* ptr, int32_t num_dims, int32_t* lowers, int32_t* uppers);
+void qb_array_update(void* old_ptr, void* new_ptr, int32_t lower, int32_t upper);
+int32_t qb_lbound(void* arr);
+int32_t qb_lbound2(void* arr, int32_t dim);
+int32_t qb_ubound(void* arr);
+int32_t qb_ubound2(void* arr, int32_t dim);
+void qb_array_erase(void* arr);
+
+/* ============================================================================
  * ParseNum UDT (for QB64pe compatibility)
  * ============================================================================
  * Used internally by QB64pe for constant evaluation and parsing.
@@ -237,9 +253,23 @@ QbString* qb_os(void);          /* _OS$ - operating system string */
  * File I/O Functions
  * ============================================================================ */
 
-/* File open/close */
-void qb_file_open(int32_t fnum, const char* filename, const char* mode);
-void qb_file_open_str(int32_t fnum, const QbString* filename, const char* mode);  /* Helper: qb_file_open with QbString* */
+/* OPEN access mode (ACCESS READ / WRITE / READ WRITE) */
+#define QB_FILE_ACCESS_DEFAULT 0
+#define QB_FILE_ACCESS_READ    1
+#define QB_FILE_ACCESS_WRITE   2
+#define QB_FILE_ACCESS_READ_WRITE 3
+
+/* OPEN lock mode (SHARED, LOCK READ/WRITE/READ WRITE, ONLY) */
+#define QB_FILE_LOCK_DEFAULT    0
+#define QB_FILE_LOCK_SHARED     1
+#define QB_FILE_LOCK_READ       2
+#define QB_FILE_LOCK_WRITE      3
+#define QB_FILE_LOCK_READ_WRITE 4
+#define QB_FILE_LOCK_ONLY      5
+
+/* File open/close. access/lock: use QB_FILE_ACCESS_* and QB_FILE_LOCK_* (0 = default). */
+void qb_file_open(int32_t fnum, const char* filename, const char* mode, int32_t access, int32_t lock);
+void qb_file_open_str(int32_t fnum, const QbString* filename, const char* mode, int32_t access, int32_t lock);
 void qb_file_set_reclen(int32_t fnum, int32_t len);
 void qb_file_close(int32_t fnum);
 void qb_file_close_all(void);
@@ -374,6 +404,7 @@ void qb_runtime_init(void);
 void qb_runtime_shutdown(void);
 void qb_end(int32_t exit_code);
 void qb_stop(void);
+void qb_run(QbString* path);
 
 /* Initialization functions called at program start */
 void qb_init_args(int argc, char** argv);

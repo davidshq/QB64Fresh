@@ -47,3 +47,5 @@ dialogs = ["rfd"]  # Native file dialogs
 [dev-dependencies]
 # For testing
 tempfile = "3"
+# Run graphics/audio integration tests serially (SDL/rodio single-init per process)
+serial_test = "3"

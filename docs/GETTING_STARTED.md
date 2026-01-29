@@ -115,7 +115,7 @@ gcc examples/basics/hello.c -o hello -lm
 ./hello
 ```
 
-**External runtime** — for full graphics (SDL2, windows, images) you must link the runtime and SDL2. See [Runtime modes](#runtime-modes-inline-vs-external) below.
+**External runtime** — for full graphics (SDL2, windows, images) you must build the runtime library first, then link it. See [Runtime modes](#runtime-modes-inline-vs-external) below.
 
 ---
 
@@ -148,11 +148,37 @@ Use `--verbose` for extra details.
 | Mode       | `--runtime` | Use case              | Link command                           |
 |------------|-------------|------------------------|----------------------------------------|
 | **Inline** | `inline` (default) | Console, simple I/O, learning | `gcc prog.c -o prog -lm`              |
-| **External** | `external`  | Graphics, audio, SDL2 | `gcc -I runtime/include prog.c -L target/release -lqb64fresh_rt $(pkg-config --libs sdl2) -lm -lpthread -ldl -o prog` |
+| **External** | `external`  | Graphics, audio, SDL2 | See build steps below |
 
-**Inline:** Graphics calls are stubs (e.g. no-op with frame limiting). Fine for `PRINT`, `INPUT`, files, and most logic.
+**Inline:** Graphics calls are stubs (e.g. no-op with frame limiting). Fine for `PRINT`, `INPUT`, files, and most logic. This is the default and requires no additional setup.
 
-**External:** Build the runtime first, then pass `--runtime external` and link as above. See [GRAPHICS.md](GRAPHICS.md) and [CLAUDE.md](../CLAUDE.md) for full commands.
+**External:** Full graphics and audio support. Requires building the runtime library first:
+
+```bash
+# 1. Build the runtime library (from QB64Fresh repo root)
+cd runtime
+cargo build --release --features graphics-sdl2
+cd ..
+
+# 2. Compile BASIC to C with external runtime
+ulimit -v 16777216   # if not already set
+cargo run --release -- examples/hello.bas --emit-c --runtime external
+
+# 3. Compile and link the C code
+gcc -I runtime/include examples/hello.c \
+    -L target/release -lqb64fresh_rt \
+    $(pkg-config --libs sdl2) -lm -lpthread -ldl -o hello
+
+# 4. Run
+./hello
+```
+
+**Note:** External runtime requires SDL2 development libraries. Install with:
+- **Linux:** `sudo apt install libsdl2-dev` (Debian/Ubuntu) or `sudo dnf install SDL2-devel` (Fedora)
+- **macOS:** `brew install sdl2`
+- **Windows:** SDL2 comes with MinGW/MSYS2
+
+For more details, see [GRAPHICS.md](GRAPHICS.md).
 
 ---
 
@@ -177,4 +203,4 @@ Use `--verbose` for extra details.
 
 ---
 
-*Last updated: 2026-01-26*
+*Last updated: 2026-01-28*

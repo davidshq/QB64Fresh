@@ -13,7 +13,7 @@ QB64Fresh uses a **modern LSP-based architecture** instead of a monolithic IDE. 
 - **Linter** (`qb64fresh-lint`) - Static analysis (correctness, style, unused)
 - **Debugger** (`qb64fresh-debug`) - DAP server, breakpoints, step, call stack, symbols, watch; compiler `--debug` and runtime stubs. Runtime–debugger IPC integration in progress. See `tools/README.md`, `docs/adrs/ADR-0013-debugger-architecture.md`.
 
-Legend: ☑ = Implemented | 📋 = Plan to implement | 🔶 = Partial/Different approach | 💭 = Maybe someday | ☐ = Not implemented | ❌ = Not planned / Not applicable
+Legend: 🟢 = Implemented | 📋 = Plan to implement | 🔶 = Partial/Different approach | 💭 = Maybe someday | 🔴 = Not implemented | ❌ = Not planned / Not applicable
 
 ---
 
@@ -140,7 +140,7 @@ Legend: ☑ = Implemented | 📋 = Plan to implement | 🔶 = Partial/Different 
 
 | Feature                              | Shortcut | Status | Implementation                                     |
 | ------------------------------------ | -------- | ------ | -------------------------------------------------- |
-| View Help                            | Shift+F1 | 🔶     | LSP Server (hover provides built-in function docs) |
+| View Help                            | Shift+F1 | 🟢      | LSP Server hover (50+ built-in function signatures with docs) |
 | → Last viewed article                | -        | 💭      | Nice-to-have but hover docs might be sufficient |
 | → Scrollable help window             | -        | 💭      | Nice-to-have but hover docs might be sufficient |
 | → Search within help                 | -        | 💭      | Nice-to-have but hover docs might be sufficient |
@@ -157,8 +157,23 @@ Legend: ☑ = Implemented | 📋 = Plan to implement | 🔶 = Partial/Different 
 
 ## Editor Features
 
-- Syntax Highlighting
-- Auto-completion
+| Feature                     | Status | Implementation                                                                                                                                 |
+| --------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Syntax Highlighting         | 🟢      | TextMate grammar (`syntaxes/qb64fresh.tmLanguage.json`) with full QB64 keyword support |
+| Auto-completion             | 🟢      | LSP completion provider (keywords, built-ins, symbols, variables, procedures) |
+| Signature Help              | 🟢      | LSP signature help (50+ built-in function signatures with parameter highlighting) |
+| Inlay Hints (type annotations) | 🟢   | LSP inlay hints showing inferred types for variables |
+| Go to Definition            | 🟢      | LSP go-to-definition (variables, procedures, types) |
+| Find References             | 🟢      | LSP find references (all usages of a symbol) |
+| Rename Symbol               | 🟢      | LSP rename (renames all references) |
+| Document Symbols (outline)  | 🟢      | LSP document symbols (Ctrl+Shift+O for outline view) |
+| Workspace Symbols           | 🟢      | LSP workspace symbols (Ctrl+T for symbol search) |
+| Hover Information            | 🟢      | LSP hover (type info, documentation, signatures) |
+| Code Navigation             | 🟢      | VSCode native (go-to-definition, find references, peek definition) |
+| Bracket Handling            | 🟢      | VSCode native bracket matching and highlighting |
+| Selection Features          | 🟢      | VSCode native multi-cursor, column selection |
+| Clipboard Operations        | 🟢      | VSCode native copy/paste with formatting |
+| Mouse Support               | 🟢      | VSCode native mouse interactions |
 
 ### Auto-formatting/Layout
 
@@ -166,11 +181,6 @@ Legend: ☑ = Implemented | 📋 = Plan to implement | 🔶 = Partial/Different 
 | --------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | $FORMAT metacommand support | 🔶     | Parsed and emitted as no-op in codegen (IDE support). QB64pe’s `$FORMAT:ON/OFF` toggle maps to editor format-on-save; VSCode has this globally. |
 
-- Code Navigation
-- Bracket Handling
-- Selection Features
-- Clipboard Operations
-- Mouse Support
 
 ---
 
@@ -249,9 +259,9 @@ Legend: ☑ = Implemented | 📋 = Plan to implement | 🔶 = Partial/Different 
 
 | Feature                     | Status | Implementation                                |
 | --------------------------- | ------ | --------------------------------------------- |
-| Integrated help system      | 🔶     | LSP Server hover (50+ built-in function docs) |
+| Integrated help system      | 🟢      | LSP Server hover (50+ built-in function signatures with full documentation) |
 | Wiki page download/caching  | 💭      | Nice-to-have but hover docs might be sufficient |
-| Context-sensitive help (F1) | 🔶     | LSP hover on mouse over                       |
+| Context-sensitive help (F1) | 🟢      | LSP hover on mouse over (Shift+F1 also works) |
 | Keyword-to-Wiki links       | 💭      | Nice-to-have but hover docs might be sufficient |
 | Update single page          | ❌      | Not applicable                                |
 | Batch update all pages      | ❌      | Not applicable                                |
@@ -277,7 +287,10 @@ Legend: ☑ = Implemented | 📋 = Plan to implement | 🔶 = Partial/Different 
 
 | Feature             | Status | Implementation      |
 | ------------------- | ------ | ------------------- |
-| Call stack analysis | ☐      | Needs runtime (DAP) |
+| Real-time diagnostics | 🟢   | LSP diagnostics (parse errors, semantic errors, type errors) |
+| Static analysis     | 🟢      | `qb64fresh-lint` (unused variables, style checks, correctness hints) |
+| Code Actions (quick fixes) | 🟢 | VSCode extension code action provider (rename unused vars, add OPTION _EXPLICIT) |
+| Call stack analysis | 🔴      | Needs runtime (DAP) |
 
 ---
 
@@ -331,26 +344,26 @@ QB64Fresh uses a modern Rust-based architecture instead of the monolithic BASIC 
 | Component            | Implemented Features                                                                                  | Pending / Partial                                                                  |
 | -------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | **Compiler**         | Lexer, Parser, Type System, C Codegen, Preprocessor, `--debug` (qb_dbg_line, qb_dbg_enter/exit_proc)  | LLVM backend (future)                                                               |
-| **LSP Server**       | Diagnostics, Hover, Go-to-definition, Find references, Rename, Completion, Symbols, References, Signature Help, Inlay Hints | -                                                                                   |
-| **VSCode Extension** | Syntax highlighting, Build/Run, Format-on-save, Lint-on-save, Keybindings, Rename, Workspace search (Ctrl+T), Settings | DAP client UI for qb64fresh-debug (launch config complete, breakpoints, step, variables) |
+| **LSP Server**       | Diagnostics, Hover, Go-to-definition, Find references, Rename, Completion, Symbols, References, Signature Help, Inlay Hints | Incremental parsing for performance |
+| **VSCode Extension** | Syntax highlighting, Build/Run, Format-on-save, Lint-on-save, Keybindings, Rename, Workspace search (Ctrl+T), Settings, Code Actions (quick fixes), DAP debug adapter | - |
 | **Formatter**        | Keyword case, Indentation, Spacing, Style presets (default, minimal, qb64, pretty)                   | $FORMAT:ON/OFF toggle (parsed as no-op; IDE toggle = VSCode format-on-save)         |
 | **Linter**           | Unused detection, Style checks, Correctness hints                                                     | More rules                                                                          |
 | **Debugger**         | tools/debug: DAP server, breakpoints, step, call stack, symbols, values, frames, watch, sources       | Runtime–debugger IPC, variable inspection in running process; VSCode DAP client     |
 
 ### Feature Categories
 
-| Category         | ☑ Implemented | 🔶 Partial | ☐ Not Implemented |
+| Category         | 🟢 Implemented | 🔶 Partial | 🔴 Not Implemented |
 | ---------------- | ------------- | ---------- | ----------------- |
 | File Operations  | 8             | 0          | 5                 |
 | Edit Operations  | 10            | 0          | 0                 |
 | View Features    | 11            | 0          | 0                 |
 | Search Features  | 14            | 4          | 5                 |
 | Run/Build        | 2             | 0          | 9                 |
-| Debugging        | 0             | 12         | 10                |
+| Debugging        | 3             | 9          | 10                |
 | Options/Settings | 29            | 0          | 5                 |
 | Tools            | 0             | 0          | 11                |
-| Help             | 0             | 2          | 12                |
-| Editor Features  | 32            | 4          | 0                 |
+| Help             | 2             | 0          | 12                |
+| Editor Features  | 42            | 1          | 0                 |
 | Visual Feedback  | 9             | 2          | 1                 |
 | Analysis         | 6             | 0          | 1                 |
 
@@ -370,6 +383,6 @@ QB64Fresh uses a modern Rust-based architecture instead of the monolithic BASIC 
 
 ---
 
-_Document updated to track QB64Fresh implementation status. Last updated: 2026-01-27._
+_Document updated to track QB64Fresh implementation status. Last updated: 2026-01-28._
 
-**Note:** Completed items (☑) are moved to `docs/archive/IDE-FUNCTIONALITY-COMPLETED.md` to keep this checklist focused on pending work.
+**Note:** Completed items (🟢) are moved to `docs/archive/IDE-FUNCTIONALITY-COMPLETED.md` to keep this checklist focused on pending work.

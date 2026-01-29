@@ -99,6 +99,7 @@ pub(super) fn emit_timing_functions(output: &mut String) -> Result<(), CodeGenEr
     writeln_code!(output)?;
 
     // _LIMIT - frame rate limiter (QB64)
+    // Also polls SDL2 events and updates display to keep window responsive
     writeln_code!(output, "void qb_limit(int fps) {{")?;
     writeln_code!(output, "    if (fps <= 0) return;")?;
     writeln_code!(output, "    double target_frame_time = 1.0 / (double)fps;")?;
@@ -124,6 +125,13 @@ pub(super) fn emit_timing_functions(output: &mut String) -> Result<(), CodeGenEr
     writeln_code!(output, "        }}")?;
     writeln_code!(output, "    }}")?;
     writeln_code!(output, "    qb_last_frame_time = qb_get_time_seconds();")?;
+    writeln_code!(
+        output,
+        "    /* Poll SDL2 events to keep window responsive */"
+    )?;
+    writeln_code!(output, "    qb_gfx_poll_events();")?;
+    writeln_code!(output, "    /* Update display */")?;
+    writeln_code!(output, "    qb_gfx_display();")?;
     writeln_code!(output, "}}")?;
     writeln_code!(output)?;
     Ok(())

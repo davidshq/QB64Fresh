@@ -147,10 +147,32 @@ impl<'a> TypeChecker<'a> {
         let object_type = if let Some(symbol) = self.symbols.lookup_symbol(object_name) {
             symbol.basic_type.clone()
         } else {
-            self.errors.push(SemanticError::UndefinedVariable {
-                name: object_name.to_string(),
-                span,
-            });
+            // Compute suggestions for undefined variable
+            let candidates = self.symbols.collect_available_variable_names();
+            let suggestion =
+                crate::semantic::suggestions::find_best_match(object_name, &candidates, 0.6);
+            let suggestions = if suggestion.is_some() {
+                None
+            } else {
+                let similar = crate::semantic::suggestions::find_similar_names(
+                    object_name,
+                    &candidates,
+                    0.4,
+                    3,
+                );
+                if similar.is_empty() {
+                    None
+                } else {
+                    Some(similar)
+                }
+            };
+            self.errors
+                .push(SemanticError::undefined_variable_with_suggestions(
+                    object_name.to_string(),
+                    span,
+                    suggestion,
+                    suggestions,
+                ));
             return TypedStatement::new(
                 TypedStatementKind::FieldAssignment {
                     name: object_name.to_string(),
@@ -713,20 +735,39 @@ impl<'a> TypeChecker<'a> {
                 InputTarget::ArrayElement { name, indices } => {
                     let typed_indices: Vec<_> =
                         indices.iter().map(|i| self.check_expr(i)).collect();
-                    let element_type = if let Some(symbol) = self.symbols.lookup_symbol(name) {
-                        if let BasicType::Array { element_type, .. } = &symbol.basic_type {
-                            (**element_type).clone()
+                    let (element_type, dimensions) =
+                        if let Some(symbol) = self.symbols.lookup_symbol(name) {
+                            let dims = if let SymbolKind::ArrayVariable {
+                                dimensions: dim_info,
+                            } = &symbol.kind
+                            {
+                                dim_info
+                                    .iter()
+                                    .map(|d| crate::semantic::typed_ir::TypedArrayDimension {
+                                        lower: d.lower_bound,
+                                        upper: d.upper_bound,
+                                    })
+                                    .collect()
+                            } else {
+                                Vec::new()
+                            };
+                            let element_type =
+                                if let BasicType::Array { element_type, .. } = &symbol.basic_type {
+                                    (**element_type).clone()
+                                } else {
+                                    symbol.basic_type.clone()
+                                };
+                            (element_type, dims)
                         } else {
-                            symbol.basic_type.clone()
-                        }
-                    } else {
-                        type_from_suffix(name)
-                            .unwrap_or_else(|| self.symbols.default_type_for(name))
-                    };
+                            let element_type = type_from_suffix(name)
+                                .unwrap_or_else(|| self.symbols.default_type_for(name));
+                            (element_type, Vec::new())
+                        };
                     TypedInputTarget::ArrayElement {
                         name: name.clone(),
                         indices: typed_indices,
                         element_type,
+                        dimensions,
                     }
                 }
                 InputTarget::ArrayElementField {
@@ -736,15 +777,40 @@ impl<'a> TypeChecker<'a> {
                 } => {
                     let typed_indices: Vec<_> =
                         indices.iter().map(|i| self.check_expr(i)).collect();
-                    let field_type = fields
-                        .last()
-                        .and_then(|f| type_from_suffix(f))
-                        .unwrap_or(BasicType::Single);
+                    let (field_type, dimensions) =
+                        if let Some(symbol) = self.symbols.lookup_symbol(name) {
+                            let dims = if let SymbolKind::ArrayVariable {
+                                dimensions: dim_info,
+                            } = &symbol.kind
+                            {
+                                dim_info
+                                    .iter()
+                                    .map(|d| crate::semantic::typed_ir::TypedArrayDimension {
+                                        lower: d.lower_bound,
+                                        upper: d.upper_bound,
+                                    })
+                                    .collect()
+                            } else {
+                                Vec::new()
+                            };
+                            let field_type = fields
+                                .last()
+                                .and_then(|f| type_from_suffix(f))
+                                .unwrap_or(BasicType::Single);
+                            (field_type, dims)
+                        } else {
+                            let field_type = fields
+                                .last()
+                                .and_then(|f| type_from_suffix(f))
+                                .unwrap_or(BasicType::Single);
+                            (field_type, Vec::new())
+                        };
                     TypedInputTarget::ArrayElementField {
                         name: name.clone(),
                         indices: typed_indices,
                         fields: fields.clone(),
                         field_type,
+                        dimensions,
                     }
                 }
                 InputTarget::Field { name, fields } => {
@@ -857,10 +923,29 @@ impl<'a> TypeChecker<'a> {
             }
             InputTarget::ArrayElement { name, indices } => {
                 let typed_indices: Vec<_> = indices.iter().map(|i| self.check_expr(i)).collect();
+                let dimensions = if let Some(symbol) = self.symbols.lookup_symbol(name) {
+                    if let SymbolKind::ArrayVariable {
+                        dimensions: dim_info,
+                    } = &symbol.kind
+                    {
+                        dim_info
+                            .iter()
+                            .map(|d| crate::semantic::typed_ir::TypedArrayDimension {
+                                lower: d.lower_bound,
+                                upper: d.upper_bound,
+                            })
+                            .collect()
+                    } else {
+                        Vec::new()
+                    }
+                } else {
+                    Vec::new()
+                };
                 TypedInputTarget::ArrayElement {
                     name: name.clone(),
                     indices: typed_indices,
                     element_type: BasicType::String,
+                    dimensions,
                 }
             }
             InputTarget::ArrayElementField {
@@ -869,11 +954,30 @@ impl<'a> TypeChecker<'a> {
                 fields,
             } => {
                 let typed_indices: Vec<_> = indices.iter().map(|i| self.check_expr(i)).collect();
+                let dimensions = if let Some(symbol) = self.symbols.lookup_symbol(name) {
+                    if let SymbolKind::ArrayVariable {
+                        dimensions: dim_info,
+                    } = &symbol.kind
+                    {
+                        dim_info
+                            .iter()
+                            .map(|d| crate::semantic::typed_ir::TypedArrayDimension {
+                                lower: d.lower_bound,
+                                upper: d.upper_bound,
+                            })
+                            .collect()
+                    } else {
+                        Vec::new()
+                    }
+                } else {
+                    Vec::new()
+                };
                 TypedInputTarget::ArrayElementField {
                     name: name.clone(),
                     indices: typed_indices,
                     fields: fields.clone(),
                     field_type: BasicType::String,
+                    dimensions,
                 }
             }
             InputTarget::Field { name, fields } => TypedInputTarget::Field {

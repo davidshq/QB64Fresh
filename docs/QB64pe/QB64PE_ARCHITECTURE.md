@@ -642,11 +642,13 @@ These extensions are important for compatibility:
 | **AST** | None (direct emission) | Full AST → Typed IR |
 | **Parser** | Line-by-line, GOTO-heavy | Recursive descent, Pratt parsing |
 | **IDE** | Built-in (~970K lines) | LSP-based (external editors) |
-| **Runtime** | C++ (~31K lines) | Rust (~9K lines) |
+| **Runtime** | C++ (~31K lines) | Rust (~19K lines, C FFI) |
 | **Modularity** | Monolithic compiler | Modular phases |
 | **Error Recovery** | Limited | Multiple errors collected |
 | **Testing** | Large test suite | Unit + integration + golden tests |
 | **Memory Safety** | Manual management | Rust ownership system |
+
+For intentional behavioral differences and migration from QB64pe, see `docs/INTENTIONAL_DIFFERENCES_FROM_QB64PE.md` and `docs/QB64pe/QB64PE_TO_QB64Fresh_MIGRATION_GUIDE.md`.
 
 ---
 
@@ -747,6 +749,8 @@ Each phase should be:
 - **QB64pe Wiki:** https://qb64phoenix.com/qb64wiki
 - **QB64pe Forum:** https://qb64phoenix.com/forum
 - **QB64Fresh Architecture:** See `docs/ARCHITECTURE.md`
+- **QB64Fresh intentional differences:** See `docs/INTENTIONAL_DIFFERENCES_FROM_QB64PE.md` and `docs/adrs/ADR-0016-intentional-behavioral-differences.md`
+- **Migrating from QB64pe:** See `docs/QB64pe/QB64PE_TO_QB64Fresh_MIGRATION_GUIDE.md`
 
 ---
 
@@ -757,5 +761,6 @@ Each phase should be:
 - **2026-01-16:** Initial architecture analysis created (`QB64PE_ARCHITECTURE_ANALYSIS.md`)
 - **2026-01-25:** Comprehensive architecture documentation created (`QB64PE_ARCHITECTURE.md`)
 - **2026-01-27:** Documents merged into unified analysis and reference document
+- **2026-01-28:** References updated (QB64Fresh runtime size, intentional differences and migration docs); document history extended
 
 *This document combines the original analysis and comprehensive documentation into a single reference.*

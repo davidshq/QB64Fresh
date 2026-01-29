@@ -10,7 +10,9 @@ use crate::semantic::{SemanticAnalyzer, TypedProgram};
 use tower_lsp::lsp_types::Diagnostic;
 
 pub mod incremental;
-pub use incremental::{ChangedRegion, incremental_analyze, incremental_parse, merge_tokens};
+pub use incremental::{
+    ChangedRegion, collect_diagnostics, incremental_analyze, incremental_parse, merge_tokens,
+};
 
 /// Cached analysis results for a document.
 ///
@@ -168,18 +170,18 @@ impl AnalysisCache {
                     .position(|t| t.span.start >= change.start)
                     .unwrap_or(0);
 
-                if let Some(new_program) =
+                if let Some((new_program, parse_errors)) =
                     incremental_parse(old_program, &merged_tokens, change_start_token)
                 {
                     // Try incremental semantic analysis
                     if let Some(old_analyzer) = &self.analyzer
-                        && let Some((new_analyzer, new_typed_program)) =
-                            incremental_analyze(old_analyzer, &new_program)
+                        && let Some((new_analyzer, new_typed_program, semantic_errors)) =
+                            incremental_analyze(old_analyzer, &new_program, change.start)
                     {
                         // Incremental update succeeded!
-                        let diagnostics = Vec::new();
-                        // TODO: Collect diagnostics from incremental analysis
-                        // For now, we'll do a full re-analysis to get diagnostics
+                        // Collect diagnostics from both parse and semantic errors
+                        let diagnostics =
+                            collect_diagnostics(&parse_errors, &semantic_errors, new_content);
 
                         return Self {
                             version,

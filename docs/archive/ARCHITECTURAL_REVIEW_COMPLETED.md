@@ -9,6 +9,64 @@ This document contains items that were identified in the architectural review an
 
 ## Recent Updates (2026-01-28)
 
+### 4. Error Message Quality ✅ **COMPLETE** (2026-01-28)
+
+**Problem:** Error messages lacked helpful context and suggestions, making it difficult for users to fix issues in their code.
+
+**Impact:**
+- Undefined variable errors didn't suggest similar names
+- Error messages lacked source code context
+- No "did you mean?" suggestions for typos
+- Errors were harder to understand and fix
+
+**Solution:** Implemented comprehensive error message improvements with fuzzy matching and rich formatting.
+
+**Implementation:**
+
+1. **Added Fuzzy Matching Utility** (`src/semantic/suggestions.rs`):
+   - Levenshtein distance algorithm for symbol similarity matching
+   - Configurable similarity thresholds
+   - Finds similar symbols for undefined variables, labels, and procedures
+
+2. **Enhanced Error Types** - Added suggestion fields:
+   - `UndefinedVariable` - suggests similar variable names
+   - `UndefinedLabel` - suggests similar label names
+   - `UndefinedProcedure` - suggests similar procedure names
+
+3. **Integrated Ariadne** (`src/error_formatting.rs`):
+   - Rich error formatting with source code context
+   - Colored labels and error highlighting
+   - Source snippets showing error locations
+   - Better visual presentation of errors
+
+4. **Updated Error Display** (`src/main.rs`):
+   - Uses ariadne reports for all error types
+   - Shows source code context with errors
+   - Displays suggestions inline with error messages
+
+**Features:**
+- Symbol similarity matching with configurable thresholds
+- Rich error formatting with source code context and colored labels
+- Suggestions for undefined variables, labels, and procedures
+- Better error messages with helpful notes and context
+
+**Impact:**
+- ✅ Better user experience - errors are easier to understand and fix
+- ✅ "Did you mean?" suggestions help catch typos
+- ✅ Source code context makes errors more actionable
+- ✅ Consistent error formatting across all error types
+- ✅ Improved developer productivity
+
+**Files Modified:**
+- `src/semantic/suggestions.rs` - New module for fuzzy matching
+- `src/semantic/error.rs` - Added suggestion fields to error types
+- `src/error_formatting.rs` - New module for ariadne integration
+- `src/main.rs` - Updated error display to use ariadne reports
+
+**Related:** Addresses architectural review item #4 - Error message quality improvement.
+
+---
+
 ### 1. Improve LSP Performance ✅ **COMPLETE** (2026-01-28)
 
 **Problem:** LSP re-parsed entire document on every change, blocking on keystrokes. This caused poor IDE responsiveness, especially for large files.

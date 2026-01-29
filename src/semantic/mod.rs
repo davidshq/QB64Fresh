@@ -39,6 +39,7 @@ mod collect;
 
 pub mod checker;
 pub mod error;
+pub mod suggestions;
 pub mod symbols;
 pub mod typed_ir;
 pub mod types;

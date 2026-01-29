@@ -1171,6 +1171,55 @@ impl SymbolTable {
             .into_iter()
             .flatten()
     }
+
+    /// Collects all variable names (scalars and arrays) from the current scope and parent scopes.
+    ///
+    /// This is used for error message suggestions when a variable is not found.
+    /// Returns names in the order they would be searched (current scope first, then parents).
+    pub fn collect_available_variable_names(&self) -> Vec<String> {
+        let mut names = Vec::new();
+        let mut visited = std::collections::HashSet::new();
+
+        // Walk up the scope chain
+        let mut current = Some(self.current_scope);
+        while let Some(scope_id) = current {
+            if let Some(scope) = self.scopes.get(&scope_id) {
+                // Collect scalar names
+                for name in scope.scalars.keys() {
+                    if visited.insert(name.clone()) {
+                        names.push(name.clone());
+                    }
+                }
+                // Collect array names
+                for name in scope.arrays.keys() {
+                    if visited.insert(name.clone()) {
+                        names.push(name.clone());
+                    }
+                }
+            }
+            // Move to parent scope
+            current = self.scopes.get(&scope_id).and_then(|s| s.parent);
+        }
+
+        names
+    }
+
+    /// Collects all label names from the current scope.
+    ///
+    /// Labels are scope-local, so only the current scope is searched.
+    pub fn collect_available_label_names(&self) -> Vec<String> {
+        self.scopes
+            .get(&self.current_scope)
+            .map(|scope| scope.labels.keys().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    /// Collects all procedure names (SUB and FUNCTION).
+    ///
+    /// Procedures are globally visible, so all procedures are returned.
+    pub fn collect_available_procedure_names(&self) -> Vec<String> {
+        self.procedures.keys().cloned().collect()
+    }
 }
 
 impl Default for SymbolTable {

@@ -11,14 +11,6 @@
 
 This document consolidates architectural recommendations from multiple perspectives into a unified set of actionable items. The codebase is in excellent state (Grade: A-), with remaining issues focused on optimization and organization rather than fundamental architecture.
 
-**Recent Completion:** Item #1 (LSP Performance Improvement) was completed on 2026-01-28. See [ARCHITECTURAL_REVIEW_COMPLETED.md](ARCHITECTURAL_REVIEW_COMPLETED.md) for details.
-
----
-
-## High Priority Recommendations
-
-*No high-priority items currently pending. All critical architectural issues have been resolved.*
-
 ---
 
 ## Medium Priority Recommendations
@@ -70,41 +62,38 @@ This document consolidates architectural recommendations from multiple perspecti
 
 ---
 
-### 4. Error Message Quality ⚠️ **PENDING**
+### 5. Runtime Architecture Improvements ⚠️ **PARTIALLY COMPLETE** (Phase 1 Done)
 
-**Current:** Errors have spans/messages but lack context.
+**Status:** Phase 1 (Quick Fixes) completed 2026-01-28. Phase 2-3 deferred. See [ARCHITECTURAL_REVIEW_ITEM5_IMPLEMENTATION.md](ThingsToDo/ARCHITECTURAL_REVIEW_ITEM5_IMPLEMENTATION.md) for details.
 
-**Recommendation:**
-- Add "did you mean?" suggestions for typos and similar symbol names
-- Show related symbols (e.g., "did you mean `foo`?")
-- Use `ariadne` more extensively for better error formatting and context
+**Phase 1 Completed:**
+- ✅ Forward declarations section added to resolve function ordering issues
+- ✅ Type mismatches fixed (e.g., `qb_shell_hide` uses `qb_string_data()`)
+- ✅ `RuntimeMode` enum implemented with associated data
+- ✅ Emission order corrected (forward declarations → types → implementations)
+- ✅ Contributed to 91% reduction in QB64pe compilation errors (807 → 69)
 
----
-
-### 5. Runtime Architecture Improvements ⚠️ **PENDING**
+**Remaining (Deferred):**
+- ⏸️ Phase 2: Dependency tracking (manual ordering sufficient for current runtime size ~50 functions)
+- ⏸️ Phase 3: Trait-based architecture (future consideration only)
 
 #### 5.1 Runtime Mode Abstraction
 
-**Current State:** Runtime code generation split across many files (1219 lines in `runtime/mod.rs`).
+**Current State:** `RuntimeMode` enum implemented with `Inline { type_registry }` and `External { header_path }` variants. Forward declarations handle cross-module dependencies. Manual emission ordering works well for current runtime size.
 
-**Recommendations:**
-- **Prefer enum with associated data** for mutually exclusive modes:
-  ```rust
-  enum RuntimeMode {
-      Inline { type_registry: TypeRegistry },
-      External { header_path: PathBuf },
-  }
-  ```
-- Use generics to avoid scattered runtime mode checks
-- Ensure abstraction doesn't force unnecessary complexity where enums work
-- **Alternative:** Consider macro/code generation for both modes from single source
+**Recommendations (Future):**
+- Consider Phase 2 dependency tracking if runtime function count grows significantly (>100)
+- Consider Phase 3 trait-based architecture only if Phase 2 shows limitations
+- Current manual ordering with forward declarations is sufficient
 
 #### 5.2 Runtime Library Organization
 
-**Recommendation:**
+**Current State:** Runtime code generation uses forward declarations and explicit emission ordering. String concatenation approach is acceptable for current scale.
+
+**Recommendation (Future):**
 - Extract runtime generation into separate crate, or
 - Use code generation (macros/build scripts) instead of string concatenation
-- Preserve flexibility for dev/testing (inline) vs production (external)
+- Only if runtime grows significantly or maintenance becomes an issue
 
 ---
 

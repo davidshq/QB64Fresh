@@ -353,6 +353,34 @@ fn test_parse_on_error_resume_next() {
     ));
 }
 
+/// ON ERROR GOTO _NEWHANDLER label is parsed as a single statement (not two).
+/// Parser combines _NEWHANDLER with the following label via parse_label_target().
+#[test]
+fn test_parse_on_error_goto_newhandler() {
+    let program = parse("ON ERROR GOTO _NEWHANDLER handlerlabel").unwrap();
+    assert_eq!(
+        program.statements.len(),
+        1,
+        "ON ERROR GOTO _NEWHANDLER handlerlabel must parse as one statement"
+    );
+    if let StatementKind::OnErrorGoto { target } = &program.statements[0].kind {
+        assert!(
+            target.to_uppercase().starts_with("_NEWHANDLER "),
+            "target should start with _NEWHANDLER "
+        );
+        assert!(
+            target.contains("handlerlabel"),
+            "target should contain the label: got {:?}",
+            target
+        );
+    } else {
+        panic!(
+            "Expected OnErrorGoto statement, got {:?}",
+            program.statements[0].kind
+        );
+    }
+}
+
 #[test]
 fn test_parse_resume() {
     let program = parse("RESUME").unwrap();

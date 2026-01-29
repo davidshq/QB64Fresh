@@ -42,7 +42,7 @@ Welcome to the QB64Fresh documentation! This directory contains comprehensive gu
 | Document | Description |
 |----------|-------------|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | High-level architecture: compiler pipeline, module organization, design decisions |
-| [adrs/](adrs/) | **Architecture Decision Records** - 15 ADRs documenting key design decisions |
+| [adrs/](adrs/) | **Architecture Decision Records** - 18 ADRs documenting key design decisions |
 | [GRAPHICS.md](GRAPHICS.md) | Graphics system: architecture, backends (SDL2/Mock), implementation, supported statements |
 | [QB64pe/QB64PE_ARCHITECTURE.md](QB64pe/QB64PE_ARCHITECTURE.md) | Analysis of QB64PE architecture (reference for compatibility) |
 
@@ -57,6 +57,9 @@ See [adrs/README.md](adrs/README.md) for the complete index. Key decisions:
 - **ADR-0008**: C interoperability (DECLARE LIBRARY)
 - **ADR-0009**: LSP architecture
 - **ADR-0013**: Debugger architecture (DAP)
+- **ADR-0016**: Intentional behavioral differences from QB64pe
+- **ADR-0017**: Generated code is ephemeral (fix code generator, never patch output)
+- **ADR-0018**: Compiler execution resource limits (memory limits)
 
 ---
 
@@ -80,6 +83,7 @@ See [adrs/README.md](adrs/README.md) for the complete index. Key decisions:
 | [MEMORY_LIMITS.md](MEMORY_LIMITS.md) | Memory usage limits: preventing system crashes when compiling large programs |
 | [QB64pe/QB64PE_DEBUGGING.md](QB64pe/QB64PE_DEBUGGING.md) | QB64PE debugging features (reference) |
 | [QB64pe/QB64PE_TO_QB64Fresh_BEHAVIORAL_DIFFERENCES.md](QB64pe/QB64PE_TO_QB64Fresh_BEHAVIORAL_DIFFERENCES.md) | Semantic differences between QB64Fresh and QB64PE |
+| [INTENTIONAL_DIFFERENCES_FROM_QB64PE.md](INTENTIONAL_DIFFERENCES_FROM_QB64PE.md) | **Intentional** design differences from QB64pe (stricter, excluded, or different-by-choice) |
 
 ---
 
@@ -140,7 +144,7 @@ docs/
 │
 ├── adrs/                       # Architecture Decision Records
 │   ├── README.md
-│   └── ADR-0001 through ADR-0015
+│   └── ADR-0001 through ADR-0018
 │
 ├── reference/                  # API reference documentation
 │   ├── README.md
@@ -198,7 +202,7 @@ docs/
 |----------|--------|-------|
 | **User Guides** | ✅ Complete | GETTING_STARTED, HANDBOOK, MIGRATION_GUIDE |
 | **Language Reference** | ✅ Complete | QB64Fresh_LANGUAGE_REFERENCE, QB64PE spec |
-| **Architecture** | ✅ Complete | ARCHITECTURE.md, 15 ADRs |
+| **Architecture** | ✅ Complete | ARCHITECTURE.md, 18 ADRs |
 | **Development** | ✅ Complete | DEVELOPMENT, TESTING, DEBUGGING |
 | **System Docs** | ✅ Complete | GRAPHICS, SECURITY_MODEL, MEMORY_LIMITS |
 | **API Reference** | ✅ Complete | Header parser API |

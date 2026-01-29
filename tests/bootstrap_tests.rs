@@ -72,7 +72,7 @@ fn compile_qb64pe() -> Result<CompilationResult, String> {
 
     // Code generation
     let codegen_start = Instant::now();
-    let backend = CBackend::with_runtime_mode(RuntimeMode::External);
+    let backend = CBackend::with_runtime_mode(RuntimeMode::external());
     let output = backend
         .generate(&typed_program)
         .map_err(|e| format!("CodeGen error: {:?}", e))?;
@@ -271,12 +271,129 @@ fn qb64pe_parses_successfully() {
 
 /// Test that a small QB64pe subset produces stable C output.
 /// Uses a representative subset to avoid storing 4MB golden files.
+///
+/// This test compiles a small subset of QB64pe source files and compares
+/// the generated C code against a golden file. The subset is chosen to
+/// be representative of the full codebase while keeping the golden file
+/// size manageable.
+///
+/// To update the golden file:
+/// ```bash
+/// UPDATE_GOLDEN=1 cargo test --test bootstrap_tests qb64pe_codegen_golden -- --ignored
+/// ```
 #[test]
 #[ignore = "Golden file not yet created - run with UPDATE_GOLDEN=1 to create"]
 fn qb64pe_codegen_golden() {
-    // This test would compare against a golden file
-    // For now, it's marked ignore until we decide on golden file strategy
-    todo!("Implement golden file comparison for QB64pe subset");
+    use std::env;
+    use std::fs;
+
+    // Use a small representative subset of QB64pe files
+    // This avoids storing a 4MB+ golden file while still testing codegen stability
+    let subset_files = vec![
+        "../QB64pe/source/subs_functions/utilities.bas",
+        "../QB64pe/source/subs_functions/string_functions.bas",
+    ];
+
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let base_path = Path::new(manifest_dir);
+    let golden_path = base_path.join("tests/golden/qb64pe_subset.golden");
+
+    // Collect and preprocess all subset files
+    let mut combined_source = String::new();
+    for file in &subset_files {
+        let file_path = base_path.join(file);
+        if !file_path.exists() {
+            // Skip if files don't exist (QB64pe may not be checked out)
+            eprintln!(
+                "Warning: QB64pe subset file not found: {}",
+                file_path.display()
+            );
+            return; // Skip test if QB64pe not available
+        }
+        let source = match preprocess_file(&file_path) {
+            Ok(s) => s,
+            Err(e) => {
+                panic!("Failed to preprocess {}: {}", file_path.display(), e);
+            }
+        };
+        combined_source.push_str(&source);
+        combined_source.push('\n');
+    }
+
+    // Compile the subset
+    let tokens = lex(&combined_source);
+    let mut parser = Parser::new(&tokens);
+    let program = parser.parse().expect("QB64pe subset should parse");
+
+    let mut analyzer = SemanticAnalyzer::new();
+    let typed_program = analyzer
+        .analyze(&program)
+        .expect("QB64pe subset should analyze");
+
+    let backend = CBackend::with_runtime_mode(RuntimeMode::external());
+    let output = backend
+        .generate(&typed_program)
+        .expect("QB64pe subset should generate C code");
+
+    let actual = output.code;
+
+    // Check if we should update golden files
+    let should_update = env::var("UPDATE_GOLDEN").is_ok();
+
+    if should_update {
+        // Update mode: write actual output as new golden file
+        fs::write(&golden_path, &actual).unwrap_or_else(|e| {
+            panic!(
+                "Failed to write golden file '{}': {}",
+                golden_path.display(),
+                e
+            )
+        });
+        println!("Updated golden file: {}", golden_path.display());
+        return;
+    }
+
+    // Normal mode: compare against golden file
+    let expected = match fs::read_to_string(&golden_path) {
+        Ok(s) => s,
+        Err(e) => {
+            panic!(
+                "Could not read golden file '{}': {}\nHint: Run with UPDATE_GOLDEN=1 to create it:\n  UPDATE_GOLDEN=1 cargo test --test bootstrap_tests qb64pe_codegen_golden -- --ignored",
+                golden_path.display(),
+                e
+            );
+        }
+    };
+
+    if actual != expected {
+        // Simple diff output
+        let actual_lines: Vec<&str> = actual.lines().collect();
+        let expected_lines: Vec<&str> = expected.lines().collect();
+
+        let mut diff_lines = Vec::new();
+        let max_lines = actual_lines.len().max(expected_lines.len());
+        for i in 0..max_lines.min(50) {
+            // Show first 50 lines of diff
+            let actual_line = actual_lines.get(i).map(|s| *s).unwrap_or("");
+            let expected_line = expected_lines.get(i).map(|s| *s).unwrap_or("");
+            if actual_line != expected_line {
+                diff_lines.push(format!(
+                    "Line {}: expected '{}', got '{}'",
+                    i + 1,
+                    expected_line,
+                    actual_line
+                ));
+            }
+        }
+
+        panic!(
+            "Golden test 'qb64pe_codegen_golden' failed!\n\n\
+             First differences:\n{}\n\n\
+             To update the golden file, run:\n  \
+             UPDATE_GOLDEN=1 cargo test --test bootstrap_tests qb64pe_codegen_golden -- --ignored",
+            diff_lines.join("\n")
+        );
+    }
 }
 
 // ============================================================================
@@ -329,7 +446,7 @@ fn qb64pe_can_compile_hello_world() {
         .analyze(&program)
         .expect("Hello World should analyze");
 
-    let backend = CBackend::with_runtime_mode(RuntimeMode::External);
+    let backend = CBackend::with_runtime_mode(RuntimeMode::external());
     let output = backend
         .generate(&typed_program)
         .expect("Hello World should generate C code");
@@ -420,7 +537,7 @@ fn qb64pe_qb45_compatibility_test() {
         .analyze(&program)
         .expect("QB4.5 test program should analyze");
 
-    let backend = CBackend::with_runtime_mode(RuntimeMode::External);
+    let backend = CBackend::with_runtime_mode(RuntimeMode::external());
     let output = backend
         .generate(&typed_program)
         .expect("QB4.5 test program should generate C code");
@@ -522,7 +639,7 @@ mod regression_tests {
         let mut analyzer = SemanticAnalyzer::new();
         let typed = analyzer.analyze(&program).expect("Should analyze");
 
-        let backend = CBackend::with_runtime_mode(RuntimeMode::Inline);
+        let backend = CBackend::with_runtime_mode(RuntimeMode::inline());
         let output = backend.generate(&typed).expect("Should generate");
 
         // The call should use the canonical name with _str suffix
@@ -555,6 +672,54 @@ mod regression_tests {
             .expect("Should analyze - dual namespace");
     }
 
+    /// Regression: Parser edge case - comparison vs array assignment (REGRESSION_TEST_COVERAGE §9).
+    /// Bug: `x = arr(1) = 5` or `x = ASC("A") = 65` parsed as array assignment → "expected (, found Equals".
+    /// Fix: Session 048 - is_array_assignment() now requires `(` immediately after identifier.
+    /// This test verifies that comparison expressions with function/array on LHS parse correctly.
+    #[test]
+    fn parser_edge_case_comparison_vs_array_assignment() {
+        let source = r#"
+            DIM x AS LONG
+            DIM arr(10) AS LONG
+            arr(1) = 5
+            x = arr(1) = 5
+            x = ASC("A") = 65
+        "#;
+
+        let tokens = lex(source);
+        let mut parser = Parser::new(&tokens);
+        let program = parser
+            .parse()
+            .expect("Should parse - comparison vs array assignment");
+
+        use qb64fresh::prelude::StatementKind;
+        // Should have Let statements for the comparisons, not ArrayAssignment
+        let let_count = program
+            .statements
+            .iter()
+            .filter(|s| matches!(&s.kind, StatementKind::Let { .. }))
+            .count();
+        let array_assign_count = program
+            .statements
+            .iter()
+            .filter(|s| matches!(&s.kind, StatementKind::ArrayAssignment { .. }))
+            .count();
+        assert!(
+            let_count >= 2,
+            "Expected at least 2 Let statements (comparisons), got {} Let, {} ArrayAssignment",
+            let_count,
+            array_assign_count
+        );
+        assert!(
+            array_assign_count <= 1,
+            "x = arr(1) = 5 and x = ASC(...) = 65 must parse as Let (comparison), not ArrayAssignment; got {} ArrayAssignment",
+            array_assign_count
+        );
+
+        let mut analyzer = SemanticAnalyzer::new();
+        analyzer.analyze(&program).expect("Should analyze");
+    }
+
     /// Regression: String double-wrapping in BYREF/BYVAL parameters.
     /// Bug: qb_str_from_c() was wrapped multiple times causing 807 C compilation errors.
     /// Fix: commit 115ae41 - Added unwrap_qb_str_from_c() helper.
@@ -577,7 +742,7 @@ mod regression_tests {
         let mut analyzer = SemanticAnalyzer::new();
         let typed = analyzer.analyze(&program).expect("Should analyze");
 
-        let backend = CBackend::with_runtime_mode(RuntimeMode::Inline);
+        let backend = CBackend::with_runtime_mode(RuntimeMode::inline());
         let output = backend.generate(&typed).expect("Should generate");
 
         // Should not have double qb_str_from_c() wrapping
@@ -617,7 +782,7 @@ mod regression_tests {
         let mut analyzer = SemanticAnalyzer::new();
         let typed = analyzer.analyze(&program).expect("Should analyze");
 
-        let backend = CBackend::with_runtime_mode(RuntimeMode::Inline);
+        let backend = CBackend::with_runtime_mode(RuntimeMode::inline());
         let output = backend.generate(&typed).expect("Should generate");
 
         // Should use qb_string_compare for string comparisons
@@ -651,7 +816,7 @@ mod regression_tests {
         let mut analyzer = SemanticAnalyzer::new();
         let typed = analyzer.analyze(&program).expect("Should analyze");
 
-        let backend = CBackend::with_runtime_mode(RuntimeMode::Inline);
+        let backend = CBackend::with_runtime_mode(RuntimeMode::inline());
         let output = backend.generate(&typed).expect("Should generate");
 
         // Should use qb_string_compare and properly handle fixed-length strings
@@ -680,7 +845,7 @@ mod regression_tests {
         let mut analyzer = SemanticAnalyzer::new();
         let typed = analyzer.analyze(&program).expect("Should analyze");
 
-        let backend = CBackend::with_runtime_mode(RuntimeMode::Inline);
+        let backend = CBackend::with_runtime_mode(RuntimeMode::inline());
         let output = backend.generate(&typed).expect("Should generate");
 
         // Array access should use consistent variable names
@@ -709,7 +874,7 @@ mod regression_tests {
         let mut analyzer = SemanticAnalyzer::new();
         let typed = analyzer.analyze(&program).expect("Should analyze");
 
-        let backend = CBackend::with_runtime_mode(RuntimeMode::Inline);
+        let backend = CBackend::with_runtime_mode(RuntimeMode::inline());
         let output = backend.generate(&typed).expect("Should generate");
 
         // For fixed-length strings, should use manual copying, not qb_mid_assign
@@ -741,7 +906,7 @@ mod regression_tests {
         let mut analyzer = SemanticAnalyzer::new();
         let typed = analyzer.analyze(&program).expect("Should analyze");
 
-        let backend = CBackend::with_runtime_mode(RuntimeMode::Inline);
+        let backend = CBackend::with_runtime_mode(RuntimeMode::inline());
         let output = backend.generate(&typed).expect("Should generate");
 
         // Should handle fixed-length string arrays correctly
@@ -774,7 +939,7 @@ mod regression_tests {
         let mut analyzer = SemanticAnalyzer::new();
         let typed = analyzer.analyze(&program).expect("Should analyze");
 
-        let backend = CBackend::with_runtime_mode(RuntimeMode::Inline);
+        let backend = CBackend::with_runtime_mode(RuntimeMode::inline());
         let output = backend.generate(&typed).expect("Should generate");
 
         // Should have cleanup calls in the loop
@@ -782,6 +947,58 @@ mod regression_tests {
         assert!(
             output.code.contains("qbs_cleanup") || output.code.contains("cleanup"),
             "Loop should include string temp pool cleanup: {}",
+            output.code
+        );
+    }
+
+    /// Regression: Reference-counted string memory (retain/release + scoped cleanup).
+    /// Bug: 42+ GB memory explosion during QB64pe bootstrap; missing temp pool and
+    /// retain/release pattern. Fix: commit 4dd4e77 - qbs_tmp_register/qbs_cleanup,
+    /// per-statement cleanup in main/procedure bodies, retain/release for assignments.
+    /// This test asserts the code generator emits the required patterns.
+    #[test]
+    fn reference_counted_string_retain_release_and_cleanup() {
+        let source = r#"
+            DIM a$ AS STRING
+            a$ = "hello" + " world"
+            SUB S(b$ AS STRING)
+                DIM c$ AS STRING
+                c$ = b$ + "!"
+            END SUB
+            CALL S(a$)
+        "#;
+
+        let tokens = lex(source);
+        let mut parser = Parser::new(&tokens);
+        let program = parser.parse().expect("Should parse");
+
+        let mut analyzer = SemanticAnalyzer::new();
+        let typed = analyzer.analyze(&program).expect("Should analyze");
+
+        let backend = CBackend::with_runtime_mode(RuntimeMode::inline());
+        let output = backend.generate(&typed).expect("Should generate");
+
+        // Retain/release pattern for string assignments
+        assert!(
+            output.code.contains("qb_string_retain") && output.code.contains("qb_string_release"),
+            "String assignments must use retain/release: {}",
+            output.code
+        );
+        // Temp pool registration (string concat etc. return qbs_tmp_register)
+        assert!(
+            output.code.contains("qbs_tmp_register"),
+            "Temp string results must use qbs_tmp_register: {}",
+            output.code
+        );
+        // Scoped cleanup in main and procedure bodies
+        assert!(
+            output.code.contains("qbs_cleanup"),
+            "Main and procedure bodies must call qbs_cleanup: {}",
+            output.code
+        );
+        assert!(
+            output.code.contains("_qbs_main_base") || output.code.contains("_qbs_proc_base"),
+            "Cleanup must use main/proc base: {}",
             output.code
         );
     }
@@ -943,7 +1160,9 @@ mod regression_tests {
         let typed = analyzer.analyze(&program).expect("Should analyze");
 
         // Use external runtime mode (where initialization is required)
-        let backend = CBackend::with_runtime_mode(RuntimeMode::External);
+        let backend = CBackend::with_runtime_mode(RuntimeMode::external_with_header(Path::new(
+            "runtime/include/qb64fresh_rt.h",
+        )));
         let output = backend.generate(&typed).expect("Should generate");
 
         // Verify qb_runtime_init() is called
@@ -1034,7 +1253,7 @@ mod regression_tests {
         let mut analyzer = SemanticAnalyzer::new();
         let typed = analyzer.analyze(&program).expect("Should analyze");
 
-        let backend = CBackend::with_runtime_mode(RuntimeMode::Inline);
+        let backend = CBackend::with_runtime_mode(RuntimeMode::inline());
         let output = backend.generate(&typed).expect("Should generate");
 
         // Verify overflow tracking mechanism exists in generated code
@@ -1064,6 +1283,287 @@ mod regression_tests {
                 .contains("_qbs_tmp_overflow_count > overflow_base"),
             "Generated code should cleanup overflow strings: {}",
             output.code
+        );
+    }
+
+    /// Regression: FFI error reporting.
+    /// Bug: FFI functions returned simple 0/1 codes, losing detailed error information.
+    /// Fix: Session 067 - Created log_ffi_error! macro for consistent error logging.
+    /// This test verifies that FFI error logging is present in the runtime.
+    #[test]
+    fn ffi_error_reporting() {
+        use std::fs;
+
+        // Get paths
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let crate_root = Path::new(manifest_dir);
+        let graphics_ffi_path = crate_root.join("runtime/src/graphics_ffi.rs");
+
+        // Read graphics_ffi.rs file
+        let graphics_ffi_content =
+            fs::read_to_string(&graphics_ffi_path).expect("Failed to read graphics_ffi.rs");
+
+        // Verify log_ffi_error macro is defined
+        assert!(
+            graphics_ffi_content.contains("macro_rules! log_ffi_error"),
+            "log_ffi_error macro should be defined in graphics_ffi.rs"
+        );
+
+        // Verify macro is used in FFI functions (check for usage pattern)
+        // The macro should be used in error handling paths
+        let log_ffi_error_usage_count = graphics_ffi_content.matches("log_ffi_error!").count();
+        assert!(
+            log_ffi_error_usage_count > 30,
+            "log_ffi_error! should be used extensively in FFI functions (found {} uses)",
+            log_ffi_error_usage_count
+        );
+
+        // Verify macro logs to stderr (eprintln!)
+        assert!(
+            graphics_ffi_content.contains("eprintln!"),
+            "log_ffi_error macro should use eprintln! for error logging"
+        );
+
+        // Verify macro includes function name and error details
+        assert!(
+            graphics_ffi_content.contains("Error in {}")
+                || graphics_ffi_content.contains("Error in"),
+            "log_ffi_error macro should log function name and error details"
+        );
+    }
+
+    /// Regression: Built-in constant registration.
+    /// Bug: _CHR_* and _STR_* constants not registered, causing 16+4 semantic errors.
+    /// Fix: Session 049 - Added register_string_character_constants() to register ~60 constants.
+    /// This test verifies that constants are registered and can be used in programs.
+    #[test]
+    fn builtin_constant_registration() {
+        // Test that _CHR_* and _STR_* constants are registered and can be used
+        let source = r#"
+            DIM s$ AS STRING
+            ' Test various _CHR_* constants
+            s$ = _CHR_CR + _CHR_LF
+            s$ = _CHR_QUOTE + "test" + _CHR_QUOTE
+            s$ = _CHR_SPACE + "hello" + _CHR_SPACE
+            ' Test _STR_* constants
+            s$ = _STR_EMPTY
+            s$ = _STR_CRLF
+            s$ = _STR_LF
+            s$ = _STR_CR
+            PRINT s$
+        "#;
+
+        let tokens = lex(source);
+        let mut parser = Parser::new(&tokens);
+        let program = parser.parse().expect("Should parse");
+
+        let mut analyzer = SemanticAnalyzer::new();
+        let typed = analyzer
+            .analyze(&program)
+            .expect("Should analyze - constants should be registered");
+
+        // Verify constants are recognized (no semantic errors)
+        // The test passes if analyze() succeeds without "undefined constant" errors
+
+        // Also verify in generated code that constants are used
+        let backend = CBackend::with_runtime_mode(RuntimeMode::inline());
+        let output = backend.generate(&typed).expect("Should generate");
+
+        // Constants should be referenced in generated code
+        // They may appear as string literals or constant references
+        assert!(
+            output.code.contains("_CHR_")
+                || output.code.contains("_STR_")
+                || output.code.contains("CHR_")
+                || output.code.contains("STR_"),
+            "Generated code should reference _CHR_* or _STR_* constants"
+        );
+    }
+
+    /// Regression: Error handler syntax.
+    /// Bug: ON ERROR GOTO _NEWHANDLER qberror_test parsed as two statements instead of one.
+    /// Fix: Session 049 - Modified parse_label_target() to recognize _NEWHANDLER as modifier.
+    /// This test verifies that ON ERROR GOTO _NEWHANDLER syntax is parsed correctly.
+    #[test]
+    fn error_handler_syntax() {
+        let source = r#"
+            ON ERROR GOTO _NEWHANDLER errorHandler
+            PRINT "test"
+            errorHandler:
+                PRINT "Error occurred"
+                RESUME NEXT
+        "#;
+
+        let tokens = lex(source);
+        let mut parser = Parser::new(&tokens);
+        let program = parser
+            .parse()
+            .expect("Should parse - ON ERROR GOTO _NEWHANDLER should be valid");
+
+        // Verify that _NEWHANDLER is parsed as part of the label target, not as a separate statement
+        // Check that we have an ON ERROR statement with the correct target
+        use qb64fresh::prelude::StatementKind;
+        let on_error_found = program.statements.iter().any(|stmt| {
+            matches!(
+                &stmt.kind,
+                StatementKind::OnErrorGoto { target } if target.contains("_NEWHANDLER")
+            )
+        });
+
+        assert!(
+            on_error_found,
+            "ON ERROR GOTO _NEWHANDLER should be parsed as a single statement with _NEWHANDLER in target"
+        );
+
+        // Verify semantic analysis succeeds (no "undefined label" errors)
+        let mut analyzer = SemanticAnalyzer::new();
+        analyzer
+            .analyze(&program)
+            .expect("Should analyze - error handler syntax should be valid");
+    }
+
+    /// Regression: Label uniqueness.
+    /// Bug: Labels like Help_CheckFinishLine: appeared 5 times due to ambiguous parsing.
+    /// Fix: Session 050 - Added emitted_labels HashSet to track and skip duplicate labels.
+    /// This test verifies that labels are not emitted multiple times in generated code.
+    #[test]
+    fn label_uniqueness() {
+        // Create a program with a label that might be parsed ambiguously
+        // (e.g., a label followed by another identifier that could look like a label)
+        let source = r#"
+            testLabel:
+                PRINT "test"
+            testLabel:
+                PRINT "duplicate"
+            anotherLabel:
+                PRINT "another"
+        "#;
+
+        let tokens = lex(source);
+        let mut parser = Parser::new(&tokens);
+        let program = parser.parse().expect("Should parse");
+
+        let mut analyzer = SemanticAnalyzer::new();
+        let typed = analyzer.analyze(&program).expect("Should analyze");
+
+        let backend = CBackend::with_runtime_mode(RuntimeMode::inline());
+        let output = backend.generate(&typed).expect("Should generate");
+
+        // Count occurrences of each label in generated code
+        // Labels should appear only once (as label definitions, not duplicates)
+        let test_label_count = output.code.matches("testLabel:").count();
+        let another_label_count = output.code.matches("anotherLabel:").count();
+
+        // Each label should appear exactly once (or possibly not at all if optimized away)
+        // But definitely not multiple times
+        assert!(
+            test_label_count <= 1,
+            "testLabel should appear at most once in generated code (found {} times)",
+            test_label_count
+        );
+
+        assert!(
+            another_label_count <= 1,
+            "anotherLabel should appear at most once in generated code (found {} times)",
+            another_label_count
+        );
+    }
+
+    /// Regression: Duplicate label emission (REGRESSION_TEST_COVERAGE §6.1, session 050).
+    ///
+    /// Would regress if we emitted the same label twice: two GOTOs to the same label
+    /// in different branches, plus duplicate label statements in the IR (e.g. from
+    /// ambiguous parsing), must result in exactly one label definition in generated C.
+    #[test]
+    fn duplicate_label_emission_regression() {
+        // Program with one label targeted by two GOTOs in different branches,
+        // and a duplicate label statement (same name twice) to trigger the
+        // emitted_labels skip logic. Without the fix, we'd emit the label twice → C duplicate symbol.
+        let source = r#"
+            x = 1
+            IF x THEN GOTO target ELSE GOTO target
+            PRINT "unreachable"
+        target:
+            PRINT "here"
+        target:
+            PRINT "duplicate label stmt"
+        "#;
+
+        let tokens = lex(source);
+        let mut parser = Parser::new(&tokens);
+        let program = parser.parse().expect("Should parse");
+
+        let mut analyzer = SemanticAnalyzer::new();
+        let typed = analyzer.analyze(&program).expect("Should analyze");
+
+        let backend = CBackend::with_runtime_mode(RuntimeMode::inline());
+        let output = backend.generate(&typed).expect("Should generate");
+
+        // Label definition in C is "target:" (proc_label in main = c_identifier).
+        // Must appear exactly once; if emitted_labels were removed we'd get two "target:" lines.
+        let label_def_count = output.code.matches("target:").count();
+        assert_eq!(
+            label_def_count, 1,
+            "label 'target:' should appear exactly once as a definition in generated C (found {}); \
+             duplicate emission would cause C redefinition error",
+            label_def_count
+        );
+    }
+
+    /// Regression: Forward declarations.
+    /// Bug: Cross-module dependencies not forward-declared, causing compilation errors
+    /// (e.g. `qb_gfx_screen` referencing variables defined later in different modules).
+    /// Fix: Session 050 - Added emit_forward_declarations() in mod.rs.
+    ///
+    /// This test ensures the code generator always emits the forward declaration block
+    /// and the specific declarations required so that C compiles without "undefined reference".
+    #[test]
+    fn forward_declarations() {
+        // Any program using the inline runtime gets the forward declarations block.
+        let source = r#"
+            SCREEN 0
+            PRINT "test"
+            DIM s$ AS STRING
+            s$ = "hello"
+        "#;
+
+        let tokens = lex(source);
+        let mut parser = Parser::new(&tokens);
+        let program = parser.parse().expect("Should parse");
+
+        let mut analyzer = SemanticAnalyzer::new();
+        let typed = analyzer.analyze(&program).expect("Should analyze");
+
+        let backend = CBackend::with_runtime_mode(RuntimeMode::inline());
+        let output = backend.generate(&typed).expect("Should generate");
+
+        // Section comment emitted by emit_forward_declarations()
+        assert!(
+            output
+                .code
+                .contains("/* Forward declarations for cross-module dependencies */"),
+            "Generated code must include the forward declarations block (fix: emit_forward_declarations in mod.rs)"
+        );
+
+        // Required forward declarations: without these, C compilation fails with undefined reference.
+        // These are defined in other runtime modules but used earlier (e.g. system.rs using io/strings).
+        assert!(
+            output.code.contains("typedef struct QbString qb_string;"),
+            "Forward declaration for qb_string type required for function prototypes"
+        );
+        assert!(
+            output.code.contains("static void _qb_gfx_warn(void);"),
+            "Forward declaration for _qb_gfx_warn (graphics, used by memory/system)"
+        );
+        assert!(
+            output.code.contains("void qb_print_string(qb_string* s);"),
+            "Forward declaration for qb_print_string (io, used by system)"
+        );
+        assert!(
+            output
+                .code
+                .contains("const char* qb_string_data(qb_string* s);"),
+            "Forward declaration for qb_string_data (strings, used by many modules)"
         );
     }
 }

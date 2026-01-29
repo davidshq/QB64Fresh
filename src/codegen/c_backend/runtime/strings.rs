@@ -31,6 +31,10 @@ use crate::writeln_code;
 /// - `qb_tmp_str_mark()` - Returns current pool position
 /// - `qb_tmp_str_register()` - Registers a temp string and returns it
 /// - `qb_tmp_str_cleanup()` - Frees all temps since a mark
+///
+/// When both the main pool and overflow list are full (extremely rare), the string
+/// is not tracked to preserve scoping correctness. Set `QB64FRESH_DEBUG_STRING_POOL`
+/// at runtime to get a stderr warning when this path is taken.
 pub(super) fn emit_temp_string_pool(output: &mut String) -> Result<(), CodeGenError> {
     // Static empty string - defined early so it can be referenced by temp pool
     writeln_code!(output, "/* Static Empty String */")?;
@@ -108,8 +112,13 @@ pub(super) fn emit_temp_string_pool(output: &mut String) -> Result<(), CodeGenEr
     )?;
     writeln_code!(
         output,
-        "            /* TODO: Consider adding debug logging/warning when this occurs */"
+        "            if (getenv(\"QB64FRESH_DEBUG_STRING_POOL\") != NULL) {{"
     )?;
+    writeln_code!(
+        output,
+        "                fprintf(stderr, \"QB64Fresh: string temp pool overflow (pool and overflow list full); temporary string leak possible.\\n\");"
+    )?;
+    writeln_code!(output, "            }}")?;
     writeln_code!(output, "        }}")?;
     writeln_code!(output, "    }}")?;
     writeln_code!(output, "    return s;")?;
@@ -287,6 +296,12 @@ pub(super) fn emit_string_functions(output: &mut String) -> Result<(), CodeGenEr
     // String data accessor - returns char* for C interop
     writeln_code!(output, "const char* qb_string_data(qb_string* s) {{")?;
     writeln_code!(output, "    return s ? s->data : \"\";")?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(output)?;
+
+    // String length accessor
+    writeln_code!(output, "size_t qb_string_len(qb_string* s) {{")?;
+    writeln_code!(output, "    return s ? s->len : 0;")?;
     writeln_code!(output, "}}")?;
     writeln_code!(output)?;
     Ok(())
@@ -653,6 +668,16 @@ pub(super) fn emit_string_manipulation(output: &mut String) -> Result<(), CodeGe
     writeln_code!(output, "}}")?;
     writeln_code!(output)?;
 
+    // STRING$(n, c$) - alias for qb_string_fill when called with string argument
+    // This is for compatibility with the codegen which uses qb_string_fill_str
+    writeln_code!(
+        output,
+        "qb_string* qb_string_fill_str(int32_t n, qb_string* c) {{"
+    )?;
+    writeln_code!(output, "    return qb_string_fill(n, c);")?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(output)?;
+
     // UTF-8 helper: Count UTF-8 characters (codepoints) in a string
     // Returns the number of characters, not bytes
     writeln_code!(output, "// UTF-8 helper functions")?;
@@ -728,6 +753,104 @@ pub(super) fn emit_string_manipulation(output: &mut String) -> Result<(), CodeGe
     // This is a QB64Fresh extension for Unicode-aware string length
     writeln_code!(output, "int32_t qb_strlen_chars(qb_string* s) {{")?;
     writeln_code!(output, "    return (int32_t)qb_utf8_char_count(s);")?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(output)?;
+    Ok(())
+}
+
+/// Emits the temporary string pool for external runtime mode using QbString type.
+///
+/// In external runtime mode, QbString is an opaque pointer (forward-declared struct),
+/// so we can't initialize structs directly. We use the runtime library's functions
+/// and the existing _qbs_empty pointer that's already initialized via qb_string_empty().
+pub(super) fn emit_temp_string_pool_external_mode(output: &mut String) -> Result<(), CodeGenError> {
+    // Note: _qbs_empty is already defined and initialized in the main runtime block
+    // (via qb_string_empty() call). We don't need to create it here.
+    writeln_code!(output, "/* Temporary String Pool for External Runtime */")?;
+    writeln_code!(output, "/* Note: _qbs_empty is already defined above */")?;
+    writeln_code!(output)?;
+
+    // Temporary string pool
+    writeln_code!(output, "/* Temporary String Pool */")?;
+    writeln_code!(output, "#define QBS_TMP_MAX 16384")?;
+    writeln_code!(output, "static QbString* _qbs_tmp_pool[QBS_TMP_MAX];")?;
+    writeln_code!(output, "static uint32_t _qbs_tmp_next = 0;")?;
+    writeln_code!(output)?;
+    writeln_code!(output, "#define QBS_TMP_OVERFLOW_MAX 16384")?;
+    writeln_code!(
+        output,
+        "static QbString* _qbs_tmp_overflow[QBS_TMP_OVERFLOW_MAX];"
+    )?;
+    writeln_code!(output, "static uint32_t _qbs_tmp_overflow_count = 0;")?;
+    writeln_code!(output)?;
+
+    writeln_code!(output, "uint64_t qbs_tmp_base_get(void) {{")?;
+    writeln_code!(output, "    uint64_t main_base = (uint64_t)_qbs_tmp_next;")?;
+    writeln_code!(
+        output,
+        "    uint64_t overflow_base = (uint64_t)_qbs_tmp_overflow_count;"
+    )?;
+    writeln_code!(output, "    return main_base | (overflow_base << 32);")?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(output)?;
+
+    writeln_code!(output, "QbString* qbs_tmp_register(QbString* s) {{")?;
+    writeln_code!(output, "    if (!s || s == _qbs_empty) return s;")?;
+    writeln_code!(output, "    if (_qbs_tmp_next < QBS_TMP_MAX) {{")?;
+    writeln_code!(output, "        _qbs_tmp_pool[_qbs_tmp_next++] = s;")?;
+    writeln_code!(
+        output,
+        "    }} else if (_qbs_tmp_overflow_count < QBS_TMP_OVERFLOW_MAX) {{"
+    )?;
+    writeln_code!(
+        output,
+        "        _qbs_tmp_overflow[_qbs_tmp_overflow_count++] = s;"
+    )?;
+    writeln_code!(output, "    }}")?;
+    writeln_code!(output, "    return s;")?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(output)?;
+
+    writeln_code!(output, "void qbs_cleanup(uint64_t base, int dummy) {{")?;
+    writeln_code!(output, "    (void)dummy;")?;
+    writeln_code!(
+        output,
+        "    uint32_t main_base = (uint32_t)(base & 0xFFFFFFFF);"
+    )?;
+    writeln_code!(
+        output,
+        "    uint32_t overflow_base = (uint32_t)(base >> 32);"
+    )?;
+    writeln_code!(output, "    /* Release all temporary strings since mark */")?;
+    writeln_code!(output, "    while (_qbs_tmp_next > main_base) {{")?;
+    writeln_code!(output, "        _qbs_tmp_next--;")?;
+    writeln_code!(
+        output,
+        "        QbString* s = _qbs_tmp_pool[_qbs_tmp_next];"
+    )?;
+    writeln_code!(output, "        _qbs_tmp_pool[_qbs_tmp_next] = NULL;")?;
+    writeln_code!(output, "        if (s && s != _STR_EMPTY) {{")?;
+    writeln_code!(output, "            qb_string_release(s);")?;
+    writeln_code!(output, "        }}")?;
+    writeln_code!(output, "    }}")?;
+    writeln_code!(output, "    /* Release overflow strings */")?;
+    writeln_code!(
+        output,
+        "    while (_qbs_tmp_overflow_count > overflow_base) {{"
+    )?;
+    writeln_code!(output, "        _qbs_tmp_overflow_count--;")?;
+    writeln_code!(
+        output,
+        "        QbString* s = _qbs_tmp_overflow[_qbs_tmp_overflow_count];"
+    )?;
+    writeln_code!(
+        output,
+        "        _qbs_tmp_overflow[_qbs_tmp_overflow_count] = NULL;"
+    )?;
+    writeln_code!(output, "        if (s && s != _STR_EMPTY) {{")?;
+    writeln_code!(output, "            qb_string_release(s);")?;
+    writeln_code!(output, "        }}")?;
+    writeln_code!(output, "    }}")?;
     writeln_code!(output, "}}")?;
     writeln_code!(output)?;
     Ok(())

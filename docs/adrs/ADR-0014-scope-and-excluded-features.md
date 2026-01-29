@@ -78,5 +78,6 @@ We aim to **match** QB64, not exceed it in backwards compatibility. The followin
 ## References
 
 - [FUTURE.md](../ThingsToDo/FUTURE.md) – Remaining features, DECLARE LIBRARY; parity exclusions (hardware accel, touch, _THREAD, optimizations) are in this ADR. GOSUB/compiler: ADR-0002.
+- [INTENTIONAL_DIFFERENCES_FROM_QB64PE.md](../INTENTIONAL_DIFFERENCES_FROM_QB64PE.md) – Documented intentional behavioral differences (stricter GOTO, multiple errors, RND, etc.)
 - [ADR-0006](ADR-0006-graphics-system.md) – Graphics architecture (SDL2, trait-based)
 - [ADR-0008](ADR-0008-c-interoperability.md) – DECLARE LIBRARY for raw GL or low-level access

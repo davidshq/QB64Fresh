@@ -27,7 +27,7 @@ fn compile_to_c(source: &str) -> Result<String, String> {
         .map_err(|errors| format!("Semantic errors: {:?}", errors))?;
 
     // Code generation phase
-    let backend = CBackend::with_runtime_mode(RuntimeMode::Inline);
+    let backend = CBackend::with_runtime_mode(RuntimeMode::inline());
     let output = backend
         .generate(&typed_program)
         .map_err(|e| format!("CodeGen error: {:?}", e))?;
@@ -865,6 +865,33 @@ mod procedures {
             END SUB
         "#;
         assert_compiles(source);
+    }
+
+    /// Regression: BYREF scalar parameters (SUB default) must compile and emit write-through.
+    /// Codegen uses a pointer alias (e.g. int32_t* n = n_ref) and writes via *n = value
+    /// so the caller sees modifications. See FIXES_NEEDED_FROM_PROBLEMATIC_ITEMS.md §9.
+    #[test]
+    fn byref_scalar_sub_compiles_and_emits_write_through() {
+        let source = r#"
+            SUB SetValue(n AS INTEGER)
+                n = 99
+            END SUB
+
+            DIM x AS INTEGER
+            x = 5
+            CALL SetValue(x)
+            PRINT x
+        "#;
+        let code = compile_to_c(source).expect("BYREF scalar SUB should compile");
+        // BYREF scalar: local is pointer (int32_t* n = n_ref), assignment writes through (*n = value)
+        let has_byref_alias = code.contains("n_ref") && code.contains("* n = n_ref");
+        let has_write_through = code.contains("*n = ") || code.contains("(*n) = ");
+        assert!(
+            has_byref_alias && has_write_through,
+            "BYREF scalar SUB should emit pointer alias and write-through; alias={} write_through={}",
+            has_byref_alias,
+            has_write_through,
+        );
     }
 
     #[test]
@@ -1969,6 +1996,23 @@ mod constants {
         "#;
         assert_compiles(source);
     }
+
+    /// Regression test for built-in _CHR_* and _STR_* constant registration (REGRESSION_TEST_COVERAGE §5.1).
+    /// These constants are registered in the semantic analyzer via `register_string_character_constants()`.
+    /// Without registration, use of them would produce "undefined symbol" semantic errors.
+    #[test]
+    fn builtin_chr_str_constants_registered() {
+        let source = r#"
+            DIM s AS STRING
+            s = _CHR_CR + _CHR_LF
+            s = _CHR_QUOTE + _CHR_SUB
+            s = _STR_EMPTY
+            s = _STR_CRLF
+            s = _STR_LF + _STR_CR
+            PRINT s
+        "#;
+        assert_compiles(source);
+    }
 }
 
 // =============================================================================
@@ -2142,11 +2186,21 @@ mod builtin_functions {
 
     #[test]
     fn instr_function() {
-        // Note: Uses 3-argument form INSTR(start, string, search)
-        // TODO: Add support for 2-argument form INSTR(string, search)
+        // Test 3-argument form INSTR(start, string, search)
         let source = r#"
             PRINT INSTR(1, "Hello World", "o")
             PRINT INSTR(6, "Hello World", "o")
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn instr_2arg_function() {
+        // Test 2-argument form INSTR(string, search) - starts at beginning
+        let source = r#"
+            PRINT INSTR("Hello World", "o")
+            PRINT INSTR("Hello World", "World")
+            PRINT INSTR("Hello World", "xyz")
         "#;
         assert_compiles(source);
     }
@@ -3831,6 +3885,28 @@ mod error_extensions {
     fn errormessage_function() {
         let code = compile_to_c("DIM msg AS STRING\nmsg = _ERRORMESSAGE$").unwrap();
         assert!(code.contains("qb_errormessage("));
+    }
+
+    /// ON ERROR GOTO _NEWHANDLER handlerlabel: parsed as one statement, codegen emits
+    /// _qb_error_handler set to the label (codegen strips _NEWHANDLER prefix).
+    #[test]
+    fn on_error_goto_newhandler_compiles_and_emits_handler() {
+        let source = r#"
+ON ERROR GOTO _NEWHANDLER handlerlabel
+PRINT "ok"
+handlerlabel:
+    RESUME NEXT
+"#;
+        let code =
+            compile_to_c(source).expect("ON ERROR GOTO _NEWHANDLER handlerlabel should compile");
+        assert!(
+            code.contains("_qb_error_handler"),
+            "Generated C should set _qb_error_handler"
+        );
+        assert!(
+            code.contains("handlerlabel") || code.contains("label_handlerlabel"),
+            "Generated C should reference the handler label"
+        );
     }
 }
 
@@ -7847,7 +7923,7 @@ mod debug_codegen_tests {
             .analyze(&program)
             .map_err(|errors| format!("Semantic errors: {:?}", errors))?;
 
-        let backend = CBackend::with_runtime_mode(RuntimeMode::Inline)
+        let backend = CBackend::with_runtime_mode(RuntimeMode::inline())
             .with_debug(true)
             .with_source_file("test.bas");
         let output = backend

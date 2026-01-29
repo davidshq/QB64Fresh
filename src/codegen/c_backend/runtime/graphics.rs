@@ -1308,25 +1308,12 @@ pub(super) fn emit_graphics_stubs(output: &mut String) -> Result<(), CodeGenErro
     writeln_code!(output, "}}")?;
     writeln_code!(output)?;
 
+    // _SELECTFOLDERDIALOG$(title, initial_dir) - returns selected folder path
     writeln_code!(
         output,
-        "qb_string* qb_savefiledialog(qb_string* title, qb_string* filter) {{"
+        "qb_string* qb_selectfolderdialog(const char* title, const char* initial_dir) {{"
     )?;
-    writeln_code!(output, "    (void)title; (void)filter;")?;
-    writeln_code!(
-        output,
-        "    fprintf(stderr, \"Note: _SAVEFILEDIALOG$ requires external runtime for GUI support\\n\");"
-    )?;
-    writeln_code!(output, "    fflush(stderr);")?;
-    writeln_code!(output, "    return qb_string_new(\"\");")?;
-    writeln_code!(output, "}}")?;
-    writeln_code!(output)?;
-
-    writeln_code!(
-        output,
-        "qb_string* qb_selectfolderdialog(qb_string* title) {{"
-    )?;
-    writeln_code!(output, "    (void)title;")?;
+    writeln_code!(output, "    (void)title; (void)initial_dir;")?;
     writeln_code!(
         output,
         "    fprintf(stderr, \"Note: _SELECTFOLDERDIALOG$ requires external runtime for GUI support\\n\");"

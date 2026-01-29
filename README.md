@@ -10,12 +10,12 @@ A modern, ground-up rewrite of QB64 — a QuickBASIC compatible compiler that pr
 
 | Component | Status |
 |-----------|--------|
-| Lexer | ✅ Complete (~1,850 lines, logos-based) |
-| Parser | ✅ Complete (~11,450 lines) |
-| Semantic Analysis | ✅ Complete (~15,800 lines) |
-| Code Generation | ✅ Complete (~14,750 lines) |
-| Runtime | ✅ Complete (~11,700 lines Rust + inline C) |
-| LSP Server | ✅ Complete (~2,200 lines) |
+| Lexer | ✅ Complete (~1,950 lines, logos-based) |
+| Parser | ✅ Complete (~11,500 lines) |
+| Semantic Analysis | ✅ Complete (~18,600 lines) |
+| Code Generation | ✅ Complete (~24,000 lines) |
+| Runtime | ✅ Complete (~19,700 lines Rust + inline C) |
+| LSP Server | ✅ Complete (~3,000 lines) |
 | **Test Suite** | **1,500+ tests** (850+ unit, 10 golden, 19 fuzz) |
 | **QB4.5 Compatibility** | **99.1%** (114/115 test files) |
 | **QB64pe Bootstrap** | ✅ Compiles & runs (see below) |
@@ -49,7 +49,7 @@ QB64Fresh can compile **QB64pe itself** — a 59,000-line BASIC compiler — int
 | Parse + Codegen | ~800ms |
 | Status | ✅ `-h` works, ✅ Runtime features complete, ⚠️ Full execution testing in progress |
 
-The bootstrapped QB64pe runs and displays help. Runtime features (file I/O, keyboard input) are implemented and validated. QB64pe is compiled with external runtime (requires graphics support for GUI). Full execution testing (compiling BASIC programs with bootstrapped QB64pe) is in progress. See [docs/QB64PE_COMPILATION_PLAN.md](docs/QB64PE_COMPILATION_PLAN.md) for current status.
+The bootstrapped QB64pe runs and displays help. Runtime features (file I/O, keyboard input) are implemented and validated. QB64pe is compiled with external runtime (requires graphics support for GUI). Full execution testing (compiling BASIC programs with bootstrapped QB64pe) is in progress. See [docs/ThingsToDo/BOOTSTRAP_VALIDATION.md](docs/ThingsToDo/BOOTSTRAP_VALIDATION.md) for current status.
 
 **IMPORTANT:** Always use memory limits when running either compiler. See [docs/MEMORY_LIMITS.md](docs/MEMORY_LIMITS.md).
 
@@ -80,7 +80,7 @@ Source (.bas) → Lexer → Parser → Semantic → CodeGen → C → GCC → Ex
                               Runtime Library (SDL2, Rodio, I/O)
 ```
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed documentation.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed documentation.
 
 ## Features
 
@@ -111,19 +111,20 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed documentation.
 ### User Guides
 - **[Getting Started](docs/GETTING_STARTED.md)** — Tutorial: install, first program, compile, run
 - **[QB64Fresh Handbook](docs/QB64Fresh_HANDBOOK.md)** — Comprehensive user guide
-- [Migration Guide](docs/MIGRATION_GUIDE.md) — For QB64 users switching to QB64Fresh
+- [Migration Guide](docs/QB64pe/QB64PE_TO_QB64Fresh_MIGRATION_GUIDE.md) — For QB64pe users switching to QB64Fresh
 - [Examples](examples/) — Example programs
 
 ### Reference
 - [Language Reference](docs/QB64Fresh_LANGUAGE_REFERENCE.md) — Supported language features
-- [Language Spec](docs/QB64PE_LANGUAGE_SPECIFICATION.md) — QB64PE language reference
+- [Language Spec](docs/QB64pe/QB64PE_LANGUAGE_SPECIFICATION.md) — QB64PE language reference
 - [Header Parser API](docs/reference/HEADER_PARSER_API.md) — C header parsing for DECLARE LIBRARY
 
 ### Developer Docs
 - [DEVELOPMENT.md](docs/DEVELOPMENT.md) — Setup & contributing
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md) — Compiler pipeline design
-- [Behavioral Differences](docs/BEHAVIORAL_DIFFERENCES.md) — QB64Fresh vs QB64pe semantics
-- [QB64Fresh and Modern Languages](docs/QB64Fresh_AND_MODERN_LANGUAGES.md) — Comparison to modern languages
+- [Intentional Differences](docs/INTENTIONAL_DIFFERENCES_FROM_QB64PE.md) — Design choices that differ from QB64pe
+- [Behavioral Differences](docs/QB64pe/QB64PE_TO_QB64Fresh_BEHAVIORAL_DIFFERENCES.md) — QB64Fresh vs QB64pe semantics
+- [QB64Fresh and Modern Languages](docs/ThingsToDo/QB64Fresh_AND_MODERN_LANGUAGES.md) — Comparison to modern languages
 - [Bootstrap Achievement](docs/ARCHITECTURE.md#bootstrap-achievement) — Compiling QB64pe with QB64Fresh
 - [AgenticLogs/](AgenticLogs/) — Development history
 

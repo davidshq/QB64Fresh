@@ -263,6 +263,14 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
         output,
         "int32_t qb_shellhide(QbString* cmd) {{ return qb_shell(cmd ? qb_string_data(cmd) : NULL); }}"
     )?;
+    /* RUN: NULL = no-op (restart not supported); non-NULL = run program then exit */
+    writeln_code!(output, "void qb_run(QbString* path) {{")?;
+    writeln_code!(output, "    if (!path) return;")?;
+    writeln_code!(output, "    const char* cmd = qb_string_data(path);")?;
+    writeln_code!(output, "    if (!cmd || !*cmd) return;")?;
+    writeln_code!(output, "    (void)system(cmd);")?;
+    writeln_code!(output, "    exit(0);")?;
+    writeln_code!(output, "}}")?;
     writeln_code!(
         output,
         "void qb_echo(QbString* text) {{ if (text) {{ qb_print_string(text); qb_print_newline(); }} }}"
@@ -282,7 +290,10 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
         output,
         "    if (!s || !*s || pos < 1 || pos > (int32_t)qb_string_len(*s)) return;"
     )?;
-    writeln_code!(output, "    qb_string_data(*s)[pos - 1] = (char)ch;")?;
+    writeln_code!(
+        output,
+        "    ((char*)qb_string_data(*s))[pos - 1] = (char)ch;"
+    )?;
     writeln_code!(output, "}}")?;
 
     writeln_code!(
@@ -574,7 +585,7 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
     )?;
     writeln_code!(
         output,
-        "int32_t qb_net_openclient(QbString* addr) {{ (void)addr; return 0; }}"
+        "int32_t qb_net_openclient(const char* addr) {{ (void)addr; return 0; }}"
     )?;
     writeln_code!(
         output,

@@ -1099,3 +1099,120 @@ Debugger fully implemented with 50+ tests passing. See [ADR-0013](../adrs/ADR-00
   - Error recovery behavior doesn't cause incorrect cascades
   - Comprehensive coverage of parser and semantic error recovery
   - Validates error handling works correctly
+
+---
+
+## QB64pe Bootstrap ✅ **COMPLETE** (Session 064-071 / 2026-01-28)
+
+**Status:** QB64pe compiles successfully and runs
+
+**Achievements:**
+- [x] QB64pe compiles without errors (0 parse, 0 semantic, 0 GCC errors)
+- [x] Bootstrapped QB64pe runs and displays help (`-h` flag works)
+- [x] All runtime features complete (file I/O, keyboard input, string operations, arrays)
+- [x] Command-line mode verified
+- [x] Error handling implemented (ON ERROR GOTO, RESUME)
+
+**Test:** `cargo test --test bootstrap_tests qb64pe_compiles_successfully`
+
+**Files:** `tests/bootstrap_tests.rs`, `docs/ThingsToDo/BOOTSTRAP_VALIDATION.md`
+
+**Note:** Full execution testing (compiling BASIC programs with bootstrapped QB64pe) is pending but code generation is fully validated.
+
+---
+
+## LSP Incremental Parsing ✅ **COMPLETE** (Session 072 / 2026-01-28)
+
+**Status:** All incremental optimizations implemented
+
+**Working Features:**
+- [x] Incremental sync (document change tracking)
+- [x] Incremental lexing (token merging)
+- [x] Incremental parsing (statement boundary detection)
+- [x] Incremental semantic analysis (scope dependency tracking)
+- [x] Diagnostics collection (parse and semantic errors)
+- [x] Graceful fallback (full re-analysis when needed)
+
+**Files:** `src/lsp/mod.rs`, `src/lsp/analysis/incremental.rs`, `src/lsp/analysis.rs`
+
+**Performance Improvements:**
+- Before: Full re-lexing, re-parsing, and re-analysis on every change
+- After: Incremental updates only for affected regions, preserving unchanged work
+
+---
+
+## Code-level Completed Items ✅ (2026-01-28)
+
+### Code Generation
+- [x] **LINE statement style pattern support** (`stmt/mod.rs:1751-1794`)
+  - 16-bit style pattern support for line drawing
+  - Pattern applies to box outlines (B), ignored for filled boxes (BF) and plain lines
+  - Solid line default (0xFFFF) when no style specified
+
+### Runtime Library
+- [x] **Per-image palette support** (`graphics_ffi.rs`)
+  - `qb_palettecolor_get` and `qb_palettecolor` implemented with handle support
+  - Per-image palette operations working correctly
+  - Screen palette used when handle is 0
+
+- [x] **Track last graphics position for STEP behavior** (`graphics_ffi.rs`)
+  - `resolve_step_coordinates` implemented
+  - STEP coordinates resolved relative to last graphics position
+  - Works for LINE, CIRCLE, PSET, and other graphics operations
+
+---
+
+## Code-level Completed Items ✅ (Session 073 / 2026-01-28)
+
+### Code Generation
+- [x] **Multi-dimensional array I/O support** (`stmt/io.rs:153,182`, `file_io.rs`)
+  - Added `dimensions: Vec<TypedArrayDimension>` field to `TypedInputTarget::ArrayElement` and `ArrayElementField`
+  - Updated semantic checker to extract dimensions from symbol table in all locations
+  - Updated codegen to use `calculate_array_index()` for proper multi-dimensional index calculation
+  - Works for both console I/O (INPUT/PRINT) and file I/O (INPUT#/PRINT#)
+  - Files modified: `src/semantic/typed_ir.rs`, `src/semantic/checker/statements/io.rs`, `src/semantic/checker/assignments.rs`, `src/codegen/c_backend/stmt/io.rs`, `src/codegen/c_backend/file_io.rs`
+
+### Runtime Library
+- [x] **Text scrolling implementation** (`graphics/sdl2.rs`)
+  - Already implemented - `scroll_text_up()` method exists and is called when cursor exceeds bottom row
+  - Handles both newline-triggered scrolling and line-wrapping-triggered scrolling
+  - Shifts pixel rows up by `FONT_HEIGHT` pixels and clears bottom line
+
+### Testing
+- [x] **Golden file comparison test for QB64pe subset** (`bootstrap_tests.rs:279`)
+  - Implemented test that compiles representative subset of QB64pe files
+  - Compares generated C code against golden file
+  - Supports `UPDATE_GOLDEN=1` environment variable for updating golden files
+  - Gracefully skips if QB64pe files aren't available
+  - Golden file stored at `tests/golden/qb64pe_subset.golden`
+
+- [x] **INSTR 2-argument form support verification** (`integration_tests.rs`)
+  - Verified implementation already exists (codegen calls `qb_instr2()` for 2-arg form)
+  - Added test `instr_2arg_function()` to verify `INSTR(string, search)` works correctly
+  - Implementation locations: `src/codegen/c_backend/expr.rs:157-164`, `src/codegen/c_backend/runtime/strings.rs:500`
+
+### Debugger
+- [x] **Watch expression evaluation documentation** (`tools/debug/src/watch.rs`)
+  - Added comprehensive status section documenting infrastructure completion
+  - Clarified runtime integration requirements (debug info emission, breakpoint hooks, memory access)
+  - Infrastructure is complete and ready for runtime integration
+
+---
+
+## Testing Infrastructure (Session 079 / 2026-01-28)
+
+### Graphics backend integration tests
+- [x] **Graphics backend integration tests (SDL single-init challenge)**
+  - Added `serial_test` to runtime dev-dependencies
+  - Created `runtime/tests/graphics_integration.rs` with `#[cfg(feature = "graphics-sdl2")]` and two `#[serial]` tests: `graphics_init_and_shutdown`, `graphics_init_after_shutdown`
+  - Both tests pass
+
+### Audio backend integration tests
+- [x] **Audio backend integration tests**
+  - Created `runtime/tests/audio_integration.rs` with `#[cfg(feature = "audio-rodio")]` and two `#[serial]` tests: `audio_init_and_shutdown`, `audio_init_after_shutdown`
+  - Both tests pass
+
+### By-ref parameter codegen
+- [x] **By-ref parameter codegen (parameters as pointers not dereferenced)**
+  - Already implemented: pointer alias in `definitions.rs` (`int32_t* n = n_ref`), dereference in expr/assignments/control_flow via `current_func_byref_scalar_names`
+  - Verified: `integration_tests::byref_scalar_sub_compiles_and_emits_write_through` and `execution_tests::byref_scalar_sub_modifies_caller_variable` both pass

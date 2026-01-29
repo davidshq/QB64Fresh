@@ -2550,6 +2550,49 @@ pub extern "C" fn qb_glcompat() -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::graphics::GraphicsError;
+
+    /// Regression: FFI error reporting (Session 067).
+    /// Verifies that the log_ffi_error! output format includes function name,
+    /// error kind, and message so that errors are visible when FFI calls fail.
+    #[test]
+    fn test_ffi_error_reporting_format() {
+        let e = GraphicsError::not_initialized();
+        let func_name = "qb_gfx_cls";
+        let formatted = format!(
+            "Error in {}: [{}] {}",
+            func_name,
+            format!("{:?}", e.kind()),
+            e.message()
+        );
+        assert!(
+            formatted.starts_with("Error in qb_gfx_cls:"),
+            "FFI error message should start with 'Error in {{func}}:'; got: {}",
+            formatted
+        );
+        assert!(
+            formatted.contains("NotInitialized"),
+            "FFI error message should include error kind; got: {}",
+            formatted
+        );
+        assert!(
+            formatted.contains("Graphics backend not initialized"),
+            "FFI error message should include error message; got: {}",
+            formatted
+        );
+    }
+
+    /// Verifies validation error format (log_validation_error!) for consistency.
+    #[test]
+    fn test_validation_error_reporting_format() {
+        let func_name = "qb_gfx_pset";
+        let reason = "null pointer for x";
+        let formatted = format!("Validation error in {}: {}", func_name, reason);
+        assert_eq!(
+            formatted, "Validation error in qb_gfx_pset: null pointer for x",
+            "Validation error format should be consistent"
+        );
+    }
 
     #[test]
     fn test_rgb_functions() {
