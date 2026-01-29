@@ -327,6 +327,13 @@ pub(super) fn emit_keyboard_functions(output: &mut String) -> Result<(), CodeGen
     writeln_code!(output, "}}")?;
     writeln_code!(output)?;
 
+    // Version$ - compiler version string (QB64 compatibility)
+    // Returns version in format similar to QB64pe (e.g., "QB64Fresh 0.1.0")
+    writeln_code!(output, "qb_string* qb_version(void) {{")?;
+    writeln_code!(output, "    return qb_string_new(\"QB64Fresh 0.1.0\");")?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(output)?;
+
     // _STARTDIR$ - program start directory
     writeln_code!(output, "static char _qb_startdir[4096] = {{}};")?;
     writeln_code!(

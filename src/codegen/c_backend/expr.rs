@@ -2057,6 +2057,9 @@ pub(super) fn c_function_name(name: &str) -> String {
         "_ERRORLINE" => "qb_errorline".to_string(),
         "_ERRORMESSAGE$" => "qb_errormessage".to_string(),
 
+        // Version information
+        "VERSION$" => "qb_version".to_string(),
+
         // Utility functions
         "_COMMANDCOUNT" => "qb_commandcount".to_string(),
         "_ENVIRONCOUNT" => "qb_environcount".to_string(),

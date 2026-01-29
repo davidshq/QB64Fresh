@@ -44,7 +44,7 @@ fn compile_to_c(source: &str) -> Result<String, String> {
         .analyze(&program)
         .map_err(|e| format!("Semantic error: {:?}", e))?;
 
-    let backend = CBackend::with_runtime_mode(RuntimeMode::Inline);
+    let backend = CBackend::with_runtime_mode(RuntimeMode::inline());
     let output = backend
         .generate(&typed_program)
         .map_err(|e| format!("CodeGen error: {:?}", e))?;

@@ -76,7 +76,7 @@ pub fn compile(source: &str) -> CompileResult {
     };
 
     // Code generation phase
-    let backend = CBackend::with_runtime_mode(RuntimeMode::Inline);
+    let backend = CBackend::with_runtime_mode(RuntimeMode::inline());
     match backend.generate(&typed_program) {
         Ok(output) => CompileResult::Success(output.code),
         Err(e) => CompileResult::Error(format!("CodeGen error: {:?}", e)),

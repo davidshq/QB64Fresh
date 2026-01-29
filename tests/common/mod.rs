@@ -9,7 +9,7 @@ use qb64fresh::semantic::SemanticAnalyzer;
 
 /// Compile BASIC source code to C, returning Ok(code) or Err(message)
 pub fn compile_to_c(source: &str) -> Result<String, String> {
-    compile_with_mode(source, RuntimeMode::Inline)
+    compile_with_mode(source, RuntimeMode::inline())
 }
 
 /// Compile BASIC source code with a specific runtime mode

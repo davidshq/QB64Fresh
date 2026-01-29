@@ -1,12 +1,13 @@
 # Missing Language Features in QB64Fresh (Used by QB64pe)
 
-**Last Updated:** 2026-01-28  
+**Last Updated:** 2026-01-29  
 **Purpose:** Document language features that QB64pe uses but are not yet implemented or fully supported in QB64Fresh. This helps prioritize development and understand compatibility gaps.
 
 **Related Documents:**
 - [BASIC_TO_C_PROBLEMATIC_LANGUAGE_ITEMS.md](BASIC_TO_C_PROBLEMATIC_LANGUAGE_ITEMS.md) — Items that are tricky to implement
 - [PARTIAL_IMPLEMENTATIONS.md](ThingsToDo/PARTIAL_IMPLEMENTATIONS.md) — Partially implemented features
 - [QB64PE_TO_QB64Fresh_BEHAVIORAL_DIFFERENCES.md](QB64pe/QB64PE_TO_QB64Fresh_BEHAVIORAL_DIFFERENCES.md) — Behavioral differences
+- [QB64PE_MISSING_FEATURES_USER_INTERACTION.md](QB64PE_MISSING_FEATURES_USER_INTERACTION.md) — Features requiring user decisions/interaction
 
 ---
 
@@ -38,7 +39,7 @@ This document catalogs the missing features based on analysis of `qb64pe.bas` an
 | `$ASSERTS:CONSOLE` | Console assertions | ❌ Not implemented | Assertions to console |
 | `$NOPREFIX` | Deprecated feature flag | ❌ Not implemented | Legacy compatibility |
 | `$USELIBRARY:'author/library'` | Library loading system | ⚠️ Parsed but not implemented | Complex library system with AtTop/AfterMain files |
-| `$INCLUDEONCE` | Prevent duplicate includes | ⚠️ Parsed but not implemented | Needs tracking of included files |
+| `$INCLUDEONCE` | Prevent duplicate includes | ✅ Implemented | Tracks included files and skips duplicates |
 | `$DYNAMIC` | Dynamic array allocation | ⚠️ Parsed but not implemented | Currently all arrays are dynamic |
 | `$STATIC` | Static array allocation | ⚠️ Parsed but not implemented | Static arrays not supported |
 | `$EMBED:'filename'` | Embed binary files | ⚠️ Parsed but not implemented | Requires binary embedding in C output |
@@ -114,8 +115,8 @@ This document catalogs the missing features based on analysis of `qb64pe.bas` an
 | `RESUME label` | Used | ⚠️ Partially implemented | May not match QB64pe behavior exactly |
 | `ERL` | 60 matches | ⚠️ Partially implemented | Error line number |
 | `ERR` / `ERROR` | Used | ⚠️ Partially implemented | Error code |
-| `_ERRORLINE` | Used | ❌ Not implemented | QB64 extension |
-| `_ERRORMESSAGE$` | Used | ❌ Not implemented | QB64 extension |
+| `_ERRORLINE` | Used | ✅ Implemented | QB64 extension (returns error line number) |
+| `_ERRORMESSAGE$` | Used | ✅ Implemented | QB64 extension (returns error message string) |
 
 ---
 
@@ -125,14 +126,14 @@ This document catalogs the missing features based on analysis of `qb64pe.bas` an
 
 | Feature | QB64pe Usage | QB64Fresh Status | Gap |
 |---------|--------------|-------------------|-----|
-| `DEFLNG A-Z` | 3 matches | ❌ Not implemented | Default type for variables without suffix |
-| `DEFINT A-Z` | Used | ❌ Not implemented | Default type for INTEGER |
-| `DEFSNG A-Z` | Used | ❌ Not implemented | Default type for SINGLE |
-| `DEFDBL A-Z` | Used | ❌ Not implemented | Default type for DOUBLE |
-| `DEFSTR A-Z` | Used | ❌ Not implemented | Default type for STRING |
-| `DEFLNG A-M` | Range syntax | ❌ Not implemented | Type for specific letter ranges |
+| `DEFLNG A-Z` | 3 matches | ✅ Implemented | Default type for variables without suffix |
+| `DEFINT A-Z` | Used | ✅ Implemented | Default type for INTEGER |
+| `DEFSNG A-Z` | Used | ✅ Implemented | Default type for SINGLE |
+| `DEFDBL A-Z` | Used | ✅ Implemented | Default type for DOUBLE |
+| `DEFSTR A-Z` | Used | ✅ Implemented | Default type for STRING |
+| `DEFLNG A-M` | Range syntax | ✅ Implemented | Type for specific letter ranges |
 
-**Note:** QB64pe uses `DEFLNG A-Z` extensively, meaning all variables without type suffixes default to LONG. QB64Fresh does not implement DEFTYPE, so variables must have explicit types or `AS` clauses.
+**Note:** QB64pe uses `DEFLNG A-Z` extensively, meaning all variables without type suffixes default to LONG. QB64Fresh now fully implements DEFTYPE, so this should work correctly.
 
 ### 3.2 Extended Types
 
@@ -162,7 +163,7 @@ This document catalogs the missing features based on analysis of `qb64pe.bas` an
 | `REDIM SHARED` | Used | ✅ Implemented | ✅ Works |
 | `OPTION BASE 0/1` | Used | ✅ Implemented | ✅ Works |
 | Multi-dimensional arrays | Used | ✅ Implemented | ✅ Works |
-| `LBOUND` / `UBOUND` | Used | ⚠️ Partially implemented | Inline runtime may not track bounds correctly |
+| `LBOUND` / `UBOUND` | Used | ✅ Implemented | Array bounds tracking with runtime functions |
 | Static arrays (`$STATIC`) | Not used in QB64pe | ❌ Not implemented | Static arrays not supported |
 
 ---
@@ -192,14 +193,14 @@ QB64pe uses many graphics functions that may not be fully implemented in QB64Fre
 
 | Function | QB64pe Usage | QB64Fresh Status | Gap |
 |----------|--------------|-------------------|-----|
-| `_OS$` | Used for platform detection | ❌ Not implemented | Platform string |
-| `_DIREXISTS` | Used | ⚠️ May not be implemented | Directory existence check |
-| `_SCREENSHOW` | Used | ⚠️ May not be implemented | Show graphics window |
+| `_OS$` | Used for platform detection | ✅ Implemented | Platform string (returns [PLATFORM][BITS] format) |
+| `_DIREXISTS` | Used | ✅ Implemented | Directory existence check |
+| `_SCREENSHOW` | Used | ✅ Implemented | Show graphics window |
 | `TIMER(0.001)` | Used | ⚠️ May not match precision | High-precision timer |
 | `INSTR` | Used extensively | ✅ Implemented | ✅ Works |
 | `CHR$` / `ASC` | Used extensively | ✅ Implemented | ✅ Works |
-| `MKI$` / `CVI` | Used | ⚠️ May not be implemented | Binary string conversion |
-| `Version$` | Used | ❌ Not implemented | Compiler version string |
+| `MKI$` / `CVI` | Used | ✅ Implemented | Binary string conversion (MKI$, MKL$, MKS$, MKD$, CVI, CVL, CVS, CVD) |
+| `Version$` | Used | ✅ Implemented | Compiler version string (returns "QB64Fresh 0.1.0") |
 
 ### 6.3 File I/O
 
@@ -209,8 +210,8 @@ QB64pe uses many graphics functions that may not be fully implemented in QB64Fre
 | `CLOSE` | Used | ✅ Implemented | ✅ Works |
 | `GET` / `PUT` | Used | ✅ Implemented | ✅ Works |
 | `SEEK` | Used | ✅ Implemented | ✅ Works |
-| `FIELD` | Used | ⚠️ May not be fully implemented | Random access file fields |
-| `LSET` / `RSET` | Used | ⚠️ May not be fully implemented | Field buffer alignment |
+| `FIELD` | Used | ✅ Implemented | Random access file fields |
+| `LSET` / `RSET` | Used | ✅ Implemented | Field buffer alignment |
 
 ---
 
@@ -263,17 +264,17 @@ Based on the analysis, the most likely causes for QB64pe hanging when compiled w
 To make QB64pe compile and run, prioritize:
 
 ### High Priority (Blocks Execution)
-1. **`DEFLNG A-Z` and DEFTYPE** — Critical for variable type inference
-2. **`_OS$` built-in** — Required for platform detection in `$IF` blocks
-3. **`Version$` built-in** — Used in initialization
-4. **`$USELIBRARY` implementation** — QB64pe uses library system
-5. **Graphics initialization fixes** — IDE requires graphics window
+1. ~~**`DEFLNG A-Z` and DEFTYPE**~~ — ✅ **FIXED** — Critical for variable type inference
+2. ~~**`_OS$` built-in**~~ — ✅ **FIXED** — Required for platform detection in `$IF` blocks
+3. ~~**`Version$` built-in**~~ — ✅ **FIXED** — Used in initialization
+4. **`$USELIBRARY` implementation** — QB64pe uses library system (see [QB64PE_MISSING_FEATURES_USER_INTERACTION.md](QB64PE_MISSING_FEATURES_USER_INTERACTION.md))
+5. **Graphics initialization fixes** — IDE requires graphics window (needs testing)
 
 ### Medium Priority (Causes Incorrect Behavior)
-1. **Event trapping (`ON KEY`, `ON TIMER`, etc.)** — May cause hangs if called
-2. **`$INCLUDEONCE`** — Prevents duplicate includes
-3. **`$EMBED`** — Used for embedding resources
-4. **`_DIREXISTS` and file system functions** — Used for internal folder checks
+1. **Event trapping (`ON KEY`, `ON TIMER`, etc.)** — May cause hangs if called (see [QB64PE_MISSING_FEATURES_USER_INTERACTION.md](QB64PE_MISSING_FEATURES_USER_INTERACTION.md))
+2. ~~**`$INCLUDEONCE`**~~ — ✅ **FIXED** — Prevents duplicate includes
+3. **`$EMBED`** — Used for embedding resources (see [QB64PE_MISSING_FEATURES_USER_INTERACTION.md](QB64PE_MISSING_FEATURES_USER_INTERACTION.md))
+4. ~~**`_DIREXISTS` and file system functions**~~ — ✅ **FIXED** — Used for internal folder checks
 
 ### Low Priority (Nice to Have)
 1. **`$COLOR` directives** — IDE syntax highlighting
