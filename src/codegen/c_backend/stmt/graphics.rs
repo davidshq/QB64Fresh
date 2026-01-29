@@ -64,7 +64,7 @@ pub(super) fn emit_graphics_stmt(
                 indent
             )?;
             writeln_code!(output, "{}    fflush(stderr);", indent)?;
-            writeln_code!(output, "{}    return 1;", indent)?;
+            writeln_code!(output, "{}    exit(1);", indent)?;
             writeln_code!(output, "{}}}", indent)?;
 
             // If $SCREENHIDE was requested, hide the window after initialization
