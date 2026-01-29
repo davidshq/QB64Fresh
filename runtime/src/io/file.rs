@@ -7,12 +7,29 @@ use crate::string::{
 };
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{self, BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
+use std::io::{BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::os::raw::c_char;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 #[cfg(unix)]
 use std::os::unix::io::AsRawFd;
+
+// Import normalize_path_for_fs from input module
+// This function normalizes Windows path separators on non-Windows systems
+#[cfg(not(target_os = "windows"))]
+fn normalize_path_for_fs(s: &str) -> std::borrow::Cow<'_, str> {
+    if s.contains('\\') {
+        std::borrow::Cow::Owned(s.replace('\\', "/"))
+    } else {
+        std::borrow::Cow::Borrowed(s)
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn normalize_path_for_fs(s: &str) -> std::borrow::Cow<'_, str> {
+    std::borrow::Cow::Borrowed(s)
+}
 
 // ============================================================================
 // File I/O Functions
@@ -62,6 +79,96 @@ fn init_field_offsets() {
     if offsets.is_none() {
         *offsets = Some(HashMap::new());
     }
+}
+
+/// Resolves a file path, handling `internal/` directory relative to executable or source file.
+///
+/// Path resolution strategy:
+/// 1. If path starts with `internal/`, try to resolve relative to:
+///    - Executable directory (if available)
+///    - Current working directory
+/// 2. For other paths, use the path as-is (relative to current working directory)
+///
+/// This matches QB64pe behavior where `internal/` is expected to be relative to
+/// the executable or source file location, not just the current working directory.
+///
+/// # Arguments
+///
+/// * `path_str` - The file path string (may contain `internal/`)
+///
+/// # Returns
+///
+/// A `PathBuf` with the resolved path. If resolution fails, returns the original path.
+/// Resolves a file path, handling `internal/` directory relative to executable or source file.
+///
+/// Path resolution strategy:
+/// 1. If path starts with `internal/`, try to resolve relative to:
+///    - Executable directory (if available)
+///    - Current working directory
+/// 2. For other paths, use the path as-is (relative to current working directory)
+///
+/// This matches QB64pe behavior where `internal/` is expected to be relative to
+/// the executable or source file location, not just the current working directory.
+///
+/// # Arguments
+///
+/// * `path_str` - The file path string (may contain `internal/`)
+/// * `for_write` - If true, don't check file existence (for write operations)
+///
+/// # Returns
+///
+/// A `PathBuf` with the resolved path. If resolution fails, returns the original path.
+fn resolve_file_path(path_str: &str, for_write: bool) -> PathBuf {
+    let path = Path::new(path_str);
+
+    // Check if path starts with "internal/" (case-insensitive on Windows)
+    // Note: path_str is already normalized (backslashes converted to forward slashes)
+    // so we only need to check for forward slashes
+    let is_internal = if cfg!(windows) {
+        let lower = path_str.to_lowercase();
+        lower.starts_with("internal/")
+    } else {
+        path_str.starts_with("internal/")
+    };
+
+    if is_internal {
+        // Try to resolve relative to executable directory first
+        if let Ok(exe_path) = std::env::current_exe() {
+            if let Some(exe_dir) = exe_path.parent() {
+                let resolved = exe_dir.join(path);
+                // For read operations, check if file exists
+                // For write operations, return the path (will create file/dirs as needed)
+                if for_write || resolved.exists() {
+                    return resolved;
+                }
+            }
+        }
+
+        // Try relative to current working directory (only for read operations)
+        if !for_write {
+            if let Ok(cwd) = std::env::current_dir() {
+                let resolved = cwd.join(path);
+                if resolved.exists() {
+                    return resolved;
+                }
+            }
+        }
+
+        // For write operations or if read failed, return path relative to executable
+        if let Ok(exe_path) = std::env::current_exe() {
+            if let Some(exe_dir) = exe_path.parent() {
+                return exe_dir.join(path);
+            }
+        }
+
+        // Fallback: return path relative to current working directory
+        if let Ok(cwd) = std::env::current_dir() {
+            return cwd.join(path);
+        }
+    }
+
+    // For non-internal paths, return as-is (will be resolved relative to current working directory)
+    path.to_path_buf()
 }
 
 /// C constants for OPEN access (must match qb64fresh_rt.h).
@@ -139,7 +246,26 @@ pub unsafe extern "C" fn qb_file_open(
     };
 
     let normalized = normalize_path_for_fs(filename_str);
-    let path = std::path::Path::new(normalized.as_ref());
+
+    // Determine if this is a write operation (for path resolution)
+    let is_write_mode = mode_str.contains('w') || mode_str.contains('a') || mode_str.contains('+');
+
+    // Resolve path: check for internal/ directory relative to executable or source file
+    let resolved_path = resolve_file_path(normalized.as_ref(), is_write_mode);
+
+    // For write operations, ensure parent directories exist
+    if is_write_mode {
+        if let Some(parent) = resolved_path.parent() {
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                // Log directory creation failure but continue - file open will fail with clearer error
+                eprintln!(
+                    "Warning: Failed to create parent directory '{}': {}",
+                    parent.display(),
+                    e
+                );
+            }
+        }
+    }
 
     // Close existing file if open
     let mut handles = FILE_HANDLES.lock().unwrap();
@@ -151,57 +277,69 @@ pub unsafe extern "C" fn qb_file_open(
 
         // Open the file
         let file_result = match mode_str {
-            "r" | "rb" => std::fs::File::open(path),
-            "w" | "wb" => std::fs::File::create(path),
+            "r" | "rb" => std::fs::File::open(&resolved_path),
+            "w" | "wb" => std::fs::File::create(&resolved_path),
             "a" | "ab" => {
                 // Append mode - create if doesn't exist
                 std::fs::OpenOptions::new()
                     .create(true)
                     .append(true)
-                    .open(path)
+                    .open(&resolved_path)
             }
             "r+" | "r+b" | "rb+" => {
                 // Read/write mode - create if doesn't exist
-                if !path.exists() {
-                    let _ = std::fs::File::create(path);
-                }
+                // Use OpenOptions with create flag to avoid race condition
                 std::fs::OpenOptions::new()
                     .read(true)
                     .write(true)
-                    .open(path)
+                    .create(true)
+                    .open(&resolved_path)
             }
-            _ => std::fs::File::open(path), // Default to read
+            _ => std::fs::File::open(&resolved_path), // Default to read
         };
 
-        if let Ok(file) = file_result {
-            apply_flock(&file, lock);
+        match file_result {
+            Ok(file) => {
+                apply_flock(&file, lock);
 
-            let mut handle = FileHandle {
-                file: Some(file),
-                reader: None,
-                writer: None,
-                record_len: 128, // Default record length
-                mode: mode_str.to_string(),
-            };
+                let mut handle = FileHandle {
+                    file: Some(file),
+                    reader: None,
+                    writer: None,
+                    record_len: 128, // Default record length
+                    mode: mode_str.to_string(),
+                };
 
-            // Create reader/writer based on mode
-            if mode_str.contains('r') || mode_str.contains('+') {
-                if let Ok(file_for_reader) = std::fs::File::open(path) {
-                    handle.reader = Some(BufReader::new(file_for_reader));
+                // Create reader/writer based on mode
+                // Note: We open separate file handles for reader/writer to allow independent
+                // buffering and positioning. This is safe and common practice.
+                if mode_str.contains('r') || mode_str.contains('+') {
+                    if let Ok(file_for_reader) = std::fs::File::open(&resolved_path) {
+                        handle.reader = Some(BufReader::new(file_for_reader));
+                    }
                 }
-            }
-            if mode_str.contains('w') || mode_str.contains('a') || mode_str.contains('+') {
-                if let Ok(file_for_writer) = std::fs::OpenOptions::new()
-                    .write(true)
-                    .append(mode_str.contains('a'))
-                    .create(true)
-                    .open(path)
-                {
-                    handle.writer = Some(BufWriter::new(file_for_writer));
+                if mode_str.contains('w') || mode_str.contains('a') || mode_str.contains('+') {
+                    if let Ok(file_for_writer) = std::fs::OpenOptions::new()
+                        .write(true)
+                        .append(mode_str.contains('a'))
+                        .create(true)
+                        .open(&resolved_path)
+                    {
+                        handle.writer = Some(BufWriter::new(file_for_writer));
+                    }
                 }
-            }
 
-            map.insert(fnum, handle);
+                map.insert(fnum, handle);
+            }
+            Err(e) => {
+                // File open failed - log error but don't panic
+                // In QB64, failed OPEN typically sets ERR but continues execution
+                eprintln!(
+                    "Warning: Failed to open file '{}': {}",
+                    resolved_path.display(),
+                    e
+                );
+            }
         }
     }
 }
