@@ -43,6 +43,7 @@ pub mod ast;
 pub mod codegen;
 pub mod error_formatting;
 pub mod lexer;
+pub mod library;
 pub mod lsp;
 pub mod parser;
 pub mod preprocessor;

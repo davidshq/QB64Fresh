@@ -39,6 +39,8 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::library::LibraryManager;
+
 /// Preprocessor error types.
 #[derive(Debug, Clone)]
 pub enum PreprocessorError {
@@ -124,10 +126,14 @@ struct PreprocessContext {
     include_once_visited: HashSet<PathBuf>,
     /// Current nesting depth.
     depth: usize,
+    /// Library manager for $USELIBRARY directive support.
+    library_manager: LibraryManager,
+    /// Current line number (for referrer tracking).
+    line_number: usize,
 }
 
 impl PreprocessContext {
-    fn new(initial_file: PathBuf) -> Self {
+    fn new(initial_file: PathBuf, base_path: &Path) -> Self {
         let canonical = initial_file.canonicalize().unwrap_or(initial_file.clone());
         let mut visited = HashSet::new();
         visited.insert(canonical.clone());
@@ -137,6 +143,8 @@ impl PreprocessContext {
             visited,
             include_once_visited: HashSet::new(),
             depth: 0,
+            library_manager: LibraryManager::new(base_path),
+            line_number: 1,
         }
     }
 
@@ -175,6 +183,16 @@ impl PreprocessContext {
             .last()
             .map(|p| p.as_path())
             .unwrap_or(Path::new("."))
+    }
+
+    /// Creates a referrer string for library tracking (file:line).
+    fn referrer(&self) -> String {
+        let file = self.current_file();
+        let file_name = file
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown");
+        format!("{}:{}", file_name, self.line_number)
     }
 }
 
@@ -333,8 +351,119 @@ pub fn preprocess(
     let initial_file = source_path
         .map(|p| p.canonicalize().unwrap_or_else(|_| p.to_path_buf()))
         .unwrap_or_else(|| base_path.join("main.bas"));
-    let mut context = PreprocessContext::new(initial_file);
-    preprocess_internal(&joined, base_path, &mut context)
+    let mut context = PreprocessContext::new(initial_file, base_path);
+    let result = preprocess_internal(&joined, base_path, &mut context)?;
+
+    // Collect library file paths (need to collect before borrowing context)
+    let at_top_paths: Vec<(String, PathBuf)> = context
+        .library_manager
+        .get_at_top_libraries()
+        .iter()
+        .filter_map(|lib| {
+            lib.inc_at_top
+                .as_ref()
+                .map(|path| (lib.name.clone(), path.clone()))
+        })
+        .collect();
+
+    let after_main_paths: Vec<(String, PathBuf)> = context
+        .library_manager
+        .get_after_main_libraries()
+        .iter()
+        .filter_map(|lib| {
+            lib.inc_after_main
+                .as_ref()
+                .map(|path| (lib.name.clone(), path.clone()))
+        })
+        .collect();
+
+    let at_bottom_paths: Vec<(String, PathBuf)> = context
+        .library_manager
+        .get_at_bottom_libraries()
+        .iter()
+        .filter_map(|lib| {
+            lib.inc_at_bottom
+                .as_ref()
+                .map(|path| (lib.name.clone(), path.clone()))
+        })
+        .collect();
+
+    // Build final output with library inclusions
+    let mut final_output = String::new();
+
+    // Include AtTop files at the very beginning
+    // These files are preprocessed to handle $INCLUDE and other directives
+    for (lib_name, path) in at_top_paths {
+        final_output.push_str(&format!("' >>> $USELIBRARY:'{}' (AtTop)\n", lib_name));
+        let content = fs::read_to_string(&path).map_err(|e| PreprocessorError::ReadError {
+            path: path.clone(),
+            message: e.to_string(),
+        })?;
+        // Preprocess the library file to handle $INCLUDE directives
+        // Use a new context for library files to avoid include stack conflicts
+        let lib_base = path.parent().unwrap_or(base_path);
+        let lib_canonical = path.canonicalize().unwrap_or(path.clone());
+        let mut lib_context = PreprocessContext::new(lib_canonical, lib_base);
+        let processed = preprocess_internal(&content, lib_base, &mut lib_context)?;
+        final_output.push_str(&processed);
+        if !processed.ends_with('\n') {
+            final_output.push('\n');
+        }
+        final_output.push_str(&format!("' <<< END $USELIBRARY:'{}' (AtTop)\n", lib_name));
+    }
+
+    // Add the main preprocessed content
+    final_output.push_str(&result);
+
+    // Include AfterMain files after main code
+    // These files are preprocessed to handle $INCLUDE and other directives
+    for (lib_name, path) in after_main_paths {
+        final_output.push_str(&format!("' >>> $USELIBRARY:'{}' (AfterMain)\n", lib_name));
+        let content = fs::read_to_string(&path).map_err(|e| PreprocessorError::ReadError {
+            path: path.clone(),
+            message: e.to_string(),
+        })?;
+        // Preprocess the library file to handle $INCLUDE directives
+        // Use a new context for library files to avoid include stack conflicts
+        let lib_base = path.parent().unwrap_or(base_path);
+        let lib_canonical = path.canonicalize().unwrap_or(path.clone());
+        let mut lib_context = PreprocessContext::new(lib_canonical, lib_base);
+        let processed = preprocess_internal(&content, lib_base, &mut lib_context)?;
+        final_output.push_str(&processed);
+        if !processed.ends_with('\n') {
+            final_output.push('\n');
+        }
+        final_output.push_str(&format!(
+            "' <<< END $USELIBRARY:'{}' (AfterMain)\n",
+            lib_name
+        ));
+    }
+
+    // Include AtBottom files at the very end
+    // These files are preprocessed to handle $INCLUDE and other directives
+    for (lib_name, path) in at_bottom_paths {
+        final_output.push_str(&format!("' >>> $USELIBRARY:'{}' (AtBottom)\n", lib_name));
+        let content = fs::read_to_string(&path).map_err(|e| PreprocessorError::ReadError {
+            path: path.clone(),
+            message: e.to_string(),
+        })?;
+        // Preprocess the library file to handle $INCLUDE directives
+        // Use a new context for library files to avoid include stack conflicts
+        let lib_base = path.parent().unwrap_or(base_path);
+        let lib_canonical = path.canonicalize().unwrap_or(path.clone());
+        let mut lib_context = PreprocessContext::new(lib_canonical, lib_base);
+        let processed = preprocess_internal(&content, lib_base, &mut lib_context)?;
+        final_output.push_str(&processed);
+        if !processed.ends_with('\n') {
+            final_output.push('\n');
+        }
+        final_output.push_str(&format!(
+            "' <<< END $USELIBRARY:'{}' (AtBottom)\n",
+            lib_name
+        ));
+    }
+
+    Ok(final_output)
 }
 
 /// Preprocesses a file by path.
@@ -362,9 +491,119 @@ pub fn preprocess_file(path: &Path) -> Result<String, PreprocessorError> {
 
     let base_path = path.parent().unwrap_or(Path::new("."));
     let canonical = path.canonicalize().unwrap_or(path.to_path_buf());
-    let mut context = PreprocessContext::new(canonical);
+    let mut context = PreprocessContext::new(canonical, base_path);
+    let result = preprocess_internal(&joined, base_path, &mut context)?;
 
-    preprocess_internal(&joined, base_path, &mut context)
+    // Collect library file paths (need to collect before borrowing context)
+    let at_top_paths: Vec<(String, PathBuf)> = context
+        .library_manager
+        .get_at_top_libraries()
+        .iter()
+        .filter_map(|lib| {
+            lib.inc_at_top
+                .as_ref()
+                .map(|path| (lib.name.clone(), path.clone()))
+        })
+        .collect();
+
+    let after_main_paths: Vec<(String, PathBuf)> = context
+        .library_manager
+        .get_after_main_libraries()
+        .iter()
+        .filter_map(|lib| {
+            lib.inc_after_main
+                .as_ref()
+                .map(|path| (lib.name.clone(), path.clone()))
+        })
+        .collect();
+
+    let at_bottom_paths: Vec<(String, PathBuf)> = context
+        .library_manager
+        .get_at_bottom_libraries()
+        .iter()
+        .filter_map(|lib| {
+            lib.inc_at_bottom
+                .as_ref()
+                .map(|path| (lib.name.clone(), path.clone()))
+        })
+        .collect();
+
+    // Build final output with library inclusions
+    let mut final_output = String::new();
+
+    // Include AtTop files at the very beginning
+    // These files are preprocessed to handle $INCLUDE and other directives
+    for (lib_name, lib_path) in at_top_paths {
+        final_output.push_str(&format!("' >>> $USELIBRARY:'{}' (AtTop)\n", lib_name));
+        let content = fs::read_to_string(&lib_path).map_err(|e| PreprocessorError::ReadError {
+            path: lib_path.clone(),
+            message: e.to_string(),
+        })?;
+        // Preprocess the library file to handle $INCLUDE directives
+        // Use a new context for library files to avoid include stack conflicts
+        let lib_base = lib_path.parent().unwrap_or(base_path);
+        let lib_canonical = lib_path.canonicalize().unwrap_or(lib_path.clone());
+        let mut lib_context = PreprocessContext::new(lib_canonical, lib_base);
+        let processed = preprocess_internal(&content, lib_base, &mut lib_context)?;
+        final_output.push_str(&processed);
+        if !processed.ends_with('\n') {
+            final_output.push('\n');
+        }
+        final_output.push_str(&format!("' <<< END $USELIBRARY:'{}' (AtTop)\n", lib_name));
+    }
+
+    // Add the main preprocessed content
+    final_output.push_str(&result);
+
+    // Include AfterMain files after main code
+    // These files are preprocessed to handle $INCLUDE and other directives
+    for (lib_name, lib_path) in after_main_paths {
+        final_output.push_str(&format!("' >>> $USELIBRARY:'{}' (AfterMain)\n", lib_name));
+        let content = fs::read_to_string(&lib_path).map_err(|e| PreprocessorError::ReadError {
+            path: lib_path.clone(),
+            message: e.to_string(),
+        })?;
+        // Preprocess the library file to handle $INCLUDE directives
+        // Use a new context for library files to avoid include stack conflicts
+        let lib_base = lib_path.parent().unwrap_or(base_path);
+        let lib_canonical = lib_path.canonicalize().unwrap_or(lib_path.clone());
+        let mut lib_context = PreprocessContext::new(lib_canonical, lib_base);
+        let processed = preprocess_internal(&content, lib_base, &mut lib_context)?;
+        final_output.push_str(&processed);
+        if !processed.ends_with('\n') {
+            final_output.push('\n');
+        }
+        final_output.push_str(&format!(
+            "' <<< END $USELIBRARY:'{}' (AfterMain)\n",
+            lib_name
+        ));
+    }
+
+    // Include AtBottom files at the very end
+    // These files are preprocessed to handle $INCLUDE and other directives
+    for (lib_name, lib_path) in at_bottom_paths {
+        final_output.push_str(&format!("' >>> $USELIBRARY:'{}' (AtBottom)\n", lib_name));
+        let content = fs::read_to_string(&lib_path).map_err(|e| PreprocessorError::ReadError {
+            path: lib_path.clone(),
+            message: e.to_string(),
+        })?;
+        // Preprocess the library file to handle $INCLUDE directives
+        // Use a new context for library files to avoid include stack conflicts
+        let lib_base = lib_path.parent().unwrap_or(base_path);
+        let lib_canonical = lib_path.canonicalize().unwrap_or(lib_path.clone());
+        let mut lib_context = PreprocessContext::new(lib_canonical, lib_base);
+        let processed = preprocess_internal(&content, lib_base, &mut lib_context)?;
+        final_output.push_str(&processed);
+        if !processed.ends_with('\n') {
+            final_output.push('\n');
+        }
+        final_output.push_str(&format!(
+            "' <<< END $USELIBRARY:'{}' (AtBottom)\n",
+            lib_name
+        ));
+    }
+
+    Ok(final_output)
 }
 
 /// Internal preprocessing function with context tracking.
@@ -375,7 +614,38 @@ fn preprocess_internal(
 ) -> Result<String, PreprocessorError> {
     let mut result = String::with_capacity(source.len());
 
-    for line in source.lines() {
+    for (line_idx, line) in source.lines().enumerate() {
+        context.line_number = line_idx + 1;
+
+        // Check for $USELIBRARY directive
+        if let Some(library_name) = parse_uselibrary_directive(line) {
+            let referrer = context.referrer();
+            match context
+                .library_manager
+                .register_library(&library_name, &referrer)
+            {
+                Ok(Some(_)) => {
+                    // Library registered successfully
+                    result.push_str(&format!(
+                        "' >>> $USELIBRARY:'{}' (registered from {})\n",
+                        library_name, referrer
+                    ));
+                }
+                Ok(None) => {
+                    // Library already registered for this referrer (duplicate)
+                    result.push_str(&format!(
+                        "' >>> $USELIBRARY:'{}' (already registered, skipping)\n",
+                        library_name
+                    ));
+                }
+                Err(e) => {
+                    // Library loading failed
+                    return Err(e);
+                }
+            }
+            continue;
+        }
+
         // Check for $INCLUDE or $INCLUDEONCE directive
         if let Some((include_path, is_once)) = parse_include_directive(line) {
             // Resolve the path relative to the current file's directory
@@ -514,6 +784,50 @@ fn parse_include_directive(line: &str) -> Option<(String, bool)> {
     None
 }
 
+/// Parses a line to extract a library name if it's a $USELIBRARY directive.
+///
+/// Handles format: `$USELIBRARY: 'author/library'`
+///
+/// Returns `None` if the line is not a $USELIBRARY directive, or `Some(library_name)`
+/// where `library_name` is the library identifier (e.g., "author/library").
+fn parse_uselibrary_directive(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+
+    // Handle comment prefix (some BASIC dialects allow ' before $USELIBRARY)
+    let content = trimmed
+        .strip_prefix('\'')
+        .map(|s| s.trim())
+        .unwrap_or(trimmed);
+
+    // Check for $USELIBRARY (case-insensitive)
+    let upper = content.to_uppercase();
+    if !upper.starts_with("$USELIBRARY") {
+        return None;
+    }
+
+    // Find the library name within quotes
+    // Format: $USELIBRARY: 'author/library' or $USELIBRARY:'author/library'
+    let skip_len = 12; // "$USELIBRARY"
+    let rest = &content[skip_len..];
+    let rest = rest.trim_start();
+
+    // Skip optional colon
+    let rest = rest.strip_prefix(':').unwrap_or(rest).trim_start();
+
+    // Extract library name from quotes (single quotes in BASIC)
+    if let Some(start) = rest.find('\'') {
+        let after_quote = &rest[start + 1..];
+        if let Some(end) = after_quote.find('\'') {
+            let library_name = &after_quote[..end];
+            if !library_name.is_empty() {
+                return Some(library_name.to_string());
+            }
+        }
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -583,6 +897,108 @@ mod tests {
         assert_eq!(
             parse_include_directive("$includeonce: 'test.bas'"),
             Some(("test.bas".to_string(), true))
+        );
+    }
+
+    #[test]
+    fn test_parse_uselibrary_directive() {
+        // Standard format
+        assert_eq!(
+            parse_uselibrary_directive("$USELIBRARY: 'author/library'"),
+            Some("author/library".to_string())
+        );
+
+        // No space after colon
+        assert_eq!(
+            parse_uselibrary_directive("$USELIBRARY:'test/lib'"),
+            Some("test/lib".to_string())
+        );
+
+        // Case insensitive
+        assert_eq!(
+            parse_uselibrary_directive("$uselibrary: 'mylib'"),
+            Some("mylib".to_string())
+        );
+
+        // With leading whitespace
+        assert_eq!(
+            parse_uselibrary_directive("    $USELIBRARY: 'author/library'"),
+            Some("author/library".to_string())
+        );
+
+        // Not a USELIBRARY directive
+        assert_eq!(parse_uselibrary_directive("PRINT \"Hello\""), None);
+        assert_eq!(parse_uselibrary_directive("' Just a comment"), None);
+        assert_eq!(parse_uselibrary_directive("$INCLUDE: 'file.bas'"), None);
+
+        // With comment prefix
+        assert_eq!(
+            parse_uselibrary_directive("'$USELIBRARY:'author/library'"),
+            Some("author/library".to_string())
+        );
+    }
+
+    #[test]
+    fn test_preprocess_with_uselibrary() {
+        // Create temp directory and library structure
+        let temp_dir =
+            TempDir::new().expect("creating temp directory for USELIBRARY test should succeed");
+        let temp_path = temp_dir.path();
+
+        // Create library structure
+        let descriptors_dir = temp_path.join("libraries").join("descriptors");
+        fs::create_dir_all(&descriptors_dir).expect("creating descriptors dir should succeed");
+
+        let includes_dir = temp_path
+            .join("libraries")
+            .join("includes")
+            .join("test/lib");
+        fs::create_dir_all(&includes_dir).expect("creating includes dir should succeed");
+
+        // Create descriptor file (parent dir already exists from create_dir_all above)
+        let descriptor_parent = descriptors_dir.join("test");
+        fs::create_dir_all(&descriptor_parent).expect("creating test dir should succeed");
+        let descriptor_path = descriptor_parent.join("lib.ini");
+        let mut descriptor =
+            fs::File::create(&descriptor_path).expect("creating descriptor file should succeed");
+        writeln!(descriptor, "[LIBRARY INCLUDES]").expect("writing to descriptor should succeed");
+        writeln!(descriptor, "IncAtTop = AtTop.bas").expect("writing to descriptor should succeed");
+        writeln!(descriptor, "IncAfterMain = AfterMain.bas")
+            .expect("writing to descriptor should succeed");
+
+        // Create library source files
+        let at_top_file = includes_dir.join("AtTop.bas");
+        fs::write(&at_top_file, "CONST LIB_VERSION = 1").expect("writing AtTop.bas should succeed");
+
+        let after_main_file = includes_dir.join("AfterMain.bas");
+        fs::write(&after_main_file, "SUB LibraryInit\nEND SUB")
+            .expect("writing AfterMain.bas should succeed");
+
+        // Main source with USELIBRARY directive
+        let source = "PRINT \"Start\"\n$USELIBRARY: 'test/lib'\nPRINT \"End\"\n";
+        let result = preprocess(source, temp_path, None)
+            .expect("preprocessing source with USELIBRARY should succeed");
+
+        // Check that library files were included
+        assert!(
+            result.contains("CONST LIB_VERSION = 1"),
+            "AtTop.bas should be included"
+        );
+        assert!(
+            result.contains("SUB LibraryInit"),
+            "AfterMain.bas should be included"
+        );
+        assert!(
+            result.contains("PRINT \"Start\""),
+            "Main code should be present"
+        );
+        assert!(
+            result.contains("PRINT \"End\""),
+            "Main code should be present"
+        );
+        assert!(
+            result.contains(">>> $USELIBRARY:'test/lib'"),
+            "Library inclusion markers should be present"
         );
     }
 

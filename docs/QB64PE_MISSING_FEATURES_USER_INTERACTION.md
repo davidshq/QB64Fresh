@@ -19,7 +19,7 @@ This document lists features that need design decisions, tooling choices, or use
 
 ### 1.1 `$USELIBRARY:'author/library'`
 
-**Status:** ⚠️ Parsed but not implemented
+**Status:** ✅ Implemented (2026-01-29)
 
 **What it does:** QB64pe's library system allows including external libraries with:
 - `AtTop.bas` files (included at top of program)
@@ -43,18 +43,26 @@ This document lists features that need design decisions, tooling choices, or use
 - **Error handling:** Validates descriptor and source files exist before registration
 - **Code location:** `source/qb64pe.bas` lines 1786-1847
 
-**What needs to be decided:**
-1. **Library discovery mechanism:** How do we find libraries? File system paths? Package registry?
-2. **Library format:** Do we use QB64pe's format, or design our own?
-3. **Dependency resolution:** How do we handle library dependencies?
-4. **Integration with build system:** Should libraries be compiled separately or inlined?
+**Implementation:**
+- **Library discovery:** File-based discovery from `libraries/descriptors/{author/library}.ini`
+- **Library format:** Uses QB64pe's format (INI descriptors with `[LIBRARY INCLUDES]` section)
+- **Inclusion points:** All three points supported (IncAtTop, IncAfterMain, IncAtBottom)
+- **Duplicate prevention:** Tracks library + referrer (file:line) to prevent duplicates
+- **Error handling:** Validates descriptor and source files exist before registration
+- **Integration:** Libraries are included during preprocessing at appropriate points:
+  - AtTop files included at the very beginning (reverse order for dependencies)
+  - AfterMain files included after all user code
+  - AtBottom files included at the very end
 
-**Recommendation:** Start with simple file-based discovery (search `lib/` or `libraries/` directory) and support QB64pe's `AtTop.bas`/`AfterMain.bas` format. Add dependency resolution later.
+**Files modified:**
+- `src/library.rs` — New library management module (468 lines)
+- `src/preprocessor.rs` — Added `$USELIBRARY` directive parsing and library inclusion
+- `src/lib.rs` — Added `library` module export
 
-**Files to modify:**
-- `src/preprocessor.rs` — Add library discovery and inclusion
-- `src/parser/directives.rs` — Already parses `$USELIBRARY`
-- Potentially create `src/library.rs` for library management
+**Future enhancements:**
+- Dependency resolution (libraries depending on other libraries)
+- Package registry support
+- Library versioning
 
 ---
 

@@ -1,6 +1,60 @@
 # Session 087: Missing Features Fixes
 
-**Date:** 2026-01-29  
+**Date:** 2026-01-29
+
+## $USELIBRARY Implementation
+
+Implemented `$USELIBRARY:'author/library'` directive functionality to parity with QB64pe.
+
+### Implementation Details
+
+1. **Created `src/library.rs` module** for library management:
+   - `LibraryManager` struct for library discovery and tracking
+   - `LibraryInfo` struct containing three inclusion points (AtTop, AfterMain, AtBottom)
+   - INI file parsing for library descriptors
+   - Duplicate prevention (same library + same referrer)
+   - Library structure: `libraries/descriptors/{author/library}.ini` and `libraries/includes/{author/library}/`
+
+2. **Updated preprocessor** (`src/preprocessor.rs`):
+   - Added `$USELIBRARY` directive parsing
+   - Integrated library manager into preprocessing context
+   - Library files included at three points:
+     - **AtTop**: At the very beginning (in reverse order for dependencies)
+     - **AfterMain**: After all user code
+     - **AtBottom**: At the very end
+   - Referrer tracking (file:line) for duplicate detection
+
+3. **Features implemented**:
+   - Library descriptor discovery from `libraries/descriptors/`
+   - INI file parsing with `[LIBRARY INCLUDES]` section
+   - Validation that all specified inclusion files exist
+   - Duplicate prevention (same library + same referrer)
+   - Error handling with clear messages
+   - Support for optional inclusion points (not all three required)
+
+### Testing
+
+- Added unit tests for INI parsing (quotes, comments, sections)
+- Added unit tests for library loading and registration
+- Added integration test for full preprocessing with `$USELIBRARY`
+- All tests passing ✓
+
+### QB64pe Compatibility
+
+Matches QB64pe's implementation:
+- Same library directory structure
+- Same INI format and section names
+- Same inclusion point names (IncAtTop, IncAfterMain, IncAtBottom)
+- Same duplicate prevention logic
+- Same referrer tracking format
+
+### Files Modified
+
+- `src/lib.rs` - Added `library` module
+- `src/library.rs` - New library management module (468 lines)
+- `src/preprocessor.rs` - Added `$USELIBRARY` support and library inclusion
+
+---  
 **Focus:** Fixing implementable issues from QB64PE_MISSING_FEATURES.md
 
 ---
