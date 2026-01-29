@@ -1,0 +1,358 @@
+# QB64PE Missing Features - Items Requiring User Interaction
+
+**Created:** 2026-01-29  
+**Purpose:** Document missing features from `QB64PE_MISSING_FEATURES.md` that require user decisions or interaction before implementation.
+
+**Related Documents:**
+- [QB64PE_MISSING_FEATURES.md](QB64PE_MISSING_FEATURES.md) — Complete list of missing features
+- [BASIC_TO_C_PROBLEMATIC_LANGUAGE_ITEMS.md](BASIC_TO_C_PROBLEMATIC_LANGUAGE_ITEMS.md) — Tricky implementation items
+
+---
+
+## Overview
+
+This document lists features that need design decisions, tooling choices, or user input before they can be implemented. These are not blockers for basic functionality, but they do need attention for full QB64pe compatibility.
+
+---
+
+## 1. Preprocessor Directives Requiring Design Decisions
+
+### 1.1 `$USELIBRARY:'author/library'`
+
+**Status:** ⚠️ Parsed but not implemented
+
+**What it does:** QB64pe's library system allows including external libraries with:
+- `AtTop.bas` files (included at top of program)
+- `AfterMain.bas` files (included after main program)
+- Library metadata and dependencies
+
+**QB64pe Implementation:**
+- **Library discovery:** Searches for library descriptor at `libraries/descriptors/{author/library}.ini`
+- **Library structure:** Each library has:
+  - Descriptor file: `libraries/descriptors/{author/library}.ini` (INI format)
+  - Source directory: `libraries/includes/{author/library}/`
+  - Three inclusion points (from descriptor `[LIBRARY INCLUDES]` section):
+    - `IncAtTop` — included at top of program
+    - `IncAfterMain` — included after main program
+    - `IncAtBottom` — included at bottom
+- **Dependency tracking:** Maintains `useLibList$` array tracking:
+  - Library name
+  - Referrer (file/line that requested it)
+  - Paths to each inclusion file
+- **Duplicate prevention:** Checks if library already registered for same referrer before adding
+- **Error handling:** Validates descriptor and source files exist before registration
+- **Code location:** `source/qb64pe.bas` lines 1786-1847
+
+**What needs to be decided:**
+1. **Library discovery mechanism:** How do we find libraries? File system paths? Package registry?
+2. **Library format:** Do we use QB64pe's format, or design our own?
+3. **Dependency resolution:** How do we handle library dependencies?
+4. **Integration with build system:** Should libraries be compiled separately or inlined?
+
+**Recommendation:** Start with simple file-based discovery (search `lib/` or `libraries/` directory) and support QB64pe's `AtTop.bas`/`AfterMain.bas` format. Add dependency resolution later.
+
+**Files to modify:**
+- `src/preprocessor.rs` — Add library discovery and inclusion
+- `src/parser/directives.rs` — Already parses `$USELIBRARY`
+- Potentially create `src/library.rs` for library management
+
+---
+
+### 1.2 `$EMBED:'filename'`
+
+**Status:** ⚠️ Parsed but not implemented
+
+**What it does:** Embeds binary files into the compiled executable. The `_EMBEDDED$` function can retrieve embedded content at runtime.
+
+**QB64pe Implementation:**
+- **Syntax:** `$EMBED:'filename','handle'` (requires both filename and handle identifier)
+- **Embedding mechanism:** 
+  - Reads file during preprocessing
+  - Generates separate `embedded.cpp` file in temp directory
+  - Creates `func__embedded(qbs *handle)` function that returns embedded data by handle
+  - Data is stored as binary in the generated C++ code
+- **Runtime function:** `_EMBEDDED$(handle$)` calls `func__embedded()` with handle string
+- **Error handling:** 
+  - Validates file exists during preprocessing
+  - Checks for duplicate file embeddings (error if same file embedded twice)
+  - Runtime error if handle not found: `"Embed-Handle 'X' is undefined (check your $EMBED lines)"`
+- **Code location:** 
+  - Preprocessing: `source/qb64pe.bas` (parsing around line 97568)
+  - Code generation: generates `embedded.cpp` file
+  - Runtime: `func__embedded()` function in generated code
+
+**What needs to be decided:**
+1. **Embedding mechanism:** 
+   - Option A: Embed as C string literals (simple, but large files bloat source)
+   - Option B: Embed as binary data in C arrays (better for binary files)
+   - Option C: Use linker sections (requires platform-specific tooling)
+2. **Runtime retrieval:** How does `_EMBEDDED$` access embedded data?
+3. **File size limits:** Should there be a maximum embedded file size?
+
+**Recommendation:** Use C binary arrays (`unsigned char embed_data[] = { ... }`) for binary files, and add a runtime function `qb_embedded(const char* filename)` that returns a pointer to the embedded data.
+
+**Files to modify:**
+- `src/preprocessor.rs` — Read and encode binary files during preprocessing
+- `src/codegen/c_backend/runtime/` — Add `qb_embedded()` function
+- `src/semantic/builtins.rs` — Register `_EMBEDDED$` builtin (if not already)
+- `src/codegen/c_backend/expr.rs` — Codegen for `_EMBEDDED$`
+
+---
+
+### 1.3 `$VERSIONINFO:key=value` and `$EXEICON:'filename'`
+
+**Status:** ⚠️ Parsed but not emitted to C
+
+**What it does:** Windows resource file generation for executable metadata (version, icon, description, etc.).
+
+**QB64pe Implementation:**
+- **$VERSIONINFO keys supported:**
+  - `FILEVERSION#` and `PRODUCTVERSION#` — numeric versions (e.g., `4,3,0,0`)
+  - `CompanyName`, `FileDescription`, `FileVersion`, `InternalName`
+  - `LegalCopyright`, `LegalTrademarks`, `OriginalFilename`
+  - `ProductName`, `ProductVersion`, `Comments`, `Web`
+- **Resource file generation:**
+  - Generates `icon.rc` file in temp directory
+  - For `$EXEICON`: Copies icon file to `tmpdir/icon.ico`, adds `0 ICON "icon.ico"` to `.rc`
+  - For `$VERSIONINFO`: Generates full `VERSIONINFO` block with all string values
+  - Also generates `manifest.h` and `.manifest` XML file for Windows manifest
+  - Uses absolute paths (copies icon to temp dir to ensure absolute path works)
+- **Error handling:**
+  - `$EXEICON` can only be set once (error if already defined)
+  - Validates icon file exists and can be copied
+- **Code location:** `source/qb64pe.bas` lines 12499-12588
+
+**What needs to be decided:**
+1. **Platform support:** Windows-only, or cross-platform metadata?
+2. **Tooling:** 
+   - Option A: Generate `.rc` files and use `windres` (GCC) or `rc.exe` (MSVC)
+   - Option B: Use `llvm-rc` (cross-platform, but requires LLVM)
+   - Option C: Embed resources directly in C code (limited, but portable)
+3. **Build integration:** Should QB64Fresh call the resource compiler, or just emit `.rc` files?
+
+**Recommendation:** Emit Windows `.rc` files and document that users need to compile them separately, or integrate with build system to call `windres`/`rc.exe` automatically.
+
+**Files to modify:**
+- `src/codegen/c_backend/stmt/meta.rs` — Emit `.rc` file content or call resource compiler
+- Potentially create `src/codegen/c_backend/resources.rs` for resource file generation
+
+---
+
+### 1.4 `$COLOR:0` and `$COLOR:32`
+
+**Status:** ❌ Not implemented
+
+**What it does:** IDE syntax highlighting mode (0 = no color, 32 = 32-bit color).
+
+**QB64pe Implementation:**
+- **Syntax:** `$COLOR:0` or `$COLOR:32` (exact match required)
+- **Mutual exclusivity:** Cannot use both — error if one is set after the other: `"$COLOR:32 already set, cannot use both color sets together"`
+- **State management:** Sets `ColorSet` state variable (0, 1, or 2)
+- **IDE-only:** This directive is for IDE display purposes only, not runtime
+- **Code location:** `source/qb64pe.bas` lines 1780-1784, 97333-97344
+
+**What needs to be decided:**
+1. **IDE integration:** This is primarily for IDE display, not runtime. Should QB64Fresh:
+   - Ignore it (no-op)?
+   - Store it in metadata for LSP server?
+   - Emit as comment in C code?
+2. **LSP support:** Should the LSP server use this for syntax highlighting?
+
+**Recommendation:** Store in AST/metadata for LSP server use, but no-op in codegen (just emit comment). This is IDE-only functionality.
+
+**Files to modify:**
+- `src/parser/directives.rs` — Already parses `$COLOR`
+- `src/lsp/` — Use color mode for syntax highlighting (if applicable)
+
+---
+
+### 1.5 `$ASSERTS` and `$ASSERTS:CONSOLE`
+
+**Status:** ❌ Not implemented
+
+**What it does:** Enables debug assertions. `$ASSERTS:CONSOLE` sends assertion failures to console.
+
+**QB64pe Implementation:**
+- **Syntax:** `$ASSERTS` or `$ASSERTS:CONSOLE` (exact match)
+- **State management:**
+  - `$ASSERTS`: Sets `AssertsOn = 1`, defines `_ASSERTS_` preprocessor variable to `"1"`
+  - `$ASSERTS:CONSOLE`: Sets both `AssertsOn = 1` and `ConsoleOn = 1`, defines both `_ASSERTS_` and `_CONSOLE_` to `"1"`
+- **Preprocessor variables:** These are available as `$LET` variables that can be checked in `$IF` directives
+- **Code location:** `source/qb64pe.bas` lines 1849-1861
+
+**What needs to be decided:**
+1. **Assertion mechanism:** How do we implement assertions in generated C?
+   - Use C `assert()` macro?
+   - Custom assertion function with better error messages?
+2. **Console vs. other output:** How does `$ASSERTS:CONSOLE` differ from regular `$ASSERTS`?
+3. **When to enable:** Should assertions be enabled by default in debug builds?
+
+**Recommendation:** Use custom `qb_assert()` function that can be controlled at runtime. `$ASSERTS:CONSOLE` uses `fprintf(stderr, ...)` for output.
+
+**Files to modify:**
+- `src/codegen/c_backend/runtime/` — Add `qb_assert()` function
+- `src/codegen/c_backend/stmt/meta.rs` — Emit assertion checks for relevant statements
+- `src/semantic/` — Track assertion mode in semantic analyzer
+
+---
+
+### 1.6 `$STATIC` and `$DYNAMIC`
+
+**Status:** ⚠️ Parsed but not implemented
+
+**What it does:** Controls whether arrays are statically or dynamically allocated.
+
+**QB64pe Implementation:**
+- **Syntax:** `$STATIC` or `$DYNAMIC` (exact match)
+- **Scope:** Affects all arrays declared after the directive until the other directive is encountered
+- **IDE integration:** These directives are recognized in IDE code formatting (case normalization in comments)
+- **Default:** QB64pe defaults to dynamic arrays (all arrays are `REDIM`-able by default)
+- **Usage:** Rarely used in QB64pe's own source code — primarily for performance optimization in specific cases
+- **Code location:** Recognized in keyword lists and IDE formatting code
+
+**What needs to be decided:**
+1. **Static array implementation:** How do we allocate static arrays?
+   - Global/static C arrays (fixed size at compile time)?
+   - Stack-allocated arrays (limited by stack size)?
+2. **Compatibility:** QB64pe uses `$STATIC` for performance. Do we need to match this exactly?
+3. **Default behavior:** Currently all arrays are dynamic. Should we change the default?
+
+**Recommendation:** Implement static arrays as global/static C arrays for now. This requires tracking array sizes at compile time and emitting fixed-size C arrays. Mark as lower priority since QB64pe doesn't use `$STATIC` in its main source.
+
+**Files to modify:**
+- `src/semantic/` — Track static vs. dynamic array mode
+- `src/codegen/c_backend/stmt/definitions.rs` — Emit static arrays differently from dynamic
+- `src/codegen/c_backend/types.rs` — Handle static array types
+
+---
+
+## 2. Event Trapping (Requires Runtime Integration)
+
+### 2.1 `ON KEY ... GOTO`, `ON TIMER ... GOTO`, `ON UEVENT ... GOTO`, etc.
+
+**Status:** ❌ Not implemented
+
+**What it does:** Sets up event handlers for keyboard, timer, user events, serial port, joystick, light pen events.
+
+**QB64pe Implementation:**
+- **ON KEY:**
+  - Supports keys 1-31 (function keys, cursor keys, etc.)
+  - Uses scancode-based lookup system
+  - Handlers stored in `onkey[]` array with `id`, `active`, and `state` fields
+  - Reset on `RUN` command (all handlers cleared)
+  - Integrated with keyboard input system — events checked during input operations
+  - Code location: `internal/c/libqb.cpp` lines 21491-21499 (reset), 30250+ (event handling)
+- **ON TIMER:**
+  - Timer-based event system
+  - Events can fire during `_DELAY` operations (non-blocking)
+  - Code location: `internal/c/parts/audio/audio.cpp` line 1167 (timer events during delay)
+- **Event processing:**
+  - Events are checked during blocking operations (input, delay)
+  - Prevents new timer events during error handling
+  - Uses callback mechanism — handlers are GOSUB targets or GOTO labels
+
+**What needs to be decided:**
+1. **Event system architecture:**
+   - Option A: Polling-based (check events in main loop)
+   - Option B: Callback-based (register callbacks, call from event thread)
+   - Option C: Signal-based (use platform signals/interrupts)
+2. **Threading:** Do event handlers run in separate threads, or are they called from main thread?
+3. **Platform support:** Some events (COM port, joystick) are platform-specific. How do we handle cross-platform compatibility?
+4. **Integration with graphics:** Graphics window needs to process events. How do we integrate with SDL2/winit event loop?
+
+**Recommendation:** Use SDL2's event system for keyboard/joystick events, and a timer thread for `ON TIMER`. This requires significant runtime integration work.
+
+**Files to modify:**
+- `runtime/src/` — Add event system
+- `src/codegen/c_backend/stmt/error_jump.rs` — Emit event handler registration code
+- `src/semantic/checker/statements/error_flow.rs` — Type-check event handlers
+
+**Priority:** Medium — QB64pe uses event trapping, but it may not be critical for initial compatibility.
+
+---
+
+## 3. Graphics Initialization Fixes
+
+**Status:** ⚠️ May need debugging
+
+**What it does:** QB64pe's IDE requires graphics window initialization. If this fails silently, the program may hang.
+
+**QB64pe Implementation:**
+- Graphics initialization is handled by the runtime library
+- Window creation happens automatically when first graphics command is executed
+- `$SCREENHIDE` directive can hide window at startup
+- `_SCREENSHOW` statement can show/hide window at runtime
+- QB64pe's IDE expects graphics window to be available for display
+
+**What needs to be done:**
+1. **Test graphics initialization:** Verify that graphics window opens correctly
+2. **Error handling:** Ensure graphics initialization failures are reported, not silent
+3. **Window visibility:** Check that `$SCREENHIDE` and `_SCREENSHOW` work correctly
+
+**Recommendation:** This is a testing/debugging task rather than a design decision. Test with QB64pe's source and verify graphics initialization works.
+
+**Files to check:**
+- `runtime/src/graphics/` — Graphics initialization code
+- `src/codegen/c_backend/stmt/meta.rs` — `$SCREENHIDE` handling
+- `src/codegen/c_backend/stmt/mod.rs` — `_SCREENSHOW` statement codegen
+
+---
+
+## 4. File I/O for Internal Files
+
+**Status:** ⚠️ May need path resolution fixes
+
+**What it does:** QB64pe reads from `internal/` directory. If paths are wrong, it may hang waiting for files.
+
+**QB64pe Implementation:**
+- QB64pe uses relative paths from the program's working directory
+- `internal/` directory is expected to be relative to the executable or source file location
+- File operations use standard C file I/O with path resolution
+- QB64pe's IDE may set working directory differently than command-line execution
+
+**What needs to be done:**
+1. **Path resolution:** Verify that relative paths resolve correctly
+2. **Working directory:** Ensure program's working directory is set correctly
+3. **File existence checks:** Add proper error handling for missing files
+
+**Recommendation:** This is a testing/debugging task. Test with QB64pe and verify file paths work correctly.
+
+**Files to check:**
+- `src/codegen/c_backend/stmt/file_io.rs` — File I/O codegen
+- `runtime/src/io.rs` — File I/O runtime functions
+
+---
+
+## 5. Summary of Action Items
+
+### High Priority (Blocks QB64pe Execution)
+1. **Graphics initialization** — Test and fix if needed
+2. **File I/O paths** — Test and fix if needed
+
+### Medium Priority (Causes Incorrect Behavior)
+1. **Event trapping** — Requires runtime architecture decision
+2. **`$USELIBRARY`** — Requires library system design
+3. **`$EMBED`** — Requires embedding mechanism decision
+
+### Low Priority (Nice to Have)
+1. **`$VERSIONINFO` / `$EXEICON`** — Windows resource generation
+2. **`$COLOR`** — IDE-only, can be no-op
+3. **`$ASSERTS`** — Debug feature
+4. **`$STATIC` / `$DYNAMIC`** — Performance optimization
+
+---
+
+## Next Steps
+
+1. **Test graphics and file I/O** with QB64pe source to identify any issues
+2. **Design event trapping system** — decide on architecture and implement
+3. **Implement `$EMBED`** — choose embedding mechanism and implement
+4. **Design library system** — if `$USELIBRARY` is needed for QB64pe compatibility
+
+---
+
+## Notes
+
+- Most of these features are "nice to have" rather than blockers
+- QB64pe may work without some of these if we handle missing features gracefully
+- Focus on testing with actual QB64pe source to identify what's truly needed

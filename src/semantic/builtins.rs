@@ -412,6 +412,8 @@ impl SemanticAnalyzer {
         self.register_builtin_function("_CWD$", &[], BasicType::String);
         self.register_builtin_function("_OS$", &[], BasicType::String);
         self.register_builtin_function("_STARTDIR$", &[], BasicType::String);
+        // Version$ - compiler version string (QB64 compatibility)
+        self.register_builtin_function("Version$", &[], BasicType::String);
 
         // Phase 2: String Enhancements
         // _INSTRREV can be called with 2 or 3 arguments:

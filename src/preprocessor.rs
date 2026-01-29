@@ -120,6 +120,8 @@ struct PreprocessContext {
     include_stack: Vec<PathBuf>,
     /// Set of canonical paths already visited (for cycle detection).
     visited: HashSet<PathBuf>,
+    /// Set of canonical paths included with $INCLUDEONCE (should not be included again).
+    include_once_visited: HashSet<PathBuf>,
     /// Current nesting depth.
     depth: usize,
 }
@@ -133,6 +135,7 @@ impl PreprocessContext {
         Self {
             include_stack: vec![canonical],
             visited,
+            include_once_visited: HashSet::new(),
             depth: 0,
         }
     }
@@ -373,8 +376,8 @@ fn preprocess_internal(
     let mut result = String::with_capacity(source.len());
 
     for line in source.lines() {
-        // Check for $INCLUDE directive
-        if let Some(include_path) = parse_include_directive(line) {
+        // Check for $INCLUDE or $INCLUDEONCE directive
+        if let Some((include_path, is_once)) = parse_include_directive(line) {
             // Resolve the path relative to the current file's directory
             let include_full_path = if Path::new(&include_path).is_absolute() {
                 PathBuf::from(&include_path)
@@ -382,12 +385,32 @@ fn preprocess_internal(
                 base_path.join(&include_path)
             };
 
+            // Canonicalize for comparison
+            let canonical = include_full_path
+                .canonicalize()
+                .unwrap_or(include_full_path.clone());
+
+            // For $INCLUDEONCE, check if already included
+            if is_once && context.include_once_visited.contains(&canonical) {
+                // Skip this include - already included once
+                result.push_str(&format!(
+                    "' >>> $INCLUDEONCE: '{}' (already included, skipping)\n",
+                    include_path
+                ));
+                continue;
+            }
+
             // Check if file exists
             if !include_full_path.exists() {
                 return Err(PreprocessorError::FileNotFound {
                     path: include_path,
                     from_file: context.current_file().to_path_buf(),
                 });
+            }
+
+            // For $INCLUDEONCE, mark as visited (before entering to prevent cycles)
+            if is_once {
+                context.include_once_visited.insert(canonical.clone());
             }
 
             // Enter the include (checks for cycles and depth)
@@ -408,7 +431,8 @@ fn preprocess_internal(
             let include_base = include_full_path.parent().unwrap_or(Path::new("."));
 
             // Add a comment marking the start of the include
-            result.push_str(&format!("' >>> $INCLUDE: '{}'\n", include_path));
+            let directive = if is_once { "$INCLUDEONCE" } else { "$INCLUDE" };
+            result.push_str(&format!("' >>> {}: '{}'\n", directive, include_path));
 
             // Recursively process the included content
             let processed = preprocess_internal(&include_source, include_base, context)?;
@@ -420,7 +444,8 @@ fn preprocess_internal(
             }
 
             // Add a comment marking the end of the include
-            result.push_str(&format!("' <<< END $INCLUDE: '{}'\n", include_path));
+            let directive = if is_once { "$INCLUDEONCE" } else { "$INCLUDE" };
+            result.push_str(&format!("' <<< END {}: '{}'\n", directive, include_path));
 
             // Exit the include
             context.exit_include();
@@ -438,14 +463,17 @@ fn preprocess_internal(
 /// Handles various formats:
 /// - `$INCLUDE: 'path'`
 /// - `$INCLUDE:'path'`
+/// - `$INCLUDEONCE: 'path'`
+/// - `$INCLUDEONCE:'path'`
 /// - `'$INCLUDE: 'path'` (comment prefix, still valid)
 ///
 /// Also normalizes Windows-style backslashes to forward slashes for cross-platform
 /// compatibility. This allows QB64pe source (which uses `global\version.bas`) to
 /// work on Linux/macOS.
 ///
-/// Returns `None` if the line is not an include directive.
-fn parse_include_directive(line: &str) -> Option<String> {
+/// Returns `None` if the line is not an include directive, or `Some((path, is_once))`
+/// where `is_once` is true for $INCLUDEONCE directives.
+fn parse_include_directive(line: &str) -> Option<(String, bool)> {
     let trimmed = line.trim();
 
     // Handle comment prefix (some BASIC dialects allow ' before $INCLUDE)
@@ -454,15 +482,17 @@ fn parse_include_directive(line: &str) -> Option<String> {
         .map(|s| s.trim())
         .unwrap_or(trimmed);
 
-    // Check for $INCLUDE (case-insensitive)
+    // Check for $INCLUDE or $INCLUDEONCE (case-insensitive)
     let upper = content.to_uppercase();
-    if !upper.starts_with("$INCLUDE") {
+    let is_once = upper.starts_with("$INCLUDEONCE");
+    if !is_once && !upper.starts_with("$INCLUDE") {
         return None;
     }
 
     // Find the path within quotes
-    // Format: $INCLUDE: 'path' or $INCLUDE:'path'
-    let rest = &content[8..]; // Skip "$INCLUDE"
+    // Format: $INCLUDE: 'path' or $INCLUDE:'path' or $INCLUDEONCE: 'path'
+    let skip_len = if is_once { 13 } else { 8 }; // "$INCLUDEONCE" or "$INCLUDE"
+    let rest = &content[skip_len..];
     let rest = rest.trim_start();
 
     // Skip optional colon
@@ -476,7 +506,7 @@ fn parse_include_directive(line: &str) -> Option<String> {
             if !path.is_empty() {
                 // Normalize Windows backslashes to forward slashes for cross-platform support
                 let normalized_path = path.replace('\\', "/");
-                return Some(normalized_path);
+                return Some((normalized_path, is_once));
             }
         }
     }
@@ -495,25 +525,25 @@ mod tests {
         // Standard format
         assert_eq!(
             parse_include_directive("$INCLUDE: 'myfile.bi'"),
-            Some("myfile.bi".to_string())
+            Some(("myfile.bi".to_string(), false))
         );
 
         // No space after colon
         assert_eq!(
             parse_include_directive("$INCLUDE:'utils.bas'"),
-            Some("utils.bas".to_string())
+            Some(("utils.bas".to_string(), false))
         );
 
         // Case insensitive
         assert_eq!(
             parse_include_directive("$include: 'test.bas'"),
-            Some("test.bas".to_string())
+            Some(("test.bas".to_string(), false))
         );
 
         // With leading whitespace
         assert_eq!(
             parse_include_directive("    $INCLUDE: 'header.bi'"),
-            Some("header.bi".to_string())
+            Some(("header.bi".to_string(), false))
         );
 
         // Not an include directive
@@ -523,19 +553,36 @@ mod tests {
         // Path with directory
         assert_eq!(
             parse_include_directive("$INCLUDE: 'inc/common.bi'"),
-            Some("inc/common.bi".to_string())
+            Some(("inc/common.bi".to_string(), false))
         );
 
         // Windows-style backslashes should be normalized to forward slashes
         assert_eq!(
             parse_include_directive("'$INCLUDE:'global\\version.bas'"),
-            Some("global/version.bas".to_string())
+            Some(("global/version.bas".to_string(), false))
         );
         assert_eq!(
             parse_include_directive(
                 "$INCLUDE: 'subs_functions\\extensions\\opengl\\opengl_global.bas'"
             ),
-            Some("subs_functions/extensions/opengl/opengl_global.bas".to_string())
+            Some((
+                "subs_functions/extensions/opengl/opengl_global.bas".to_string(),
+                false
+            ))
+        );
+
+        // $INCLUDEONCE format
+        assert_eq!(
+            parse_include_directive("$INCLUDEONCE: 'myfile.bi'"),
+            Some(("myfile.bi".to_string(), true))
+        );
+        assert_eq!(
+            parse_include_directive("$INCLUDEONCE:'utils.bas'"),
+            Some(("utils.bas".to_string(), true))
+        );
+        assert_eq!(
+            parse_include_directive("$includeonce: 'test.bas'"),
+            Some(("test.bas".to_string(), true))
         );
     }
 
