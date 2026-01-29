@@ -66,6 +66,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::codegen::error::CodeGenError;
 use crate::codegen::{CodeGenContext, CodeGenerator, GeneratedOutput};
+use crate::preprocessor::EmbeddedFile;
 use crate::semantic::typed_ir::{TypedProgram, TypedStatement, TypedStatementKind};
 use crate::write_code;
 use crate::writeln_code;
@@ -260,6 +261,8 @@ pub struct CBackend {
     source_file: Option<String>,
     /// Disable SHELL / _SHELLHIDE (compile-time error if used). See --no-shell and SECURITY_MODEL.md.
     no_shell: bool,
+    /// Embedded files from $EMBED directives.
+    embedded_files: Vec<EmbeddedFile>,
 }
 
 impl Default for CBackend {
@@ -276,6 +279,7 @@ impl CBackend {
             debug_enabled: false,
             source_file: None,
             no_shell: false,
+            embedded_files: Vec::new(),
         }
     }
 
@@ -286,6 +290,7 @@ impl CBackend {
             debug_enabled: false,
             source_file: None,
             no_shell: false,
+            embedded_files: Vec::new(),
         }
     }
 
@@ -311,6 +316,12 @@ impl CBackend {
     /// must not execute external commands. See `docs/SECURITY_MODEL.md`.
     pub fn with_no_shell(mut self, enabled: bool) -> Self {
         self.no_shell = enabled;
+        self
+    }
+
+    /// Sets embedded files from $EMBED directives.
+    pub fn with_embedded_files(mut self, embedded_files: Vec<EmbeddedFile>) -> Self {
+        self.embedded_files = embedded_files;
         self
     }
 
@@ -518,6 +529,152 @@ impl CodeGenerator for CBackend {
                     data_pool.values.len()
                 )
             );
+            collect_err!(ctx, writeln_code!(&mut output));
+        }
+
+        // Emit embedded files from $EMBED directives
+        if !self.embedded_files.is_empty() {
+            collect_err!(
+                ctx,
+                writeln_code!(&mut output, "/* Embedded Files from $EMBED */")
+            );
+
+            // Emit each embedded file as a static array
+            for (idx, embed) in self.embedded_files.iter().enumerate() {
+                let array_name = format!("_qb_embed_{}", idx);
+
+                // Emit the binary data array
+                collect_err!(
+                    ctx,
+                    write_code!(
+                        &mut output,
+                        "static const unsigned char {}[] = {{",
+                        array_name
+                    )
+                );
+
+                // Emit bytes in hex format (16 bytes per line for readability)
+                for (i, byte) in embed.data.iter().enumerate() {
+                    if i > 0 {
+                        collect_err!(ctx, write_code!(&mut output, ","));
+                    }
+                    if i % 16 == 0 {
+                        collect_err!(ctx, writeln_code!(&mut output));
+                        collect_err!(ctx, write_code!(&mut output, "    "));
+                    } else {
+                        collect_err!(ctx, write_code!(&mut output, " "));
+                    }
+                    collect_err!(ctx, write_code!(&mut output, "0x{:02X}", byte));
+                }
+                collect_err!(ctx, writeln_code!(&mut output));
+                collect_err!(ctx, writeln_code!(&mut output, "}};"));
+                collect_err!(
+                    ctx,
+                    writeln_code!(
+                        &mut output,
+                        "static const size_t {}_size = {};",
+                        array_name,
+                        embed.data.len()
+                    )
+                );
+            }
+
+            // Emit lookup structure
+            collect_err!(
+                ctx,
+                writeln_code!(
+                    &mut output,
+                    "typedef struct {{ const char* handle; const unsigned char* data; size_t size; }} _qb_embed_entry;"
+                )
+            );
+            collect_err!(
+                ctx,
+                write_code!(
+                    &mut output,
+                    "static const _qb_embed_entry _qb_embed_table[] = {{"
+                )
+            );
+            for (idx, embed) in self.embedded_files.iter().enumerate() {
+                if idx > 0 {
+                    collect_err!(ctx, write_code!(&mut output, ","));
+                }
+                collect_err!(ctx, writeln_code!(&mut output));
+                collect_err!(
+                    ctx,
+                    write_code!(
+                        &mut output,
+                        "    {{\"{}\", _qb_embed_{}, _qb_embed_{}_size}}",
+                        embed.handle,
+                        idx,
+                        idx
+                    )
+                );
+            }
+            collect_err!(ctx, writeln_code!(&mut output));
+            collect_err!(ctx, writeln_code!(&mut output, "}};"));
+            collect_err!(
+                ctx,
+                writeln_code!(
+                    &mut output,
+                    "static const size_t _qb_embed_count = {};",
+                    self.embedded_files.len()
+                )
+            );
+
+            // Emit qb_embedded() function to retrieve embedded data
+            collect_err!(
+                ctx,
+                writeln_code!(
+                    &mut output,
+                    "/* Runtime function to retrieve embedded file data */"
+                )
+            );
+            collect_err!(
+                ctx,
+                writeln_code!(
+                    &mut output,
+                    "static qb_string* qb_embedded(const char* handle) {{"
+                )
+            );
+            collect_err!(
+                ctx,
+                writeln_code!(&mut output, "    if (!handle) return qb_string_new(\"\");")
+            );
+            collect_err!(
+                ctx,
+                writeln_code!(
+                    &mut output,
+                    "    for (size_t i = 0; i < _qb_embed_count; i++) {{"
+                )
+            );
+            collect_err!(
+                ctx,
+                writeln_code!(
+                    &mut output,
+                    "        if (strcmp(_qb_embed_table[i].handle, handle) == 0) {{"
+                )
+            );
+            collect_err!(
+                ctx,
+                writeln_code!(
+                    &mut output,
+                    "            return qb_string_from_bytes(_qb_embed_table[i].data, _qb_embed_table[i].size);"
+                )
+            );
+            collect_err!(ctx, writeln_code!(&mut output, "        }}"));
+            collect_err!(ctx, writeln_code!(&mut output, "    }}"));
+            collect_err!(
+                ctx,
+                writeln_code!(
+                    &mut output,
+                    "    /* Handle not found - return empty string */"
+                )
+            );
+            collect_err!(
+                ctx,
+                writeln_code!(&mut output, "    return qb_string_new(\"\");")
+            );
+            collect_err!(ctx, writeln_code!(&mut output, "}}"));
             collect_err!(ctx, writeln_code!(&mut output));
         }
 

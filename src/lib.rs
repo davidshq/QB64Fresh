@@ -62,6 +62,8 @@ pub mod prelude {
     pub use crate::codegen::{CBackend, CodeGenError, CodeGenerator, GeneratedOutput, RuntimeMode};
     pub use crate::lexer::{Lexer, Token, TokenKind};
     pub use crate::parser::{ParseError, Parser};
-    pub use crate::preprocessor::{PreprocessorError, preprocess, preprocess_file};
+    pub use crate::preprocessor::{
+        EmbeddedFile, PreprocessResult, PreprocessorError, preprocess, preprocess_file,
+    };
     pub use crate::semantic::{BasicType, SemanticAnalyzer, SemanticError, TypedProgram};
 }
