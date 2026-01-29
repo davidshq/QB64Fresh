@@ -628,3 +628,68 @@ impl<'a> TypeChecker<'a> {
         }
     }
 }
+
+/// Dispatch function for file I/O statements.
+pub(super) fn check_io_stmt(
+    checker: &mut super::super::TypeChecker,
+    kind: &crate::ast::StatementKind,
+    span: crate::ast::Span,
+) -> crate::semantic::typed_ir::TypedStatement {
+    match kind {
+        crate::ast::StatementKind::OpenFile {
+            filename,
+            mode,
+            access,
+            lock,
+            file_num,
+            record_len,
+        } => checker.check_open_file(
+            filename,
+            *mode,
+            *access,
+            *lock,
+            file_num,
+            record_len.as_ref(),
+            span,
+        ),
+        crate::ast::StatementKind::OpenFileLegacy {
+            mode_expr,
+            file_num,
+            filename,
+            record_len,
+        } => {
+            checker.check_open_file_legacy(mode_expr, file_num, filename, record_len.as_ref(), span)
+        }
+        crate::ast::StatementKind::CloseFile { file_nums } => {
+            checker.check_close_file(file_nums, span)
+        }
+        crate::ast::StatementKind::FilePrint {
+            file_num,
+            values,
+            newline,
+        } => checker.check_file_print(file_num, values, *newline, span),
+        crate::ast::StatementKind::FileWrite { file_num, values } => {
+            checker.check_file_write(file_num, values, span)
+        }
+        crate::ast::StatementKind::FileInput { file_num, targets } => {
+            checker.check_file_input(file_num, targets, span)
+        }
+        crate::ast::StatementKind::FileLineInput { file_num, target } => {
+            checker.check_file_line_input(file_num, target, span)
+        }
+        crate::ast::StatementKind::FileGet {
+            file_num,
+            position,
+            target,
+        } => checker.check_file_get(file_num, position.as_ref(), target, span),
+        crate::ast::StatementKind::FilePut {
+            file_num,
+            position,
+            target,
+        } => checker.check_file_put(file_num, position.as_ref(), target, span),
+        crate::ast::StatementKind::FileSeek { file_num, position } => {
+            checker.check_file_seek(file_num, position, span)
+        }
+        _ => unreachable!("Not a file I/O statement"),
+    }
+}

@@ -268,3 +268,35 @@ impl<'a> TypeChecker<'a> {
         )
     }
 }
+
+/// Dispatch function for error handling and computed control flow statements.
+pub(super) fn check_error_flow_stmt(
+    checker: &mut super::super::TypeChecker,
+    kind: &crate::ast::StatementKind,
+    span: crate::ast::Span,
+) -> crate::semantic::typed_ir::TypedStatement {
+    match kind {
+        crate::ast::StatementKind::OnErrorGoto { target } => {
+            checker.check_on_error_goto(target, span)
+        }
+        crate::ast::StatementKind::OnErrorResumeNext => checker.check_on_error_resume_next(span),
+        crate::ast::StatementKind::ResumeStmt { target } => checker.check_resume_stmt(target, span),
+        crate::ast::StatementKind::ErrorStmt { code } => checker.check_error_stmt(code, span),
+        crate::ast::StatementKind::OnGoto { selector, targets } => {
+            checker.check_on_goto(selector, targets, span)
+        }
+        crate::ast::StatementKind::OnGosub { selector, targets } => {
+            checker.check_on_gosub(selector, targets, span)
+        }
+        crate::ast::StatementKind::DefFn { name, params, body } => {
+            checker.check_def_fn(name, params, body, span)
+        }
+        crate::ast::StatementKind::DefFnMultiLine { name, params, body } => {
+            checker.check_def_fn_multi_line(name, params, body, span)
+        }
+        crate::ast::StatementKind::DefSeg { segment } => {
+            checker.check_def_seg(segment.as_ref(), span)
+        }
+        _ => unreachable!("Not an error/flow statement"),
+    }
+}

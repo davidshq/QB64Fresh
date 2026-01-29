@@ -9,12 +9,17 @@
 //!
 //! - `mod.rs` (this file) - Core `StmtEmitter` struct and main `emit_stmt()` dispatcher
 //! - `assignments.rs` - Assignment statement helpers
+//! - `audio.rs` - Audio statement code generation (BEEP, SOUND, PLAY, _SND*)
 //! - `control_flow.rs` - IF, FOR, WHILE, DO, SELECT CASE
 //! - `data.rs` - DATA/READ/RESTORE handling
 //! - `def_fn.rs` - DEF FN single-line and multi-line functions
 //! - `definitions.rs` - DIM, REDIM, SUB/FUNCTION definitions, DECLARE LIBRARY
 //! - `error_jump.rs` - Error handling (ON ERROR) and computed jumps (ON...GOTO/GOSUB)
+//! - `graphics.rs` - Graphics statement code generation (SCREEN, PSET, LINE, CIRCLE, etc.)
 //! - `io.rs` - PRINT and INPUT helpers
+//! - `meta.rs` - Meta directive code generation ($IF, $LET, $CHECKING, etc.)
+//! - `misc.rs` - Miscellaneous statement code generation (SWAP, CONTINUE, RUN, etc.)
+//! - `system.rs` - System integration statement code generation (KILL, RENAME, SHELL, etc.)
 //!
 //! # Loop Handling
 //!
@@ -22,29 +27,32 @@
 //! type (FOR, WHILE, DO) generates a break label that EXIT can target.
 
 mod assignments;
+mod audio;
 mod control_flow;
 mod data;
 mod def_fn;
 mod definitions;
 mod error_jump;
+mod graphics;
 mod io;
+mod meta;
+mod misc;
+mod system;
 
 // Re-export standalone functions for use by parent module
 pub(in crate::codegen::c_backend) use definitions::{emit_dynamic_library_section, emit_params};
 
 use std::collections::{HashMap, HashSet};
 
-use crate::ast::{
-    AllowFullScreenMode, EventControlMode, ExitType, FullScreenMode, ImageScaleMode, PrintSeparator,
-};
-use crate::codegen::error::{CodeGenError, CodeGenErrorKind};
+use crate::ast::{AllowFullScreenMode, EventControlMode, ExitType, FullScreenMode, PrintSeparator};
+use crate::codegen::error::CodeGenError;
 use crate::semantic::typed_ir::{
     TypedExprKind, TypedInputTarget, TypedStatement, TypedStatementKind,
 };
 use crate::semantic::types::BasicType;
 use crate::writeln_code;
 
-use super::expr::{emit_string_data_access, escape_string, unwrap_qb_str_from_c};
+use super::expr::{escape_string, unwrap_qb_str_from_c};
 use super::types::{c_identifier, c_type, default_init};
 
 /// Context for the current loop (for EXIT statement handling).
@@ -1357,45 +1365,9 @@ impl StmtEmitter {
                 writeln_code!(output, "{}/* $SCREENSHOW */", indent)?;
             }
 
-            TypedStatementKind::Swap { left, right } => {
-                let mut left_code = self.emit_expr(left)?;
-                let mut right_code = self.emit_expr(right)?;
-                let temp_var = self.next_label("swap_temp");
-
-                // Fixed-length strings need special handling (C arrays can't be assigned directly)
-                if let BasicType::FixedString(n) = &left.basic_type {
-                    // For fixed-length strings, use strcpy for the swap
-                    // Unwrap qb_str_from_c() wrappers since strcpy expects char* (array names)
-                    use crate::codegen::c_backend::expr::unwrap_qb_str_from_c;
-                    left_code = unwrap_qb_str_from_c(&left_code);
-                    right_code = unwrap_qb_str_from_c(&right_code);
-                    writeln_code!(output, "{}{{ char {}[{}];", indent, temp_var, n + 1)?;
-                    writeln_code!(output, "{}    strcpy({}, {});", indent, temp_var, left_code)?;
-                    writeln_code!(
-                        output,
-                        "{}    strcpy({}, {});",
-                        indent,
-                        left_code,
-                        right_code
-                    )?;
-                    writeln_code!(
-                        output,
-                        "{}    strcpy({}, {}); }}",
-                        indent,
-                        right_code,
-                        temp_var
-                    )?;
-                } else {
-                    let c_ty = c_type(&left.basic_type);
-                    writeln_code!(output, "{}{} {} = {};", indent, c_ty, temp_var, left_code)?;
-                    writeln_code!(output, "{}{} = {};", indent, left_code, right_code)?;
-                    writeln_code!(output, "{}{} = {};", indent, right_code, temp_var)?;
-                }
-            }
-
-            TypedStatementKind::Continue { continue_type } => {
-                let _ = continue_type;
-                writeln_code!(output, "{}continue;", indent)?;
+            // Miscellaneous statements (part 1)
+            k @ (TypedStatementKind::Swap { .. } | TypedStatementKind::Continue { .. }) => {
+                misc::emit_misc_stmt(self, k, &indent, output)?;
             }
 
             TypedStatementKind::TypeDefinition { .. } => {
@@ -1634,1110 +1606,77 @@ impl StmtEmitter {
                 }
             }
 
-            // ==================== Graphics Statements ====================
-            TypedStatementKind::Screen {
-                mode,
-                color_switch,
-                active_page,
-                visual_page,
-            } => {
-                // SCREEN [mode][,[colorswitch]][,[apage]][,[vpage]]
-                let mode_code = mode
-                    .as_ref()
-                    .map(|e| self.emit_expr(e))
-                    .transpose()?
-                    .unwrap_or_else(|| "-1".to_string());
-                let color_code = color_switch
-                    .as_ref()
-                    .map(|e| self.emit_expr(e))
-                    .transpose()?
-                    .unwrap_or_else(|| "-1".to_string());
-                let apage_code = active_page
-                    .as_ref()
-                    .map(|e| self.emit_expr(e))
-                    .transpose()?
-                    .unwrap_or_else(|| "-1".to_string());
-                let vpage_code = visual_page
-                    .as_ref()
-                    .map(|e| self.emit_expr(e))
-                    .transpose()?
-                    .unwrap_or_else(|| "-1".to_string());
-                writeln_code!(
-                    output,
-                    "{}qb_gfx_screen((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){});",
-                    indent,
-                    mode_code,
-                    color_code,
-                    apage_code,
-                    vpage_code
-                )?;
+            // Graphics statements
+            k @ (TypedStatementKind::Screen { .. }
+            | TypedStatementKind::Cls { .. }
+            | TypedStatementKind::Color { .. }
+            | TypedStatementKind::Locate { .. }
+            | TypedStatementKind::Pset { .. }
+            | TypedStatementKind::Preset { .. }
+            | TypedStatementKind::Line { .. }
+            | TypedStatementKind::Circle { .. }
+            | TypedStatementKind::Paint { .. }
+            | TypedStatementKind::GfxDisplay
+            | TypedStatementKind::ControlChr { .. }
+            | TypedStatementKind::MapUnicode { .. }
+            | TypedStatementKind::GfxResize { .. }
+            | TypedStatementKind::Palette { .. }
+            | TypedStatementKind::Pcopy { .. }
+            | TypedStatementKind::Width { .. }
+            | TypedStatementKind::View { .. }
+            | TypedStatementKind::ViewPrint { .. }
+            | TypedStatementKind::WindowCoords { .. }
+            | TypedStatementKind::DrawCmd { .. }
+            | TypedStatementKind::GraphicsGet { .. }
+            | TypedStatementKind::GraphicsPut { .. }
+            | TypedStatementKind::FreeImage { .. }
+            | TypedStatementKind::PutImage { .. }
+            | TypedStatementKind::SourceImg { .. }
+            | TypedStatementKind::DestImg { .. }
+            | TypedStatementKind::PrintStringStmt { .. }
+            | TypedStatementKind::AutoDisplay { .. }) => {
+                graphics::emit_graphics_stmt(self, k, &indent, output)?;
             }
 
-            TypedStatementKind::Cls { mode } => {
-                if let Some(mode_expr) = mode {
-                    let mode_code = self.emit_expr(mode_expr)?;
-                    writeln_code!(output, "{}qb_gfx_cls_mode((int32_t){});", indent, mode_code)?;
-                } else {
-                    writeln_code!(output, "{}qb_gfx_cls();", indent)?;
-                }
+            // Audio statements
+            k @ (TypedStatementKind::Beep
+            | TypedStatementKind::SoundStmt { .. }
+            | TypedStatementKind::PlayStmt { .. }
+            | TypedStatementKind::SndClose { .. }
+            | TypedStatementKind::SndPlay { .. }
+            | TypedStatementKind::SndStop { .. }
+            | TypedStatementKind::SndPause { .. }
+            | TypedStatementKind::SndLoop { .. }
+            | TypedStatementKind::SndVol { .. }
+            | TypedStatementKind::SndBal { .. }
+            | TypedStatementKind::SndRaw { .. }
+            | TypedStatementKind::SndPlayFile { .. }
+            | TypedStatementKind::SndPlayCopy { .. }
+            | TypedStatementKind::SndSetPos { .. }) => {
+                audio::emit_audio_stmt(self, k, &indent, output)?;
             }
 
-            TypedStatementKind::Color {
-                foreground,
-                background,
-                border,
-            } => {
-                // Use -1 as sentinel for "unchanged" - runtime will check this
-                let fg_code = foreground
-                    .as_ref()
-                    .map(|e| self.emit_expr(e))
-                    .transpose()?
-                    .unwrap_or_else(|| "-1".to_string());
-                let bg_code = background
-                    .as_ref()
-                    .map(|e| self.emit_expr(e))
-                    .transpose()?
-                    .unwrap_or_else(|| "-1".to_string());
-                // Border is ignored in modern systems (was CGA/EGA text mode only)
-                // We accept it for compatibility but don't use it
-                let _border_code = border.as_ref().map(|e| self.emit_expr(e)).transpose()?;
-                writeln_code!(
-                    output,
-                    "{}qb_gfx_color((int32_t){}, (int32_t){});",
-                    indent,
-                    fg_code,
-                    bg_code
-                )?;
-            }
-
-            TypedStatementKind::Locate { row, col } => {
-                // LOCATE with optional parameters - use -1 to indicate "unchanged"
-                let row_code = row
-                    .as_ref()
-                    .map(|e| self.emit_expr(e))
-                    .transpose()?
-                    .unwrap_or("-1".to_string());
-                let col_code = col
-                    .as_ref()
-                    .map(|e| self.emit_expr(e))
-                    .transpose()?
-                    .unwrap_or("-1".to_string());
-                writeln_code!(
-                    output,
-                    "{}qb_gfx_locate((int32_t){}, (int32_t){});",
-                    indent,
-                    row_code,
-                    col_code
-                )?;
-            }
-
-            TypedStatementKind::Pset { step, x, y, color } => {
-                let x_code = self.emit_expr(x)?;
-                let y_code = self.emit_expr(y)?;
-                let step_int = if *step { 1 } else { 0 };
-                if let Some(c) = color {
-                    let c_code = self.emit_expr(c)?;
-                    writeln_code!(
-                        output,
-                        "{}qb_gfx_pset_step((int32_t){}, (int32_t){}, (uint32_t){}, {});",
-                        indent,
-                        x_code,
-                        y_code,
-                        c_code,
-                        step_int
-                    )?;
-                } else {
-                    // Use current foreground color (pass -1 to signal "use current")
-                    writeln_code!(
-                        output,
-                        "{}qb_gfx_pset_step((int32_t){}, (int32_t){}, 0xFFFFFFFF, {});",
-                        indent,
-                        x_code,
-                        y_code,
-                        step_int
-                    )?;
-                }
-            }
-
-            TypedStatementKind::Preset { step, x, y } => {
-                let x_code = self.emit_expr(x)?;
-                let y_code = self.emit_expr(y)?;
-                let step_int = if *step { 1 } else { 0 };
-                // PRESET plots in background color - pass 0 (black) by default
-                writeln_code!(
-                    output,
-                    "{}qb_gfx_pset_step((int32_t){}, (int32_t){}, 0xFF000000, {});",
-                    indent,
-                    x_code,
-                    y_code,
-                    step_int
-                )?;
-            }
-
-            TypedStatementKind::Line {
-                x1,
-                y1,
-                x2,
-                y2,
-                step2,
-                color,
-                box_style,
-                style,
-            } => {
-                let x2_code = self.emit_expr(x2)?;
-                let y2_code = self.emit_expr(y2)?;
-                let color_code = if let Some(c) = color {
-                    self.emit_expr(c)?
-                } else {
-                    "0xFFFFFFFF".to_string() // Use current foreground
-                };
-
-                // Handle optional start coordinates (use 0,0 as default for now)
-                let x1_code = if let Some(e) = x1 {
-                    self.emit_expr(e)?
-                } else {
-                    "0".to_string()
-                };
-                let y1_code = if let Some(e) = y1 {
-                    self.emit_expr(e)?
-                } else {
-                    "0".to_string()
-                };
-
-                // In LINE statement, STEP only applies to the endpoint (step2)
-                // step1 = 0 (first point is absolute), step2 = whether endpoint is relative
-                let step2_flag = if *step2 { "1" } else { "0" };
-
-                // Style pattern: 16-bit value specifying line pattern (e.g., 0xCCCC for dashed)
-                // - 0xFFFF = solid line (no pattern)
-                // - Other values = bit pattern that repeats along the line
-                // Only valid with box outlines (B), ignored for filled boxes (BF) and plain lines
-                // The runtime will apply the pattern for box outlines, ignore it for others
-                let style_code = if let Some(s) = style {
-                    // Cast to uint16_t to ensure proper type and mask to 16 bits
-                    // The style pattern is a 16-bit value where each bit represents
-                    // whether a pixel should be drawn (1) or skipped (0)
-                    format!("(uint16_t)(({}) & 0xFFFF)", self.emit_expr(s)?)
-                } else {
-                    "0xFFFF".to_string() // No style = solid line
-                };
-
-                match box_style {
-                    None => {
-                        // Plain line: style is ignored, but we pass it anyway for API consistency
-                        writeln_code!(
-                            output,
-                            "{}qb_gfx_line_step((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (uint32_t){}, 0, {}, {});",
-                            indent,
-                            x1_code,
-                            y1_code,
-                            x2_code,
-                            y2_code,
-                            color_code,
-                            step2_flag,
-                            style_code
-                        )?;
-                    }
-                    Some(false) => {
-                        // Box (outline): style pattern applies
-                        writeln_code!(
-                            output,
-                            "{}qb_gfx_box_step((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (uint32_t){}, 0, 0, {}, {});",
-                            indent,
-                            x1_code,
-                            y1_code,
-                            x2_code,
-                            y2_code,
-                            color_code,
-                            step2_flag,
-                            style_code
-                        )?;
-                    }
-                    Some(true) => {
-                        // Filled box: style is ignored, but we pass it anyway for API consistency
-                        writeln_code!(
-                            output,
-                            "{}qb_gfx_box_step((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (uint32_t){}, 1, 0, {}, {});",
-                            indent,
-                            x1_code,
-                            y1_code,
-                            x2_code,
-                            y2_code,
-                            color_code,
-                            step2_flag,
-                            style_code
-                        )?;
-                    }
-                }
-            }
-
-            TypedStatementKind::Circle {
-                step,
-                x,
-                y,
-                radius,
-                color,
-                filled,
-            } => {
-                let x_code = self.emit_expr(x)?;
-                let y_code = self.emit_expr(y)?;
-                let r_code = self.emit_expr(radius)?;
-                let color_code = if let Some(c) = color {
-                    self.emit_expr(c)?
-                } else {
-                    "0xFFFFFFFF".to_string()
-                };
-                let filled_int = if *filled { 1 } else { 0 };
-                let step_int = if *step { 1 } else { 0 };
-                writeln_code!(
-                    output,
-                    "{}qb_gfx_circle_step((int32_t){}, (int32_t){}, (int32_t){}, (uint32_t){}, {}, {});",
-                    indent,
-                    x_code,
-                    y_code,
-                    r_code,
-                    color_code,
-                    filled_int,
-                    step_int
-                )?;
-            }
-
-            TypedStatementKind::Paint {
-                step,
-                x,
-                y,
-                color,
-                border,
-            } => {
-                let x_code = self.emit_expr(x)?;
-                let y_code = self.emit_expr(y)?;
-                let color_code = if let Some(c) = color {
-                    self.emit_expr(c)?
-                } else {
-                    "0xFFFFFFFF".to_string()
-                };
-                let border_code = if let Some(b) = border {
-                    self.emit_expr(b)?
-                } else {
-                    color_code.clone() // Default border = fill color
-                };
-                let step_int = if *step { 1 } else { 0 };
-                writeln_code!(
-                    output,
-                    "{}qb_gfx_paint_step((int32_t){}, (int32_t){}, (uint32_t){}, (uint32_t){}, {});",
-                    indent,
-                    x_code,
-                    y_code,
-                    color_code,
-                    border_code,
-                    step_int
-                )?;
-            }
-
-            TypedStatementKind::GfxDisplay => {
-                writeln_code!(output, "{}qb_gfx_display();", indent)?;
-            }
-
-            TypedStatementKind::ControlChr { enabled } => {
-                writeln_code!(
-                    output,
-                    "{}qb_controlchr({});",
-                    indent,
-                    if *enabled { "1" } else { "0" }
-                )?;
-            }
-
-            TypedStatementKind::MapUnicode {
-                unicode_value,
-                char_position,
-            } => {
-                let unicode_code = self.emit_expr(unicode_value)?;
-                let char_code = self.emit_expr(char_position)?;
-                writeln_code!(
-                    output,
-                    "{}qb_mapunicode((int32_t){}, (int32_t){});",
-                    indent,
-                    unicode_code,
-                    char_code
-                )?;
-            }
-
-            TypedStatementKind::GfxResize { enabled } => {
-                writeln_code!(
-                    output,
-                    "{}qb_gfx_resize({});",
-                    indent,
-                    if *enabled { "1" } else { "0" }
-                )?;
-            }
-
-            TypedStatementKind::Palette { attribute, color } => {
-                match (attribute, color) {
-                    (Some(attr), Some(col)) => {
-                        let attr_code = self.emit_expr(attr)?;
-                        let col_code = self.emit_expr(col)?;
-                        writeln_code!(
-                            output,
-                            "{}qb_gfx_palette((int32_t){}, (uint32_t){});",
-                            indent,
-                            attr_code,
-                            col_code
-                        )?;
-                    }
-                    _ => {
-                        // PALETTE without arguments - reset all palette entries
-                        writeln_code!(output, "{}qb_gfx_palette_reset();", indent)?;
-                    }
-                }
-            }
-
-            TypedStatementKind::Pcopy { source, dest } => {
-                let src_code = self.emit_expr(source)?;
-                let dst_code = self.emit_expr(dest)?;
-                writeln_code!(
-                    output,
-                    "{}qb_gfx_pcopy((int32_t){}, (int32_t){});",
-                    indent,
-                    src_code,
-                    dst_code
-                )?;
-            }
-
-            // ==================== Additional Graphics Statements ====================
-            TypedStatementKind::Width { columns, rows } => {
-                let cols_code = self.emit_expr(columns)?;
-                if let Some(r) = rows {
-                    let rows_code = self.emit_expr(r)?;
-                    writeln_code!(
-                        output,
-                        "{}qb_gfx_set_width((uint32_t){}, (uint32_t){});",
-                        indent,
-                        cols_code,
-                        rows_code
-                    )?;
-                } else {
-                    writeln_code!(
-                        output,
-                        "{}qb_gfx_set_width((uint32_t){}, 0);",
-                        indent,
-                        cols_code
-                    )?;
-                }
-            }
-
-            TypedStatementKind::View {
-                screen,
-                coords,
-                fill_color,
-                border_color,
-            } => {
-                let screen_int = if *screen { 1 } else { 0 };
-                if let Some(c) = coords {
-                    let x1 = self.emit_expr(&c.x1)?;
-                    let y1 = self.emit_expr(&c.y1)?;
-                    let x2 = self.emit_expr(&c.x2)?;
-                    let y2 = self.emit_expr(&c.y2)?;
-                    let fill = fill_color
-                        .as_ref()
-                        .map(|e| self.emit_expr(e))
-                        .transpose()?
-                        .unwrap_or_else(|| "-1".to_string());
-                    let border = border_color
-                        .as_ref()
-                        .map(|e| self.emit_expr(e))
-                        .transpose()?
-                        .unwrap_or_else(|| "-1".to_string());
-                    writeln_code!(
-                        output,
-                        "{}qb_gfx_view({}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){});",
-                        indent,
-                        screen_int,
-                        x1,
-                        y1,
-                        x2,
-                        y2,
-                        fill,
-                        border
-                    )?;
-                } else {
-                    // Reset viewport
-                    writeln_code!(output, "{}qb_gfx_view_reset();", indent)?;
-                }
-            }
-
-            TypedStatementKind::ViewPrint { top, bottom } => {
-                if let (Some(t), Some(b)) = (top, bottom) {
-                    let top_code = self.emit_expr(t)?;
-                    let bottom_code = self.emit_expr(b)?;
-                    writeln_code!(
-                        output,
-                        "{}qb_view_print((int32_t){}, (int32_t){});",
-                        indent,
-                        top_code,
-                        bottom_code
-                    )?;
-                } else {
-                    // Reset text viewport
-                    writeln_code!(output, "{}qb_view_print_reset();", indent)?;
-                }
-            }
-
-            TypedStatementKind::WindowCoords { screen, coords } => {
-                let screen_int = if *screen { 1 } else { 0 };
-                if let Some(c) = coords {
-                    let x1 = self.emit_expr(&c.x1)?;
-                    let y1 = self.emit_expr(&c.y1)?;
-                    let x2 = self.emit_expr(&c.x2)?;
-                    let y2 = self.emit_expr(&c.y2)?;
-                    writeln_code!(
-                        output,
-                        "{}qb_gfx_window({}, (double){}, (double){}, (double){}, (double){});",
-                        indent,
-                        screen_int,
-                        x1,
-                        y1,
-                        x2,
-                        y2
-                    )?;
-                } else {
-                    // Reset window coordinates
-                    writeln_code!(output, "{}qb_gfx_window_reset();", indent)?;
-                }
-            }
-
-            TypedStatementKind::DrawCmd { commands } => {
-                let cmd_code = self.emit_expr(commands)?;
-                writeln_code!(output, "{}qb_gfx_draw({});", indent, cmd_code)?;
-            }
-
-            TypedStatementKind::GraphicsGet {
-                step1,
-                x1,
-                y1,
-                step2,
-                x2,
-                y2,
-                array_name,
-                array_indices,
-            } => {
-                let x1_code = self.emit_expr(x1)?;
-                let y1_code = self.emit_expr(y1)?;
-                let x2_code = self.emit_expr(x2)?;
-                let y2_code = self.emit_expr(y2)?;
-                let arr_name = c_identifier(array_name);
-
-                // Calculate array pointer - either base or with offset
-                let arr_ptr = if array_indices.is_empty() {
-                    arr_name.clone()
-                } else {
-                    // For multi-dimensional arrays, generate index expression
-                    let indices: Vec<String> = array_indices
-                        .iter()
-                        .map(|e| self.emit_expr(e))
-                        .collect::<Result<_, _>>()?;
-                    format!("&{}[{}]", arr_name, indices.join("]["))
-                };
-
-                // Generate appropriate function call based on step flags
-                // step1 affects (x1, y1), step2 affects (x2, y2)
-                let func_name = match (*step1, *step2) {
-                    (false, false) => "qb_gfx_get",
-                    (false, true) => "qb_gfx_get_step2",
-                    (true, false) => "qb_gfx_get_step1",
-                    (true, true) => "qb_gfx_get_step_both",
-                };
-                writeln_code!(
-                    output,
-                    "{}{}((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, {});",
-                    indent,
-                    func_name,
-                    x1_code,
-                    y1_code,
-                    x2_code,
-                    y2_code,
-                    arr_ptr
-                )?;
-            }
-
-            TypedStatementKind::GraphicsPut {
-                x,
-                y,
-                step,
-                array_name,
-                array_indices,
-                clip,
-                action,
-                transparent_color,
-            } => {
-                use crate::ast::PutAction;
-
-                let x_code = self.emit_expr(x)?;
-                let y_code = self.emit_expr(y)?;
-                let arr_name = c_identifier(array_name);
-
-                // Calculate array pointer
-                let arr_ptr = if array_indices.is_empty() {
-                    arr_name.clone()
-                } else {
-                    // For multi-dimensional arrays, generate index expression
-                    let indices: Vec<String> = array_indices
-                        .iter()
-                        .map(|e| self.emit_expr(e))
-                        .collect::<Result<_, _>>()?;
-                    format!("&{}[{}]", arr_name, indices.join("]["))
-                };
-
-                // Map action to C constant
-                let action_code = match action {
-                    PutAction::Xor => "QB_PUT_XOR",
-                    PutAction::Pset => "QB_PUT_PSET",
-                    PutAction::Preset => "QB_PUT_PRESET",
-                    PutAction::And => "QB_PUT_AND",
-                    PutAction::Or => "QB_PUT_OR",
-                };
-
-                // QB64 extension: _CLIP with optional transparent color
-                let trans_code = if let Some(tc) = transparent_color {
-                    self.emit_expr(tc)?
-                } else {
-                    "-1".to_string() // No transparent color
-                };
-
-                let clip_flag = if *clip { "1" } else { "0" };
-
-                if *step {
-                    writeln_code!(
-                        output,
-                        "{}qb_gfx_put_step((int32_t){}, (int32_t){}, {}, {}, {}, (int32_t){});",
-                        indent,
-                        x_code,
-                        y_code,
-                        arr_ptr,
-                        action_code,
-                        clip_flag,
-                        trans_code
-                    )?;
-                } else {
-                    writeln_code!(
-                        output,
-                        "{}qb_gfx_put((int32_t){}, (int32_t){}, {}, {}, {}, (int32_t){});",
-                        indent,
-                        x_code,
-                        y_code,
-                        arr_ptr,
-                        action_code,
-                        clip_flag,
-                        trans_code
-                    )?;
-                }
-            }
-
-            // ==================== QB64 Graphics Extensions ====================
-            TypedStatementKind::FreeImage { handle } => {
-                let h_code = self.emit_expr(handle)?;
-                writeln_code!(output, "{}qb_gfx_freeimage((int32_t){});", indent, h_code)?;
-            }
-
-            TypedStatementKind::PutImage {
-                dest_coords,
-                source,
-                dest,
-                source_coords,
-                scale_mode,
-            } => {
-                // Generate _PUTIMAGE call with all optional parameters
-                let src_handle = source
-                    .as_ref()
-                    .map(|e| self.emit_expr(e))
-                    .transpose()?
-                    .unwrap_or_else(|| "-1".to_string());
-                let dst_handle = dest
-                    .as_ref()
-                    .map(|e| self.emit_expr(e))
-                    .transpose()?
-                    .unwrap_or_else(|| "-1".to_string());
-
-                // Scale mode: 0 = default, 1 = smooth (bilinear), 2 = stretch (nearest-neighbor)
-                let scale_code = match scale_mode {
-                    ImageScaleMode::Default => "0",
-                    ImageScaleMode::Smooth => "1",
-                    ImageScaleMode::Stretch => "2",
-                };
-
-                if let (Some(dc), Some(sc)) = (dest_coords, source_coords) {
-                    let dx1 = self.emit_expr(&dc.x1)?;
-                    let dy1 = self.emit_expr(&dc.y1)?;
-                    let dx2 = self.emit_expr(&dc.x2)?;
-                    let dy2 = self.emit_expr(&dc.y2)?;
-                    let sx1 = self.emit_expr(&sc.x1)?;
-                    let sy1 = self.emit_expr(&sc.y1)?;
-                    let sx2 = self.emit_expr(&sc.x2)?;
-                    let sy2 = self.emit_expr(&sc.y2)?;
-                    writeln_code!(
-                        output,
-                        "{}qb_gfx_putimage_full((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, {});",
-                        indent,
-                        dx1,
-                        dy1,
-                        dx2,
-                        dy2,
-                        src_handle,
-                        dst_handle,
-                        sx1,
-                        sy1,
-                        sx2,
-                        sy2,
-                        scale_code
-                    )?;
-                } else if let Some(dc) = dest_coords {
-                    let dx1 = self.emit_expr(&dc.x1)?;
-                    let dy1 = self.emit_expr(&dc.y1)?;
-                    let dx2 = self.emit_expr(&dc.x2)?;
-                    let dy2 = self.emit_expr(&dc.y2)?;
-                    writeln_code!(
-                        output,
-                        "{}qb_gfx_putimage((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, {});",
-                        indent,
-                        dx1,
-                        dy1,
-                        dx2,
-                        dy2,
-                        src_handle,
-                        dst_handle,
-                        scale_code
-                    )?;
-                } else {
-                    writeln_code!(
-                        output,
-                        "{}qb_gfx_putimage_simple((int32_t){}, (int32_t){}, {});",
-                        indent,
-                        src_handle,
-                        dst_handle,
-                        scale_code
-                    )?;
-                }
-            }
-
-            TypedStatementKind::SourceImg { handle } => {
-                let h_code = self.emit_expr(handle)?;
-                writeln_code!(output, "{}qb_gfx_source((int32_t){});", indent, h_code)?;
-            }
-
-            TypedStatementKind::DestImg { handle } => {
-                let h_code = self.emit_expr(handle)?;
-                writeln_code!(output, "{}qb_gfx_dest((int32_t){});", indent, h_code)?;
-            }
-
-            TypedStatementKind::PrintStringStmt { x, y, text } => {
-                let x_code = self.emit_expr(x)?;
-                let y_code = self.emit_expr(y)?;
-                let text_code = self.emit_expr(text)?;
-                // qb_gfx_printstring expects const char*, not qb_string*
-                let text_data =
-                    emit_string_data_access(text, &text_code, &self.config.runtime_mode);
-                writeln_code!(
-                    output,
-                    "{}qb_gfx_printstring((int32_t){}, (int32_t){}, {});",
-                    indent,
-                    x_code,
-                    y_code,
-                    text_data
-                )?;
-            }
-
-            TypedStatementKind::AutoDisplay { enabled } => {
-                let enable_int = if *enabled { 1 } else { 0 };
-                writeln_code!(output, "{}qb_gfx_autodisplay({});", indent, enable_int)?;
-            }
-
-            // ==================== Audio Statements ====================
-            TypedStatementKind::Beep => {
-                writeln_code!(output, "{}qb_beep();", indent)?;
-            }
-
-            TypedStatementKind::SoundStmt {
-                frequency,
-                duration,
-            } => {
-                let freq_code = self.emit_expr(frequency)?;
-                let dur_code = self.emit_expr(duration)?;
-                writeln_code!(
-                    output,
-                    "{}qb_sound((double){}, (double){});",
-                    indent,
-                    freq_code,
-                    dur_code
-                )?;
-            }
-
-            TypedStatementKind::PlayStmt { commands } => {
-                let cmd_code = self.emit_expr(commands)?;
-                writeln_code!(output, "{}qb_play({});", indent, cmd_code)?;
-            }
-
-            TypedStatementKind::SndClose { handle } => {
-                let h_code = self.emit_expr(handle)?;
-                writeln_code!(output, "{}qb_sndclose((int32_t){});", indent, h_code)?;
-            }
-
-            TypedStatementKind::SndPlay { handle } => {
-                let h_code = self.emit_expr(handle)?;
-                writeln_code!(output, "{}qb_sndplay((int32_t){});", indent, h_code)?;
-            }
-
-            TypedStatementKind::SndStop { handle } => {
-                let h_code = self.emit_expr(handle)?;
-                writeln_code!(output, "{}qb_sndstop((int32_t){});", indent, h_code)?;
-            }
-
-            TypedStatementKind::SndPause { handle } => {
-                let h_code = self.emit_expr(handle)?;
-                writeln_code!(output, "{}qb_sndpause((int32_t){});", indent, h_code)?;
-            }
-
-            TypedStatementKind::SndLoop { handle } => {
-                let h_code = self.emit_expr(handle)?;
-                writeln_code!(output, "{}qb_sndloop((int32_t){});", indent, h_code)?;
-            }
-
-            TypedStatementKind::SndVol { handle, volume } => {
-                let h_code = self.emit_expr(handle)?;
-                let vol_code = self.emit_expr(volume)?;
-                writeln_code!(
-                    output,
-                    "{}qb_sndvol((int32_t){}, (double){});",
-                    indent,
-                    h_code,
-                    vol_code
-                )?;
-            }
-
-            TypedStatementKind::SndBal {
-                handle,
-                x,
-                y,
-                z,
-                channel,
-            } => {
-                let h_code = self.emit_expr(handle)?;
-                let x_code = match x {
-                    Some(e) => self.emit_expr(e)?,
-                    None => "0.0".to_string(),
-                };
-                let y_code = match y {
-                    Some(e) => self.emit_expr(e)?,
-                    None => "0.0".to_string(),
-                };
-                let z_code = match z {
-                    Some(e) => self.emit_expr(e)?,
-                    None => "0.0".to_string(),
-                };
-                let ch_code = match channel {
-                    Some(e) => self.emit_expr(e)?,
-                    None => "0".to_string(),
-                };
-                writeln_code!(
-                    output,
-                    "{}qb_sndbal((int32_t){}, (double){}, (double){}, (double){}, (int32_t){});",
-                    indent,
-                    h_code,
-                    x_code,
-                    y_code,
-                    z_code,
-                    ch_code
-                )?;
-            }
-
-            TypedStatementKind::SndRaw { left, right } => {
-                let left_code = self.emit_expr(left)?;
-                if let Some(r) = right {
-                    let right_code = self.emit_expr(r)?;
-                    writeln_code!(
-                        output,
-                        "{}qb_sndraw_stereo((double){}, (double){});",
-                        indent,
-                        left_code,
-                        right_code
-                    )?;
-                } else {
-                    writeln_code!(output, "{}qb_sndraw((double){});", indent, left_code)?;
-                }
-            }
-
-            TypedStatementKind::SndPlayFile {
-                filename,
-                volume,
-                x,
-                y,
-                z,
-            } => {
-                let filename_code = self.emit_expr(filename)?;
-                let volume_code = volume
-                    .as_ref()
-                    .map(|e| self.emit_expr(e))
-                    .transpose()?
-                    .unwrap_or_else(|| "1.0".to_string());
-                let x_code = x
-                    .as_ref()
-                    .map(|e| self.emit_expr(e))
-                    .transpose()?
-                    .unwrap_or_else(|| "0.0".to_string());
-                let y_code = y
-                    .as_ref()
-                    .map(|e| self.emit_expr(e))
-                    .transpose()?
-                    .unwrap_or_else(|| "0.0".to_string());
-                let z_code = z
-                    .as_ref()
-                    .map(|e| self.emit_expr(e))
-                    .transpose()?
-                    .unwrap_or_else(|| "0.0".to_string());
-                let filename_access =
-                    emit_string_data_access(filename, &filename_code, &self.config.runtime_mode);
-                writeln_code!(
-                    output,
-                    "{}qb_sndplayfile({}, (double){}, (double){}, (double){}, (double){});",
-                    indent,
-                    filename_access,
-                    volume_code,
-                    x_code,
-                    y_code,
-                    z_code
-                )?;
-            }
-
-            TypedStatementKind::SndPlayCopy { handle, volume } => {
-                let handle_code = self.emit_expr(handle)?;
-                let volume_code = volume
-                    .as_ref()
-                    .map(|e| self.emit_expr(e))
-                    .transpose()?
-                    .unwrap_or_else(|| "1.0".to_string());
-                writeln_code!(
-                    output,
-                    "{}qb_sndplaycopy((int32_t){}, (double){});",
-                    indent,
-                    handle_code,
-                    volume_code
-                )?;
-            }
-
-            TypedStatementKind::SndSetPos { handle, position } => {
-                let handle_code = self.emit_expr(handle)?;
-                let position_code = self.emit_expr(position)?;
-                writeln_code!(
-                    output,
-                    "{}qb_sndsetpos((int32_t){}, (double){});",
-                    indent,
-                    handle_code,
-                    position_code
-                )?;
-            }
-
-            // ==================== System Integration Statements ====================
-            TypedStatementKind::Kill { filename } => {
-                let filename_code = self.emit_expr(filename)?;
-                let filename_access =
-                    emit_string_data_access(filename, &filename_code, &self.config.runtime_mode);
-                writeln_code!(output, "{}qb_file_kill({});", indent, filename_access)?;
-            }
-
-            TypedStatementKind::Rename { old_name, new_name } => {
-                let old_code = self.emit_expr(old_name)?;
-                let new_code = self.emit_expr(new_name)?;
-                let old_access =
-                    emit_string_data_access(old_name, &old_code, &self.config.runtime_mode);
-                let new_access =
-                    emit_string_data_access(new_name, &new_code, &self.config.runtime_mode);
-                writeln_code!(
-                    output,
-                    "{}qb_file_rename({}, {});",
-                    indent,
-                    old_access,
-                    new_access
-                )?;
-            }
-
-            TypedStatementKind::Mkdir { path } => {
-                let path_code = self.emit_expr(path)?;
-                let path_access =
-                    emit_string_data_access(path, &path_code, &self.config.runtime_mode);
-                writeln_code!(output, "{}qb_mkdir({});", indent, path_access)?;
-            }
-
-            TypedStatementKind::Rmdir { path } => {
-                let path_code = self.emit_expr(path)?;
-                let path_access =
-                    emit_string_data_access(path, &path_code, &self.config.runtime_mode);
-                writeln_code!(output, "{}qb_rmdir({});", indent, path_access)?;
-            }
-
-            TypedStatementKind::Chdir { path } => {
-                let path_code = self.emit_expr(path)?;
-                let path_access =
-                    emit_string_data_access(path, &path_code, &self.config.runtime_mode);
-                writeln_code!(output, "{}qb_chdir({});", indent, path_access)?;
-            }
-
-            TypedStatementKind::Environ { env_string } => {
-                let env_string_code = self.emit_expr(env_string)?;
-                writeln_code!(output, "{}qb_sub_environ({});", indent, env_string_code)?;
-            }
-
-            TypedStatementKind::ShellCmd { command } => {
-                if self.config.no_shell {
-                    return Err(
-                        CodeGenError::new(CodeGenErrorKind::ShellDisabled).with_span(stmt.span)
-                    );
-                }
-                if let Some(cmd) = command {
-                    let cmd_code = self.emit_expr(cmd)?;
-                    // qb_shell expects const char*, not qb_string*
-                    let cmd_data =
-                        emit_string_data_access(cmd, &cmd_code, &self.config.runtime_mode);
-                    writeln_code!(output, "{}qb_shell({});", indent, cmd_data)?;
-                } else {
-                    writeln_code!(output, "{}qb_shell(NULL);", indent)?;
-                }
-            }
-
-            TypedStatementKind::ShellHide { command } => {
-                if self.config.no_shell {
-                    return Err(
-                        CodeGenError::new(CodeGenErrorKind::ShellDisabled).with_span(stmt.span)
-                    );
-                }
-                let cmd_code = self.emit_expr(command)?;
-                writeln_code!(output, "{}qb_shellhide({});", indent, cmd_code)?;
-            }
-
-            TypedStatementKind::Bload { filename, address } => {
-                let filename_code = self.emit_expr(filename)?;
-                let filename_access =
-                    emit_string_data_access(filename, &filename_code, &self.config.runtime_mode);
-                if let Some(addr) = address {
-                    let addr_code = self.emit_expr(addr)?;
-                    writeln_code!(
-                        output,
-                        "{}qb_bload({}, (void*)(intptr_t){});",
-                        indent,
-                        filename_access,
-                        addr_code
-                    )?;
-                } else {
-                    writeln_code!(output, "{}qb_bload({}, NULL);", indent, filename_access)?;
-                }
-            }
-
-            TypedStatementKind::Bsave {
-                filename,
-                address,
-                length,
-            } => {
-                let filename_code = self.emit_expr(filename)?;
-                let filename_access =
-                    emit_string_data_access(filename, &filename_code, &self.config.runtime_mode);
-                let addr_code = self.emit_expr(address)?;
-                let len_code = self.emit_expr(length)?;
-                writeln_code!(
-                    output,
-                    "{}qb_bsave({}, (void*)(intptr_t){}, (size_t){});",
-                    indent,
-                    filename_access,
-                    addr_code,
-                    len_code
-                )?;
-            }
-
-            TypedStatementKind::Setmem { bytes } => {
-                // SETMEM is a no-op in modern systems - just evaluate the expression
-                let bytes_code = self.emit_expr(bytes)?;
-                writeln_code!(
-                    output,
-                    "{}(void){}; /* SETMEM: no-op in flat memory model */",
-                    indent,
-                    bytes_code
-                )?;
-            }
-
-            TypedStatementKind::CallAbsolute { args: _, address } => {
-                // CALL ABSOLUTE is a legacy statement that cannot be safely implemented
-                let addr_code = self.emit_expr(address)?;
-                writeln_code!(
-                    output,
-                    "{}fprintf(stderr, \"Warning: CALL ABSOLUTE at address %ld not supported in flat memory model\\n\", (long){});",
-                    indent,
-                    addr_code
-                )?;
-                writeln_code!(output, "{}fflush(stderr);", indent)?;
-            }
-
-            // ==================== Mouse Input Statements ====================
-            TypedStatementKind::MouseHide => {
-                writeln_code!(output, "{}qb_mouse_hide();", indent)?;
-            }
-
-            TypedStatementKind::MouseShow => {
-                writeln_code!(output, "{}qb_mouse_show();", indent)?;
-            }
-
-            TypedStatementKind::MouseMoveStmt { x, y } => {
-                let x_code = self.emit_expr(x)?;
-                let y_code = self.emit_expr(y)?;
-                writeln_code!(
-                    output,
-                    "{}qb_mouse_move((int32_t){}, (int32_t){});",
-                    indent,
-                    x_code,
-                    y_code
-                )?;
-            }
-
-            // ==================== Clipboard Statement ====================
-            TypedStatementKind::ClipboardSet { text } => {
-                let text_code = self.emit_expr(text)?;
-                let text_access =
-                    emit_string_data_access(text, &text_code, &self.config.runtime_mode);
-                writeln_code!(output, "{}qb_clipboard_set({});", indent, text_access)?;
-            }
-
-            // ==================== C Library Integration ====================
-            TypedStatementKind::DeclareLibrary {
-                library_name,
-                is_dynamic,
-                declarations,
-            } => {
-                // Static libraries: emit extern declarations here.
-                // Dynamic libraries: handle/pointers and init are emitted in the
-                // dynamic library section (qb_init_dynamic_libs); calls use qb_dyn_<c_name>.
-                if *is_dynamic {
-                    writeln_code!(
-                        output,
-                        "{}// DECLARE DYNAMIC LIBRARY (loaded in qb_init_dynamic_libs)",
-                        indent
-                    )?;
-                    if let Some(lib) = library_name {
-                        writeln_code!(output, "{}// Library: {}", indent, lib)?;
-                    }
-                    // No extern declarations - we use function pointers (qb_dyn_<c_name>) emitted above.
-                } else {
-                    writeln_code!(output, "{}// DECLARE LIBRARY - extern declarations", indent)?;
-                    if let Some(lib) = library_name {
-                        writeln_code!(output, "{}// Library: {}", indent, lib)?;
-                    }
-                    for decl in declarations {
-                        self.emit_extern_declaration(&indent, decl, output)?;
-                    }
-                }
-            }
-
-            // Forward declarations - no code generated, just comments for documentation
-            TypedStatementKind::DeclareSub { name } => {
-                writeln_code!(output, "{}/* DECLARE SUB {} */", indent, name)?;
-            }
-
-            TypedStatementKind::DeclareFunction { name } => {
-                writeln_code!(output, "{}/* DECLARE FUNCTION {} */", indent, name)?;
+            // System integration statements
+            k @ (TypedStatementKind::Kill { .. }
+            | TypedStatementKind::Rename { .. }
+            | TypedStatementKind::Mkdir { .. }
+            | TypedStatementKind::Rmdir { .. }
+            | TypedStatementKind::Chdir { .. }
+            | TypedStatementKind::Environ { .. }
+            | TypedStatementKind::ShellCmd { .. }
+            | TypedStatementKind::ShellHide { .. }
+            | TypedStatementKind::Bload { .. }
+            | TypedStatementKind::Bsave { .. }
+            | TypedStatementKind::Setmem { .. }
+            | TypedStatementKind::CallAbsolute { .. }
+            | TypedStatementKind::MouseHide
+            | TypedStatementKind::MouseShow
+            | TypedStatementKind::MouseMoveStmt { .. }
+            | TypedStatementKind::ClipboardSet { .. }
+            | TypedStatementKind::DeclareLibrary { .. }
+            | TypedStatementKind::DeclareSub { .. }
+            | TypedStatementKind::DeclareFunction { .. }) => {
+                system::emit_system_stmt(self, k, &indent, output)?;
             }
 
             // ==================== Phase 7: Additional Statements ====================
@@ -3150,91 +2089,26 @@ impl StmtEmitter {
                 }
             }
 
-            TypedStatementKind::MetaAsserts => {
-                writeln_code!(output, "{}/* $ASSERTS */", indent)?;
-            }
-
-            TypedStatementKind::MetaNoPrefix => {
-                writeln_code!(output, "{}/* $NOPREFIX */", indent)?;
-            }
-
-            TypedStatementKind::MetaColor { depth } => {
-                if let Some(d) = depth {
-                    writeln_code!(output, "{}/* $COLOR:{} */", indent, d)?;
-                } else {
-                    writeln_code!(output, "{}/* $COLOR:0 */", indent)?;
-                }
-            }
-
-            TypedStatementKind::MetaResize { enabled } => {
-                if *enabled {
-                    writeln_code!(output, "{}/* $RESIZE:ON */", indent)?;
-                } else {
-                    writeln_code!(output, "{}/* $RESIZE:OFF */", indent)?;
-                }
-            }
-
-            TypedStatementKind::MetaResizeStretch => {
-                writeln_code!(output, "{}/* $RESIZE:STRETCH */", indent)?;
-            }
-
-            TypedStatementKind::MetaResizeSmooth => {
-                writeln_code!(output, "{}/* $RESIZE:SMOOTH */", indent)?;
-            }
-
-            TypedStatementKind::MetaStatic => {
-                writeln_code!(output, "{}/* $STATIC */", indent)?;
-            }
-
-            TypedStatementKind::MetaDynamic => {
-                writeln_code!(output, "{}/* $DYNAMIC */", indent)?;
-            }
-
-            TypedStatementKind::MetaDebug => {
-                writeln_code!(output, "{}/* $DEBUG */", indent)?;
-            }
-
-            TypedStatementKind::MetaIncludeOnce => {
-                writeln_code!(output, "{}/* $INCLUDEONCE */", indent)?;
-            }
-
-            TypedStatementKind::MetaExeIcon { filename } => {
-                writeln_code!(output, "{}/* $EXEICON:'{}' */", indent, filename)?;
-            }
-
-            TypedStatementKind::MetaVersionInfo { key, value } => {
-                writeln_code!(output, "{}/* $VERSIONINFO:{}={} */", indent, key, value)?;
-            }
-
-            TypedStatementKind::MetaErrorDirective { message } => {
-                // $ERROR should ideally stop compilation, but we'll emit a warning comment
-                writeln_code!(output, "{}#error \"{}\"", indent, message)?;
-            }
-
-            TypedStatementKind::MetaEmbed { filename } => {
-                // $EMBED embeds a file into the executable - emit as comment
-                // Runtime function _EMBEDDED$ can retrieve embedded content
-                writeln_code!(output, "{}/* $EMBED:'{}' */", indent, filename)?;
-            }
-
-            TypedStatementKind::MetaMidiSoundFont { filename } => {
-                // $MIDISOUNDFONT sets the MIDI soundfont file for playback
-                writeln_code!(output, "{}/* $MIDISOUNDFONT:'{}' */", indent, filename)?;
-            }
-
-            TypedStatementKind::MetaUnstable { feature } => {
-                // $UNSTABLE enables an experimental feature
-                writeln_code!(output, "{}/* $UNSTABLE:{} */", indent, feature)?;
-            }
-
-            TypedStatementKind::MetaFormat => {
-                // $FORMAT is a no-op for code formatting (IDE support only)
-                writeln_code!(output, "{}/* $FORMAT */", indent)?;
-            }
-
-            TypedStatementKind::MetaUseLibrary { library } => {
-                // $USELIBRARY includes an external library
-                writeln_code!(output, "{}/* $USELIBRARY:'{}' */", indent, library)?;
+            // Meta directives (part 2)
+            k @ (TypedStatementKind::MetaAsserts
+            | TypedStatementKind::MetaNoPrefix
+            | TypedStatementKind::MetaColor { .. }
+            | TypedStatementKind::MetaResize { .. }
+            | TypedStatementKind::MetaResizeStretch
+            | TypedStatementKind::MetaResizeSmooth
+            | TypedStatementKind::MetaStatic
+            | TypedStatementKind::MetaDynamic
+            | TypedStatementKind::MetaDebug
+            | TypedStatementKind::MetaIncludeOnce
+            | TypedStatementKind::MetaExeIcon { .. }
+            | TypedStatementKind::MetaVersionInfo { .. }
+            | TypedStatementKind::MetaErrorDirective { .. }
+            | TypedStatementKind::MetaEmbed { .. }
+            | TypedStatementKind::MetaMidiSoundFont { .. }
+            | TypedStatementKind::MetaUnstable { .. }
+            | TypedStatementKind::MetaFormat
+            | TypedStatementKind::MetaUseLibrary { .. }) => {
+                meta::emit_meta_stmt(self, k, &indent, output)?;
             }
         }
 

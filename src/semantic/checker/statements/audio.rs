@@ -328,3 +328,65 @@ impl<'a> TypeChecker<'a> {
         )
     }
 }
+
+/// Dispatch function for audio statements.
+pub(super) fn check_audio_stmt(
+    checker: &mut super::super::TypeChecker,
+    kind: &crate::ast::StatementKind,
+    span: crate::ast::Span,
+) -> crate::semantic::typed_ir::TypedStatement {
+    match kind {
+        crate::ast::StatementKind::Beep => checker.check_beep(span),
+        crate::ast::StatementKind::SoundStmt {
+            frequency,
+            duration,
+        } => checker.check_sound(frequency, duration, span),
+        crate::ast::StatementKind::PlayStmt { commands } => checker.check_play(commands, span),
+        crate::ast::StatementKind::SndClose { handle } => checker.check_snd_close(handle, span),
+        crate::ast::StatementKind::SndPlay { handle } => checker.check_snd_play(handle, span),
+        crate::ast::StatementKind::SndStop { handle } => checker.check_snd_stop(handle, span),
+        crate::ast::StatementKind::SndPause { handle } => checker.check_snd_pause(handle, span),
+        crate::ast::StatementKind::SndLoop { handle } => checker.check_snd_loop(handle, span),
+        crate::ast::StatementKind::SndVol { handle, volume } => {
+            checker.check_snd_vol(handle, volume, span)
+        }
+        crate::ast::StatementKind::SndBal {
+            handle,
+            x,
+            y,
+            z,
+            channel,
+        } => checker.check_snd_bal(
+            handle,
+            x.as_ref(),
+            y.as_ref(),
+            z.as_ref(),
+            channel.as_ref(),
+            span,
+        ),
+        crate::ast::StatementKind::SndRaw { left, right } => {
+            checker.check_snd_raw(left, right.as_ref(), span)
+        }
+        crate::ast::StatementKind::SndPlayFile {
+            filename,
+            volume,
+            x,
+            y,
+            z,
+        } => checker.check_snd_playfile(
+            filename,
+            volume.as_ref(),
+            x.as_ref(),
+            y.as_ref(),
+            z.as_ref(),
+            span,
+        ),
+        crate::ast::StatementKind::SndPlayCopy { handle, volume } => {
+            checker.check_snd_playcopy(handle, volume.as_ref(), span)
+        }
+        crate::ast::StatementKind::SndSetPos { handle, position } => {
+            checker.check_snd_setpos(handle, position, span)
+        }
+        _ => unreachable!("Not an audio statement"),
+    }
+}

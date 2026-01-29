@@ -8,18 +8,25 @@
 //! # Module Structure
 //!
 //! Statement type checking is split into focused submodules:
+//! - [`assignments`] - Assignment statements (LET, array assignments, MID$, etc.)
 //! - [`audio`] - Audio statements (BEEP, SOUND, PLAY, _SND*)
-//! - [`graphics`] - Graphics statements (SCREEN, PSET, LINE, CIRCLE, etc.)
+//! - [`control_flow`] - Control flow (IF, FOR, WHILE, DO, SELECT CASE, GOTO, etc.)
 //! - [`data`] - DATA/READ/RESTORE statements
+//! - [`definitions`] - Definition statements (DIM, CONST, SUB, FUNCTION, etc.)
 //! - [`error_flow`] - Error handling and computed control flow (ON ERROR, ON...GOTO)
 //! - [`graphics`] - Graphics statements (SCREEN, PSET, LINE, CIRCLE, etc.)
 //! - [`io`] - File I/O statements (OPEN, CLOSE, PRINT #, GET, PUT)
+//! - [`misc`] - Miscellaneous statements (SWAP, POKE, meta directives, etc.)
 
+mod assignments;
 mod audio;
+mod control_flow;
 mod data;
+mod definitions;
 mod error_flow;
 mod graphics;
 mod io;
+mod misc;
 
 use crate::ast::{
     ArrayDimension, ExternalDeclaration, PrintItem, Span, Statement, StatementKind, ViewCoords,
@@ -28,12 +35,12 @@ use crate::ast::{
 use crate::ast::{ExternalParam, TypeSpec};
 use crate::semantic::{
     error::SemanticError,
-    symbols::{ConstValue, Symbol, SymbolKind, UserTypeDefinition, UserTypeMember},
+    symbols::{ConstValue, Symbol, SymbolKind},
     typed_ir::*,
-    types::{BasicType, from_type_spec, type_from_suffix},
+    types::{BasicType, from_type_spec},
 };
 
-use super::{ForLoopInfo, TypeChecker};
+use super::TypeChecker;
 
 impl<'a> TypeChecker<'a> {
     // ========================================================================
@@ -43,39 +50,15 @@ impl<'a> TypeChecker<'a> {
     /// Type checks a statement.
     pub fn check_statement(&mut self, stmt: &Statement) -> TypedStatement {
         match &stmt.kind {
-            StatementKind::Let { name, value } => self.check_assignment(name, value, stmt.span),
-
-            StatementKind::ArrayAssignment {
-                name,
-                indices,
-                value,
-            } => self.check_array_assignment(name, indices, value, stmt.span),
-
-            StatementKind::FieldAssignment {
-                name,
-                fields,
-                value,
-            } => self.check_field_assignment(name, fields, value, stmt.span),
-
-            StatementKind::ArrayFieldAssignment {
-                name,
-                indices,
-                fields,
-                value,
-            } => self.check_array_field_assignment(name, indices, fields, value, stmt.span),
-
-            StatementKind::MidAssignment {
-                target,
-                start,
-                length,
-                value,
-            } => self.check_mid_assignment(target, start, length.as_ref(), value, stmt.span),
-
-            StatementKind::AscAssignment {
-                target,
-                position,
-                value,
-            } => self.check_asc_assignment(target, position, value, stmt.span),
+            // Assignment statements
+            k @ (StatementKind::Let { .. }
+            | StatementKind::ArrayAssignment { .. }
+            | StatementKind::FieldAssignment { .. }
+            | StatementKind::ArrayFieldAssignment { .. }
+            | StatementKind::MidAssignment { .. }
+            | StatementKind::AscAssignment { .. }) => {
+                assignments::check_assignments_stmt(self, k, stmt.span)
+            }
 
             StatementKind::Print { values, newline } => {
                 self.check_print(values, *newline, stmt.span)
@@ -119,77 +102,22 @@ impl<'a> TypeChecker<'a> {
                 target,
             } => self.check_line_input(prompt, target, stmt.span),
 
-            StatementKind::If {
-                condition,
-                then_branch,
-                elseif_branches,
-                else_branch,
-            } => self.check_if(
-                condition,
-                then_branch,
-                elseif_branches,
-                else_branch,
-                stmt.span,
-            ),
-
-            StatementKind::SelectCase {
-                test_expr,
-                cases,
-                case_else,
-            } => self.check_select_case(test_expr, cases, case_else, false, stmt.span),
-
-            StatementKind::SelectEveryCase {
-                test_expr,
-                cases,
-                case_else,
-            } => self.check_select_case(test_expr, cases, case_else, true, stmt.span),
-
-            StatementKind::For {
-                variable,
-                start,
-                end,
-                step,
-                body,
-                next_variable,
-            } => self.check_for(ForLoopInfo {
-                variable,
-                start,
-                end,
-                step,
-                body,
-                next_variable,
-                span: stmt.span,
-            }),
-
-            StatementKind::While { condition, body } => {
-                self.check_while(condition, body, stmt.span)
+            // Control flow statements
+            k @ (StatementKind::If { .. }
+            | StatementKind::SelectCase { .. }
+            | StatementKind::SelectEveryCase { .. }
+            | StatementKind::For { .. }
+            | StatementKind::While { .. }
+            | StatementKind::DoLoop { .. }
+            | StatementKind::Goto { .. }
+            | StatementKind::Gosub { .. }
+            | StatementKind::Return
+            | StatementKind::Exit { .. }
+            | StatementKind::End { .. }
+            | StatementKind::Stop
+            | StatementKind::Continue { .. }) => {
+                control_flow::check_control_flow_stmt(self, k, stmt.span)
             }
-
-            StatementKind::DoLoop {
-                pre_condition,
-                body,
-                post_condition,
-            } => self.check_do_loop(pre_condition, body, post_condition, stmt.span),
-
-            StatementKind::Goto { target } => self.check_goto(target, stmt.span),
-
-            StatementKind::Gosub { target } => self.check_gosub(target, stmt.span),
-
-            StatementKind::Return => self.check_return(stmt.span),
-
-            StatementKind::Exit { exit_type } => self.check_exit(*exit_type, stmt.span),
-
-            StatementKind::End { exit_code } => {
-                let typed_exit_code = exit_code.as_ref().map(|e| self.check_expr(e));
-                TypedStatement::new(
-                    TypedStatementKind::End {
-                        exit_code: typed_exit_code,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::Stop => TypedStatement::new(TypedStatementKind::Stop, stmt.span),
 
             StatementKind::System { exit_code } => {
                 let typed_exit_code = exit_code.as_ref().map(|e| self.check_expr(e));
@@ -253,982 +181,119 @@ impl<'a> TypeChecker<'a> {
 
             StatementKind::KeyClear => TypedStatement::new(TypedStatementKind::KeyClear, stmt.span),
 
-            StatementKind::Call { name, args } => self.check_call(name, args, stmt.span),
-
-            StatementKind::Dim { variables, shared } => {
-                self.check_dim(variables, *shared, stmt.span)
+            // Definition statements
+            k @ (StatementKind::Call { .. }
+            | StatementKind::Dim { .. }
+            | StatementKind::Const { .. }
+            | StatementKind::DefType { .. }
+            | StatementKind::Define { .. }
+            | StatementKind::OptionBase { .. }
+            | StatementKind::OptionExplicit
+            | StatementKind::OptionExplicitArray
+            | StatementKind::Label { .. }
+            | StatementKind::SubDefinition { .. }
+            | StatementKind::FunctionDefinition { .. }) => {
+                definitions::check_definitions_stmt(self, k, stmt.span)
             }
 
-            StatementKind::Const { definitions } => self.check_const(definitions, stmt.span),
+            // File I/O statements
+            k @ (StatementKind::OpenFile { .. }
+            | StatementKind::OpenFileLegacy { .. }
+            | StatementKind::CloseFile { .. }
+            | StatementKind::FilePrint { .. }
+            | StatementKind::FileWrite { .. }
+            | StatementKind::FileInput { .. }
+            | StatementKind::FileLineInput { .. }
+            | StatementKind::FileGet { .. }
+            | StatementKind::FilePut { .. }
+            | StatementKind::FileSeek { .. }) => io::check_io_stmt(self, k, stmt.span),
 
-            StatementKind::DefType { type_kind, ranges } => {
-                self.check_deftype(type_kind, ranges, stmt.span)
+            // Data statements
+            k @ (StatementKind::Data { .. }
+            | StatementKind::Read { .. }
+            | StatementKind::Restore { .. }
+            | StatementKind::Randomize { .. }) => data::check_data_stmt(self, k, stmt.span),
+
+            // Error handling and computed control flow
+            k @ (StatementKind::OnErrorGoto { .. }
+            | StatementKind::OnErrorResumeNext
+            | StatementKind::ResumeStmt { .. }
+            | StatementKind::ErrorStmt { .. }
+            | StatementKind::OnGoto { .. }
+            | StatementKind::OnGosub { .. }
+            | StatementKind::DefFn { .. }
+            | StatementKind::DefFnMultiLine { .. }
+            | StatementKind::DefSeg { .. }) => {
+                error_flow::check_error_flow_stmt(self, k, stmt.span)
             }
 
-            StatementKind::Define { type_spec, ranges } => {
-                self.check_define(type_spec, ranges, stmt.span)
+            // Expression, comment, preprocessor, meta, and misc statements
+            k @ (StatementKind::Expression { .. }
+            | StatementKind::Comment { .. }
+            | StatementKind::IncludeDirective { .. }
+            | StatementKind::ConditionalBlock { .. }
+            | StatementKind::MetaCommand { .. }
+            | StatementKind::MetaLet { .. }
+            | StatementKind::MetaChecking { .. }
+            | StatementKind::MetaConsole { .. }
+            | StatementKind::MetaScreenHide
+            | StatementKind::MetaScreenShow
+            | StatementKind::Swap { .. }
+            | StatementKind::TypeDefinition { .. }
+            | StatementKind::Poke { .. }
+            | StatementKind::MemPutTyped { .. }
+            | StatementKind::CommonStmt { .. }
+            | StatementKind::SharedStmt { .. }
+            | StatementKind::StaticStmt { .. }
+            | StatementKind::Redim { .. }) => misc::check_misc_stmt(self, k, stmt.span),
+
+            // Graphics statements
+            k @ (StatementKind::Screen { .. }
+            | StatementKind::Cls { .. }
+            | StatementKind::Color { .. }
+            | StatementKind::Locate { .. }
+            | StatementKind::Pset { .. }
+            | StatementKind::Preset { .. }
+            | StatementKind::Line { .. }
+            | StatementKind::Circle { .. }
+            | StatementKind::Paint { .. }
+            | StatementKind::GfxDisplay
+            | StatementKind::ControlChr { .. }
+            | StatementKind::MapUnicode { .. }
+            | StatementKind::GfxResize { .. }
+            | StatementKind::Palette { .. }
+            | StatementKind::Pcopy { .. }
+            | StatementKind::Width { .. }
+            | StatementKind::View { .. }
+            | StatementKind::ViewPrint { .. }
+            | StatementKind::WindowCoords { .. }
+            | StatementKind::DrawCmd { .. }
+            | StatementKind::GraphicsGet { .. }
+            | StatementKind::GraphicsPut { .. }
+            | StatementKind::FreeImage { .. }
+            | StatementKind::PutImage { .. }
+            | StatementKind::SourceImg { .. }
+            | StatementKind::DestImg { .. }
+            | StatementKind::PrintStringStmt { .. }
+            | StatementKind::AutoDisplay { .. }) => {
+                graphics::check_graphics_stmt(self, k, stmt.span)
             }
 
-            StatementKind::OptionBase { base } => self.check_option_base(*base, stmt.span),
-
-            StatementKind::OptionExplicit => {
-                self.symbols.set_explicit_mode(true);
-                TypedStatement::new(TypedStatementKind::OptionExplicit, stmt.span)
-            }
-
-            StatementKind::OptionExplicitArray => {
-                self.symbols.set_explicit_array_mode(true);
-                TypedStatement::new(TypedStatementKind::OptionExplicitArray, stmt.span)
-            }
-
-            StatementKind::Label { name } => {
-                TypedStatement::new(TypedStatementKind::Label { name: name.clone() }, stmt.span)
-            }
-
-            StatementKind::SubDefinition {
-                name,
-                params,
-                body,
-                is_static,
-            } => self.check_sub_definition(name, params, body, *is_static, stmt.span),
-
-            StatementKind::FunctionDefinition {
-                name,
-                params,
-                return_type,
-                body,
-                is_static,
-            } => self.check_function_definition(
-                name,
-                params,
-                return_type,
-                body,
-                *is_static,
-                stmt.span,
-            ),
-
-            StatementKind::Expression(expr) => {
-                let typed_expr = self.check_expr(expr);
-                TypedStatement::new(TypedStatementKind::Expression(typed_expr), stmt.span)
-            }
-
-            StatementKind::Comment(text) => {
-                TypedStatement::new(TypedStatementKind::Comment(text.clone()), stmt.span)
-            }
-
-            // Preprocessor directives - pass through as-is for later processing
-            StatementKind::IncludeDirective { path } => TypedStatement::new(
-                TypedStatementKind::IncludeDirective { path: path.clone() },
-                stmt.span,
-            ),
-
-            StatementKind::ConditionalBlock {
-                condition,
-                then_branch,
-                elseif_branches,
-                else_branch,
-            } => {
-                // Evaluate the condition at compile time and only include the selected branch.
-                // This is true conditional compilation - excluded code is not type-checked
-                // or included in the output.
-
-                // Check the main $IF condition
-                if self.evaluate_meta_condition(condition) {
-                    // Main condition is true - include then_branch statements
-                    let typed_stmts: Vec<TypedStatement> = then_branch
-                        .iter()
-                        .map(|s| self.check_statement(s))
-                        .collect();
-                    return TypedStatement::new(
-                        TypedStatementKind::ConditionalBlockResolved {
-                            original_condition: condition.clone(),
-                            statements: typed_stmts,
-                        },
-                        stmt.span,
-                    );
-                }
-
-                // Check $ELSEIF conditions
-                for (elseif_cond, elseif_body) in elseif_branches {
-                    if self.evaluate_meta_condition(elseif_cond) {
-                        let typed_stmts: Vec<TypedStatement> = elseif_body
-                            .iter()
-                            .map(|s| self.check_statement(s))
-                            .collect();
-                        return TypedStatement::new(
-                            TypedStatementKind::ConditionalBlockResolved {
-                                original_condition: elseif_cond.clone(),
-                                statements: typed_stmts,
-                            },
-                            stmt.span,
-                        );
-                    }
-                }
-
-                // No conditions matched - use $ELSE branch if present
-                if let Some(else_body) = else_branch {
-                    let typed_stmts: Vec<TypedStatement> =
-                        else_body.iter().map(|s| self.check_statement(s)).collect();
-                    return TypedStatement::new(
-                        TypedStatementKind::ConditionalBlockResolved {
-                            original_condition: "$ELSE".to_string(),
-                            statements: typed_stmts,
-                        },
-                        stmt.span,
-                    );
-                }
-
-                // No branch selected - emit empty block
-                TypedStatement::new(
-                    TypedStatementKind::ConditionalBlockResolved {
-                        original_condition: condition.clone(),
-                        statements: Vec::new(),
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::MetaCommand { command, args } => TypedStatement::new(
-                TypedStatementKind::MetaCommand {
-                    command: command.clone(),
-                    args: args.clone(),
-                },
-                stmt.span,
-            ),
-
-            StatementKind::MetaLet { name, value } => TypedStatement::new(
-                TypedStatementKind::MetaLet {
-                    name: name.clone(),
-                    value: *value,
-                },
-                stmt.span,
-            ),
-
-            StatementKind::MetaChecking { enabled } => TypedStatement::new(
-                TypedStatementKind::MetaChecking { enabled: *enabled },
-                stmt.span,
-            ),
-
-            StatementKind::MetaConsole { only } => {
-                TypedStatement::new(TypedStatementKind::MetaConsole { only: *only }, stmt.span)
-            }
-
-            StatementKind::MetaScreenHide => {
-                TypedStatement::new(TypedStatementKind::MetaScreenHide, stmt.span)
-            }
-
-            StatementKind::MetaScreenShow => {
-                TypedStatement::new(TypedStatementKind::MetaScreenShow, stmt.span)
-            }
-
-            StatementKind::Swap { left, right } => {
-                let typed_left = self.check_expr(left);
-                let typed_right = self.check_expr(right);
-
-                // Check that both expressions are lvalues (variables or array elements)
-                // For now, we'll verify at codegen; semantic check ensures exact type match
-                // SWAP requires exact type match to prevent silent data loss
-                // (e.g., swapping INTEGER and LONG would truncate the LONG value)
-                if typed_left.basic_type != typed_right.basic_type {
-                    self.errors.push(SemanticError::TypeMismatch {
-                        expected: typed_left.basic_type.to_string(),
-                        found: typed_right.basic_type.to_string(),
-                        span: stmt.span,
-                    });
-                }
-
-                TypedStatement::new(
-                    TypedStatementKind::Swap {
-                        left: typed_left,
-                        right: typed_right,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::Continue { continue_type } => {
-                use crate::ast::ContinueType;
-
-                // Validate that CONTINUE is inside the matching loop type
-                let valid = match continue_type {
-                    ContinueType::For => self.loop_context.for_depth > 0,
-                    ContinueType::While => self.loop_context.while_depth > 0,
-                    ContinueType::Do => self.loop_context.do_depth > 0,
-                    // Bare _CONTINUE is valid inside any loop
-                    ContinueType::Innermost => {
-                        self.loop_context.for_depth > 0
-                            || self.loop_context.while_depth > 0
-                            || self.loop_context.do_depth > 0
-                    }
-                };
-
-                if !valid {
-                    let loop_name = match continue_type {
-                        ContinueType::For => "FOR",
-                        ContinueType::While => "WHILE",
-                        ContinueType::Do => "DO",
-                        ContinueType::Innermost => "any",
-                    };
-                    self.errors.push(SemanticError::ContinueOutsideLoop {
-                        loop_type: loop_name.to_string(),
-                        span: stmt.span,
-                    });
-                }
-
-                TypedStatement::new(
-                    TypedStatementKind::Continue {
-                        continue_type: *continue_type,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::TypeDefinition {
-                name,
-                members,
-                custom_type,
-            } => {
-                // Convert AST type members to semantic type members
-                let typed_members: Vec<TypedMember> = members
-                    .iter()
-                    .map(|m| TypedMember {
-                        name: m.name.clone(),
-                        basic_type: from_type_spec(&m.type_spec),
-                    })
-                    .collect();
-
-                // Register the type definition in the symbol table
-                let user_type = UserTypeDefinition {
-                    name: name.clone(),
-                    members: typed_members
-                        .iter()
-                        .map(|m| UserTypeMember {
-                            name: m.name.clone(),
-                            basic_type: m.basic_type.clone(),
-                        })
-                        .collect(),
-                    span: stmt.span,
-                    custom_type: *custom_type,
-                };
-
-                if let Err(_existing) = self.symbols.define_user_type(user_type) {
-                    self.errors.push(SemanticError::DuplicateType {
-                        name: name.clone(),
-                        original_span: stmt.span, // Could track the original definition span
-                        duplicate_span: stmt.span,
-                    });
-                }
-
-                TypedStatement::new(
-                    TypedStatementKind::TypeDefinition {
-                        name: name.clone(),
-                        members: typed_members,
-                        custom_type: *custom_type,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::Data { values } => self.check_data(values, stmt.span),
-
-            StatementKind::Read { targets } => self.check_read(targets, stmt.span),
-
-            StatementKind::Restore { label } => self.check_restore(label.as_deref(), stmt.span),
-
-            StatementKind::Randomize { seed } => self.check_randomize(seed.as_ref(), stmt.span),
-
-            // ==================== File I/O Statements ====================
-            StatementKind::OpenFile {
-                filename,
-                mode,
-                access,
-                lock,
-                file_num,
-                record_len,
-            } => self.check_open_file(
-                filename,
-                *mode,
-                *access,
-                *lock,
-                file_num,
-                record_len.as_ref(),
-                stmt.span,
-            ),
-
-            StatementKind::OpenFileLegacy {
-                mode_expr,
-                file_num,
-                filename,
-                record_len,
-            } => self.check_open_file_legacy(
-                mode_expr,
-                file_num,
-                filename,
-                record_len.as_ref(),
-                stmt.span,
-            ),
-
-            StatementKind::CloseFile { file_nums } => self.check_close_file(file_nums, stmt.span),
-
-            StatementKind::FilePrint {
-                file_num,
-                values,
-                newline,
-            } => self.check_file_print(file_num, values, *newline, stmt.span),
-
-            StatementKind::FileWrite { file_num, values } => {
-                self.check_file_write(file_num, values, stmt.span)
-            }
-
-            StatementKind::FileInput { file_num, targets } => {
-                self.check_file_input(file_num, targets, stmt.span)
-            }
-
-            StatementKind::FileLineInput { file_num, target } => {
-                self.check_file_line_input(file_num, target, stmt.span)
-            }
-
-            StatementKind::FileGet {
-                file_num,
-                position,
-                target,
-            } => self.check_file_get(file_num, position.as_ref(), target, stmt.span),
-
-            StatementKind::FilePut {
-                file_num,
-                position,
-                target,
-            } => self.check_file_put(file_num, position.as_ref(), target, stmt.span),
-
-            StatementKind::FileSeek { file_num, position } => {
-                self.check_file_seek(file_num, position, stmt.span)
-            }
-
-            // ==================== Error Handling Statements ====================
-            StatementKind::OnErrorGoto { target } => self.check_on_error_goto(target, stmt.span),
-
-            StatementKind::OnErrorResumeNext => self.check_on_error_resume_next(stmt.span),
-
-            StatementKind::ResumeStmt { target } => self.check_resume_stmt(target, stmt.span),
-
-            StatementKind::ErrorStmt { code } => self.check_error_stmt(code, stmt.span),
-
-            // ==================== Computed Control Flow ====================
-            StatementKind::OnGoto { selector, targets } => {
-                self.check_on_goto(selector, targets, stmt.span)
-            }
-
-            StatementKind::OnGosub { selector, targets } => {
-                self.check_on_gosub(selector, targets, stmt.span)
-            }
-
-            // ==================== DEF FN ====================
-            StatementKind::DefFn { name, params, body } => {
-                self.check_def_fn(name, params, body, stmt.span)
-            }
-
-            StatementKind::DefFnMultiLine { name, params, body } => {
-                self.check_def_fn_multi_line(name, params, body, stmt.span)
-            }
-
-            StatementKind::DefSeg { segment } => self.check_def_seg(segment.as_ref(), stmt.span),
-
-            StatementKind::Poke { address, value } => {
-                let typed_address = self.check_expr(address);
-                let typed_value = self.check_expr(value);
-                TypedStatement::new(
-                    TypedStatementKind::Poke {
-                        address: typed_address,
-                        value: typed_value,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::MemPutTyped {
-                mem,
-                offset,
-                value,
-                value_type,
-            } => {
-                let typed_mem = self.check_expr(mem);
-                let typed_offset = self.check_expr(offset);
-                let typed_value = self.check_expr(value);
-                let basic_type = self.parse_type_name(value_type);
-                TypedStatement::new(
-                    TypedStatementKind::MemPutTyped {
-                        mem: typed_mem,
-                        offset: typed_offset,
-                        value: typed_value,
-                        value_type: basic_type,
-                    },
-                    stmt.span,
-                )
-            }
-
-            // ==================== Variable/Scope Statements ====================
-            StatementKind::CommonStmt { shared, variables } => {
-                let typed_vars: Vec<TypedCommonVariable> = variables
-                    .iter()
-                    .map(|v| {
-                        let var_type = v
-                            .type_spec
-                            .as_ref()
-                            .map(from_type_spec)
-                            .or_else(|| type_from_suffix(&v.name))
-                            .unwrap_or_else(|| self.symbols.default_type_for(&v.name));
-
-                        // Evaluate dimensions
-                        let dims: Vec<TypedArrayDimension> = v
-                            .dimensions
-                            .iter()
-                            .map(|d| self.evaluate_array_dimension(d, stmt.span))
-                            .collect();
-
-                        // Register the symbol
-                        let symbol = Symbol {
-                            name: v.name.clone(),
-                            kind: SymbolKind::Variable,
-                            basic_type: if dims.is_empty() {
-                                var_type.clone()
-                            } else {
-                                BasicType::Array {
-                                    element_type: Box::new(var_type.clone()),
-                                    dimensions: dims.len(),
-                                }
-                            },
-                            span: stmt.span,
-                            is_mutable: true,
-                        };
-                        // Report duplicate variable errors for COMMON statements
-                        if let Err(duplicate) = self.symbols.define_symbol(symbol) {
-                            let (existing, new) = *duplicate;
-                            self.errors.push(SemanticError::DuplicateVariable {
-                                name: v.name.clone(),
-                                original_span: existing.span,
-                                duplicate_span: new.span,
-                            });
-                        }
-
-                        TypedCommonVariable {
-                            name: v.name.clone(),
-                            basic_type: var_type,
-                            dimensions: dims,
-                        }
-                    })
-                    .collect();
-
-                TypedStatement::new(
-                    TypedStatementKind::CommonStmt {
-                        shared: *shared,
-                        variables: typed_vars,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::SharedStmt { variables } => {
-                // SHARED statement inside SUB/FUNCTION declares access to module-level variables.
-                // In classic BASIC, SHARED can also implicitly create variables at module level
-                // if they don't already exist.
-
-                // Must be inside a procedure
-                if !self.symbols.in_procedure() {
-                    self.errors
-                        .push(SemanticError::SharedOutsideProcedure { span: stmt.span });
-                } else {
-                    // For each variable, check if it exists at module level
-                    // If not, implicitly declare it (classic BASIC behavior)
-                    for var_name in variables {
-                        if self.symbols.lookup_global_symbol(var_name).is_some() {
-                            // Variable exists at module level - register as shared
-                            self.symbols.add_shared_var(var_name.clone());
-                        } else {
-                            // Classic BASIC: implicitly declare at module level
-                            // Determine type from name suffix or default
-                            let basic_type = type_from_suffix(var_name)
-                                .unwrap_or_else(|| self.symbols.default_type_for(var_name));
-
-                            let symbol = Symbol {
-                                name: var_name.clone(),
-                                kind: SymbolKind::Variable,
-                                basic_type,
-                                span: stmt.span,
-                                is_mutable: true,
-                            };
-
-                            // Define at global scope and mark as module-shared
-                            self.symbols.define_shared_symbol(symbol);
-                            // Also register for this procedure's SHARED access
-                            self.symbols.add_shared_var(var_name.clone());
-                        }
-                    }
-                }
-
-                TypedStatement::new(
-                    TypedStatementKind::SharedStmt {
-                        variables: variables.clone(),
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::StaticStmt { variables } => {
-                // STATIC statement inside SUB/FUNCTION declares static local variables.
-                // These persist between calls (in C, they become `static` locals).
-                let mut typed_vars = Vec::new();
-
-                for var in variables {
-                    // Determine type
-                    let basic_type = var
-                        .type_spec
-                        .as_ref()
-                        .map(from_type_spec)
-                        .or_else(|| type_from_suffix(&var.name))
-                        .unwrap_or_else(|| self.symbols.default_type_for(&var.name));
-
-                    // Evaluate array dimensions
-                    let typed_dims: Vec<TypedArrayDimension> = var
-                        .dimensions
-                        .iter()
-                        .map(|d| {
-                            let lower = if let Some(lower_expr) = &d.lower {
-                                let typed_lower = self.check_expr(lower_expr);
-                                match self.try_evaluate_const_expr(&typed_lower) {
-                                    Some(crate::semantic::symbols::ConstValue::Integer(v)) => v,
-                                    Some(crate::semantic::symbols::ConstValue::Float(v)) => {
-                                        v as i64
-                                    }
-                                    _ => {
-                                        self.errors.push(SemanticError::NonConstantExpression {
-                                            span: lower_expr.span,
-                                        });
-                                        0
-                                    }
-                                }
-                            } else {
-                                self.symbols.option_base()
-                            };
-
-                            let typed_upper = self.check_expr(&d.upper);
-                            let upper = match self.try_evaluate_const_expr(&typed_upper) {
-                                Some(crate::semantic::symbols::ConstValue::Integer(v)) => v,
-                                Some(crate::semantic::symbols::ConstValue::Float(v)) => v as i64,
-                                _ => {
-                                    self.errors.push(SemanticError::NonConstantExpression {
-                                        span: d.upper.span,
-                                    });
-                                    10
-                                }
-                            };
-
-                            TypedArrayDimension { lower, upper }
-                        })
-                        .collect();
-
-                    // Define symbol in current scope (it's a local, but static)
-                    let symbol_kind = if var.dimensions.is_empty() {
-                        SymbolKind::Variable
-                    } else {
-                        SymbolKind::ArrayVariable {
-                            dimensions: typed_dims
-                                .iter()
-                                .map(|d| crate::semantic::symbols::ArrayDimInfo {
-                                    lower_bound: d.lower,
-                                    upper_bound: d.upper,
-                                })
-                                .collect(),
-                        }
-                    };
-
-                    let symbol = Symbol {
-                        name: var.name.clone(),
-                        kind: symbol_kind,
-                        basic_type: if typed_dims.is_empty() {
-                            basic_type.clone()
-                        } else {
-                            BasicType::Array {
-                                element_type: Box::new(basic_type.clone()),
-                                dimensions: typed_dims.len(),
-                            }
-                        },
-                        span: stmt.span,
-                        is_mutable: true,
-                    };
-
-                    if let Err(existing) = self.symbols.define_symbol(symbol) {
-                        self.errors.push(SemanticError::DuplicateVariable {
-                            name: var.name.clone(),
-                            original_span: existing.0.span,
-                            duplicate_span: stmt.span,
-                        });
-                    }
-
-                    typed_vars.push(TypedDimVariable {
-                        name: var.name.clone(),
-                        basic_type,
-                        dimensions: typed_dims,
-                    });
-                }
-
-                TypedStatement::new(
-                    TypedStatementKind::StaticStmt {
-                        variables: typed_vars,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::Redim {
-                preserve,
-                shared,
-                variables,
-            } => {
-                use crate::semantic::typed_ir::TypedRedimVariable;
-
-                let mut typed_vars = Vec::new();
-
-                for var in variables {
-                    // For REDIM _PRESERVE, the array must already exist.
-                    // Look up the existing array first (including SHARED arrays).
-                    let existing_array = self.symbols.lookup_array(&var.name);
-
-                    // Determine element type:
-                    // 1. If explicit type spec provided, use it
-                    // 2. If _PRESERVE and array exists, use existing type
-                    // 3. If type suffix on name, use that
-                    // 4. Fall back to default type
-                    let element_type = var
-                        .type_spec
-                        .as_ref()
-                        .map(from_type_spec)
-                        .or_else(|| {
-                            // For _PRESERVE, inherit type from existing array
-                            if *preserve {
-                                existing_array.map(|sym| sym.basic_type.clone())
-                            } else {
-                                None
-                            }
-                        })
-                        .or_else(|| type_from_suffix(&var.name))
-                        .unwrap_or_else(|| self.symbols.default_type_for(&var.name));
-
-                    // Evaluate dimensions - REDIM allows runtime expressions
-                    let typed_dims: Vec<crate::semantic::typed_ir::TypedRedimDimension> = var
-                        .dimensions
-                        .iter()
-                        .map(|d| self.evaluate_array_dimension_runtime(d))
-                        .collect();
-
-                    // Update symbol table (or define if not exists)
-                    // Use ArrayVariable kind so array passing works correctly.
-                    // REDIM can resize existing arrays (including array parameters),
-                    // so we use update_or_define to replace any existing symbol.
-                    // For SHARED arrays, define at module scope.
-                    //
-                    // IMPORTANT: If this is REDIM _PRESERVE on a module-level SHARED array,
-                    // we should update the GLOBAL scope entry, not create a local copy.
-                    //
-                    // Note: For REDIM, bounds are runtime-determined, so we use placeholder
-                    // values (0, 0) for the symbol table. The actual bounds are in the
-                    // TypedRedimDimension expressions for codegen.
-                    let symbol = Symbol {
-                        name: var.name.clone(),
-                        kind: SymbolKind::ArrayVariable {
-                            dimensions: typed_dims
-                                .iter()
-                                .map(|_d| crate::semantic::symbols::ArrayDimInfo {
-                                    lower_bound: 0, // Placeholder - bounds determined at runtime
-                                    upper_bound: 0, // Placeholder - bounds determined at runtime
-                                })
-                                .collect(),
-                        },
-                        basic_type: element_type.clone(),
-                        span: stmt.span,
-                        is_mutable: true,
-                    };
-                    if *shared {
-                        self.symbols.define_shared_symbol(symbol);
-                    } else if *preserve && self.symbols.is_module_shared(&var.name) {
-                        // REDIM _PRESERVE on a module-level SHARED array:
-                        // Update the global scope entry, not create a local copy
-                        self.symbols.update_shared_symbol(symbol);
-                    } else {
-                        self.symbols.update_or_define_symbol(symbol);
-                    }
-
-                    typed_vars.push(TypedRedimVariable {
-                        name: var.name.clone(),
-                        element_type,
-                        dimensions: typed_dims,
-                    });
-                }
-
-                TypedStatement::new(
-                    TypedStatementKind::Redim {
-                        preserve: *preserve,
-                        shared: *shared,
-                        variables: typed_vars,
-                    },
-                    stmt.span,
-                )
-            }
-
-            // ==================== Graphics Statements ====================
-            StatementKind::Screen {
-                mode,
-                color_switch,
-                active_page,
-                visual_page,
-            } => self.check_screen(
-                mode.as_ref(),
-                color_switch.as_ref(),
-                active_page.as_ref(),
-                visual_page.as_ref(),
-                stmt.span,
-            ),
-
-            StatementKind::Cls { mode } => self.check_cls(mode.as_ref(), stmt.span),
-
-            StatementKind::Color {
-                foreground,
-                background,
-                border,
-            } => self.check_color(
-                foreground.as_ref(),
-                background.as_ref(),
-                border.as_ref(),
-                stmt.span,
-            ),
-
-            StatementKind::Locate { row, col } => {
-                self.check_locate(row.as_ref(), col.as_ref(), stmt.span)
-            }
-
-            StatementKind::Pset { step, x, y, color } => {
-                self.check_pset(*step, x, y, color.as_ref(), stmt.span)
-            }
-
-            StatementKind::Preset { step, x, y } => self.check_preset(*step, x, y, stmt.span),
-
-            StatementKind::Line {
-                x1,
-                y1,
-                x2,
-                y2,
-                step2,
-                color,
-                box_style,
-                style,
-            } => self.check_line(
-                x1.as_ref(),
-                y1.as_ref(),
-                x2,
-                y2,
-                *step2,
-                color.as_ref(),
-                *box_style,
-                style.as_ref(),
-                stmt.span,
-            ),
-
-            StatementKind::Circle {
-                step,
-                x,
-                y,
-                radius,
-                color,
-                filled,
-            } => self.check_circle(*step, x, y, radius, color.as_ref(), *filled, stmt.span),
-
-            StatementKind::Paint {
-                step,
-                x,
-                y,
-                color,
-                border,
-            } => self.check_paint(*step, x, y, color.as_ref(), border.as_ref(), stmt.span),
-
-            StatementKind::GfxDisplay => self.check_gfx_display(stmt.span),
-
-            StatementKind::ControlChr { enabled } => self.check_control_chr(*enabled, stmt.span),
-
-            StatementKind::MapUnicode {
-                unicode_value,
-                char_position,
-            } => self.check_map_unicode(unicode_value, char_position, stmt.span),
-
-            StatementKind::Palette { attribute, color } => {
-                self.check_palette(attribute.as_ref(), color.as_ref(), stmt.span)
-            }
-
-            StatementKind::GfxResize { enabled } => self.check_gfx_resize(*enabled, stmt.span),
-
-            StatementKind::Pcopy { source, dest } => self.check_pcopy(source, dest, stmt.span),
-
-            // ==================== Additional Graphics Statements ====================
-            StatementKind::Width { columns, rows } => {
-                self.check_width(columns, rows.as_ref(), stmt.span)
-            }
-
-            StatementKind::View {
-                screen,
-                coords,
-                fill_color,
-                border_color,
-            } => self.check_view(
-                *screen,
-                coords.as_ref(),
-                fill_color.as_ref(),
-                border_color.as_ref(),
-                stmt.span,
-            ),
-
-            StatementKind::ViewPrint { top, bottom } => {
-                self.check_view_print(top.as_ref(), bottom.as_ref(), stmt.span)
-            }
-
-            StatementKind::WindowCoords { screen, coords } => {
-                self.check_window(*screen, coords.as_ref(), stmt.span)
-            }
-
-            StatementKind::DrawCmd { commands } => self.check_draw_cmd(commands, stmt.span),
-
-            StatementKind::GraphicsGet {
-                step1,
-                x1,
-                y1,
-                step2,
-                x2,
-                y2,
-                array_name,
-                array_indices,
-            } => self.check_gfx_get(
-                *step1,
-                x1,
-                y1,
-                *step2,
-                x2,
-                y2,
-                array_name,
-                array_indices,
-                stmt.span,
-            ),
-
-            StatementKind::GraphicsPut {
-                x,
-                y,
-                step,
-                array_name,
-                array_indices,
-                clip,
-                action,
-                transparent_color,
-            } => self.check_gfx_put(
-                x,
-                y,
-                *step,
-                array_name,
-                array_indices,
-                *clip,
-                *action,
-                transparent_color.as_ref(),
-                stmt.span,
-            ),
-
-            // ==================== QB64 Graphics Extensions ====================
-            StatementKind::FreeImage { handle } => self.check_free_image(handle, stmt.span),
-
-            StatementKind::PutImage {
-                dest_coords,
-                source,
-                dest,
-                source_coords,
-                scale_mode,
-            } => self.check_put_image(
-                dest_coords.as_ref().map(|v| &**v),
-                source.as_ref(),
-                dest.as_ref(),
-                source_coords.as_ref().map(|v| &**v),
-                *scale_mode,
-                stmt.span,
-            ),
-
-            StatementKind::SourceImg { handle } => self.check_source_img(handle, stmt.span),
-
-            StatementKind::DestImg { handle } => self.check_dest_img(handle, stmt.span),
-
-            StatementKind::PrintStringStmt { x, y, text } => {
-                self.check_print_string_stmt(x, y, text, stmt.span)
-            }
-
-            StatementKind::AutoDisplay { enabled } => self.check_auto_display(*enabled, stmt.span),
-
-            // ==================== Audio Statements ====================
-            StatementKind::Beep => self.check_beep(stmt.span),
-
-            StatementKind::SoundStmt {
-                frequency,
-                duration,
-            } => self.check_sound(frequency, duration, stmt.span),
-
-            StatementKind::PlayStmt { commands } => self.check_play(commands, stmt.span),
-
-            StatementKind::SndClose { handle } => self.check_snd_close(handle, stmt.span),
-
-            StatementKind::SndPlay { handle } => self.check_snd_play(handle, stmt.span),
-
-            StatementKind::SndStop { handle } => self.check_snd_stop(handle, stmt.span),
-
-            StatementKind::SndPause { handle } => self.check_snd_pause(handle, stmt.span),
-
-            StatementKind::SndLoop { handle } => self.check_snd_loop(handle, stmt.span),
-
-            StatementKind::SndVol { handle, volume } => {
-                self.check_snd_vol(handle, volume, stmt.span)
-            }
-
-            StatementKind::SndBal {
-                handle,
-                x,
-                y,
-                z,
-                channel,
-            } => self.check_snd_bal(
-                handle,
-                x.as_ref(),
-                y.as_ref(),
-                z.as_ref(),
-                channel.as_ref(),
-                stmt.span,
-            ),
-
-            StatementKind::SndRaw { left, right } => {
-                self.check_snd_raw(left, right.as_ref(), stmt.span)
-            }
-
-            StatementKind::SndPlayFile {
-                filename,
-                volume,
-                x,
-                y,
-                z,
-            } => self.check_snd_playfile(
-                filename,
-                volume.as_ref(),
-                x.as_ref(),
-                y.as_ref(),
-                z.as_ref(),
-                stmt.span,
-            ),
-
-            StatementKind::SndPlayCopy { handle, volume } => {
-                self.check_snd_playcopy(handle, volume.as_ref(), stmt.span)
-            }
-
-            StatementKind::SndSetPos { handle, position } => {
-                self.check_snd_setpos(handle, position, stmt.span)
-            }
+            // Audio statements
+            k @ (StatementKind::Beep
+            | StatementKind::SoundStmt { .. }
+            | StatementKind::PlayStmt { .. }
+            | StatementKind::SndClose { .. }
+            | StatementKind::SndPlay { .. }
+            | StatementKind::SndStop { .. }
+            | StatementKind::SndPause { .. }
+            | StatementKind::SndLoop { .. }
+            | StatementKind::SndVol { .. }
+            | StatementKind::SndBal { .. }
+            | StatementKind::SndRaw { .. }
+            | StatementKind::SndPlayFile { .. }
+            | StatementKind::SndPlayCopy { .. }
+            | StatementKind::SndSetPos { .. }) => audio::check_audio_stmt(self, k, stmt.span),
 
             // ==================== System Integration Statements ====================
             StatementKind::Kill { filename } => {
