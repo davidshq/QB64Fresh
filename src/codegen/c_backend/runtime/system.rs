@@ -728,9 +728,10 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
 
     // qb_gfx_screen - SCREEN statement for changing screen modes (4 args)
     // Must initialize frame counter to prevent infinite loops in stub mode
+    // Returns int for error handling (0 = success, non-zero = error)
     writeln_code!(
         output,
-        "void qb_gfx_screen(int32_t mode, int32_t colorSwitch, int32_t activePage, int32_t visiblePage) {{"
+        "int qb_gfx_screen(int32_t mode, int32_t colorSwitch, int32_t activePage, int32_t visiblePage) {{"
     )?;
     writeln_code!(output, "    _qb_gfx_warn();")?;
     writeln_code!(output, "    _qb_gfx_init_max_frames();")?;
@@ -741,6 +742,10 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
     writeln_code!(
         output,
         "    (void)mode; (void)colorSwitch; (void)activePage; (void)visiblePage;"
+    )?;
+    writeln_code!(
+        output,
+        "    return 0; /* Success - stub mode accepts any screen mode */"
     )?;
     writeln_code!(output, "}}")?;
 

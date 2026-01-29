@@ -937,10 +937,14 @@ impl<'a> TypeChecker<'a> {
             }
 
             StatementKind::MetaStatic => {
+                // Set array mode to static - affects all arrays declared after this directive
+                self.array_mode_static = true;
                 TypedStatement::new(TypedStatementKind::MetaStatic, stmt.span)
             }
 
             StatementKind::MetaDynamic => {
+                // Set array mode to dynamic - affects all arrays declared after this directive
+                self.array_mode_static = false;
                 TypedStatement::new(TypedStatementKind::MetaDynamic, stmt.span)
             }
 

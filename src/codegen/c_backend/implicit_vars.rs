@@ -233,8 +233,18 @@ fn collect_dims(
                     declared_vars.insert(c_name);
                 } else {
                     // No global exists: create local array declaration
+                    // For implicit arrays, we don't know dimensions or if they're static
+                    // Default to dynamic (matches QB64pe default behavior)
                     let c_name = c_identifier(&var.name);
-                    declare_array_var(&var.name, &var.element_type, declared_vars, locals, false);
+                    declare_array_var(
+                        &var.name,
+                        &var.element_type,
+                        declared_vars,
+                        locals,
+                        false, // is_global
+                        false, // is_static (default to dynamic for implicit arrays)
+                        &[],   // dimensions unknown for implicit arrays
+                    );
                     // Track that this is an array
                     array_names.insert(c_name);
                 }

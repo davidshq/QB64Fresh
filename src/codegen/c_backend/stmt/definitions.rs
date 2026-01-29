@@ -624,7 +624,7 @@ impl super::StmtEmitter {
     /// Handles:
     /// - Simple variables (scalar types)
     /// - Fixed-length strings (`char name[N]`)
-    /// - Arrays (dynamically allocated with malloc/calloc)
+    /// - Arrays (statically or dynamically allocated based on `is_static`)
     /// - Array bounds registration for UBOUND/LBOUND
     /// - Global vs local scope handling
     ///
@@ -634,6 +634,7 @@ impl super::StmtEmitter {
     /// * `name` - Variable name
     /// * `basic_type` - Variable type
     /// * `dimensions` - Array dimensions (empty for scalar)
+    /// * `is_static` - Whether to allocate as static array (fixed-size C array)
     /// * `output` - Output buffer to write to
     pub(in crate::codegen::c_backend) fn emit_dim(
         &mut self,
@@ -641,6 +642,7 @@ impl super::StmtEmitter {
         name: &str,
         basic_type: &BasicType,
         dimensions: &[TypedArrayDimension],
+        is_static: bool,
         output: &mut String,
     ) -> Result<(), CodeGenError> {
         let mut c_name = c_identifier(name);
@@ -673,7 +675,124 @@ impl super::StmtEmitter {
             let use_global =
                 self.procedure.current_proc.is_none() && self.globals.var_names.contains(&c_name);
 
-            // Arrays - handle fixed-length string arrays specially
+            // Static arrays: emit fixed-size C arrays
+            // For global static arrays, they're already declared at global scope, so just register bounds
+            if is_static {
+                if use_global {
+                    // Global static array already declared - just register bounds
+                    if dimensions.len() == 1 {
+                        writeln_code!(
+                            output,
+                            "{}qb_array_register({}, {}, {});",
+                            indent,
+                            c_name,
+                            dimensions[0].lower,
+                            dimensions[0].upper
+                        )?;
+                    } else {
+                        let lowers: Vec<String> =
+                            dimensions.iter().map(|d| d.lower.to_string()).collect();
+                        let uppers: Vec<String> =
+                            dimensions.iter().map(|d| d.upper.to_string()).collect();
+                        writeln_code!(
+                            output,
+                            "{}{{ int32_t _lb[] = {{{}}}; int32_t _ub[] = {{{}}}; qb_array_register_md({}, {}, _lb, _ub); }}",
+                            indent,
+                            lowers.join(", "),
+                            uppers.join(", "),
+                            c_name,
+                            dimensions.len()
+                        )?;
+                    }
+                    return Ok(());
+                }
+                // Static arrays require compile-time constant sizes
+                // Calculate sizes for each dimension
+                let sizes: Vec<String> = dimensions
+                    .iter()
+                    .map(|d| {
+                        let size = d.upper - d.lower + 1;
+                        size.to_string()
+                    })
+                    .collect();
+                let array_dims = sizes.join("][");
+
+                // Handle fixed-length string arrays specially
+                if let BasicType::FixedString(len) = basic_type {
+                    if use_global {
+                        writeln_code!(
+                            output,
+                            "{}char {}[{}][{}] = {{0}};",
+                            indent,
+                            c_name,
+                            array_dims,
+                            len + 1
+                        )?;
+                    } else {
+                        // Local static array - use static keyword to persist between calls
+                        writeln_code!(
+                            output,
+                            "{}static char {}[{}][{}] = {{0}};",
+                            indent,
+                            c_name,
+                            array_dims,
+                            len + 1
+                        )?;
+                    }
+                } else {
+                    let c_ty = c_type(basic_type);
+                    if use_global {
+                        // Global static array
+                        writeln_code!(
+                            output,
+                            "{}{} {}[{}] = {{0}};",
+                            indent,
+                            c_ty,
+                            c_name,
+                            array_dims
+                        )?;
+                    } else {
+                        // Local static array - use static keyword to persist between calls
+                        writeln_code!(
+                            output,
+                            "{}static {} {}[{}] = {{0}};",
+                            indent,
+                            c_ty,
+                            c_name,
+                            array_dims
+                        )?;
+                    }
+                }
+
+                // Register array bounds for UBOUND/LBOUND (same as dynamic arrays)
+                if dimensions.len() == 1 {
+                    writeln_code!(
+                        output,
+                        "{}qb_array_register({}, {}, {});",
+                        indent,
+                        c_name,
+                        dimensions[0].lower,
+                        dimensions[0].upper
+                    )?;
+                } else {
+                    let lowers: Vec<String> =
+                        dimensions.iter().map(|d| d.lower.to_string()).collect();
+                    let uppers: Vec<String> =
+                        dimensions.iter().map(|d| d.upper.to_string()).collect();
+                    writeln_code!(
+                        output,
+                        "{}{{ int32_t _lb[] = {{{}}}; int32_t _ub[] = {{{}}}; qb_array_register_md({}, {}, _lb, _ub); }}",
+                        indent,
+                        lowers.join(", "),
+                        uppers.join(", "),
+                        c_name,
+                        dimensions.len()
+                    )?;
+                }
+                return Ok(());
+            }
+
+            // Dynamic arrays - handle fixed-length string arrays specially
             if let BasicType::FixedString(len) = basic_type {
                 let sizes: Vec<String> = dimensions
                     .iter()

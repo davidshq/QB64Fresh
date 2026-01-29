@@ -641,6 +641,94 @@ int qb_sndraw_stereo(double left, double right);
 double qb_sndrawlen(void);
 
 /* ============================================================================
+ * Event Trapping (ON KEY, ON TIMER, ON UEVENT)
+ * ============================================================================ */
+
+/* Event handler registration
+ * These functions register label addresses (computed goto targets) for event handlers.
+ * The generated C code checks for events and jumps to these labels.
+ */
+
+/* ON KEY(n) GOSUB - Register keyboard event handler
+ * key_num: Key number (1-31, or 0 to disable)
+ * target: Label address (computed goto target)
+ */
+void qb_on_key(int32_t key_num, void* target);
+
+/* KEY(n) ON/OFF/STOP - Control key event trapping
+ * key_num: Key number
+ * mode: 0 = OFF, 1 = ON, 2 = STOP (suspended)
+ */
+void qb_key_control(int32_t key_num, int mode);
+
+/* ON TIMER(n) GOSUB - Register timer event handler
+ * interval: Timer interval in seconds
+ * target: Label address (computed goto target)
+ */
+void qb_on_timer(float interval, void* target);
+
+/* TIMER ON/OFF/STOP - Control timer event trapping
+ * mode: 0 = OFF, 1 = ON, 2 = STOP (suspended)
+ */
+void qb_timer_control(int mode);
+
+/* ON UEVENT GOSUB - Register user event handler
+ * target: Label address (computed goto target)
+ */
+void qb_on_uevent(void* target);
+
+/* UEVENT ON/OFF/STOP - Control user event trapping
+ * mode: 0 = OFF, 1 = ON, 2 = STOP (suspended)
+ */
+void qb_uevent_control(int mode);
+
+/* UEVENT - Trigger a user event */
+void qb_uevent_trigger(void);
+
+/* Event checking functions (called from generated C code)
+ * These return event flags that the C code checks before jumping to handlers.
+ */
+
+/* Check for pending key event
+ * Returns: Key number (1-31) if event pending, 0 if none
+ */
+int32_t qb_check_key_event(void);
+
+/* Check for pending timer event
+ * Returns: 1 if timer event pending, 0 if none
+ */
+int qb_check_timer_event(void);
+
+/* Check for pending user event
+ * Returns: 1 if user event pending, 0 if none
+ */
+int qb_check_uevent(void);
+
+/* Get handler label for events (for computed goto)
+ * These return the label address to jump to, or NULL if no handler.
+ * WARNING: These are unsafe - only use with computed goto in generated C code.
+ */
+
+/* Get handler label for key event
+ * key_num: Key number
+ * Returns: Label address or NULL
+ */
+void* qb_get_key_handler(int32_t key_num);
+
+/* Get handler label for timer event
+ * Returns: Label address or NULL
+ */
+void* qb_get_timer_handler(void);
+
+/* Get handler label for user event
+ * Returns: Label address or NULL
+ */
+void* qb_get_uevent_handler(void);
+
+/* Clear all event handlers (called on RUN) */
+void qb_events_clear_all(void);
+
+/* ============================================================================
  * System Interrupt Emulation
  * ============================================================================ */
 

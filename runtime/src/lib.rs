@@ -28,6 +28,7 @@ pub mod array_registry;
 pub mod audio;
 pub mod audio_ffi;
 pub mod dialogs;
+pub mod events;
 pub mod font_ffi;
 #[cfg(feature = "freetype")]
 pub mod font_manager;
@@ -44,6 +45,7 @@ pub use array_registry::*;
 pub use audio::*;
 pub use audio_ffi::*;
 pub use dialogs::*;
+pub use events::*;
 pub use font_ffi::*;
 #[cfg(feature = "freetype")]
 pub use font_manager::*;

@@ -60,12 +60,14 @@ impl<'a> TypeChecker<'a> {
             // Evaluate array dimensions
             // QB/QB64 allows variable expressions in DIM bounds (evaluated at runtime).
             // If we can evaluate as constant, we use the value; otherwise use a placeholder.
+            // For static arrays ($STATIC), bounds MUST be constant.
+            let mut has_runtime_bounds = false;
             let typed_dims: Vec<TypedArrayDimension> = var
                 .dimensions
                 .iter()
                 .map(|d| {
                     // Evaluate lower bound (if provided)
-                    let lower = if let Some(lower_expr) = &d.lower {
+                    let (lower, _is_const_lower) = if let Some(lower_expr) = &d.lower {
                         let typed_lower = self.check_expr(lower_expr);
                         // Ensure the expression is numeric
                         if !typed_lower.basic_type.is_numeric()
@@ -77,14 +79,19 @@ impl<'a> TypeChecker<'a> {
                                 span: lower_expr.span,
                             });
                         }
-                        // Try to evaluate as constant, but don't error if not possible
+                        // Try to evaluate as constant
                         match self.try_evaluate_const_expr(&typed_lower) {
-                            Some(crate::semantic::symbols::ConstValue::Integer(v)) => v,
-                            Some(crate::semantic::symbols::ConstValue::Float(v)) => v as i64,
-                            _ => 0, // Runtime bound - use 0 as placeholder
+                            Some(crate::semantic::symbols::ConstValue::Integer(v)) => (v, true),
+                            Some(crate::semantic::symbols::ConstValue::Float(v)) => {
+                                (v as i64, true)
+                            }
+                            _ => {
+                                has_runtime_bounds = true;
+                                (0, false) // Runtime bound - use 0 as placeholder (not constant)
+                            }
                         }
                     } else {
-                        self.symbols.option_base()
+                        (self.symbols.option_base(), true) // OPTION BASE is always constant
                     };
 
                     // Evaluate upper bound (required)
@@ -99,16 +106,27 @@ impl<'a> TypeChecker<'a> {
                             span: d.upper.span,
                         });
                     }
-                    // Try to evaluate as constant, but don't error if not possible
-                    let upper = match self.try_evaluate_const_expr(&typed_upper) {
-                        Some(crate::semantic::symbols::ConstValue::Integer(v)) => v,
-                        Some(crate::semantic::symbols::ConstValue::Float(v)) => v as i64,
-                        _ => 10, // Runtime bound - use 10 as placeholder
+                    // Try to evaluate as constant
+                    let (upper, _is_const_upper) = match self.try_evaluate_const_expr(&typed_upper)
+                    {
+                        Some(crate::semantic::symbols::ConstValue::Integer(v)) => (v, true),
+                        Some(crate::semantic::symbols::ConstValue::Float(v)) => (v as i64, true),
+                        _ => {
+                            has_runtime_bounds = true;
+                            (10, false) // Runtime bound - use 10 as placeholder
+                        }
                     };
 
                     TypedArrayDimension { lower, upper }
                 })
                 .collect();
+
+            // If $STATIC is active but bounds aren't constant, error or fall back to dynamic
+            if self.array_mode_static && has_runtime_bounds && !var.dimensions.is_empty() {
+                self.errors
+                    .push(SemanticError::NonConstantExpression { span });
+                // Note: We'll still mark as static=false below to avoid codegen issues
+            }
 
             // Define symbol
             let symbol_kind = if var.dimensions.is_empty() {
@@ -166,10 +184,15 @@ impl<'a> TypeChecker<'a> {
                 }
             }
 
+            // Arrays are static only if $STATIC directive is active, this is an array,
+            // and all bounds are constant (checked above)
+            let is_static = self.array_mode_static && !typed_dims.is_empty() && !has_runtime_bounds;
+
             typed_variables.push(TypedDimVariable {
                 name: var.name.clone(),
                 basic_type,
                 dimensions: typed_dims,
+                is_static,
             });
         }
 

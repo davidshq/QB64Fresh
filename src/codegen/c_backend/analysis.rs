@@ -66,6 +66,18 @@ pub(super) struct DynamicLibInfo {
     pub declarations: Vec<TypedExternalDeclaration>,
 }
 
+/// Checks if the program contains a $SCREENHIDE directive.
+///
+/// Returns true if $SCREENHIDE is present anywhere in the program.
+pub(super) fn has_screen_hide(program: &TypedProgram) -> bool {
+    for stmt in &program.statements {
+        if matches!(stmt.kind, TypedStatementKind::MetaScreenHide) {
+            return true;
+        }
+    }
+    false
+}
+
 /// Collects DECLARE DYNAMIC LIBRARY blocks and the set of C names that are dynamically loaded.
 ///
 /// Returns (list of dynamic lib infos, set of c_name for each declared function).
@@ -274,13 +286,15 @@ pub(super) fn collect_globals(
                             None, // No array_names for global analysis
                         );
                     } else {
-                        // Global arrays (declared as pointers)
+                        // Global arrays (static or dynamic based on $STATIC/$DYNAMIC directive)
                         declare_array_var(
                             &var.name,
                             &var.basic_type,
                             &mut declared_vars,
                             &mut globals,
                             true, // is_global
+                            var.is_static,
+                            &var.dimensions,
                         );
                     }
                 }
@@ -352,7 +366,17 @@ pub(super) fn collect_globals(
             } if *shared => {
                 for var in variables {
                     // REDIM SHARED creates a global array pointer
-                    declare_array_var(&var.name, &var.element_type, declared_vars, globals, true);
+                    // For implicit arrays, we don't know if they're static or dynamic
+                    // Default to dynamic (matches QB64pe default behavior)
+                    declare_array_var(
+                        &var.name,
+                        &var.element_type,
+                        declared_vars,
+                        globals,
+                        true,  // is_global
+                        false, // is_static (default to dynamic for implicit arrays)
+                        &[],   // dimensions unknown for implicit arrays
+                    );
                 }
             }
             TypedStatementKind::SubDefinition { body, .. }
