@@ -124,5 +124,52 @@ pub(super) fn emit_error_handling(output: &mut String) -> Result<(), CodeGenErro
     writeln_code!(output, "    return qb_string_new(buf);")?;
     writeln_code!(output, "}}")?;
     writeln_code!(output)?;
+
+    // Assertion support ($ASSERTS directive)
+    // Runtime variables are set when $ASSERTS directive is encountered in codegen
+    writeln_code!(output, "/* Assertion Support ($ASSERTS) */")?;
+    writeln_code!(output)?;
+    writeln_code!(
+        output,
+        "/* Runtime flags for assertion checking (set by $ASSERTS directive) */"
+    )?;
+    writeln_code!(
+        output,
+        "/* These are declared as extern in generated code when $ASSERTS is used */"
+    )?;
+    writeln_code!(
+        output,
+        "int _qb_asserts_enabled = 0;  /* Set to 1 when $ASSERTS is used */"
+    )?;
+    writeln_code!(
+        output,
+        "int _qb_asserts_console = 0;  /* Set to 1 when $ASSERTS:CONSOLE is used */"
+    )?;
+    writeln_code!(output)?;
+    writeln_code!(output, "/* qb_assert - Runtime assertion checking */")?;
+    writeln_code!(
+        output,
+        "/* When $ASSERTS is enabled, this function checks conditions and aborts on failure */"
+    )?;
+    writeln_code!(
+        output,
+        "/* When $ASSERTS:CONSOLE is enabled, assertion failures are printed to stderr */"
+    )?;
+    writeln_code!(
+        output,
+        "void qb_assert(int condition, const char* message) {{"
+    )?;
+    writeln_code!(output, "    if (_qb_asserts_enabled && !condition) {{")?;
+    writeln_code!(output, "        if (_qb_asserts_console) {{")?;
+    writeln_code!(
+        output,
+        "            fprintf(stderr, \"Assertion failed: %s\\n\", message ? message : \"(no message)\");"
+    )?;
+    writeln_code!(output, "            fflush(stderr);")?;
+    writeln_code!(output, "        }}")?;
+    writeln_code!(output, "        abort();")?;
+    writeln_code!(output, "    }}")?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(output)?;
     Ok(())
 }

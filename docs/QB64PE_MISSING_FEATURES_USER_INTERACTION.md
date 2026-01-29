@@ -148,7 +148,7 @@ This document lists features that need design decisions, tooling choices, or use
 
 ### 1.4 `$COLOR:0` and `$COLOR:32`
 
-**Status:** ❌ Not implemented
+**Status:** ✅ Implemented (metadata for LSP)
 
 **What it does:** IDE syntax highlighting mode (0 = no color, 32 = 32-bit color).
 
@@ -159,24 +159,20 @@ This document lists features that need design decisions, tooling choices, or use
 - **IDE-only:** This directive is for IDE display purposes only, not runtime
 - **Code location:** `source/qb64pe.bas` lines 1780-1784, 97333-97344
 
-**What needs to be decided:**
-1. **IDE integration:** This is primarily for IDE display, not runtime. Should QB64Fresh:
-   - Ignore it (no-op)?
-   - Store it in metadata for LSP server?
-   - Emit as comment in C code?
-2. **LSP support:** Should the LSP server use this for syntax highlighting?
+**QB64Fresh Implementation:**
+- **Parser:** `src/parser/directives.rs` — Parses `$COLOR:0` and `$COLOR:32`, validates values (only 0 or 32 accepted)
+- **AST:** Stored as `MetaColor { depth: Option<i64> }` in the AST
+- **LSP Metadata:** Extracted during analysis and stored in `AnalysisCache.color_mode`
+- **Codegen:** Emitted as comment in generated C code (no-op at runtime)
+- **Access:** Available via `AnalysisCache::color_mode()` method for LSP server use
 
-**Recommendation:** Store in AST/metadata for LSP server use, but no-op in codegen (just emit comment). This is IDE-only functionality.
-
-**Files to modify:**
-- `src/parser/directives.rs` — Already parses `$COLOR`
-- `src/lsp/` — Use color mode for syntax highlighting (if applicable)
+**Note:** Currently, if both `$COLOR:0` and `$COLOR:32` are present, the last one wins (no error). This matches the extraction logic but differs from QB64pe's strict mutual exclusivity check. Future enhancement could add validation to error on conflicting directives.
 
 ---
 
 ### 1.5 `$ASSERTS` and `$ASSERTS:CONSOLE`
 
-**Status:** ❌ Not implemented
+**Status:** ✅ Implemented
 
 **What it does:** Enables debug assertions. `$ASSERTS:CONSOLE` sends assertion failures to console.
 
@@ -188,19 +184,23 @@ This document lists features that need design decisions, tooling choices, or use
 - **Preprocessor variables:** These are available as `$LET` variables that can be checked in `$IF` directives
 - **Code location:** `source/qb64pe.bas` lines 1849-1861
 
-**What needs to be decided:**
-1. **Assertion mechanism:** How do we implement assertions in generated C?
-   - Use C `assert()` macro?
-   - Custom assertion function with better error messages?
-2. **Console vs. other output:** How does `$ASSERTS:CONSOLE` differ from regular `$ASSERTS`?
-3. **When to enable:** Should assertions be enabled by default in debug builds?
+**Implementation:**
+1. **Assertion mechanism:** Custom `qb_assert()` function that checks runtime flags and aborts on failure
+2. **Console output:** `$ASSERTS:CONSOLE` uses `fprintf(stderr, ...)` to print assertion failures before aborting
+3. **Preprocessor variables:** `$ASSERTS` sets `_ASSERTS_` to 1, `$ASSERTS:CONSOLE` sets both `_ASSERTS_` and `_CONSOLE_` to 1 (available in `$IF` directives)
+4. **Runtime variables:** `_qb_asserts_enabled` and `_qb_asserts_console` are set to 1 when directives are encountered
 
-**Recommendation:** Use custom `qb_assert()` function that can be controlled at runtime. `$ASSERTS:CONSOLE` uses `fprintf(stderr, ...)` for output.
-
-**Files to modify:**
-- `src/codegen/c_backend/runtime/` — Add `qb_assert()` function
-- `src/codegen/c_backend/stmt/meta.rs` — Emit assertion checks for relevant statements
-- `src/semantic/` — Track assertion mode in semantic analyzer
+**Files modified:**
+- `src/lexer/token.rs` — Added `MetaAsserts` and `MetaAssertsConsole` tokens
+- `src/parser/directives.rs` — Added `parse_meta_asserts()` function
+- `src/parser/statements/mod.rs` — Added parser dispatch for assertion directives
+- `src/ast/stmt.rs` — Updated `MetaAsserts` to include `console` flag
+- `src/semantic/typed_ir.rs` — Updated `MetaAsserts` to include `console` flag
+- `src/semantic/checker/statements.rs` — Handle `MetaAsserts` to set preprocessor variables
+- `src/semantic/symbols.rs` — Added `define_meta_let()` method to store `$LET` variables
+- `src/semantic/checker/statements/misc.rs` — Store `$LET` variables in symbol table
+- `src/codegen/c_backend/runtime/error.rs` — Added `qb_assert()` function and runtime flags
+- `src/codegen/c_backend/stmt/meta.rs` — Emit code to set assertion flags when directive is encountered
 
 ---
 

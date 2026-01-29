@@ -53,8 +53,15 @@ pub(super) fn emit_meta_stmt(
             writeln_code!(output, "{}/* $SCREENSHOW */", indent)?;
         }
 
-        TypedStatementKind::MetaAsserts => {
-            writeln_code!(output, "{}/* $ASSERTS */", indent)?;
+        TypedStatementKind::MetaAsserts { console } => {
+            // Enable assertions and optionally console output
+            writeln_code!(output, "{}_qb_asserts_enabled = 1;", indent)?;
+            if *console {
+                writeln_code!(output, "{}_qb_asserts_console = 1;", indent)?;
+                writeln_code!(output, "{}/* $ASSERTS:CONSOLE */", indent)?;
+            } else {
+                writeln_code!(output, "{}/* $ASSERTS */", indent)?;
+            }
         }
 
         TypedStatementKind::MetaNoPrefix => {

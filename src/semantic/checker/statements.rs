@@ -903,8 +903,16 @@ impl<'a> TypeChecker<'a> {
                 )
             }
 
-            StatementKind::MetaAsserts => {
-                TypedStatement::new(TypedStatementKind::MetaAsserts, stmt.span)
+            StatementKind::MetaAsserts { console } => {
+                // Set preprocessor variables: _ASSERTS_ = 1, and _CONSOLE_ = 1 if console mode
+                self.symbols.define_meta_let("_ASSERTS_", 1, stmt.span);
+                if *console {
+                    self.symbols.define_meta_let("_CONSOLE_", 1, stmt.span);
+                }
+                TypedStatement::new(
+                    TypedStatementKind::MetaAsserts { console: *console },
+                    stmt.span,
+                )
             }
 
             StatementKind::MetaNoPrefix => {

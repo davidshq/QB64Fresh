@@ -1296,6 +1296,14 @@ pub enum TokenKind {
     #[token("$DEBUG", ignore(ascii_case))]
     MetaDebug,
 
+    /// $ASSERTS:CONSOLE - enable assertions with console output
+    #[regex(r"\$ASSERTS\s*:\s*CONSOLE", ignore(ascii_case))]
+    MetaAssertsConsole,
+
+    /// $ASSERTS - enable assertion checking
+    #[token("$ASSERTS", ignore(ascii_case))]
+    MetaAsserts,
+
     /// $INCLUDEONCE - include file only once
     #[token("$INCLUDEONCE", ignore(ascii_case))]
     MetaIncludeOnce,

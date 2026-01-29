@@ -1763,8 +1763,14 @@ pub enum StatementKind {
         message: Option<Expr>,
     },
 
-    /// `$ASSERTS` - Enable assertion checking
-    MetaAsserts,
+    /// `$ASSERTS` or `$ASSERTS:CONSOLE` - Enable assertion checking
+    ///
+    /// - `$ASSERTS`: Enables assertions, sets `_ASSERTS_` preprocessor variable to 1
+    /// - `$ASSERTS:CONSOLE`: Enables assertions with console output, sets both `_ASSERTS_` and `_CONSOLE_` to 1
+    MetaAsserts {
+        /// If true, assertion failures are sent to console (stderr)
+        console: bool,
+    },
 
     /// `$NOPREFIX` - Allow QB64 keywords without underscore prefix
     MetaNoPrefix,

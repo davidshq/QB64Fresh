@@ -240,6 +240,17 @@ pub(in crate::codegen) fn emit_header_with_debug(
             writeln_code!(output, "static int32_t _INCLERRORLINE = 0;")?;
             writeln_code!(output, "static char* _qb_err_msg = NULL;")?;
             writeln_code!(output)?;
+            // Assertion support variables (for $ASSERTS directive)
+            writeln_code!(output, "/* Assertion Support Variables ($ASSERTS) */")?;
+            writeln_code!(
+                output,
+                "int _qb_asserts_enabled = 0;  /* Set to 1 when $ASSERTS is used */"
+            )?;
+            writeln_code!(
+                output,
+                "int _qb_asserts_console = 0;  /* Set to 1 when $ASSERTS:CONSOLE is used */"
+            )?;
+            writeln_code!(output)?;
             // GOSUB stack and STRIG event ID - needed by generated code even with external runtime
             legacy::emit_gosub_stack(output)?;
             writeln_code!(output, "static uint32_t _qb_strig_event_id = 0;")?;
