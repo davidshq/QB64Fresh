@@ -188,39 +188,61 @@ pub(super) fn declare_scalar_var(
 ///
 /// | Element Type | Declaration |
 /// |--------------|-------------|
-/// | `FixedString(N)` | `char (*name)[N+1] = NULL;` |
-/// | Others | `type* name = NULL;` |
+/// | `FixedString(N)` | `char (*name)[N+1] = NULL;` (dynamic) or `char name[SIZE][N+1] = {0};` (static) |
+/// | Others | `type* name = NULL;` (dynamic) or `type name[SIZE] = {0};` (static) |
 pub(super) fn declare_array_var(
     name: &str,
     element_type: &BasicType,
     declared_vars: &mut HashSet<String>,
     decls: &mut Vec<String>,
     is_global: bool,
+    is_static: bool,
+    dimensions: &[crate::semantic::typed_ir::TypedArrayDimension],
 ) -> bool {
     let c_name = c_identifier(name);
     if declared_vars.contains(&c_name) {
         return false;
     }
 
-    let decl = match element_type {
-        BasicType::FixedString(len) => {
-            // Array of fixed-length strings: char (*name)[len+1]
-            format!("char (*{})[{}] = NULL;", c_name, len + 1)
-        }
-        _ => {
-            let c_ty = c_type(element_type);
-            format!("{}* {} = NULL;", c_ty, c_name)
-        }
-    };
+    if is_static {
+        // Static array: emit fixed-size C array
+        let sizes: Vec<String> = dimensions
+            .iter()
+            .map(|d| (d.upper - d.lower + 1).to_string())
+            .collect();
+        let array_dims = sizes.join("][");
 
-    decls.push(decl);
-    // Emit a size tracking variable for REDIM _PRESERVE support.
-    // - For global arrays: must be global so all functions see the same size
-    // - For local arrays: must be static so size persists across function calls
-    if is_global {
-        decls.push(format!("size_t {}_sz__ = 0;", c_name));
+        let decl = match element_type {
+            BasicType::FixedString(len) => {
+                format!("char {}[{}][{}] = {{0}};", c_name, array_dims, len + 1)
+            }
+            _ => {
+                let c_ty = c_type(element_type);
+                format!("{} {}[{}] = {{0}};", c_ty, c_name, array_dims)
+            }
+        };
+        decls.push(decl);
     } else {
-        decls.push(format!("static size_t {}_sz__ = 0;", c_name));
+        // Dynamic array: emit pointer declaration
+        let decl = match element_type {
+            BasicType::FixedString(len) => {
+                // Array of fixed-length strings: char (*name)[len+1]
+                format!("char (*{})[{}] = NULL;", c_name, len + 1)
+            }
+            _ => {
+                let c_ty = c_type(element_type);
+                format!("{}* {} = NULL;", c_ty, c_name)
+            }
+        };
+        decls.push(decl);
+        // Emit a size tracking variable for REDIM _PRESERVE support.
+        // - For global arrays: must be global so all functions see the same size
+        // - For local arrays: must be static so size persists across function calls
+        if is_global {
+            decls.push(format!("size_t {}_sz__ = 0;", c_name));
+        } else {
+            decls.push(format!("static size_t {}_sz__ = 0;", c_name));
+        }
     }
     declared_vars.insert(c_name);
     true

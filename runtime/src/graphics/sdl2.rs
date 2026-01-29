@@ -2568,6 +2568,39 @@ impl GraphicsBackend for SDL2Backend {
                         keycode: Some(sdl2::keyboard::Keycode::Escape),
                         ..
                     } => return Ok(false),
+                    Event::KeyDown { scancode, .. } => {
+                        // Check for ON KEY event trapping
+                        if let Some(scancode_val) = scancode {
+                            use crate::events::qb_queue_key_event;
+                            // Map SDL2 scancodes to QB64 key numbers (1-31)
+                            // Key mapping:
+                            // - 1-10: F1-F10
+                            // - 11: Up arrow
+                            // - 12: Left arrow
+                            // - 13: Right arrow
+                            // - 14: Down arrow
+                            let key_num = match scancode_val {
+                                Scancode::F1 => 1,
+                                Scancode::F2 => 2,
+                                Scancode::F3 => 3,
+                                Scancode::F4 => 4,
+                                Scancode::F5 => 5,
+                                Scancode::F6 => 6,
+                                Scancode::F7 => 7,
+                                Scancode::F8 => 8,
+                                Scancode::F9 => 9,
+                                Scancode::F10 => 10,
+                                Scancode::Up => 11,
+                                Scancode::Left => 12,
+                                Scancode::Right => 13,
+                                Scancode::Down => 14,
+                                _ => 0,
+                            };
+                            if key_num > 0 {
+                                qb_queue_key_event(key_num);
+                            }
+                        }
+                    }
                     Event::MouseMotion {
                         x, y, xrel, yrel, ..
                     } => {

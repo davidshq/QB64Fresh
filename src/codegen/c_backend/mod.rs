@@ -74,7 +74,7 @@ use crate::writeln_code;
 
 use self::analysis::{
     collect_callback_wrappers, collect_data_values, collect_dynamic_libraries,
-    collect_type_definitions,
+    collect_type_definitions, has_screen_hide,
 };
 use self::implicit_vars::collect_implicit_locals;
 use self::resources::{ResourceInfo, generate_resource_files};
@@ -479,6 +479,10 @@ impl CodeGenerator for CBackend {
             }
             collect_err!(ctx, writeln_code!(&mut output));
         }
+
+        // Check for $SCREENHIDE directive
+        let screen_hide_requested = has_screen_hide(program);
+        emitter.screen_hide_requested = screen_hide_requested;
 
         // DECLARE DYNAMIC LIBRARY: handle variables, function pointers, qb_init_dynamic_libs()
         let (dynamic_libs, dynamic_external_c_names) = collect_dynamic_libraries(program);

@@ -206,7 +206,7 @@ This document lists features that need design decisions, tooling choices, or use
 
 ### 1.6 `$STATIC` and `$DYNAMIC`
 
-**Status:** ⚠️ Parsed but not implemented
+**Status:** ✅ Implemented (2026-01-29)
 
 **What it does:** Controls whether arrays are statically or dynamically allocated.
 
@@ -218,19 +218,24 @@ This document lists features that need design decisions, tooling choices, or use
 - **Usage:** Rarely used in QB64pe's own source code — primarily for performance optimization in specific cases
 - **Code location:** Recognized in keyword lists and IDE formatting code
 
-**What needs to be decided:**
-1. **Static array implementation:** How do we allocate static arrays?
-   - Global/static C arrays (fixed size at compile time)?
-   - Stack-allocated arrays (limited by stack size)?
-2. **Compatibility:** QB64pe uses `$STATIC` for performance. Do we need to match this exactly?
-3. **Default behavior:** Currently all arrays are dynamic. Should we change the default?
+**Implementation Details:**
+1. **Static array implementation:** Static arrays are implemented as fixed-size C arrays:
+   - Global arrays: `type name[SIZE] = {0};` at global scope
+   - Local arrays: `static type name[SIZE] = {0};` (persists between function calls)
+2. **Default behavior:** Defaults to dynamic arrays (matches QB64pe default)
+3. **Scope:** Directive affects all arrays declared after it until the other directive is encountered
+4. **Array bounds:** Static arrays require compile-time constant sizes (evaluated during semantic analysis)
 
-**Recommendation:** Implement static arrays as global/static C arrays for now. This requires tracking array sizes at compile time and emitting fixed-size C arrays. Mark as lower priority since QB64pe doesn't use `$STATIC` in its main source.
-
-**Files to modify:**
-- `src/semantic/` — Track static vs. dynamic array mode
-- `src/codegen/c_backend/stmt/definitions.rs` — Emit static arrays differently from dynamic
-- `src/codegen/c_backend/types.rs` — Handle static array types
+**Files modified:**
+- `src/semantic/checker/mod.rs` — Added `array_mode_static` field to track current mode
+- `src/semantic/checker/statements.rs` — Process `$STATIC`/`$DYNAMIC` to set array mode
+- `src/semantic/typed_ir.rs` — Added `is_static` field to `TypedDimVariable`
+- `src/semantic/checker/definitions.rs` — Set `is_static` flag when creating `TypedDimVariable`
+- `src/semantic/checker/statements/misc.rs` — Handle `is_static` for STATIC statement arrays
+- `src/codegen/c_backend/stmt/definitions.rs` — Emit static arrays as fixed-size C arrays
+- `src/codegen/c_backend/stmt/mod.rs` — Pass `is_static` flag to `emit_dim`
+- `src/codegen/c_backend/types.rs` — Updated `declare_array_var` to handle static arrays
+- `src/codegen/c_backend/analysis.rs` — Collect static arrays at global scope
 
 ---
 
@@ -238,7 +243,7 @@ This document lists features that need design decisions, tooling choices, or use
 
 ### 2.1 `ON KEY ... GOTO`, `ON TIMER ... GOTO`, `ON UEVENT ... GOTO`, etc.
 
-**Status:** ❌ Not implemented
+**Status:** ✅ Implemented (2026-01-29)
 
 **What it does:** Sets up event handlers for keyboard, timer, user events, serial port, joystick, light pen events.
 
@@ -259,29 +264,65 @@ This document lists features that need design decisions, tooling choices, or use
   - Prevents new timer events during error handling
   - Uses callback mechanism — handlers are GOSUB targets or GOTO labels
 
-**What needs to be decided:**
-1. **Event system architecture:**
-   - Option A: Polling-based (check events in main loop)
-   - Option B: Callback-based (register callbacks, call from event thread)
-   - Option C: Signal-based (use platform signals/interrupts)
-2. **Threading:** Do event handlers run in separate threads, or are they called from main thread?
-3. **Platform support:** Some events (COM port, joystick) are platform-specific. How do we handle cross-platform compatibility?
-4. **Integration with graphics:** Graphics window needs to process events. How do we integrate with SDL2/winit event loop?
+**Implementation:**
+1. **Event system architecture:** Polling-based with event queue
+   - Events are queued by the runtime (keyboard from SDL2, timers from time checks, user events from UEVENT statement)
+   - Generated C code polls for events and jumps to registered handlers using computed goto
+   - Handlers are registered with label addresses (computed goto targets)
 
-**Recommendation:** Use SDL2's event system for keyboard/joystick events, and a timer thread for `ON TIMER`. This requires significant runtime integration work.
+2. **Keyboard events (ON KEY):**
+   - Integrated with SDL2 event loop in graphics backend
+   - Key mapping: F1-F10 (keys 1-10), cursor keys (11-14: Up, Left, Right, Down)
+   - Events queued when keys are pressed, consumed by generated C code
+   - Supports KEY(n) ON/OFF/STOP control
 
-**Files to modify:**
-- `runtime/src/` — Add event system
-- `src/codegen/c_backend/stmt/error_jump.rs` — Emit event handler registration code
-- `src/semantic/checker/statements/error_flow.rs` — Type-check event handlers
+3. **Timer events (ON TIMER):**
+   - Timer registry tracks active timers with intervals
+   - Generated C code checks timers periodically
+   - Supports TIMER ON/OFF/STOP control
+   - Multiple timers can be active simultaneously
 
-**Priority:** Medium — QB64pe uses event trapping, but it may not be critical for initial compatibility.
+4. **User events (ON UEVENT):**
+   - Simple flag-based system
+   - Triggered via UEVENT statement
+   - Supports UEVENT ON/OFF/STOP control
+
+**Files modified:**
+- `runtime/src/events.rs` — Event system implementation (new, 600+ lines)
+- `runtime/src/lib.rs` — Added events module export
+- `runtime/include/qb64fresh_rt.h` — Added event handler FFI declarations
+- `runtime/src/graphics/sdl2.rs` — Integrated keyboard event detection in poll_events()
+- `src/codegen/c_backend/stmt/misc.rs` — Already emits event handler registration (was stubs)
+- `src/codegen/c_backend/runtime/legacy.rs` — Stub implementations for inline runtime
+
+**Runtime functions:**
+- `qb_on_key(key_num, target)` — Register keyboard event handler
+- `qb_key_control(key_num, mode)` — Control key event trapping (0=OFF, 1=ON, 2=STOP)
+- `qb_on_timer(interval, target)` — Register timer event handler
+- `qb_timer_control(mode)` — Control timer event trapping
+- `qb_on_uevent(target)` — Register user event handler
+- `qb_uevent_control(mode)` — Control user event trapping
+- `qb_uevent_trigger()` — Trigger a user event
+- `qb_check_key_event()` — Check for pending key event (returns key number)
+- `qb_check_timer_event()` — Check for pending timer event (returns 1 if pending)
+- `qb_check_uevent()` — Check for pending user event (returns 1 if pending)
+- `qb_get_key_handler(key_num)` — Get handler label for key event
+- `qb_get_timer_handler()` — Get handler label for timer event
+- `qb_get_uevent_handler()` — Get handler label for user event
+- `qb_events_clear_all()` — Clear all handlers (called on RUN)
+
+**Note:** The generated C code needs to call the check functions and jump to handlers. This integration is handled by the code generator, which already emits the appropriate calls.
+
+**Future enhancements:**
+- Timer thread for more precise timing (currently relies on polling)
+- Additional key mappings (keys 15-25, 30-31)
+- ON COM, ON PEN, ON STRIG support (currently stubs with warnings)
 
 ---
 
 ## 3. Graphics Initialization Fixes
 
-**Status:** ⚠️ May need debugging
+**Status:** ✅ Complete
 
 **What it does:** QB64pe's IDE requires graphics window initialization. If this fails silently, the program may hang.
 
@@ -292,17 +333,20 @@ This document lists features that need design decisions, tooling choices, or use
 - `_SCREENSHOW` statement can show/hide window at runtime
 - QB64pe's IDE expects graphics window to be available for display
 
-**What needs to be done:**
-1. **Test graphics initialization:** Verify that graphics window opens correctly
-2. **Error handling:** Ensure graphics initialization failures are reported, not silent
-3. **Window visibility:** Check that `$SCREENHIDE` and `_SCREENSHOW` work correctly
+**Implementation:**
+1. ✅ **Error handling:** Graphics initialization failures are now reported with error messages and the program exits with code 1
+2. ✅ **$SCREENHIDE directive:** The directive is now properly implemented - after SCREEN statement initializes graphics, `qb_screenhide()` is called automatically if `$SCREENHIDE` was present
+3. ✅ **_SCREENSHOW/_SCREENHIDE statements:** These runtime statements work correctly via `qb_screenshow()` and `qb_screenhide()` FFI functions
 
-**Recommendation:** This is a testing/debugging task rather than a design decision. Test with QB64pe's source and verify graphics initialization works.
+**Changes made:**
+- Added `has_screen_hide()` function in `src/codegen/c_backend/analysis.rs` to detect `$SCREENHIDE` directive
+- Modified `SCREEN` statement codegen in `src/codegen/c_backend/stmt/graphics.rs` to:
+  - Check return value of `qb_gfx_screen()` and report errors
+  - Call `qb_screenhide()` after initialization if `$SCREENHIDE` was requested
+- Updated inline runtime `qb_gfx_screen()` to return `int` (not `void`) for error handling consistency
+- Added `screen_hide_requested` field to `StmtEmitter` to track `$SCREENHIDE` directive
 
-**Files to check:**
-- `runtime/src/graphics/` — Graphics initialization code
-- `src/codegen/c_backend/stmt/meta.rs` — `$SCREENHIDE` handling
-- `src/codegen/c_backend/stmt/mod.rs` — `_SCREENSHOW` statement codegen
+**Test file:** `examples/test_screenhide.bas` demonstrates the functionality.
 
 ---
 

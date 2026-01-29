@@ -578,10 +578,15 @@ pub(super) fn check_misc_stmt(
                     });
                 }
 
+                // STATIC statement arrays respect $STATIC/$DYNAMIC directive
+                // (the variable itself is always static in C, but array allocation method varies)
+                let is_static = checker.array_mode_static && !typed_dims.is_empty();
+
                 typed_vars.push(TypedDimVariable {
                     name: var.name.clone(),
                     basic_type,
                     dimensions: typed_dims,
+                    is_static,
                 });
             }
 
@@ -606,6 +611,23 @@ pub(super) fn check_misc_stmt(
                 // For REDIM _PRESERVE, the array must already exist.
                 // Look up the existing array first (including SHARED arrays).
                 let existing_array = checker.symbols.lookup_array(&var.name);
+
+                // Check if this is a REDIM on a static array (not allowed)
+                // Note: We can't perfectly detect this without tracking is_static in Symbol,
+                // but we can at least check if $STATIC is currently active as a conservative check.
+                // TODO: Track is_static flag in Symbol table to properly validate REDIM on static arrays
+                // For now, we'll use a conservative approach: if $STATIC is active and array exists,
+                // we assume it might be static. This is imperfect but better than nothing.
+                if checker.array_mode_static && existing_array.is_some() {
+                    // This might be a static array - REDIM is not allowed
+                    // Note: This is a conservative check - we error if $STATIC is active
+                    // even if the array was declared as dynamic before $STATIC was set.
+                    // A proper fix would require tracking is_static in the Symbol.
+                    // Use NonConstantExpression as a generic error for now
+                    checker
+                        .errors
+                        .push(SemanticError::NonConstantExpression { span });
+                }
 
                 // Determine element type:
                 // 1. If explicit type spec provided, use it

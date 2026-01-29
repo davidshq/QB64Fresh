@@ -281,6 +281,8 @@ pub(super) struct StmtEmitter {
     pub config: Config,
     /// C names of external functions from DECLARE DYNAMIC LIBRARY (call via qb_dyn_<c_name>).
     pub dynamic_external_c_names: HashSet<String>,
+    /// Whether $SCREENHIDE directive was present in the program.
+    pub screen_hide_requested: bool,
 }
 
 impl StmtEmitter {
@@ -297,6 +299,7 @@ impl StmtEmitter {
             loop_stack: Vec::new(),
             procedure: ProcedureContext::new(),
             globals: GlobalSymbols::new(),
+            screen_hide_requested: false,
             data: DataContext::new(),
             events: EventContext::new(),
             debug: DebugContext::new(),
@@ -1174,6 +1177,7 @@ impl StmtEmitter {
                             &var.name,
                             &var.basic_type,
                             &var.dimensions,
+                            var.is_static,
                             output,
                         )?;
                     }
@@ -1552,6 +1556,7 @@ impl StmtEmitter {
             TypedStatementKind::StaticStmt { variables } => {
                 // STATIC inside SUB/FUNCTION declares static local variables
                 // In C, these are declared with the `static` keyword
+                // Arrays respect $STATIC/$DYNAMIC directive for allocation method
                 for var in variables {
                     let c_name = c_identifier(&var.name);
                     let c_ty = c_type(&var.basic_type);
@@ -1566,21 +1571,127 @@ impl StmtEmitter {
                         };
                         writeln_code!(output, "{}static {} {} = {};", indent, c_ty, c_name, init)?;
                     } else {
-                        // Static array
-                        let sizes: Vec<String> = var
-                            .dimensions
-                            .iter()
-                            .map(|d| format!("{}", d.upper - d.lower + 1))
-                            .collect();
-                        let array_dims = sizes.join("][");
-                        writeln_code!(
-                            output,
-                            "{}static {} {}[{}] = {{0}};",
-                            indent,
-                            c_ty,
-                            c_name,
-                            array_dims
-                        )?;
+                        // Array: use static allocation if $STATIC is active, otherwise dynamic
+                        if var.is_static {
+                            // Static array (fixed-size C array)
+                            let sizes: Vec<String> = var
+                                .dimensions
+                                .iter()
+                                .map(|d| format!("{}", d.upper - d.lower + 1))
+                                .collect();
+                            let array_dims = sizes.join("][");
+                            writeln_code!(
+                                output,
+                                "{}static {} {}[{}] = {{0}};",
+                                indent,
+                                c_ty,
+                                c_name,
+                                array_dims
+                            )?;
+                            // Register array bounds for UBOUND/LBOUND
+                            if var.dimensions.len() == 1 {
+                                writeln_code!(
+                                    output,
+                                    "{}qb_array_register({}, {}, {});",
+                                    indent,
+                                    c_name,
+                                    var.dimensions[0].lower,
+                                    var.dimensions[0].upper
+                                )?;
+                            } else {
+                                let lowers: Vec<String> =
+                                    var.dimensions.iter().map(|d| d.lower.to_string()).collect();
+                                let uppers: Vec<String> =
+                                    var.dimensions.iter().map(|d| d.upper.to_string()).collect();
+                                writeln_code!(
+                                    output,
+                                    "{}{{ int32_t _lb[] = {{{}}}; int32_t _ub[] = {{{}}}; qb_array_register_md({}, {}, _lb, _ub); }}",
+                                    indent,
+                                    lowers.join(", "),
+                                    uppers.join(", "),
+                                    c_name,
+                                    var.dimensions.len()
+                                )?;
+                            }
+                        } else {
+                            // Dynamic array (pointer + malloc)
+                            // Use emit_dim helper for consistency
+                            self.emit_dim(
+                                &indent,
+                                &var.name,
+                                &var.basic_type,
+                                &var.dimensions,
+                                false, // Not static (dynamic allocation)
+                                output,
+                            )?;
+                            // Add static keyword to the pointer declaration
+                            // (the variable persists between calls, but array is dynamically allocated)
+                            // Note: emit_dim already emitted the declaration, so we need to modify it
+                            // Actually, for STATIC statement with dynamic arrays, we want:
+                            // static type* name = malloc(...);
+                            // But emit_dim doesn't add static. Let's handle it specially here.
+                            // Actually, let's just use emit_dim and then we'll need to track if it's static.
+                            // For now, let's emit it manually for STATIC statement dynamic arrays:
+                            let sizes: Vec<String> = var
+                                .dimensions
+                                .iter()
+                                .map(|d| format!("({})", d.upper - d.lower + 1))
+                                .collect();
+                            let size_expr = sizes.join(" * ");
+                            let alloc_fn = if var.basic_type == BasicType::String {
+                                "calloc"
+                            } else {
+                                "malloc"
+                            };
+                            if var.basic_type == BasicType::String {
+                                writeln_code!(
+                                    output,
+                                    "{}static {}* {} = {}({}, sizeof({}));",
+                                    indent,
+                                    c_ty,
+                                    c_name,
+                                    alloc_fn,
+                                    size_expr,
+                                    c_ty
+                                )?;
+                            } else {
+                                writeln_code!(
+                                    output,
+                                    "{}static {}* {} = {}(sizeof({}) * {});",
+                                    indent,
+                                    c_ty,
+                                    c_name,
+                                    alloc_fn,
+                                    c_ty,
+                                    size_expr
+                                )?;
+                            }
+                            // Register array bounds
+                            if var.dimensions.len() == 1 {
+                                writeln_code!(
+                                    output,
+                                    "{}qb_array_register({}, {}, {});",
+                                    indent,
+                                    c_name,
+                                    var.dimensions[0].lower,
+                                    var.dimensions[0].upper
+                                )?;
+                            } else {
+                                let lowers: Vec<String> =
+                                    var.dimensions.iter().map(|d| d.lower.to_string()).collect();
+                                let uppers: Vec<String> =
+                                    var.dimensions.iter().map(|d| d.upper.to_string()).collect();
+                                writeln_code!(
+                                    output,
+                                    "{}{{ int32_t _lb[] = {{{}}}; int32_t _ub[] = {{{}}}; qb_array_register_md({}, {}, _lb, _ub); }}",
+                                    indent,
+                                    lowers.join(", "),
+                                    uppers.join(", "),
+                                    c_name,
+                                    var.dimensions.len()
+                                )?;
+                            }
+                        }
                     }
                 }
             }

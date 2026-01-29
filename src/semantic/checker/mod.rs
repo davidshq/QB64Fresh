@@ -80,6 +80,9 @@ pub struct TypeChecker<'a> {
     pub(crate) in_sub: bool,
     /// Current function name (for assigning return value).
     pub(crate) current_function_name: Option<String>,
+    /// Current array allocation mode (true = static, false = dynamic).
+    /// Defaults to false (dynamic) to match QB64pe's default behavior.
+    pub(crate) array_mode_static: bool,
 }
 
 impl<'a> TypeChecker<'a> {
@@ -92,6 +95,7 @@ impl<'a> TypeChecker<'a> {
             in_function: false,
             in_sub: false,
             current_function_name: None,
+            array_mode_static: false, // Default to dynamic arrays (QB64pe default)
         }
     }
 

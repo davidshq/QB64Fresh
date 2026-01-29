@@ -47,15 +47,30 @@ pub(super) fn emit_graphics_stmt(
                 .map(|e| emitter.emit_expr(e))
                 .transpose()?
                 .unwrap_or_else(|| "-1".to_string());
+
+            // Emit SCREEN call with error checking
             writeln_code!(
                 output,
-                "{}qb_gfx_screen((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){});",
+                "{}if (qb_gfx_screen((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){})) {{",
                 indent,
                 mode_code,
                 color_code,
                 apage_code,
                 vpage_code
             )?;
+            writeln_code!(
+                output,
+                "{}    fprintf(stderr, \"Error: Graphics initialization failed\\n\");",
+                indent
+            )?;
+            writeln_code!(output, "{}    fflush(stderr);", indent)?;
+            writeln_code!(output, "{}    return 1;", indent)?;
+            writeln_code!(output, "{}}}", indent)?;
+
+            // If $SCREENHIDE was requested, hide the window after initialization
+            if emitter.screen_hide_requested {
+                writeln_code!(output, "{}qb_screenhide();", indent)?;
+            }
         }
 
         TypedStatementKind::Cls { mode } => {

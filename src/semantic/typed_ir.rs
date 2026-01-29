@@ -2090,6 +2090,10 @@ pub struct TypedDimVariable {
     pub basic_type: BasicType,
     /// Array dimensions (empty if scalar).
     pub dimensions: Vec<TypedArrayDimension>,
+    /// Whether this array should be statically allocated (from $STATIC directive).
+    /// Only meaningful for arrays (non-empty dimensions).
+    /// Scalar variables are always allocated normally regardless of this flag.
+    pub is_static: bool,
 }
 
 /// A typed array dimension for REDIM (with runtime expressions).
