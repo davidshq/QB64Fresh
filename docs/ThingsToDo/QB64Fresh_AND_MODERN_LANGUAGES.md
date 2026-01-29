@@ -2,7 +2,7 @@
 
 **A candid comparison of strengths, weaknesses, viability, and fit within the current language landscape.**
 
-**Last Updated:** 2026-01-27
+**Last Updated:** 2026-01-28
 
 ---
 
@@ -147,7 +147,7 @@ QB64Fresh is a **ground-up rewrite** of QB64: a BASIC compiler that targets QBas
 ### 4.3 Sustainability
 
 - **Open implementation:** Rust codebase, clear structure, and docs lower the barrier to contribution and long-term maintenance.
-- **Bootstrap and tests:** 1,390+ tests, QB4.5 compat suite (122/141 qbasic_testcases, 86.5%), and bootstrap of QB64pe provide confidence for refactors and evolution.
+- **Bootstrap and tests:** 1,500+ tests, QB4.5 compat suite (114/115 qbasic_testcases, 99.1%), and bootstrap of QB64pe provide confidence for refactors and evolution.
 - **Scope discipline:** By not chasing web, mobile, or ML, the project can stay focused and avoid feature creep.
 
 ---
@@ -181,7 +181,7 @@ QB64Fresh sits in a **procedural, “low-abstraction but batteries-included”**
 
 | If the user wants… | Closer choices | QB64Fresh when… |
 |--------------------|----------------|------------------|
-| Easiest path to “ something on screen” | Python, Scratch, Lua | They prefer BASIC syntax or have existing BASIC. |
+| Easiest path to “something on screen” | Python, Scratch, Lua | They prefer BASIC syntax or have existing BASIC. |
 | Native perf and low-level control | C, Rust, Zig | They don’t need Rust-level safety or C-level control. |
 | To run or modernize old QB/QB64 code | QB64pe, VB6 (where possible) | They want a Rust-based, LSP-first, maintainable toolchain. |
 | To teach sequencing and procedures | Python, Lua, JavaScript | They want compiled, native execution and built-in graphics. |
@@ -209,8 +209,10 @@ QB64Fresh does not try to be a general-purpose, do-everything language. It focus
 
 ## 7. Related Documents
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) — Compiler pipeline and design
+- [ARCHITECTURE.md](../ARCHITECTURE.md) — Compiler pipeline and design
 - [QB64PE_TO_QB64Fresh_BEHAVIORAL_DIFFERENCES.md](../QB64pe/QB64PE_TO_QB64Fresh_BEHAVIORAL_DIFFERENCES.md) — QB64Fresh vs QB64pe semantics
 - [QB64PE_TO_QB64Fresh_MIGRATION_GUIDE.md](../QB64pe/QB64PE_TO_QB64Fresh_MIGRATION_GUIDE.md) — Moving from QB64 to QB64Fresh
-- [DEVELOPMENT.md](DEVELOPMENT.md) — Contributing and development setup
-- [docs/adrs/](adrs/README.md) — Architecture decision records
+- [INTENTIONAL_DIFFERENCES_FROM_QB64PE.md](../INTENTIONAL_DIFFERENCES_FROM_QB64PE.md) — Documented intentional behavioral differences
+- [TESTING.md](../TESTING.md) — Test types, counts, and how to run them
+- [DEVELOPMENT.md](../DEVELOPMENT.md) — Contributing and development setup
+- [adrs/README.md](../adrs/README.md) — Architecture decision records

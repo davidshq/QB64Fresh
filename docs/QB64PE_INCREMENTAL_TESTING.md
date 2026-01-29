@@ -1,13 +1,13 @@
 # QB64pe Incremental Testing Strategy
 
 **Last Updated:** 2026-01-28  
-**Status:** Full compiler compilation successful through all QB64Fresh phases ⚠️ (69 C compilation errors remaining)
+**Status:** Full compiler compilation successful through all QB64Fresh phases ✅ (C compilation: 0 errors)
 
 ## Problem
 
 QB64pe is **~59,000 lines** of BASIC code (39 files with all includes), which makes compilation very slow (~5+ minutes). This prevents rapid iteration cycles (compile → find error → fix → repeat).
 
-**Update (2026-01-28):** QB64Fresh can now compile the full QB64pe through all phases (preprocessing, lexing, parsing, semantic analysis, code generation). The generated C code (114,924 lines) compiles with **69 errors remaining** (down from 807, a 91% reduction). See [QB64PE_COMPILATION_STATUS.md](QB64PE_COMPILATION_STATUS.md) for full status.
+**Update (2026-01-28):** QB64Fresh can now compile the full QB64pe through all phases (preprocessing, lexing, parsing, semantic analysis, code generation). The generated C code compiles with **0 errors** (const qualifier fixes in session 071 resolved the remaining C compilation errors). See [docs/ThingsToDo/BOOTSTRAP_VALIDATION.md](ThingsToDo/BOOTSTRAP_VALIDATION.md) and [tests/qb64pe_incremental/C_COMPILATION_RESULTS.md](../tests/qb64pe_incremental/C_COMPILATION_RESULTS.md) for status.
 
 ## Solution: Progressive Module Testing
 
@@ -46,11 +46,11 @@ Add utility modules one at a time:
 - `utilities/const_eval.bi` + `utilities/const_eval.bas` ⚠️ (0.1s) - **PARTIAL**
   - Requires `elements.bas` for `pushelement` and `getelements$`
   - Has some array indexing errors (may be QB64pe-specific features)
-- `utilities/type.bi` - ⏳ Not yet tested
+- `utilities/type.bi` + `utilities/type.bas` ✅ (0.1s) - **PASSES**
 - `utilities/elements.bas` - ⏳ Not yet tested
 
 **Test files:** `tests/qb64pe_incremental/02_utilities_*.bas`
-**Status:** Hash utility passes; const_eval partial; others not yet tested
+**Status:** Hash and type utilities pass; const_eval partial; elements not yet tested
 
 **Key Findings:**
 - `.bi` header files must be included before `.bas` implementation files
@@ -83,7 +83,7 @@ Main compiler logic without IDE:
 Complete QB64pe including IDE:
 - Everything (39 files, ~59,000 lines)
 
-**Test file:** `tests/qb64pe_incremental/05_full_compiler.bas` (symlink to original)  
+**Test:** Run via bootstrap test or compile QB64pe source directly. Optionally use a symlink `tests/qb64pe_incremental/05_full_compiler.bas` → `../QB64pe/source/qb64pe.bas`.  
 **Status:** ✅ **COMPILES SUCCESSFULLY** through all QB64Fresh phases
 
 **Results:**
@@ -112,6 +112,9 @@ cargo run --bin qb64fresh -- tests/qb64pe_incremental/01_core_infrastructure.bas
 # Test hash utility (0.7s)
 cargo run --bin qb64fresh -- tests/qb64pe_incremental/02_utilities_hash.bas --emit-c
 
+# Test type utility (0.1s)
+cargo run --bin qb64fresh -- tests/qb64pe_incremental/02_utilities_type.bas --emit-c
+
 # Test built-in functions (when ready)
 cargo run --bin qb64fresh -- tests/qb64pe_incremental/03_builtin_functions.bas --emit-c
 ```
@@ -124,11 +127,11 @@ cargo run --bin qb64fresh -- tests/qb64pe_incremental/04_core_compiler.bas --emi
 
 ### Full Validation (Phase 5)
 ```bash
-# Test complete QB64pe (fast - ~800ms)
-bash -c 'ulimit -v 16777216 && cargo run --bin qb64fresh -- tests/qb64pe_incremental/05_full_compiler.bas --emit-c -o /tmp/qb64pe_full.c'
-
-# Or use the bootstrap test
+# Via bootstrap test (recommended; uses ../QB64pe/source/qb64pe.bas)
 cargo test --test bootstrap_tests qb64pe_compiles_successfully
+
+# Or compile QB64pe source directly (with memory limit; may OOM at 4GB - see MEMORY_LIMITS.md)
+bash -c 'ulimit -v 4194304 && cargo run --bin qb64fresh -- ../QB64pe/source/qb64pe.bas --emit-c -o /tmp/qb64pe_full.c'
 ```
 
 ### Using the Helper Script
@@ -174,9 +177,9 @@ test = 1
 3. **Skip Phase 3** - Built-in functions blocked (needs main compiler) ❌
 4. **Phase 4 validated** - Core compiler compiles successfully ✅
 5. **Phase 5 validated** - Full compiler compiles successfully through all QB64Fresh phases ✅
-6. **Current focus** - Fix remaining 69 C compilation errors (see [QB64PE_COMPILATION_BLOCKING_ISSUES.md](QB64PE_COMPILATION_BLOCKING_ISSUES.md))
+6. **C compilation** - ✅ 0 errors (fixed in session 071; see [tests/qb64pe_incremental/C_COMPILATION_RESULTS.md](../tests/qb64pe_incremental/C_COMPILATION_RESULTS.md))
 
-**Note:** The incremental testing strategy remains valuable for debugging specific modules, but the full compiler now compiles successfully through all QB64Fresh phases. The remaining work is fixing C compilation errors (type system issues, runtime function signature mismatches).
+**Note:** The incremental testing strategy remains valuable for debugging specific modules. The full compiler compiles successfully through all QB64Fresh phases and generated C compiles with 0 errors (see [docs/ThingsToDo/BOOTSTRAP_VALIDATION.md](ThingsToDo/BOOTSTRAP_VALIDATION.md)).
 
 ## Current Test Results
 
@@ -184,12 +187,13 @@ test = 1
 |-------|--------|------|-------|
 | Phase 1: Core Infrastructure | ✅ PASSES | 0.15s | Simple, self-contained |
 | Phase 2: Hash Utility | ✅ PASSES | 0.7s | Requires hash.bi header |
+| Phase 2: Type Utility | ✅ PASSES | 0.1s | type.bi + type.bas |
 | Phase 2: Const Eval Utility | ⚠️ PARTIAL | 0.1s | Dependencies resolved, some errors remain |
 | Phase 3: Built-in Functions | ❌ BLOCKED | N/A | Needs main compiler infrastructure |
 | Phase 4: Core Compiler | ✅ PASSES | ~800ms | Validated as part of full compiler |
-| Phase 5: Full Compiler | ✅ PASSES (QB64Fresh) ⚠️ (C compile) | ~800ms | All QB64Fresh phases pass; 69 C compilation errors remain |
+| Phase 5: Full Compiler | ✅ PASSES (QB64Fresh) ✅ (C compile) | ~800ms | All QB64Fresh phases pass; C compiles with 0 errors |
 
-**Major Achievement (2026-01-28):** Phase 5 (full compiler) now compiles successfully through all QB64Fresh phases! The generated C code (114,924 lines) compiles with 69 errors remaining (down from 807, 91% reduction). See [QB64PE_COMPILATION_STATUS.md](QB64PE_COMPILATION_STATUS.md) for details.
+**Major Achievement (2026-01-28):** Phase 5 (full compiler) compiles successfully through all QB64Fresh phases and generated C compiles with **0 errors** (const qualifier fixes in session 071). See [docs/ThingsToDo/BOOTSTRAP_VALIDATION.md](ThingsToDo/BOOTSTRAP_VALIDATION.md) and [tests/qb64pe_incremental/C_COMPILATION_RESULTS.md](../tests/qb64pe_incremental/C_COMPILATION_RESULTS.md) for details.
 
 ## Key Learnings
 
@@ -221,17 +225,14 @@ When a test fails, check:
 - Semantic Analysis: ✅ Complete (0 errors)
 - Code Generation: ✅ Complete (114,924 lines of C)
 
-**C Compilation:** ⚠️ **69 errors remaining** (91% reduction from 807)
-- Type system issues (ParseNum UDT compatibility)
-- Runtime function signature mismatches
-- Function pointer assignment issues
+**C Compilation:** ✅ **0 errors** (fixed in session 071: const qualifier mismatches for BYREF parameters)
 
 **Next Steps:**
-1. Fix remaining C compilation errors (see [QB64PE_COMPILATION_BLOCKING_ISSUES.md](QB64PE_COMPILATION_BLOCKING_ISSUES.md))
-2. Build executable once C compilation succeeds
-3. Test bootstrapped QB64pe execution
+1. Build executable (link generated C with runtime library; see [docs/ThingsToDo/BOOTSTRAP_VALIDATION.md](ThingsToDo/BOOTSTRAP_VALIDATION.md))
+2. Test bootstrapped QB64pe execution
 
 **Related Documentation:**
-- [QB64PE_COMPILATION_STATUS.md](QB64PE_COMPILATION_STATUS.md) - Full compilation status and metrics
-- [QB64PE_COMPILATION_BLOCKING_ISSUES.md](QB64PE_COMPILATION_BLOCKING_ISSUES.md) - Detailed error analysis
-- [QB64PE_COMPILATION_PLAN.md](QB64PE_COMPILATION_PLAN.md) - Original implementation plan
+- [tests/qb64pe_incremental/README.md](../tests/qb64pe_incremental/README.md) - Test file overview
+- [tests/qb64pe_incremental/C_COMPILATION_RESULTS.md](../tests/qb64pe_incremental/C_COMPILATION_RESULTS.md) - C compilation results and fixes
+- [tests/qb64pe_incremental/FINAL_STATUS.md](../tests/qb64pe_incremental/FINAL_STATUS.md) - Incremental testing status
+- [docs/ARCHITECTURE.md](ARCHITECTURE.md) - Compiler architecture and bootstrap context

@@ -226,10 +226,29 @@ impl<'a> TypeChecker<'a> {
             }
             InputTarget::ArrayElement { name, indices } => {
                 let typed_indices: Vec<_> = indices.iter().map(|i| self.check_expr(i)).collect();
+                let dimensions = if let Some(symbol) = self.symbols.lookup_symbol(name) {
+                    if let SymbolKind::ArrayVariable {
+                        dimensions: dim_info,
+                    } = &symbol.kind
+                    {
+                        dim_info
+                            .iter()
+                            .map(|d| TypedArrayDimension {
+                                lower: d.lower_bound,
+                                upper: d.upper_bound,
+                            })
+                            .collect()
+                    } else {
+                        Vec::new()
+                    }
+                } else {
+                    Vec::new()
+                };
                 TypedInputTarget::ArrayElement {
                     name: name.clone(),
                     indices: typed_indices,
                     element_type: BasicType::String,
+                    dimensions,
                 }
             }
             InputTarget::ArrayElementField {
@@ -238,11 +257,30 @@ impl<'a> TypeChecker<'a> {
                 fields,
             } => {
                 let typed_indices: Vec<_> = indices.iter().map(|i| self.check_expr(i)).collect();
+                let dimensions = if let Some(symbol) = self.symbols.lookup_symbol(name) {
+                    if let SymbolKind::ArrayVariable {
+                        dimensions: dim_info,
+                    } = &symbol.kind
+                    {
+                        dim_info
+                            .iter()
+                            .map(|d| TypedArrayDimension {
+                                lower: d.lower_bound,
+                                upper: d.upper_bound,
+                            })
+                            .collect()
+                    } else {
+                        Vec::new()
+                    }
+                } else {
+                    Vec::new()
+                };
                 TypedInputTarget::ArrayElementField {
                     name: name.clone(),
                     indices: typed_indices,
                     fields: fields.clone(),
                     field_type: BasicType::String,
+                    dimensions,
                 }
             }
             InputTarget::Field { name, fields } => TypedInputTarget::Field {
@@ -370,19 +408,41 @@ impl<'a> TypeChecker<'a> {
             }
             InputTarget::ArrayElement { name, indices } => {
                 let typed_indices: Vec<_> = indices.iter().map(|i| self.check_expr(i)).collect();
-                let element_type = if let Some(symbol) = self.symbols.lookup_symbol(name) {
-                    if let BasicType::Array { element_type, .. } = &symbol.basic_type {
-                        (**element_type).clone()
+                let (element_type, dimensions) =
+                    if let Some(symbol) = self.symbols.lookup_symbol(name) {
+                        if let SymbolKind::ArrayVariable {
+                            dimensions: dim_info,
+                        } = &symbol.kind
+                        {
+                            let typed_dims: Vec<TypedArrayDimension> = dim_info
+                                .iter()
+                                .map(|d| TypedArrayDimension {
+                                    lower: d.lower_bound,
+                                    upper: d.upper_bound,
+                                })
+                                .collect();
+                            let element_type =
+                                if let BasicType::Array { element_type, .. } = &symbol.basic_type {
+                                    (**element_type).clone()
+                                } else {
+                                    symbol.basic_type.clone()
+                                };
+                            (element_type, typed_dims)
+                        } else if let BasicType::Array { element_type, .. } = &symbol.basic_type {
+                            ((**element_type).clone(), Vec::new())
+                        } else {
+                            (symbol.basic_type.clone(), Vec::new())
+                        }
                     } else {
-                        symbol.basic_type.clone()
-                    }
-                } else {
-                    type_from_suffix(name).unwrap_or_else(|| self.symbols.default_type_for(name))
-                };
+                        let inferred = type_from_suffix(name)
+                            .unwrap_or_else(|| self.symbols.default_type_for(name));
+                        (inferred, Vec::new())
+                    };
                 TypedInputTarget::ArrayElement {
                     name: name.clone(),
                     indices: typed_indices,
                     element_type,
+                    dimensions,
                 }
             }
             InputTarget::ArrayElementField {
@@ -391,15 +451,44 @@ impl<'a> TypeChecker<'a> {
                 fields,
             } => {
                 let typed_indices: Vec<_> = indices.iter().map(|i| self.check_expr(i)).collect();
-                let field_type = fields
-                    .last()
-                    .and_then(|f| type_from_suffix(f))
-                    .unwrap_or(BasicType::Single);
+                let (field_type, dimensions) =
+                    if let Some(symbol) = self.symbols.lookup_symbol(name) {
+                        if let SymbolKind::ArrayVariable {
+                            dimensions: dim_info,
+                        } = &symbol.kind
+                        {
+                            let typed_dims: Vec<TypedArrayDimension> = dim_info
+                                .iter()
+                                .map(|d| TypedArrayDimension {
+                                    lower: d.lower_bound,
+                                    upper: d.upper_bound,
+                                })
+                                .collect();
+                            let field_type = fields
+                                .last()
+                                .and_then(|f| type_from_suffix(f))
+                                .unwrap_or(BasicType::Single);
+                            (field_type, typed_dims)
+                        } else {
+                            let field_type = fields
+                                .last()
+                                .and_then(|f| type_from_suffix(f))
+                                .unwrap_or(BasicType::Single);
+                            (field_type, Vec::new())
+                        }
+                    } else {
+                        let field_type = fields
+                            .last()
+                            .and_then(|f| type_from_suffix(f))
+                            .unwrap_or(BasicType::Single);
+                        (field_type, Vec::new())
+                    };
                 TypedInputTarget::ArrayElementField {
                     name: name.clone(),
                     indices: typed_indices,
                     fields: fields.clone(),
                     field_type,
+                    dimensions,
                 }
             }
             InputTarget::Field { name, fields } => {
@@ -461,18 +550,33 @@ impl<'a> TypeChecker<'a> {
             }
             InputTarget::ArrayElement { name, indices } => {
                 let typed_indices: Vec<_> = indices.iter().map(|i| self.check_expr(i)).collect();
-                let (resolved_name, element_type) =
+                let (resolved_name, element_type, dimensions) =
                     if let Some(symbol) = self.symbols.lookup_array(name) {
-                        (symbol.name.clone(), symbol.basic_type.clone())
+                        let dims = if let SymbolKind::ArrayVariable {
+                            dimensions: dim_info,
+                        } = &symbol.kind
+                        {
+                            dim_info
+                                .iter()
+                                .map(|d| TypedArrayDimension {
+                                    lower: d.lower_bound,
+                                    upper: d.upper_bound,
+                                })
+                                .collect()
+                        } else {
+                            Vec::new()
+                        };
+                        (symbol.name.clone(), symbol.basic_type.clone(), dims)
                     } else {
                         let element_type = type_from_suffix(name)
                             .unwrap_or_else(|| self.symbols.default_type_for(name));
-                        (name.clone(), element_type)
+                        (name.clone(), element_type, Vec::new())
                     };
                 TypedInputTarget::ArrayElement {
                     name: resolved_name,
                     indices: typed_indices,
                     element_type,
+                    dimensions,
                 }
             }
             InputTarget::ArrayElementField {
@@ -481,16 +585,32 @@ impl<'a> TypeChecker<'a> {
                 fields,
             } => {
                 let typed_indices: Vec<_> = indices.iter().map(|i| self.check_expr(i)).collect();
-                let resolved_name = if let Some(symbol) = self.symbols.lookup_array(name) {
-                    symbol.name.clone()
-                } else {
-                    name.clone()
-                };
+                let (resolved_name, dimensions) =
+                    if let Some(symbol) = self.symbols.lookup_array(name) {
+                        let dims = if let SymbolKind::ArrayVariable {
+                            dimensions: dim_info,
+                        } = &symbol.kind
+                        {
+                            dim_info
+                                .iter()
+                                .map(|d| TypedArrayDimension {
+                                    lower: d.lower_bound,
+                                    upper: d.upper_bound,
+                                })
+                                .collect()
+                        } else {
+                            Vec::new()
+                        };
+                        (symbol.name.clone(), dims)
+                    } else {
+                        (name.clone(), Vec::new())
+                    };
                 TypedInputTarget::ArrayElementField {
                     name: resolved_name,
                     indices: typed_indices,
                     fields: fields.clone(),
                     field_type: BasicType::Single,
+                    dimensions,
                 }
             }
             InputTarget::Field { name, fields } => {

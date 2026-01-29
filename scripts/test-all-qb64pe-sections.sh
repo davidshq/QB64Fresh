@@ -11,8 +11,8 @@ SECTIONS_DIR="$TEST_DIR/sections"
 
 cd "$PROJECT_ROOT"
 
-# Memory limit
-ulimit -v 16777216
+# Memory limit (4GB)
+ulimit -v 4194304
 
 echo "=========================================="
 echo "Testing All QB64pe Sections Incrementally"

@@ -70,10 +70,13 @@ use crate::semantic::typed_ir::{TypedProgram, TypedStatement, TypedStatementKind
 use crate::write_code;
 use crate::writeln_code;
 
-use self::analysis::{collect_callback_wrappers, collect_data_values, collect_type_definitions};
+use self::analysis::{
+    collect_callback_wrappers, collect_data_values, collect_dynamic_libraries,
+    collect_type_definitions,
+};
 use self::implicit_vars::collect_implicit_locals;
 use self::runtime::emit_header_with_debug;
-use self::stmt::{StmtEmitter, emit_params};
+use self::stmt::{StmtEmitter, emit_dynamic_library_section, emit_params};
 use self::types::c_identifier;
 
 /// Helper macro to collect errors from Result-returning operations.
@@ -464,6 +467,16 @@ impl CodeGenerator for CBackend {
             collect_err!(ctx, writeln_code!(&mut output));
         }
 
+        // DECLARE DYNAMIC LIBRARY: handle variables, function pointers, qb_init_dynamic_libs()
+        let (dynamic_libs, dynamic_external_c_names) = collect_dynamic_libraries(program);
+        emitter.dynamic_external_c_names = dynamic_external_c_names;
+        if let Err(e) = emit_dynamic_library_section(&dynamic_libs, &mut output) {
+            ctx.push_error(e);
+        }
+        if !dynamic_libs.is_empty() {
+            collect_err!(ctx, writeln_code!(&mut output));
+        }
+
         // Collect and emit DATA pool
         let data_pool = collect_data_values(program);
         // Store label indices for RESTORE statement emission
@@ -699,6 +712,17 @@ impl CodeGenerator for CBackend {
             writeln_code!(&mut output, "    /* Initialize start directory */")
         );
         collect_err!(ctx, writeln_code!(&mut output, "    qb_init_startdir();"));
+        // Load DECLARE DYNAMIC LIBRARY modules (dlopen/LoadLibrary + dlsym/GetProcAddress)
+        if !dynamic_libs.is_empty() {
+            collect_err!(
+                ctx,
+                writeln_code!(&mut output, "    /* Load dynamic libraries */")
+            );
+            collect_err!(
+                ctx,
+                writeln_code!(&mut output, "    qb_init_dynamic_libs();")
+            );
+        }
         // Check for initialization errors
         collect_err!(ctx, writeln_code!(&mut output, "    if (_qb_err != 0) {{"));
         collect_err!(

@@ -11,6 +11,7 @@ QB64Fresh is a complete ground-up rewrite of QB64, a modern BASIC compiler. This
 ## Directory Context
 
 - **QB64pe/** - Original QB64 Phoenix Edition source (READ ONLY - for analysis)
+   - When compiling QB64pe YOU ALWAYS NEED TO COMPILE IT IN THIS DIRECTORY SO IT HAS ACCESS TO ITS FILES.
 - **QB64Fresh/** - New implementation (this project - WRITE HERE)
 
 ---
@@ -24,12 +25,12 @@ QB64Fresh is a complete ground-up rewrite of QB64, a modern BASIC compiler. This
 **ALWAYS use memory limits when running QB64Fresh or QB64pe.** Both compilers can consume 25GB+ memory and crash the system.
 
 ```bash
-# REQUIRED: Set 16GB memory limit before running
-bash -c 'ulimit -v 16777216 && ./qb64fresh input.bas --emit-c -o output.c'
-bash -c 'ulimit -v 16777216 && ./qb64pe_fresh -x input.bas -o output'
+# REQUIRED: Set 4GB memory limit before running (see run_limited.sh)
+bash -c 'ulimit -v 4194304 && ./qb64fresh input.bas --emit-c -o output.c'
+bash -c 'ulimit -v 4194304 && ./qb64pe_fresh -x input.bas -o output'
 ```
 
-See [docs/MEMORY_LIMITS.md](docs/MEMORY_LIMITS.md) for details.
+**Note:** With 4GB limit, compiling very large files (e.g. full QB64pe) may still grow until OOM; the limit caps damage. See [docs/MEMORY_LIMITS.md](docs/MEMORY_LIMITS.md) for details.
 
 ## Logging System (IMPORTANT)
 

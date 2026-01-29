@@ -11,6 +11,7 @@
 use crate::ast::{BinaryOp, Expr, ExprKind, UnaryOp};
 use crate::semantic::{
     error::SemanticError,
+    suggestions,
     symbols::{ArrayDimInfo, ProcedureKind, Symbol, SymbolKind},
     typed_ir::*,
     types::{BasicType, type_from_suffix},
@@ -93,10 +94,26 @@ impl<'a> TypeChecker<'a> {
                         expr.span,
                     )
                 } else {
-                    self.errors.push(SemanticError::UndefinedProcedure {
-                        name: name.clone(),
-                        span: expr.span,
-                    });
+                    // Compute suggestions for undefined procedure
+                    let candidates = self.symbols.collect_available_procedure_names();
+                    let suggestion = suggestions::find_best_match(name, &candidates, 0.6);
+                    let suggestions = if suggestion.is_some() {
+                        None // Don't show additional suggestions if we have a best match
+                    } else {
+                        let similar = suggestions::find_similar_names(name, &candidates, 0.4, 3);
+                        if similar.is_empty() {
+                            None
+                        } else {
+                            Some(similar)
+                        }
+                    };
+                    self.errors
+                        .push(SemanticError::undefined_procedure_with_suggestions(
+                            name.clone(),
+                            expr.span,
+                            suggestion,
+                            suggestions,
+                        ));
                     // Return a placeholder expression on error
                     TypedExpr::new(
                         TypedExprKind::IntegerLiteral(0),
@@ -398,9 +415,14 @@ impl<'a> TypeChecker<'a> {
                 if let Some(field_type) = self.lookup_type_field(type_name, field) {
                     field_type
                 } else {
+                    // For field access errors, we could suggest similar field names
+                    // but that would require collecting all fields from the type definition
+                    // For now, just report the error without suggestions
                     self.errors.push(SemanticError::UndefinedVariable {
                         name: format!("{}.{}", type_name, field),
                         span,
+                        suggestion: None,
+                        suggestions: None,
                     });
                     BasicType::Unknown
                 }

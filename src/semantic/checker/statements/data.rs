@@ -109,11 +109,32 @@ impl<'a> TypeChecker<'a> {
                 let basic_type = if let Some(symbol) = self.symbols.lookup_symbol(name) {
                     symbol.basic_type.clone()
                 } else {
-                    // Array not declared - error
-                    self.errors.push(SemanticError::UndefinedVariable {
-                        name: name.clone(),
-                        span,
-                    });
+                    // Array not declared - error with suggestions
+                    let candidates = self.symbols.collect_available_variable_names();
+                    let suggestion =
+                        crate::semantic::suggestions::find_best_match(name, &candidates, 0.6);
+                    let suggestions = if suggestion.is_some() {
+                        None
+                    } else {
+                        let similar = crate::semantic::suggestions::find_similar_names(
+                            name,
+                            &candidates,
+                            0.4,
+                            3,
+                        );
+                        if similar.is_empty() {
+                            None
+                        } else {
+                            Some(similar)
+                        }
+                    };
+                    self.errors
+                        .push(SemanticError::undefined_variable_with_suggestions(
+                            name.clone(),
+                            span,
+                            suggestion,
+                            suggestions,
+                        ));
                     BasicType::Single // Default on error
                 };
 
@@ -151,11 +172,32 @@ impl<'a> TypeChecker<'a> {
                         field_type
                     }
                 } else {
-                    // Array not declared - error
-                    self.errors.push(SemanticError::UndefinedVariable {
-                        name: name.clone(),
-                        span,
-                    });
+                    // Array not declared - error with suggestions
+                    let candidates = self.symbols.collect_available_variable_names();
+                    let suggestion =
+                        crate::semantic::suggestions::find_best_match(name, &candidates, 0.6);
+                    let suggestions = if suggestion.is_some() {
+                        None
+                    } else {
+                        let similar = crate::semantic::suggestions::find_similar_names(
+                            name,
+                            &candidates,
+                            0.4,
+                            3,
+                        );
+                        if similar.is_empty() {
+                            None
+                        } else {
+                            Some(similar)
+                        }
+                    };
+                    self.errors
+                        .push(SemanticError::undefined_variable_with_suggestions(
+                            name.clone(),
+                            span,
+                            suggestion,
+                            suggestions,
+                        ));
                     BasicType::Single // Default on error
                 };
 

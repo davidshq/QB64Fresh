@@ -23,6 +23,9 @@ impl super::StmtEmitter {
     /// Handles several cases:
     /// - `ON ERROR GOTO 0` - Disable error handling
     /// - `ON ERROR GOTO _LASTHANDLER` - QB64 extension to restore previous handler
+    /// - `ON ERROR GOTO _NEWHANDLER label` - QB64 extension; parser combines _NEWHANDLER
+    ///   with the following label as a single target; codegen strips the `_NEWHANDLER `
+    ///   prefix and uses the label for the handler
     /// - `ON ERROR GOTO label` - Set up error handler at the specified label
     ///
     /// For subroutines referencing global error handlers, cross-function goto

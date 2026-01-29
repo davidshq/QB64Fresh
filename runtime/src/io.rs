@@ -11,6 +11,9 @@ use std::io::{self, BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::os::raw::c_char;
 use std::sync::Mutex;
 
+#[cfg(unix)]
+use std::os::unix::io::AsRawFd;
+
 // ============================================================================
 // PRINT Functions
 // ============================================================================
@@ -1862,13 +1865,62 @@ fn init_field_offsets() {
     }
 }
 
+/// C constants for OPEN access (must match qb64fresh_rt.h).
+const QB_FILE_ACCESS_DEFAULT: i32 = 0;
+const QB_FILE_ACCESS_READ: i32 = 1;
+const QB_FILE_ACCESS_WRITE: i32 = 2;
+const QB_FILE_ACCESS_READ_WRITE: i32 = 3;
+
+/// C constants for OPEN lock (must match qb64fresh_rt.h).
+const QB_FILE_LOCK_DEFAULT: i32 = 0;
+const QB_FILE_LOCK_SHARED: i32 = 1;
+const QB_FILE_LOCK_READ: i32 = 2;
+const QB_FILE_LOCK_WRITE: i32 = 3;
+const QB_FILE_LOCK_READ_WRITE: i32 = 4;
+const QB_FILE_LOCK_ONLY: i32 = 5;
+
+/// Applies file locking on Unix based on lock mode.
+/// SHARED/DEFAULT: no lock (match inline C). LOCK_* / ONLY: LOCK_EX.
+#[cfg(unix)]
+fn apply_flock(file: &File, lock: i32) {
+    use libc::{flock, LOCK_EX};
+    // Only apply exclusive lock for explicit lock modes; DEFAULT and SHARED = no lock (match inline C).
+    let use_exclusive = matches!(
+        lock,
+        QB_FILE_LOCK_READ | QB_FILE_LOCK_WRITE | QB_FILE_LOCK_READ_WRITE | QB_FILE_LOCK_ONLY
+    );
+    if !use_exclusive {
+        return;
+    }
+    let fd = file.as_raw_fd();
+    unsafe {
+        flock(fd, LOCK_EX);
+    }
+}
+
+#[cfg(windows)]
+#[allow(clippy::unnecessary_wraps)]
+fn apply_flock(_file: &File, _lock: i32) {
+    // TODO: LockFileEx when needed for Windows file locking
+}
+
 /// OPEN - Open a file.
+///
+/// Access and lock use QB_FILE_ACCESS_* and QB_FILE_LOCK_* constants (0 = default).
+/// On Unix, lock modes apply flock(); on Windows locking is not yet implemented.
 ///
 /// # Safety
 /// - `filename` must be a valid null-terminated C string
 /// - `mode` must be a valid null-terminated C string
 #[no_mangle]
-pub unsafe extern "C" fn qb_file_open(fnum: i32, filename: *const c_char, mode: *const c_char) {
+pub unsafe extern "C" fn qb_file_open(
+    fnum: i32,
+    filename: *const c_char,
+    mode: *const c_char,
+    access: i32,
+    lock: i32,
+) {
+    let _ = access; // Used by codegen for fopen mode; we derive mode from mode_str
     if fnum < 1 || fnum >= QB_MAX_FILES as i32 {
         return;
     }
@@ -1923,6 +1975,8 @@ pub unsafe extern "C" fn qb_file_open(fnum: i32, filename: *const c_char, mode: 
         };
 
         if let Ok(file) = file_result {
+            apply_flock(&file, lock);
+
             let mut handle = FileHandle {
                 file: Some(file),
                 reader: None,
@@ -1965,12 +2019,14 @@ pub unsafe extern "C" fn qb_file_open_str(
     fnum: i32,
     filename: *const QbString,
     mode: *const c_char,
+    access: i32,
+    lock: i32,
 ) {
     if filename.is_null() {
         return;
     }
     let filename_data = qb_string_data(filename);
-    qb_file_open(fnum, filename_data, mode)
+    qb_file_open(fnum, filename_data, mode, access, lock)
 }
 
 /// Set record length for random access files.
@@ -3297,7 +3353,7 @@ mod tests {
     fn test_qb_net_openhost_invalid_port() {
         // Port 0 might work (OS assigns), but very high ports might fail
         // This mainly tests the function doesn't panic
-        let handle = qb_net_openhost(0);
+        let handle = qb_net_openhost(std::ptr::null());
         if handle != 0 {
             qb_net_close(handle);
         }
@@ -3352,7 +3408,7 @@ mod tests {
     #[test]
     fn test_network_host_connection_cycle() {
         // Test the full cycle: open host, check connection (none), close
-        let host_handle = qb_net_openhost(0); // Let OS pick port
+        let host_handle = qb_net_openhost(std::ptr::null()); // Let OS pick port
         if host_handle != 0 {
             // No client connected yet
             let conn = qb_net_openconnection(host_handle);
@@ -3376,7 +3432,7 @@ mod tests {
         use std::time::Duration;
 
         // Start server on a random port
-        let host_handle = qb_net_openhost(0);
+        let host_handle = qb_net_openhost(std::ptr::null());
         if host_handle == 0 {
             // Skip test if we can't open a server (e.g., CI environment)
             return;
@@ -3464,7 +3520,7 @@ mod tests {
         use std::thread;
         use std::time::Duration;
 
-        let host_handle = qb_net_openhost(0);
+        let host_handle = qb_net_openhost(std::ptr::null());
         if host_handle == 0 {
             return;
         }

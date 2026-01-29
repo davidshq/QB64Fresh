@@ -642,6 +642,10 @@ The debugger and debugee communicate via a named pipe:
 
 The pipe path is passed via the `QB64FRESH_DEBUG_PIPE` environment variable.
 
+**Other runtime environment variables (compiled program):**
+
+- **`QB64FRESH_DEBUG_STRING_POOL`** — When set (any non-empty value), the compiled program writes a warning to stderr if the string temp pool and overflow list are both full (extremely rare). Useful for diagnosing possible temporary string leaks. See `src/codegen/c_backend/runtime/strings.rs` (`emit_temp_string_pool`).
+
 ### Protocol Messages
 
 **Commands (Debugger → Debugee):**

@@ -42,6 +42,20 @@ Write runtime "glue" in Rust and leverage battle-tested crates:
 - Test against QB64pe's test suite for compatibility
 - Document any intentional deviations
 
+### Runtime Delivery Modes
+
+Code generation supports two modes via the `--runtime` flag when emitting C:
+
+| Mode | Source | Use case |
+|------|--------|----------|
+| **inline** (default) | `src/codegen/c_backend/runtime/` — C stubs emitted into generated `.c` | CI, headless, bootstrap, portable single-file C; graphics/audio are stubs (e.g. frame limit, no-op) |
+| **external** | `runtime/` — Rust library with C FFI (`libqb64fresh_rt`) | Full graphics (SDL2) and audio (Rodio); link generated C against the library |
+
+- **inline**: Self-contained `.c` with embedded runtime stubs; no SDL2/audio dependencies; suitable for testing and environments without a display.
+- **external**: Generated C links against `libqb64fresh_rt`; full SCREEN, SOUND, etc. when the library is built with the appropriate features (e.g. `graphics-sdl2`).
+
+See [ARCHITECTURE.md](../ARCHITECTURE.md) (Binary Architecture, Runtime modes) and [PARTIAL_IMPLEMENTATIONS.md](../ThingsToDo/PARTIAL_IMPLEMENTATIONS.md) for details and stub vs full behavior per feature.
+
 ### Alternatives Considered
 
 - **Port QB64pe C++ runtime**: Inherits technical debt, hard to maintain

@@ -19,6 +19,19 @@
 //! trait. The [`CallStack`] type implements this trait, allowing variable values
 //! to be read from the current call stack frames.
 //!
+//! ## Status
+//!
+//! **Infrastructure Complete:** Watch expression parsing, evaluation logic, and
+//! management are fully implemented. The infrastructure is ready for runtime integration.
+//!
+//! **Runtime Integration Pending:** To enable watch expressions during debugging:
+//! 1. Debug info emission in generated C code (line mappings, variable locations)
+//! 2. Runtime hooks to pause execution at breakpoints
+//! 3. Memory access protocol to read variable values from running program
+//!
+//! The watch manager can currently evaluate expressions using mock runtime state
+//! for testing purposes, but requires actual runtime integration for production use.
+//!
 //! ## Example
 //!
 //! ```no_run

@@ -12,8 +12,8 @@ LOG_FILE="/tmp/qb64pe_full_test.log"
 
 cd "$PROJECT_ROOT"
 
-# Memory limit (16GB)
-ulimit -v 16777216
+# Memory limit (4GB)
+ulimit -v 4194304
 
 echo "=========================================="
 echo "Testing Full QB64pe Compilation"

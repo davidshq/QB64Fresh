@@ -1,14 +1,14 @@
 # QB64PE Bootstrap Validation
 
 **Created:** 2026-01-26  
-**Updated:** 2026-01-27  
+**Updated:** 2026-01-28  
 **Status:** Runtime Features Complete, Bootstrap Compilation Verified
 
 ## Overview
 
 This document tracks the validation status of QB64Fresh's ability to compile QB64pe and enable the bootstrapped QB64pe to compile BASIC programs.
 
-**Important:** QB64pe requires the **external runtime with graphics support** because it has a GUI. The compilation uses `RuntimeMode::External` and requires SDL2 for graphics operations.
+**Important:** QB64pe requires the **external runtime with graphics support** because it has a GUI. The compilation uses `RuntimeMode::external()` and requires SDL2 for graphics operations.
 
 ## Compilation Status
 
@@ -16,7 +16,7 @@ This document tracks the validation status of QB64Fresh's ability to compile QB6
 
 **Status:** QB64pe source compiles successfully with QB64Fresh
 
-**Runtime Mode:** QB64pe is compiled with `RuntimeMode::External` because it requires graphics support for its GUI (uses `SCREEN`, `_NEWIMAGE`, `_SCREENSHOW`, etc.)
+**Runtime Mode:** QB64pe is compiled with `RuntimeMode::external()` because it requires graphics support for its GUI (uses `SCREEN`, `_NEWIMAGE`, `_SCREENSHOW`, etc.)
 
 | Phase | Status | Details |
 |-------|--------|---------|
@@ -29,6 +29,8 @@ This document tracks the validation status of QB64Fresh's ability to compile QB6
 | Linking | ✅ | Runtime library built with graphics: `cargo build -p qb64fresh-runtime --release --features graphics-sdl2` (58MB static library created) |
 
 **Test:** `cargo test --test bootstrap_tests qb64pe_compiles_successfully`
+
+**Bootstrap test suite:** 27 tests total. By default 23 run; 4 are ignored (require golden file or full runtime build): `qb64pe_codegen_golden`, `qb64pe_can_compile_hello_world`, `qb64pe_qb45_compatibility_test`, `qb64pe_self_compilation_test`. To create/update the QB64pe codegen golden file: `UPDATE_GOLDEN=1 cargo test --test bootstrap_tests qb64pe_codegen_golden -- --ignored`.
 
 **Note:** The test validates code generation. Runtime library with SDL2 graphics support has been built and is ready for linking.
 
@@ -47,7 +49,7 @@ This document tracks the validation status of QB64Fresh's ability to compile QB6
 
 ### File I/O ✅ COMPLETE
 
-**Implementation:** Inline runtime (`src/codegen/c_backend/runtime/file.rs`)
+**Implementation:** Inline runtime (`src/codegen/c_backend/runtime/file.rs`). External runtime uses `runtime/include/qb64fresh_rt.h` and `runtime/src/` for implementation.
 
 | Operation | Status | Test Coverage |
 |-----------|--------|---------------|
@@ -66,7 +68,7 @@ This document tracks the validation status of QB64Fresh's ability to compile QB6
 
 ### Keyboard Input ✅ COMPLETE
 
-**Implementation:** 
+**Implementation:**
 - External runtime: `runtime/src/io.rs` (Unix ✅, Windows ✅)
 - Inline runtime: `src/codegen/c_backend/runtime/keyboard.rs` (Unix ✅, Windows ✅)
 
@@ -141,6 +143,12 @@ This document tracks the validation status of QB64Fresh's ability to compile QB6
 
 **Note:** Full execution testing (running bootstrapped QB64pe on test programs) requires building the runtime library with graphics support, but code generation is fully validated.
 
+### Regression Tests ✅ COMPLETE
+
+**Location:** `tests/bootstrap_tests.rs`, `mod regression_tests`
+
+**Coverage:** 20 regression tests document and guard fixes for bootstrap-related bugs: function_call_uses_canonical_name, dual_namespace_arrays_and_scalars, parser_edge_case_comparison_vs_array_assignment, string_double_wrapping_byref, select_case_string_comparison, select_case_fixed_length_string, array_variable_rename, mid_assignment_fixed_length_string, mid_assignment_fixed_length_string_array, string_temp_pool_loop_cleanup, reference_counted_string_retain_release_and_cleanup, ffi_declaration_completeness, runtime_initialization_order, string_temp_pool_overflow_tracking, ffi_error_reporting, builtin_constant_registration, duplicate_label_emission_regression, error_handler_syntax, label_uniqueness, forward_declarations.
+
 ### QB4.5 Compatibility Test ⚠️ PENDING
 
 **Status:** Not yet implemented
@@ -202,19 +210,19 @@ This document tracks the validation status of QB64Fresh's ability to compile QB6
 - ✅ Bootstrapped QB64pe can compile arbitrary BASIC programs (code generation verified)
 - ✅ Full bootstrap chain works (QB64Fresh → QB64pe → BASIC programs)
 - ✅ All bootstrap tests passing
-- ✅ 99.1% QB64pe compatibility (114/115 test files)
+- QB4.5 / QB64pe compatibility: run `cargo test --test qb45_compat` for current pass rates on QB64pe testcase directories (qb45com, misc, n54, pete, thebob)
 
-## Current Status Summary (2026-01-27)
+## Current Status Summary (2026-01-28)
 
 **Overall Status:** ✅ Bootstrap compilation fully validated
 
 **Key Metrics:**
 - ✅ QB64pe compiles successfully with QB64Fresh (all phases pass)
-- ✅ Bootstrap test suite: All tests passing
+- ✅ Bootstrap test suite: 27 tests (23 run by default, 4 ignored); all run tests passing
 - ✅ Code generation: Validated and verified
 - ✅ Runtime features: Complete for bootstrap requirements
-- ✅ Test coverage: 1,500+ tests (405 unit, 727 integration, 210 runtime)
-- ✅ QB64pe compatibility: 99.1% (114/115 test files)
+- ✅ Regression tests: 20 tests in `bootstrap_tests::regression_tests` covering string/array/FFI/error-handling fixes
+- QB4.5 compatibility: See `cargo test --test qb45_compat` (qb45com and other QB64pe testcase dirs)
 
 **Next Steps:**
 - Full execution testing (requires runtime library build with graphics)
@@ -223,6 +231,5 @@ This document tracks the validation status of QB64Fresh's ability to compile QB6
 
 ## References
 
-- [QB64PE Compilation Plan](QB64PE_COMPILATION_PLAN.md) - Detailed implementation plan
-- [Bootstrap Plan Full](archive/BOOTSTRAP_PLAN_FULL.md) - Complete bootstrap history
-- [Architecture Documentation](ARCHITECTURE.md#bootstrap-achievement) - Bootstrap achievement summary
+- [Bootstrap Plan Full](../archive/BOOTSTRAP_PLAN_FULL.md) - Complete bootstrap history
+- [Architecture Documentation](../ARCHITECTURE.md) - Pipeline and bootstrap achievement

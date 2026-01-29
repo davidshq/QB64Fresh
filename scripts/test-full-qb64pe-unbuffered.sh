@@ -12,7 +12,7 @@ OUTPUT_FILE="/tmp/qb64pe_full_test.c"
 cd "$PROJECT_ROOT"
 
 # Memory limit
-ulimit -v 16777216
+ulimit -v 4194304
 
 echo "=========================================="
 echo "Testing Full QB64pe (Unbuffered Output)"

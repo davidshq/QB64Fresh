@@ -59,12 +59,27 @@ pub enum SemanticError {
     /// ```basic
     /// PRINT counter   ' Error: undefined variable `counter`
     /// ```
-    #[error("undefined variable `{name}`")]
+    #[error("undefined variable `{name}`{}{}",
+        if let Some(suggestion) = suggestion {
+            format!(" (did you mean `{}`?)", suggestion)
+        } else {
+            String::new()
+        },
+        if let Some(suggestions) = suggestions {
+            if suggestions.is_empty() { String::new() } else {
+                format!(" (similar: {})", suggestions.iter().take(3).map(|s| format!("`{}`", s)).collect::<Vec<_>>().join(", "))
+            }
+        } else { String::new() }
+    )]
     UndefinedVariable {
         /// The name of the undefined variable.
         name: String,
         /// Source location where the variable was referenced.
         span: Span,
+        /// Best matching suggestion (if any).
+        suggestion: Option<String>,
+        /// Additional similar names (if any).
+        suggestions: Option<Vec<String>>,
     },
 
     /// Reference to a label that doesn't exist.
@@ -77,12 +92,27 @@ pub enum SemanticError {
     /// ```basic
     /// GOTO finish     ' Error: undefined label `finish`
     /// ```
-    #[error("undefined label `{name}`")]
+    #[error("undefined label `{name}`{}{}",
+        if let Some(suggestion) = suggestion {
+            format!(" (did you mean `{}`?)", suggestion)
+        } else {
+            String::new()
+        },
+        if let Some(suggestions) = suggestions {
+            if suggestions.is_empty() { String::new() } else {
+                format!(" (similar: {})", suggestions.iter().take(3).map(|s| format!("`{}`", s)).collect::<Vec<_>>().join(", "))
+            }
+        } else { String::new() }
+    )]
     UndefinedLabel {
         /// The name of the undefined label.
         name: String,
         /// Source location where the label was referenced.
         span: Span,
+        /// Best matching suggestion (if any).
+        suggestion: Option<String>,
+        /// Additional similar names (if any).
+        suggestions: Option<Vec<String>>,
     },
 
     /// Call to a SUB or FUNCTION that hasn't been defined.
@@ -95,12 +125,27 @@ pub enum SemanticError {
     /// ```basic
     /// CALL ProcessData   ' Error: undefined procedure `ProcessData`
     /// ```
-    #[error("undefined procedure `{name}`")]
+    #[error("undefined procedure `{name}`{}{}",
+        if let Some(suggestion) = suggestion {
+            format!(" (did you mean `{}`?)", suggestion)
+        } else {
+            String::new()
+        },
+        if let Some(suggestions) = suggestions {
+            if suggestions.is_empty() { String::new() } else {
+                format!(" (similar: {})", suggestions.iter().take(3).map(|s| format!("`{}`", s)).collect::<Vec<_>>().join(", "))
+            }
+        } else { String::new() }
+    )]
     UndefinedProcedure {
         /// The name of the undefined SUB or FUNCTION.
         name: String,
         /// Source location where the procedure was called.
         span: Span,
+        /// Best matching suggestion (if any).
+        suggestion: Option<String>,
+        /// Additional similar names (if any).
+        suggestions: Option<Vec<String>>,
     },
 
     /// Variable declared more than once in the same scope.
@@ -698,6 +743,53 @@ impl SemanticError {
         SemanticError::UndefinedVariable {
             name: name.into(),
             span,
+            suggestion: None,
+            suggestions: None,
+        }
+    }
+
+    /// Creates an undefined variable error with suggestions.
+    pub fn undefined_variable_with_suggestions(
+        name: impl Into<String>,
+        span: Span,
+        suggestion: Option<String>,
+        suggestions: Option<Vec<String>>,
+    ) -> Self {
+        SemanticError::UndefinedVariable {
+            name: name.into(),
+            span,
+            suggestion,
+            suggestions,
+        }
+    }
+
+    /// Creates an undefined label error with suggestions.
+    pub fn undefined_label_with_suggestions(
+        name: impl Into<String>,
+        span: Span,
+        suggestion: Option<String>,
+        suggestions: Option<Vec<String>>,
+    ) -> Self {
+        SemanticError::UndefinedLabel {
+            name: name.into(),
+            span,
+            suggestion,
+            suggestions,
+        }
+    }
+
+    /// Creates an undefined procedure error with suggestions.
+    pub fn undefined_procedure_with_suggestions(
+        name: impl Into<String>,
+        span: Span,
+        suggestion: Option<String>,
+        suggestions: Option<Vec<String>>,
+    ) -> Self {
+        SemanticError::UndefinedProcedure {
+            name: name.into(),
+            span,
+            suggestion,
+            suggestions,
         }
     }
 

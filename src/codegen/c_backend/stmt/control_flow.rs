@@ -249,6 +249,18 @@ impl super::StmtEmitter {
             None => "1".to_string(),
         };
 
+        // Check if the loop variable is a BYREF scalar parameter - if so, we need to dereference
+        let is_byref_param = self
+            .procedure
+            .current_func_byref_scalar_names
+            .contains(&c_var);
+        // For BYREF params, use (*var) instead of var
+        let var_access = if is_byref_param {
+            format!("(*{})", c_var)
+        } else {
+            c_var.clone()
+        };
+
         let break_label = self.next_label("for_end");
         self.loop_stack.push(LoopContext {
             break_label: break_label.clone(),
@@ -266,7 +278,7 @@ impl super::StmtEmitter {
         // We assign the start value before the loop and use the existing variable,
         // rather than declaring a new variable in the for statement (which would
         // create a shadowing local that loses its value after the loop).
-        writeln_code!(output, "{}{} = {};", indent, c_var, start_code)?;
+        writeln_code!(output, "{}{} = {};", indent, var_access, start_code)?;
         // Save temp pool base - only clean temps created within this loop
         let loop_base = self.next_label("for_base");
         writeln_code!(
@@ -280,11 +292,11 @@ impl super::StmtEmitter {
             "{}for (; ({} > 0) ? ({} <= {}) : ({} >= {}); {} += {}) {{",
             indent,
             step_var,
-            c_var,
+            var_access,
             end_var,
-            c_var,
+            var_access,
             end_var,
-            c_var,
+            var_access,
             step_var
         )?;
 

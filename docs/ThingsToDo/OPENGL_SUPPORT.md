@@ -2,7 +2,7 @@
 
 **Purpose:** Assessment and implementation plan for adding OpenGL (`_GL`) command support to QB64Fresh  
 **Created:** 2026-01-22  
-**Updated:** 2026-01-27  
+**Updated:** 2026-01-28  
 **Status:** Planning/Assessment — *Raw `_GL*` is intentionally excluded per [ADR-0014](../adrs/ADR-0014-scope-and-excluded-features.md).*
 
 ---
@@ -28,7 +28,7 @@
 
 ## Current QB64Fresh Codebase Status
 
-*(As of 2026-01-25)*
+*(As of 2026-01-28)*
 
 ### Policy: Raw `_GL*` Excluded
 
@@ -50,7 +50,7 @@ If raw OpenGL is needed, users can use `DECLARE LIBRARY` to call OpenGL function
 | **`_GLCOMPAT` function** | `src/semantic/builtins.rs`, `src/codegen/c_backend/expr.rs` | Builtin registered; codegen emits `qb_glcompat()`. **Runtime:** `qb_glcompat` is defined as a no-op stub (returns 0) in inline and in `graphics_ffi.rs` / `qb64fresh_rt.h`. Programs link successfully. |
 | **`_GLRENDER` in display layers** | `runtime/src/graphics/sdl2.rs`, `runtime/src/graphics/mod.rs`, `runtime/src/graphics_ffi.rs` | `_GLRENDER=4` is documented as the OpenGL layer constant in `set_display_order` and `qb_displayorder`. The *layer* exists in the API; the OpenGL implementation does not. |
 | **`$INCLUDE` opengl path** | `src/preprocessor.rs` | `$INCLUDE: 'subs_functions\extensions\opengl\opengl_global.bas'` is path-normalized in `parse_include_directive` (backslash→slash). Preprocess would inline the file if it existed at the base path. QB64Fresh does not ship that file; no OpenGL-specific handling. |
-| **`$USELIBRARY:'opengl32'`** | `src/lexer/token.rs`, `src/parser/directives.rs`, `src/codegen/c_backend/stmt/mod.rs` | Lexed as `MetaUseLibrary`, parsed to `MetaUseLibrary { library }`, emitted as `/* $USELIBRARY:'opengl32' */` (comment); no linking or loading. |
+| **`$USELIBRARY:'opengl32'`** | `src/lexer/token.rs`, `src/parser/directives.rs`, `src/codegen/c_backend/stmt/mod.rs` | Lexed as `MetaUseLibrary`; parsed in `directives.rs` (invoked from `parser/statements/mod.rs`); emitted in `stmt/mod.rs` as `/* $USELIBRARY:'opengl32' */` (comment); no linking or loading. |
 | **QB64pe `open_gl` tests** | `tests/qb45_compat.rs` | **Not run:** `open_gl` is omitted from the `subdirs` list (`qb45com`, `misc`, `n54`, `pete`, `thebob`); those programs use `_GL*` and would fail. |
 | **Integration tests** | `tests/integration_tests.rs` | `_GLRENDER 1` → assert C contains `qb_glrender(`; `_GLCOMPAT` → assert C contains `qb_glcompat(`; `$USELIBRARY:'opengl32'` → assert C contains `/* $USELIBRARY:'opengl32' */`. |
 
@@ -67,7 +67,7 @@ No real OpenGL; undefined reference errors for these two symbols are resolved.
 
 - [ADR-0014](../adrs/ADR-0014-scope-and-excluded-features.md) — scope and excluded features  
 - [ADR-0008](../adrs/ADR-0008-c-interoperability.md) — `DECLARE LIBRARY` for calling OpenGL directly  
-- [TODO.md](../../TODO.md) — “OpenGL Commands (Intentionally Excluded)”  
+- [TODO_CONSOLIDATED.md](TODO_CONSOLIDATED.md) — consolidated TODO (OpenGL exclusion is defined in ADR-0014)  
 - [README.md](../../README.md), [QB64Fresh_LANGUAGE_REFERENCE.md](../QB64Fresh_LANGUAGE_REFERENCE.md) — `_GL*` exclusion noted
 
 ---
@@ -256,7 +256,7 @@ OpenGL types map to QB64 types:
 
 ## Implementation Requirements
 
-> **Note (2026-01-25):** The two GL-related symbols `_GLRENDER` and `_GLCOMPAT` emit `qb_glrender(mode)` and `qb_glcompat()` respectively. **No-op stubs are now defined** in the inline runtime (`graphics.rs`) and in `graphics_ffi.rs` / `qb64fresh_rt.h`. Programs using them link successfully; no real OpenGL. See [Current QB64Fresh Codebase Status](#current-qb64fresh-codebase-status).
+> **Note (2026-01-28):** The two GL-related symbols `_GLRENDER` and `_GLCOMPAT` emit `qb_glrender(mode)` and `qb_glcompat()` respectively. **No-op stubs are defined** in the inline runtime (`src/codegen/c_backend/runtime/graphics.rs`) and in the external runtime (`runtime/src/graphics_ffi.rs`, `runtime/include/qb64fresh_rt.h`). Programs using them link successfully; no real OpenGL. See [Current QB64Fresh Codebase Status](#current-qb64fresh-codebase-status).
 
 ### 1. Parser Changes (Medium Complexity)
 

@@ -11,6 +11,7 @@ This document provides a comprehensive guide to the testing infrastructure for Q
 - [Overview](#overview)
 - [Test Types](#test-types)
 - [Running Tests](#running-tests)
+- [Continuous Testing and Watch Mode](#continuous-testing-and-watch-mode)
 - [Test Organization](#test-organization)
 - [Writing Tests](#writing-tests)
 - [Test Utilities](#test-utilities)
@@ -337,6 +338,58 @@ cargo bench -- "lexer"
 # Generate HTML report
 cargo bench -- --html
 ```
+
+---
+
+## Continuous Testing and Watch Mode
+
+**Running tests automatically** (on every save or on a schedule) is a common practice. So is **only flagging when failures persist** so that mid-edit transient failures don’t trigger alerts. Here’s how this fits together in Rust and in this project.
+
+### What we already have: CI on push
+
+**GitHub Actions** (`.github/workflows/ci.yml`) runs the full test suite on every **push** and **pull request** to `main`:
+
+- Lint (fmt, clippy)
+- Tests on Ubuntu, macOS, Windows
+- Doc tests, security audit, coverage, golden tests, fuzz check, QB45 compatibility
+
+So “run all tests” and “flag when they fail” already happens **when you push**. You are not notified while editing locally; the check only runs on the server after you push. That’s the usual “delay”: tests run in CI, not on every keystroke.
+
+### Local: run tests on file changes (watch mode)
+
+If you want tests to run **locally on every save** (without waiting for a push):
+
+- **bacon** – runs a command (e.g. `cargo test`) whenever files change. Shows red/green in the terminal; no desktop notifications.  
+  - Install: `cargo install bacon`  
+  - Run: `bacon test` (or `bacon -c 'cargo test'`)  
+  - See [bacon](https://github.com/Canop/bacon) for options.
+- **cargo-nextest** – faster test runner; can be used with bacon: `bacon -c 'cargo nextest run'`.
+
+So “run tests all the time” locally = use bacon (or similar) to re-run tests on save. You see results in the terminal; nothing “flags” you with a notification unless you add that yourself.
+
+### “Only flag after failures persist for X time”
+
+Standard Rust tooling and typical CI do **not** have “only fail / only notify if tests have been failing for X minutes or N runs.” CI fails the run as soon as tests fail.
+
+Ways to get “only flag after X” behavior:
+
+1. **Rely on CI** – You’re only “flagged” when you push and CI runs. While you’re editing, there’s no notification; the “delay” is “until I push.”
+2. **Local script** – A small script that:
+   - Runs `cargo test` every N seconds (or after file changes via inotify/fswatch),
+   - Tracks “last N outcomes” or “first failure time,”
+   - Sends a desktop notification (or logs) only when failures have persisted for T minutes or K consecutive runs.
+   - Such a script is project-agnostic (shell + `notify-send` or similar); there’s no built-in Cargo/Rust tool that does this.
+3. **Flaky / quarantine** – If the goal is to avoid noise from *flaky* tests, the usual approach is to fix or quarantine them, not to delay reporting. `cargo-nextest` can retry failed tests and has options for flaky handling.
+
+### Summary
+
+| Goal | Approach |
+|------|----------|
+| Run all tests on every push and get a clear pass/fail | **Already in place** – GitHub Actions CI. |
+| Run tests locally on every save | Use **bacon** (e.g. `bacon test`) – terminal only, no “flag after X time.” |
+| Only be notified if failures persist (e.g. 5+ minutes) | Not built into Cargo or CI; implement with a **local script** that runs tests periodically and notifies only after N consecutive failures or T minutes. |
+
+So yes: “run tests all the time” and “flag when they fail” is standard (CI + optional local watch). “Only flag after X time still failing” is a reasonable idea but not a standard feature; it’s something you’d add with a small wrapper script if you want it locally.
 
 ---
 

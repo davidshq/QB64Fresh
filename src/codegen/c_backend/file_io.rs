@@ -17,6 +17,28 @@ use crate::semantic::types::BasicType;
 use super::stmt::StmtEmitter;
 use super::types::c_identifier;
 
+/// Returns the C constant name for OPEN access mode (QB_FILE_ACCESS_*).
+fn access_const_c(access: Option<FileAccess>) -> &'static str {
+    match access {
+        None => "QB_FILE_ACCESS_DEFAULT",
+        Some(FileAccess::Read) => "QB_FILE_ACCESS_READ",
+        Some(FileAccess::Write) => "QB_FILE_ACCESS_WRITE",
+        Some(FileAccess::ReadWrite) => "QB_FILE_ACCESS_READ_WRITE",
+    }
+}
+
+/// Returns the C constant name for OPEN lock mode (QB_FILE_LOCK_*).
+fn lock_const_c(lock: Option<FileLock>) -> &'static str {
+    match lock {
+        None => "QB_FILE_LOCK_DEFAULT",
+        Some(FileLock::Shared) => "QB_FILE_LOCK_SHARED",
+        Some(FileLock::LockRead) => "QB_FILE_LOCK_READ",
+        Some(FileLock::LockWrite) => "QB_FILE_LOCK_WRITE",
+        Some(FileLock::LockReadWrite) => "QB_FILE_LOCK_READ_WRITE",
+        Some(FileLock::Only) => "QB_FILE_LOCK_ONLY",
+    }
+}
+
 impl StmtEmitter {
     // ==================== File I/O Helper Methods ====================
 
@@ -49,11 +71,9 @@ impl StmtEmitter {
             FileMode::Random => "\"r+b\"",
         };
 
-        // File access and lock modes are not yet implemented in the runtime
-        // access: READ, WRITE, READ WRITE
-        // lock: SHARED, LOCK READ, LOCK WRITE, LOCK READ WRITE, ONLY
-        let _ = access;
-        let _ = lock;
+        // Map BASIC access/lock to runtime constants (QB_FILE_ACCESS_*, QB_FILE_LOCK_*)
+        let access_const = access_const_c(access);
+        let lock_const = lock_const_c(lock);
 
         // For external runtime, use qb_file_open_str which accepts QbString* directly
         // For inline runtime, use ->data access
@@ -66,20 +86,24 @@ impl StmtEmitter {
         if self.config.runtime_mode.is_external() {
             writeln_code!(
                 output,
-                "{}qb_file_open_str({}, {}, {});",
+                "{}qb_file_open_str({}, {}, {}, {}, {});",
                 indent,
                 file_num_code,
                 filename_access,
-                c_mode
+                c_mode,
+                access_const,
+                lock_const
             )?;
         } else {
             writeln_code!(
                 output,
-                "{}qb_file_open({}, {}, {});",
+                "{}qb_file_open({}, {}, {}, {}, {});",
                 indent,
                 file_num_code,
                 filename_access,
-                c_mode
+                c_mode,
+                access_const,
+                lock_const
             )?;
         }
 
@@ -317,14 +341,19 @@ impl StmtEmitter {
                     name,
                     indices,
                     element_type,
+                    dimensions,
                 } => {
                     let c_arr = c_identifier(name);
+                    // Cast indices to int64_t to ensure integer subscripts
                     let idx_code: Vec<_> = indices
                         .iter()
-                        .map(|e| self.emit_expr(e))
+                        .map(|e| {
+                            let code = self.emit_expr(e)?;
+                            Ok(format!("(int64_t)({})", code))
+                        })
                         .collect::<Result<_, _>>()?;
-                    // Use first index for 1D array syntax
-                    let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
+                    // Calculate linear index for multi-dimensional arrays
+                    let idx = self.calculate_array_index(&idx_code, dimensions);
                     (format!("{}[{}]", c_arr, idx), element_type.clone())
                 }
                 ArrayElementField {
@@ -332,13 +361,19 @@ impl StmtEmitter {
                     indices,
                     fields,
                     field_type,
+                    dimensions,
                 } => {
                     let c_arr = c_identifier(name);
+                    // Cast indices to int64_t to ensure integer subscripts
                     let idx_code: Vec<_> = indices
                         .iter()
-                        .map(|e| self.emit_expr(e))
+                        .map(|e| {
+                            let code = self.emit_expr(e)?;
+                            Ok(format!("(int64_t)({})", code))
+                        })
                         .collect::<Result<_, _>>()?;
-                    let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
+                    // Calculate linear index for multi-dimensional arrays
+                    let idx = self.calculate_array_index(&idx_code, dimensions);
                     let field_chain = fields.join(".");
                     (
                         format!("{}[{}].{}", c_arr, idx, field_chain),
@@ -404,27 +439,43 @@ impl StmtEmitter {
 
         let target_code = match target {
             Variable { name, .. } => c_identifier(name),
-            ArrayElement { name, indices, .. } => {
+            ArrayElement {
+                name,
+                indices,
+                dimensions,
+                ..
+            } => {
                 let c_arr = c_identifier(name);
+                // Cast indices to int64_t to ensure integer subscripts
                 let idx_code: Vec<_> = indices
                     .iter()
-                    .map(|e| self.emit_expr(e))
+                    .map(|e| {
+                        let code = self.emit_expr(e)?;
+                        Ok(format!("(int64_t)({})", code))
+                    })
                     .collect::<Result<_, _>>()?;
-                let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
+                // Calculate linear index for multi-dimensional arrays
+                let idx = self.calculate_array_index(&idx_code, dimensions);
                 format!("{}[{}]", c_arr, idx)
             }
             ArrayElementField {
                 name,
                 indices,
                 fields,
+                dimensions,
                 ..
             } => {
                 let c_arr = c_identifier(name);
+                // Cast indices to int64_t to ensure integer subscripts
                 let idx_code: Vec<_> = indices
                     .iter()
-                    .map(|e| self.emit_expr(e))
+                    .map(|e| {
+                        let code = self.emit_expr(e)?;
+                        Ok(format!("(int64_t)({})", code))
+                    })
                     .collect::<Result<_, _>>()?;
-                let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
+                // Calculate linear index for multi-dimensional arrays
+                let idx = self.calculate_array_index(&idx_code, dimensions);
                 let field_chain = fields.join(".");
                 format!("{}[{}].{}", c_arr, idx, field_chain)
             }
@@ -478,13 +529,19 @@ impl StmtEmitter {
                 name,
                 indices,
                 element_type,
+                dimensions,
             } => {
                 let c_arr = c_identifier(name);
+                // Cast indices to int64_t to ensure integer subscripts
                 let idx_code: Vec<_> = indices
                     .iter()
-                    .map(|e| self.emit_expr(e))
+                    .map(|e| {
+                        let code = self.emit_expr(e)?;
+                        Ok(format!("(int64_t)({})", code))
+                    })
                     .collect::<Result<_, _>>()?;
-                let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
+                // Calculate linear index for multi-dimensional arrays
+                let idx = self.calculate_array_index(&idx_code, dimensions);
                 (format!("{}[{}]", c_arr, idx), element_type.clone())
             }
             ArrayElementField {
@@ -492,13 +549,19 @@ impl StmtEmitter {
                 indices,
                 fields,
                 field_type,
+                dimensions,
             } => {
                 let c_arr = c_identifier(name);
+                // Cast indices to int64_t to ensure integer subscripts
                 let idx_code: Vec<_> = indices
                     .iter()
-                    .map(|e| self.emit_expr(e))
+                    .map(|e| {
+                        let code = self.emit_expr(e)?;
+                        Ok(format!("(int64_t)({})", code))
+                    })
                     .collect::<Result<_, _>>()?;
-                let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
+                // Calculate linear index for multi-dimensional arrays
+                let idx = self.calculate_array_index(&idx_code, dimensions);
                 let field_chain = fields.join(".");
                 (
                     format!("{}[{}].{}", c_arr, idx, field_chain),
@@ -572,13 +635,19 @@ impl StmtEmitter {
                 name,
                 indices,
                 element_type,
+                dimensions,
             } => {
                 let c_arr = c_identifier(name);
+                // Cast indices to int64_t to ensure integer subscripts
                 let idx_code: Vec<_> = indices
                     .iter()
-                    .map(|e| self.emit_expr(e))
+                    .map(|e| {
+                        let code = self.emit_expr(e)?;
+                        Ok(format!("(int64_t)({})", code))
+                    })
                     .collect::<Result<_, _>>()?;
-                let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
+                // Calculate linear index for multi-dimensional arrays
+                let idx = self.calculate_array_index(&idx_code, dimensions);
                 (format!("{}[{}]", c_arr, idx), element_type.clone())
             }
             ArrayElementField {
@@ -586,13 +655,19 @@ impl StmtEmitter {
                 indices,
                 fields,
                 field_type,
+                dimensions,
             } => {
                 let c_arr = c_identifier(name);
+                // Cast indices to int64_t to ensure integer subscripts
                 let idx_code: Vec<_> = indices
                     .iter()
-                    .map(|e| self.emit_expr(e))
+                    .map(|e| {
+                        let code = self.emit_expr(e)?;
+                        Ok(format!("(int64_t)({})", code))
+                    })
                     .collect::<Result<_, _>>()?;
-                let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
+                // Calculate linear index for multi-dimensional arrays
+                let idx = self.calculate_array_index(&idx_code, dimensions);
                 let field_chain = fields.join(".");
                 (
                     format!("{}[{}].{}", c_arr, idx, field_chain),

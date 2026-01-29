@@ -1908,6 +1908,9 @@ pub enum TypedInputTarget {
         indices: Vec<TypedExpr>,
         /// Type of the array element.
         element_type: BasicType,
+        /// Array dimensions (for multi-dimensional index calculation).
+        /// Empty if dimensions are unknown or single-dimensional.
+        dimensions: Vec<TypedArrayDimension>,
     },
     /// Array element field access: `arr(i).field`
     ArrayElementField {
@@ -1919,6 +1922,9 @@ pub enum TypedInputTarget {
         fields: Vec<String>,
         /// Type of the accessed field.
         field_type: BasicType,
+        /// Array dimensions (for multi-dimensional index calculation).
+        /// Empty if dimensions are unknown or single-dimensional.
+        dimensions: Vec<TypedArrayDimension>,
     },
     /// Simple UDT field access: `udt.field`
     Field {

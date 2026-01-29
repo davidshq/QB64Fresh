@@ -395,10 +395,28 @@ impl<'a> TypeChecker<'a> {
     /// Type checks a GOTO statement.
     pub(super) fn check_goto(&mut self, target: &str, span: crate::ast::Span) -> TypedStatement {
         if self.symbols.lookup_label(target).is_none() {
-            self.errors.push(SemanticError::UndefinedLabel {
-                name: target.to_string(),
-                span,
-            });
+            // Compute suggestions for undefined label
+            let candidates = self.symbols.collect_available_label_names();
+            let suggestion =
+                crate::semantic::suggestions::find_best_match(target, &candidates, 0.6);
+            let suggestions = if suggestion.is_some() {
+                None
+            } else {
+                let similar =
+                    crate::semantic::suggestions::find_similar_names(target, &candidates, 0.4, 3);
+                if similar.is_empty() {
+                    None
+                } else {
+                    Some(similar)
+                }
+            };
+            self.errors
+                .push(SemanticError::undefined_label_with_suggestions(
+                    target.to_string(),
+                    span,
+                    suggestion,
+                    suggestions,
+                ));
         }
 
         TypedStatement::new(
@@ -412,10 +430,28 @@ impl<'a> TypeChecker<'a> {
     /// Type checks a GOSUB statement.
     pub(super) fn check_gosub(&mut self, target: &str, span: crate::ast::Span) -> TypedStatement {
         if self.symbols.lookup_label(target).is_none() {
-            self.errors.push(SemanticError::UndefinedLabel {
-                name: target.to_string(),
-                span,
-            });
+            // Compute suggestions for undefined label
+            let candidates = self.symbols.collect_available_label_names();
+            let suggestion =
+                crate::semantic::suggestions::find_best_match(target, &candidates, 0.6);
+            let suggestions = if suggestion.is_some() {
+                None
+            } else {
+                let similar =
+                    crate::semantic::suggestions::find_similar_names(target, &candidates, 0.4, 3);
+                if similar.is_empty() {
+                    None
+                } else {
+                    Some(similar)
+                }
+            };
+            self.errors
+                .push(SemanticError::undefined_label_with_suggestions(
+                    target.to_string(),
+                    span,
+                    suggestion,
+                    suggestions,
+                ));
         }
 
         TypedStatement::new(
@@ -526,10 +562,27 @@ impl<'a> TypeChecker<'a> {
                 }
             }
         } else {
-            self.errors.push(SemanticError::UndefinedProcedure {
-                name: name.to_string(),
-                span,
-            });
+            // Compute suggestions for undefined procedure
+            let candidates = self.symbols.collect_available_procedure_names();
+            let suggestion = crate::semantic::suggestions::find_best_match(name, &candidates, 0.6);
+            let suggestions = if suggestion.is_some() {
+                None
+            } else {
+                let similar =
+                    crate::semantic::suggestions::find_similar_names(name, &candidates, 0.4, 3);
+                if similar.is_empty() {
+                    None
+                } else {
+                    Some(similar)
+                }
+            };
+            self.errors
+                .push(SemanticError::undefined_procedure_with_suggestions(
+                    name.to_string(),
+                    span,
+                    suggestion,
+                    suggestions,
+                ));
         }
 
         // Extract parameter info for codegen (to know byref vs byval)

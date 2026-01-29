@@ -38,6 +38,12 @@ impl super::StmtEmitter {
             c_name = renamed.clone();
         }
 
+        // Check if this is a BYREF scalar parameter - if so, we need to write through the pointer
+        let is_byref_scalar = self
+            .procedure
+            .current_func_byref_scalar_names
+            .contains(&c_name);
+
         let value_code = self.emit_expr(value)?;
 
         // Handle fixed-length string assignment specially
@@ -46,32 +52,73 @@ impl super::StmtEmitter {
             // The value is a QbString*, we need to copy its data into the char array
             // Note: Don't free _tmp here - it will be cleaned up by qbs_cleanup at statement end
             let data_access = self.config.runtime_mode.string_data_access("_tmp");
-            writeln_code!(
-                output,
-                "{}{{ QbString* _tmp = {}; strncpy({}, _tmp ? {} : \"\", {}); {}[{}] = '\\0'; }}",
-                indent,
-                value_code,
-                c_name,
-                data_access,
-                len,
-                c_name,
-                len
-            )?;
+            if is_byref_scalar {
+                // For BYREF fixed-length strings, write through the pointer
+                writeln_code!(
+                    output,
+                    "{}{{ QbString* _tmp = {}; strncpy(*{}, _tmp ? {} : \"\", {}); (*{})[{}] = '\\0'; }}",
+                    indent,
+                    value_code,
+                    c_name,
+                    data_access,
+                    len,
+                    c_name,
+                    len
+                )?;
+            } else {
+                writeln_code!(
+                    output,
+                    "{}{{ QbString* _tmp = {}; strncpy({}, _tmp ? {} : \"\", {}); {}[{}] = '\\0'; }}",
+                    indent,
+                    value_code,
+                    c_name,
+                    data_access,
+                    len,
+                    c_name,
+                    len
+                )?;
+            }
         } else if *target_type == BasicType::String {
             // For dynamic strings: release old, retain new
             // This ensures proper refcount management for temp string cleanup
-            writeln_code!(
-                output,
-                "{}{{ QbString* _new = {}; if ({} != _new) {{ qb_string_release({}); {} = qb_string_retain(_new); }} }}",
-                indent,
-                value_code,
-                c_name,
-                c_name,
-                c_name
-            )?;
+            if is_byref_scalar {
+                // For BYREF string parameters, write through the pointer
+                writeln_code!(
+                    output,
+                    "{}{{ QbString* _new = {}; if (*{} != _new) {{ qb_string_release(*{}); *{} = qb_string_retain(_new); }} }}",
+                    indent,
+                    value_code,
+                    c_name,
+                    c_name,
+                    c_name
+                )?;
+            } else {
+                writeln_code!(
+                    output,
+                    "{}{{ QbString* _new = {}; if ({} != _new) {{ qb_string_release({}); {} = qb_string_retain(_new); }} }}",
+                    indent,
+                    value_code,
+                    c_name,
+                    c_name,
+                    c_name
+                )?;
+            }
         } else if value.basic_type != *target_type {
             let c_ty = c_type(target_type);
-            writeln_code!(output, "{}{} = ({})({});", indent, c_name, c_ty, value_code)?;
+            if is_byref_scalar {
+                writeln_code!(
+                    output,
+                    "{}*{} = ({})({});",
+                    indent,
+                    c_name,
+                    c_ty,
+                    value_code
+                )?;
+            } else {
+                writeln_code!(output, "{}{} = ({})({});", indent, c_name, c_ty, value_code)?;
+            }
+        } else if is_byref_scalar {
+            writeln_code!(output, "{}*{} = {};", indent, c_name, value_code)?;
         } else {
             writeln_code!(output, "{}{} = {};", indent, c_name, value_code)?;
         }
@@ -250,10 +297,25 @@ impl super::StmtEmitter {
             linear_parts.join(" + ")
         };
 
-        // Build field access chain: .field1.field2...
+        // Check if this is a BYREF UDT array parameter - if so, use -> instead of .
+        // Note: Arrays are typically passed as pointers, so we check if the array name
+        // is in byref_udt_names (though arrays of UDTs are less common)
+        // Use the ORIGINAL name for the byref check, not the potentially renamed version
+        let original_c_name = c_identifier(name);
+        let is_byref_udt = self
+            .procedure
+            .current_func_byref_udt_names
+            .contains(&original_c_name);
+
+        // Build field access chain: first field uses -> if base is BYREF UDT pointer,
+        // subsequent nested fields always use . because nested UDT members are embedded (not pointers)
         let field_chain: String = fields
             .iter()
-            .map(|f| format!(".{}", c_identifier(f)))
+            .enumerate()
+            .map(|(i, f)| {
+                let sep = if i == 0 && is_byref_udt { "->" } else { "." };
+                format!("{}{}", sep, c_identifier(f))
+            })
             .collect();
 
         // Handle fixed-length string fields specially
@@ -321,10 +383,21 @@ impl super::StmtEmitter {
         let c_name = c_identifier(name);
         let value_code = self.emit_expr(value)?;
 
-        // Build field access chain: .field1.field2...
+        // Check if this is a BYREF UDT parameter - if so, use -> instead of . for first field
+        let is_byref_udt = self
+            .procedure
+            .current_func_byref_udt_names
+            .contains(&c_name);
+
+        // Build field access chain: first field uses -> if base is BYREF UDT pointer,
+        // subsequent nested fields always use . because nested UDT members are embedded (not pointers)
         let field_chain: String = fields
             .iter()
-            .map(|f| format!(".{}", c_identifier(f)))
+            .enumerate()
+            .map(|(i, f)| {
+                let sep = if i == 0 && is_byref_udt { "->" } else { "." };
+                format!("{}{}", sep, c_identifier(f))
+            })
             .collect();
 
         // Handle fixed-length string fields specially

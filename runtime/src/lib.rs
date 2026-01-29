@@ -7,6 +7,7 @@
 //! # Architecture
 //!
 //! The runtime is organized into modules:
+//! - `array_registry` - LBOUND/UBOUND array bounds tracking (external runtime)
 //! - `string` - Dynamic string type with reference counting
 //! - `io` - PRINT, INPUT, and file operations
 //! - `math` - Mathematical functions
@@ -23,6 +24,7 @@
 //! count, and memory is freed when the count reaches zero. The generated C code
 //! must call `qb_string_release` when done with a string.
 
+pub mod array_registry;
 pub mod audio;
 pub mod audio_ffi;
 pub mod dialogs;
@@ -38,6 +40,7 @@ pub mod memory;
 pub mod string;
 
 // Re-export everything at the crate root for C access
+pub use array_registry::*;
 pub use audio::*;
 pub use audio_ffi::*;
 pub use dialogs::*;
@@ -87,6 +90,28 @@ pub extern "C" fn qb_end(exit_code: i32) {
 pub extern "C" fn qb_stop() {
     eprintln!("STOP statement executed");
     std::process::exit(1);
+}
+
+/// RUN statement: run another program or no-op (restart).
+///
+/// - `path == NULL`: RUN with no arguments; minimal implementation does nothing
+///   (QB64pe would restart the current program; we do not support that yet).
+/// - `path` non-NULL: run the given path as a program via the system shell,
+///   then exit the current process (matches QB64pe behavior for RUN "file").
+///
+/// # Safety
+/// Caller must ensure `path` is either NULL or a valid `QbString*` from the runtime.
+#[no_mangle]
+pub unsafe extern "C" fn qb_run(path: *const crate::string::QbString) {
+    if path.is_null() {
+        return;
+    }
+    let data = crate::string::qb_string_data(path);
+    if data.is_null() || unsafe { *data == 0 } {
+        return;
+    }
+    let _ = libc::system(data);
+    std::process::exit(0);
 }
 
 // ============================================================================

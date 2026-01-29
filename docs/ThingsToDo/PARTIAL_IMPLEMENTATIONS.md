@@ -1,8 +1,8 @@
 # Partial Implementations Audit & Runtime Implementation Plan
 
-This document catalogs all functionality that is only partially implemented across the QB64Fresh codebase and provides a comprehensive overview of the runtime implementation status. Last updated: 2026-01-28 (verified against current codebase - 2026-01-28).
+This document catalogs all functionality that is only partially implemented across the QB64Fresh codebase and provides a comprehensive overview of the runtime implementation status. Last updated: 2026-01-28 (verified against codebase).
 
-For per-function status and will-not-implement: [STUB_FUNCTIONS_FULL.md](../archive/STUB_FUNCTIONS_FULL.md).
+Per-function status and will-not-implement: [STUB_FUNCTIONS_FULL.md](../archive/STUB_FUNCTIONS_FULL.md).
 
 ## Dual-Runtime Architecture
 
@@ -55,7 +55,7 @@ See [RUNTIME_ARCHITECTURE_PERSPECTIVES.md](RUNTIME_ARCHITECTURE_PERSPECTIVES.md)
 src/codegen/c_backend/runtime/
 ├── mod.rs       - Header emission, runtime mode switch, forward decls, debug support
 ├── types.rs     - qb_string layout, type-size helpers
-├── strings.rs   - LEN, LEFT$, RIGHT$, MID$, INSTR, CHR$, ASC, STR$, VAL, temp pool, compare
+├── strings.rs   - LEN, LEFT$, RIGHT$, MID$, INSTR, CHR$, ASC, STR$, VAL, temp pool (QB64FRESH_DEBUG_STRING_POOL for overflow warning), compare
 ├── io.rs        - PRINT, INPUT, LINE INPUT, CLS, LOCATE, COLOR
 ├── file.rs      - OPEN, CLOSE, PRINT #, INPUT #, LINE INPUT #, WRITE #, GET, PUT, SEEK, LOC, LOF, EOF, FREEFILE, FIELD, LSET, RSET
 ├── keyboard.rs  - INKEY$, _KEYHIT, _KEYDOWN, _KEYCLEAR
@@ -75,28 +75,29 @@ src/codegen/c_backend/runtime/
 
 ```
 runtime/src/
-├── lib.rs         - Crate root, qb_runtime_init/shutdown, qb_end, qb_stop, qb_init_args, qb_init_startdir
-├── string.rs      - QbString, qb_string_*, qb_chr, qb_asc, qb_left, qb_right, qb_mid, qb_instr, qb_ucase, qb_lcase, qb_ltrim, qb_rtrim, qb_space, qb_string_fill, qb_str_int, qb_str_float, qb_val, qb_tostr, qb_hex, qb_oct, qb_bin, qb_trim, qb_instrrev, qb_instrrev3
-├── io.rs          - PRINT, INPUT, LINE INPUT, qb_iif, qb_iif_str, CLS, LOCATE, COLOR, file open/close, PRINT #, INPUT #, WRITE #, GET, PUT, SEEK, EOF, LOF, LOC, FREEFILE, KILL, NAME, CHDIR, MKDIR, RMDIR, _FILEEXISTS, _DIREXISTS, etc.
-├── math.rs        - abs, sgn, int, fix, cint, clng, trig, log, exp, sqr, rnd, randomize, d2r, r2d, pi, min/max
-├── graphics/       - GraphicsBackend trait; SDL2 and Mock implementations
+├── lib.rs           - Crate root, qb_runtime_init/shutdown, qb_end, qb_stop, qb_init_args, qb_init_startdir
+├── array_registry.rs - LBOUND/UBOUND array bounds; qb_array_register, qb_array_register_md, qb_array_update, qb_array_erase
+├── string.rs        - QbString, qb_string_*, qb_chr, qb_asc, qb_left, qb_right, qb_mid, qb_instr, qb_ucase, qb_lcase, qb_ltrim, qb_rtrim, qb_space, qb_string_fill, qb_str_int, qb_str_float, qb_val, qb_tostr, qb_hex, qb_oct, qb_bin, qb_trim, qb_instrrev, qb_instrrev3
+├── io.rs            - PRINT, INPUT, LINE INPUT, qb_iif, qb_iif_str, CLS, LOCATE, COLOR, file open/close, PRINT #, INPUT #, WRITE #, GET, PUT, SEEK, EOF, LOF, LOC, FREEFILE, KILL, NAME, CHDIR, MKDIR, RMDIR, _FILEEXISTS, _DIREXISTS, etc.
+├── math.rs          - abs, sgn, int, fix, cint, clng, trig, log, exp, sqr, rnd, randomize, d2r, r2d, pi, min/max
+├── graphics/        - GraphicsBackend trait; SDL2 and Mock implementations
 │   ├── mod.rs
 │   ├── sdl2.rs
 │   ├── mock.rs
 │   ├── font.rs
 │   └── error.rs
-├── graphics_ffi.rs - qb_gfx_* C bindings (init, cls, pset, line, circle, paint, view, window, palette, images, GET/PUT, mouse, fonts, etc.)
-├── audio/          - AudioBackend trait; Rodio and Mock
+├── graphics_ffi.rs  - qb_gfx_* C bindings (init, cls, pset, line, circle, paint, view, window, palette, images, GET/PUT, mouse, fonts, etc.)
+├── audio/           - AudioBackend trait; Rodio and Mock
 │   ├── mod.rs
 │   ├── rodio_backend.rs
 │   ├── mock.rs
 │   └── error.rs
-├── audio_ffi.rs    - qb_beep, qb_sound, qb_play, qb_snd*
-├── dialogs.rs      - qb_messagebox_ex, qb_openfiledialog, qb_savefiledialog, qb_selectfolderdialog
-├── font_ffi.rs     - qb_loadfont, qb_font, qb_freefont, qb_fontheight, qb_fontwidth, qb_printwidth, qb_printstring, etc.
-├── font_manager.rs - FreeType-based font manager (feature-gated)
-├── joystick.rs     - qb_stick, qb_strig, qb_devices, qb_axis, qb_button
-├── memory.rs       - qb_mem, qb_memnew, qb_memfree, qb_memget, qb_memput, qb_memcopy, qb_memfill, qb_offset, qb_mem_of, qb_memexists, qb_memelement, qb_memimage, qb_memsound
+├── audio_ffi.rs     - qb_beep, qb_sound, qb_play, qb_snd*
+├── dialogs.rs       - qb_messagebox_ex, qb_openfiledialog, qb_savefiledialog, qb_selectfolderdialog
+├── font_ffi.rs      - qb_loadfont, qb_font, qb_freefont, qb_fontheight, qb_fontwidth, qb_printwidth, qb_printstring, etc.
+├── font_manager.rs  - FreeType-based font manager (feature-gated)
+├── joystick.rs      - qb_stick, qb_strig, qb_devices, qb_axis, qb_button
+├── memory.rs        - qb_mem, qb_memnew, qb_memfree, qb_memget, qb_memput, qb_memcopy, qb_memfill, qb_offset, qb_mem_of, qb_memexists, qb_memelement, qb_memimage, qb_memsound
 ```
 
 **Note:** `qb_glrender` and `qb_glcompat` (no-op stubs for `_GLRENDER`/`_GLCOMPAT`) are in `graphics_ffi.rs` and `qb64fresh_rt.h`; inline runtime stubs in `src/codegen/c_backend/runtime/graphics.rs`.
@@ -469,6 +470,7 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 | Function | Status | vs QB64pe | Description |
 |----------|--------|-----------|-------------|
 | `ON ERROR GOTO label` | 🟢 | ✓ | Set error handler |
+| `ON ERROR GOTO _NEWHANDLER label` | 🟢 | ✓ | QB64 scoped error handler (parser + codegen) |
 | `RESUME`, `RESUME NEXT`, `RESUME label` | 🟢 | ✓ | Resume after error |
 | `ERR`, `ERL` | 🟢 | ✓ | Error code/line |
 | `_ERRORMESSAGE$` | 🟢 | ✓ | Error message (qb_errormessage; error.rs) |
@@ -513,18 +515,18 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 
 ## Success Criteria
 
-1. **Bootstrap:** QB64pe compiles itself with QB64Fresh and runs to completion (resolve startup/IDE init hang; see [RUNTIME_ARCHITECTURE_PERSPECTIVES.md](RUNTIME_ARCHITECTURE_PERSPECTIVES.md)).
+1. **Bootstrap:** QB64pe compiles itself with QB64Fresh and runs to completion (resolve startup/IDE init hang; see Perspectives doc).
 2. **Test suite:** qbasic_testcases (and equivalent) pass on both inline and external where applicable.
-3. **Conformance:** Non-graphics behavior matches between inline and external; see Perspectives doc.
-4. **Feature parity:** All QB64pe functions either implemented or explicitly documented as stub/unsupported; see [STUB_FUNCTIONS_FULL.md](../archive/STUB_FUNCTIONS_FULL.md).
+3. **Conformance:** Non-graphics behavior matches between inline and external (see Perspectives doc).
+4. **Feature parity:** All QB64pe functions either implemented or explicitly documented as stub/unsupported (see function catalog in Related Documentation).
 5. **Performance:** Comparable to QB64pe for typical programs.
 
 ## Related Documentation
 
-- [RUNTIME_ARCHITECTURE_PERSPECTIVES.md](RUNTIME_ARCHITECTURE_PERSPECTIVES.md) — dual-runtime trade-offs, when to use each, action items
-- [../GRAPHICS.md](../GRAPHICS.md) — graphics architecture, inline stubs, `QB64FRESH_MAX_FRAMES`, SDL2/Mock backends
-- [runtime/include/qb64fresh_rt.h](../../runtime/include/qb64fresh_rt.h) — C API contract for external runtime (all FFI function declarations)
-- [STUB_FUNCTIONS_FULL.md](../archive/STUB_FUNCTIONS_FULL.md) — full function catalog, implemented and will-not-implement
+- **Perspectives doc** — [RUNTIME_ARCHITECTURE_PERSPECTIVES.md](RUNTIME_ARCHITECTURE_PERSPECTIVES.md): dual-runtime trade-offs, when to use each, action items
+- **Graphics** — [../GRAPHICS.md](../GRAPHICS.md): inline stubs, `QB64FRESH_MAX_FRAMES`, SDL2/Mock backends
+- **C API** — [runtime/include/qb64fresh_rt.h](../../runtime/include/qb64fresh_rt.h): external runtime FFI declarations
+- **Function catalog** — [STUB_FUNCTIONS_FULL.md](../archive/STUB_FUNCTIONS_FULL.md): per-function status, will-not-implement
 
 ---
 
@@ -548,7 +550,7 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 - **External runtime** (`--runtime external`): Full functionality requires linking against `libqb64fresh_rt`. Most features are fully implemented in external mode.
 
 **Implementation Status:**
-- Array metadata tracking is fully implemented in external runtime (see `src/codegen/c_backend/runtime/arrays.rs`). Inline runtime has stub for `qb_array_register_md` which is acceptable since inline mode doesn't need full array tracking.
+- Array metadata tracking: inline runtime implements it in `src/codegen/c_backend/runtime/arrays.rs` (embedded C); external runtime implements it in `runtime/src/array_registry.rs`. Both provide `qb_array_register`, `qb_array_register_md`, `qb_array_update`, `qb_array_erase`.
 - Debugger infrastructure is complete but requires runtime integration hooks (debug info emission, breakpoint support, memory access protocol) to be functional.
 
 **Intentional vs Temporary:**
@@ -559,7 +561,7 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 ## Recent Changes
 
 ### 2026-01-28
-- 📝 **Documentation Update**: Updated status dates and verified current implementation state
+- 📝 **Documentation Update**: Verified against current codebase. External runtime tree now includes `array_registry.rs`. Array metadata note corrected (inline: `src/codegen/c_backend/runtime/arrays.rs`; external: `runtime/src/array_registry.rs`).
 
 ### 2026-01-27
 - 🟢 **FIELD Statement**: Fully implemented (see [File I/O Features](#file-io-features))
@@ -567,10 +569,4 @@ See [../GRAPHICS.md](../GRAPHICS.md) for architecture, backends (SDL2, Mock), an
 - 🟢 **Graphics Features**: Console Scrolling, Per-Image Palettes, STEP Position Tracking, and Window Functions verified/implemented (see [Graphics Features](#graphics-features))
 
 ### 2026-01-26
-- 🟢 **Array Metadata Tracking**: Fully implemented with hash table registry system
-  - `qb_array_register` / `qb_array_register_md` track array bounds
-  - `qb_ubound` / `qb_ubound2` and `qb_lbound` / `qb_lbound2` now return correct values
-  - `qb_array_update` handles REDIM pointer changes
-  - `qb_array_erase` clears metadata
-  - Implementation in `src/codegen/c_backend/runtime/arrays.rs`
-  - **Note:** Inline runtime has stub for `qb_array_register_md`, but external runtime has full implementation
+- 🟢 **Array Metadata Tracking**: Hash table registry; `qb_array_register` / `qb_array_register_md`, `qb_array_update`, `qb_array_erase`; LBOUND/UBOUND correct. Paths in Notes above.

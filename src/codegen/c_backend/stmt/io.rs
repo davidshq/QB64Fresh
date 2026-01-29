@@ -16,13 +16,75 @@
 
 use crate::ast::PrintSeparator;
 use crate::codegen::error::CodeGenError;
-use crate::semantic::typed_ir::{TypedInputTarget, TypedPrintItem};
+use crate::semantic::typed_ir::{TypedArrayDimension, TypedInputTarget, TypedPrintItem};
 use crate::writeln_code;
 
 use super::super::expr::escape_string;
 use super::super::types::c_identifier;
 
 impl super::StmtEmitter {
+    /// Calculates a linear array index expression for multi-dimensional arrays.
+    ///
+    /// Given array indices and dimensions, calculates the linear (1D) index
+    /// using row-major order, accounting for array lower bounds.
+    ///
+    /// # Arguments
+    ///
+    /// * `indices_code` - C code expressions for each dimension index
+    /// * `dimensions` - Array dimension bounds (empty for 1D or unknown)
+    ///
+    /// # Returns
+    ///
+    /// C expression string for the linear index, or the first index if dimensions are unknown.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `indices_code.len() != dimensions.len()` when both are non-empty.
+    /// This should not happen in normal operation as the semantic analyzer ensures
+    /// index count matches dimension count.
+    /// Calculates a linear array index expression for multi-dimensional arrays.
+    ///
+    /// This is a helper method used by both console I/O and file I/O code generation.
+    pub(crate) fn calculate_array_index(
+        &self,
+        indices_code: &[String],
+        dimensions: &[TypedArrayDimension],
+    ) -> String {
+        if dimensions.is_empty() || indices_code.len() == 1 {
+            // Single dimension or unknown dimensions - use first index directly
+            if let Some(dim) = dimensions.first() {
+                format!("({} - {})", indices_code[0], dim.lower)
+            } else {
+                indices_code[0].clone()
+            }
+        } else {
+            // Multi-dimensional: calculate linear index using row-major order
+            // Ensure indices and dimensions match (semantic analyzer should guarantee this)
+            debug_assert_eq!(
+                indices_code.len(),
+                dimensions.len(),
+                "Index count must match dimension count"
+            );
+
+            let mut linear_parts = Vec::new();
+            for (i, (idx, dim)) in indices_code.iter().zip(dimensions.iter()).enumerate() {
+                let adjusted = format!("({} - {})", idx, dim.lower);
+                if i < dimensions.len() - 1 {
+                    // Calculate stride for this dimension
+                    let stride: i64 = dimensions[i + 1..]
+                        .iter()
+                        .map(|d| d.upper - d.lower + 1)
+                        .product();
+                    linear_parts.push(format!("{} * {}", adjusted, stride));
+                } else {
+                    // Last dimension - just add the adjusted index
+                    linear_parts.push(adjusted);
+                }
+            }
+            linear_parts.join(" + ")
+        }
+    }
+
     /// Emits code for an INPUT statement.
     ///
     /// Generates appropriate C function calls for each input target based on its type.
@@ -80,14 +142,20 @@ impl super::StmtEmitter {
                     name,
                     indices,
                     element_type,
+                    dimensions,
                 } => {
                     let c_arr = c_identifier(name);
+                    // Cast indices to int64_t to ensure integer subscripts
                     let idx_code: Vec<_> = indices
                         .iter()
-                        .map(|e| self.emit_expr(e))
+                        .map(|e| {
+                            let code = self.emit_expr(e)?;
+                            Ok(format!("(int64_t)({})", code))
+                        })
                         .collect::<Result<_, _>>()?;
-                    // Use first index for 1D array syntax (TODO: handle multi-dim)
-                    let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
+
+                    // Calculate linear index for multi-dimensional arrays
+                    let idx = self.calculate_array_index(&idx_code, dimensions);
                     (format!("{}[{}]", c_arr, idx), element_type.clone())
                 }
                 ArrayElementField {
@@ -95,13 +163,20 @@ impl super::StmtEmitter {
                     indices,
                     fields,
                     field_type,
+                    dimensions,
                 } => {
                     let c_arr = c_identifier(name);
+                    // Cast indices to int64_t to ensure integer subscripts
                     let idx_code: Vec<_> = indices
                         .iter()
-                        .map(|e| self.emit_expr(e))
+                        .map(|e| {
+                            let code = self.emit_expr(e)?;
+                            Ok(format!("(int64_t)({})", code))
+                        })
                         .collect::<Result<_, _>>()?;
-                    let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
+
+                    // Calculate linear index for multi-dimensional arrays
+                    let idx = self.calculate_array_index(&idx_code, dimensions);
                     let field_chain = fields.join(".");
                     (
                         format!("{}[{}].{}", c_arr, idx, field_chain),

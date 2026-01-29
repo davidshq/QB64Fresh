@@ -20,9 +20,175 @@ use crate::semantic::typed_ir::{
 use crate::semantic::types::BasicType;
 use crate::writeln_code;
 
+use crate::codegen::c_backend::analysis::DynamicLibInfo;
 use crate::codegen::c_backend::expr::c_function_name;
 use crate::codegen::c_backend::implicit_vars::collect_implicit_locals;
 use crate::codegen::c_backend::types::{c_identifier, c_type, default_init};
+
+/// Returns (return_type, params_str) for an external declaration (for extern or function pointer).
+fn extern_decl_signature(decl: &TypedExternalDeclaration) -> (String, String) {
+    let return_type = if decl.return_type == BasicType::String {
+        "char*".to_string()
+    } else {
+        c_type(&decl.return_type)
+    };
+    let params: Vec<String> = decl
+        .params
+        .iter()
+        .map(|p| {
+            let param_type = if p.typ == BasicType::String {
+                if p.is_byval {
+                    "const char*".to_string()
+                } else {
+                    "qb_string**".to_string()
+                }
+            } else {
+                c_type(&p.typ)
+            };
+            format!("{} {}", param_type, p.name)
+        })
+        .collect();
+    let params_str = if params.is_empty() {
+        "void".to_string()
+    } else {
+        params.join(", ")
+    };
+    (return_type, params_str)
+}
+
+/// Returns (return_type, params_types_only) for a function pointer typedef (no param names).
+fn extern_decl_signature_types_only(decl: &TypedExternalDeclaration) -> (String, String) {
+    let return_type = if decl.return_type == BasicType::String {
+        "char*".to_string()
+    } else {
+        c_type(&decl.return_type)
+    };
+    let param_types: Vec<String> = decl
+        .params
+        .iter()
+        .map(|p| {
+            if p.typ == BasicType::String {
+                if p.is_byval {
+                    "const char*".to_string()
+                } else {
+                    "qb_string**".to_string()
+                }
+            } else {
+                c_type(&p.typ)
+            }
+        })
+        .collect();
+    let params_str = if param_types.is_empty() {
+        "void".to_string()
+    } else {
+        param_types.join(", ")
+    };
+    (return_type, params_str)
+}
+
+/// Emits the dynamic library section: handle variables, function pointers, and qb_init_dynamic_libs().
+///
+/// Uses dlopen/dlsym on Unix and LoadLibrary/GetProcAddress on Windows. Call qb_init_dynamic_libs()
+/// at the start of main.
+///
+/// Each function pointer is emitted once per unique c_name across all dynamic libs (later lib
+/// overwrites if same symbol appears in multiple libs). Empty library path is skipped (no load,
+/// pointers for that lib stay NULL).
+pub(in crate::codegen::c_backend) fn emit_dynamic_library_section(
+    libs: &[DynamicLibInfo],
+    output: &mut String,
+) -> Result<(), CodeGenError> {
+    if libs.is_empty() {
+        return Ok(());
+    }
+    writeln_code!(output, "/* DECLARE DYNAMIC LIBRARY - runtime loading */")?;
+    writeln_code!(output, "#ifdef _WIN32")?;
+    writeln_code!(output, "#include <windows.h>")?;
+    writeln_code!(output, "#else")?;
+    writeln_code!(output, "#include <dlfcn.h>")?;
+    writeln_code!(output, "#endif")?;
+    writeln_code!(output)?;
+
+    // Emit one handle per lib
+    for lib in libs {
+        let handle_name = format!("qb_dll_{}", lib.handle_id);
+        writeln_code!(output, "static void* {} = NULL;", handle_name)?;
+    }
+    writeln_code!(output)?;
+
+    // Emit one typedef + one function pointer per unique c_name (first occurrence wins signature)
+    let mut seen_c_names: HashSet<String> = HashSet::new();
+    for lib in libs {
+        for decl in &lib.declarations {
+            if seen_c_names.insert(decl.c_name.clone()) {
+                let (ret, params) = extern_decl_signature_types_only(decl);
+                let ptr_name = format!("qb_dyn_{}", decl.c_name);
+                let typedef_name = format!("{}_t", ptr_name);
+                writeln_code!(output, "typedef {} (*{})({});", ret, typedef_name, params)?;
+                writeln_code!(output, "static {} {} = NULL;", typedef_name, ptr_name)?;
+            }
+        }
+    }
+    writeln_code!(output)?;
+
+    writeln_code!(output, "static void qb_init_dynamic_libs(void) {{")?;
+    for lib in libs {
+        let handle_name = format!("qb_dll_{}", lib.handle_id);
+        let lib_path = lib
+            .library_name
+            .as_deref()
+            .unwrap_or("")
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"");
+        // Skip load when path is empty (invalid; would fail at runtime)
+        if !lib_path.is_empty() {
+            writeln_code!(output, "#ifdef _WIN32")?;
+            writeln_code!(
+                output,
+                "    {} = (void*)LoadLibrary(\"{}\");",
+                handle_name,
+                lib_path
+            )?;
+            writeln_code!(output, "#else")?;
+            writeln_code!(
+                output,
+                "    {} = dlopen(\"{}\", RTLD_LAZY);",
+                handle_name,
+                lib_path
+            )?;
+            writeln_code!(output, "#endif")?;
+        }
+        for decl in &lib.declarations {
+            let ptr_name = format!("qb_dyn_{}", decl.c_name);
+            let (ret, params) = extern_decl_signature_types_only(decl);
+            let cast_type = format!("{} (*)({})", ret, params);
+            writeln_code!(output, "#ifdef _WIN32")?;
+            writeln_code!(
+                output,
+                "    if ({}) {} = ({})GetProcAddress((HMODULE){}, \"{}\");",
+                handle_name,
+                ptr_name,
+                cast_type,
+                handle_name,
+                decl.c_name
+            )?;
+            writeln_code!(output, "#else")?;
+            writeln_code!(
+                output,
+                "    if ({}) {} = ({})dlsym({}, \"{}\");",
+                handle_name,
+                ptr_name,
+                cast_type,
+                handle_name,
+                decl.c_name
+            )?;
+            writeln_code!(output, "#endif")?;
+        }
+    }
+    writeln_code!(output, "}}")?;
+    writeln_code!(output)?;
+    Ok(())
+}
 
 impl super::StmtEmitter {
     /// Emits an external function/sub declaration.
@@ -44,37 +210,7 @@ impl super::StmtEmitter {
         decl: &TypedExternalDeclaration,
         output: &mut String,
     ) -> Result<(), CodeGenError> {
-        // For external functions returning STRING, use char*
-        let return_type = if decl.return_type == BasicType::String {
-            "char*".to_string()
-        } else {
-            c_type(&decl.return_type)
-        };
-
-        let params: Vec<String> = decl
-            .params
-            .iter()
-            .map(|p| {
-                // For external functions, STRING params need special handling:
-                // - BYVAL STRING → const char* (C string)
-                // - BYREF STRING → qb_string** (pointer to BASIC string pointer)
-                let param_type = if p.typ == BasicType::String {
-                    if p.is_byval {
-                        "const char*".to_string()
-                    } else {
-                        "qb_string**".to_string()
-                    }
-                } else {
-                    c_type(&p.typ)
-                };
-                format!("{} {}", param_type, p.name)
-            })
-            .collect();
-        let params_str = if params.is_empty() {
-            "void".to_string()
-        } else {
-            params.join(", ")
-        };
+        let (return_type, params_str) = extern_decl_signature(decl);
 
         // Skip functions that are already declared in C standard library headers
         // These would conflict with the system declarations
@@ -223,7 +359,7 @@ impl super::StmtEmitter {
         }
 
         // Create local copies of byref parameters
-        emit_byref_copies(params, output)?;
+        self.emit_byref_copies(params, output)?;
 
         // Collect and emit implicit local variables
         // Use global_var_names to avoid re-declaring globals as locals
@@ -256,6 +392,27 @@ impl super::StmtEmitter {
         self.procedure.current_func_byref_strings = params
             .iter()
             .filter(|p| !p.by_val && p.basic_type == BasicType::String && !p.is_array)
+            .map(|p| c_identifier(&p.name))
+            .collect();
+        // Track BYREF scalar parameter names (for pointer dereferencing in SUB body)
+        // Excludes arrays (which are already pointers) and strings (which have special writeback logic)
+        self.procedure.current_func_byref_scalar_names = params
+            .iter()
+            .filter(|p| {
+                !p.by_val
+                    && !p.is_array
+                    && p.basic_type != BasicType::String
+                    && !matches!(p.basic_type, BasicType::FixedString(_))
+                    && !matches!(p.basic_type, BasicType::UserDefined(_))
+            })
+            .map(|p| c_identifier(&p.name))
+            .collect();
+        // Track BYREF UDT parameter names (for pointer field access -> instead of .)
+        self.procedure.current_func_byref_udt_names = params
+            .iter()
+            .filter(|p| {
+                !p.by_val && !p.is_array && matches!(p.basic_type, BasicType::UserDefined(_))
+            })
             .map(|p| c_identifier(&p.name))
             .collect();
         // Track all parameter names (BYVAL parameters don't get _ref suffix, so they can be shadowed)
@@ -360,7 +517,7 @@ impl super::StmtEmitter {
         )?;
 
         // Create local copies of byref parameters
-        emit_byref_copies(params, output)?;
+        self.emit_byref_copies(params, output)?;
 
         // Collect and emit implicit local variables
         // Pass is_main_program=false: FUNCTION creates locals even if globals with same name exist
@@ -396,6 +553,27 @@ impl super::StmtEmitter {
         self.procedure.current_func_byref_strings = params
             .iter()
             .filter(|p| !p.by_val && p.basic_type == BasicType::String && !p.is_array)
+            .map(|p| c_identifier(&p.name))
+            .collect();
+        // Track BYREF scalar parameter names (for pointer dereferencing in function body)
+        // Excludes arrays (which are already pointers) and strings (which have special writeback logic)
+        self.procedure.current_func_byref_scalar_names = params
+            .iter()
+            .filter(|p| {
+                !p.by_val
+                    && !p.is_array
+                    && p.basic_type != BasicType::String
+                    && !matches!(p.basic_type, BasicType::FixedString(_))
+                    && !matches!(p.basic_type, BasicType::UserDefined(_))
+            })
+            .map(|p| c_identifier(&p.name))
+            .collect();
+        // Track BYREF UDT parameter names (for pointer field access -> instead of .)
+        self.procedure.current_func_byref_udt_names = params
+            .iter()
+            .filter(|p| {
+                !p.by_val && !p.is_array && matches!(p.basic_type, BasicType::UserDefined(_))
+            })
             .map(|p| c_identifier(&p.name))
             .collect();
         // Track all parameter names (BYVAL parameters don't get _ref suffix, so they can be shadowed)
@@ -768,6 +946,80 @@ impl super::StmtEmitter {
 
         Ok(())
     }
+
+    /// Emits local copies for byref parameters and BYVAL UDT parameters.
+    ///
+    /// This allows the function body to use the parameter names directly without dereferencing.
+    /// For each byref parameter, generates a local variable that dereferences the pointer.
+    /// For BYVAL UDT parameters (passed as pointers for efficiency), creates a pointer alias.
+    ///
+    /// # Arguments
+    ///
+    /// * `params` - The parameter list
+    /// * `output` - Output buffer to write to
+    fn emit_byref_copies(
+        &mut self,
+        params: &[TypedParameter],
+        output: &mut String,
+    ) -> Result<(), CodeGenError> {
+        for p in params {
+            // Process BYREF parameters and BYVAL UDT parameters (both are passed as pointers)
+            if !p.by_val || matches!(p.basic_type, BasicType::UserDefined(_)) {
+                let c_name = c_identifier(&p.name);
+
+                // Array parameters are passed as pointers - keep as pointer, don't dereference
+                if p.is_array {
+                    // For arrays of fixed-length strings, use pointer to array type
+                    if let BasicType::FixedString(n) = p.basic_type {
+                        writeln_code!(
+                            output,
+                            "    char (*{})[{}] = {}_ref;",
+                            c_name,
+                            n + 1,
+                            c_name
+                        )?;
+                    } else {
+                        let c_ty = c_type(&p.basic_type);
+                        // Array remains as pointer: int32_t* arr = arr_ref;
+                        writeln_code!(output, "    {}* {} = {}_ref;", c_ty, c_name, c_name)?;
+                    }
+                    // Emit size tracking variable for REDIM _PRESERVE support
+                    // Must be static so it persists across function calls
+                    writeln_code!(output, "    static size_t {}_sz__ = 0;", c_name)?;
+                } else if let BasicType::FixedString(n) = p.basic_type {
+                    // Fixed-length strings need special handling - use a pointer alias
+                    // instead of copying (arrays can't be assigned directly in C)
+                    // Create pointer alias: char* name = (*name_ref);
+                    // This allows direct access to the array contents
+                    writeln_code!(output, "    char* {} = (*{}_ref);", c_name, c_name)?;
+                    let _ = n; // Silence unused warning
+                } else if p.basic_type == BasicType::String {
+                    // BYREF STRING parameters: QbString** name_ref → QbString* name = *name_ref;
+                    // We need to dereference the pointer-to-pointer to get the actual string pointer
+                    writeln_code!(output, "    QbString* {} = *{}_ref;", c_name, c_name)?;
+                } else if matches!(p.basic_type, BasicType::UserDefined(_)) {
+                    // UDT parameters (both BYREF and BYVAL): passed as pointers
+                    // BYREF: qbt_Type** name_ref → qbt_Type* name = name_ref;
+                    // BYVAL: qbt_Type* name_ref → qbt_Type* name = name_ref;
+                    // The local variable is a pointer, so field accesses must use -> instead of .
+                    let c_ty = c_type(&p.basic_type);
+                    writeln_code!(output, "    {}* {} = {}_ref;", c_ty, c_name, c_name)?;
+                    // Track this local variable name as a pointer for field access
+                    // The parameter name is name_ref, but the local variable is name, so we need to track 'name'
+                    self.procedure
+                        .current_func_byref_udt_names
+                        .insert(c_name.clone());
+                } else {
+                    let c_ty = c_type(&p.basic_type);
+                    // Create pointer alias for BYREF scalar parameters: int32_t* x = x_ref;
+                    // This allows modifications to write through to the caller's variable.
+                    // The parameter will be dereferenced when accessed in the function body.
+                    writeln_code!(output, "    {}* {} = {}_ref;", c_ty, c_name, c_name)?;
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Emits function/sub parameters.
@@ -816,7 +1068,13 @@ pub(in crate::codegen::c_backend) fn emit_params(params: &[TypedParameter]) -> S
             } else {
                 let c_ty = c_type(&p.basic_type);
                 if p.by_val {
-                    format!("{} {}", c_ty, c_name)
+                    // For BYVAL UDT parameters, pass as pointer for efficiency (avoid copying large structs)
+                    // The local variable will be a pointer copy, so field access needs ->
+                    if matches!(p.basic_type, BasicType::UserDefined(_)) {
+                        format!("{}* {}_ref", c_ty, c_name)
+                    } else {
+                        format!("{} {}", c_ty, c_name)
+                    }
                 } else {
                     // Byref parameters get _ref suffix; we'll create a local copy with the original name
                     format!("{}* {}_ref", c_ty, c_name)
@@ -825,56 +1083,6 @@ pub(in crate::codegen::c_backend) fn emit_params(params: &[TypedParameter]) -> S
         })
         .collect::<Vec<_>>()
         .join(", ")
-}
-
-/// Emits local copies for byref parameters.
-///
-/// This allows the function body to use the parameter names directly without dereferencing.
-/// For each byref parameter, generates a local variable that dereferences the pointer.
-///
-/// # Arguments
-///
-/// * `params` - The parameter list
-/// * `output` - Output buffer to write to
-fn emit_byref_copies(params: &[TypedParameter], output: &mut String) -> Result<(), CodeGenError> {
-    for p in params {
-        if !p.by_val {
-            let c_name = c_identifier(&p.name);
-
-            // Array parameters are passed as pointers - keep as pointer, don't dereference
-            if p.is_array {
-                // For arrays of fixed-length strings, use pointer to array type
-                if let BasicType::FixedString(n) = p.basic_type {
-                    writeln_code!(
-                        output,
-                        "    char (*{})[{}] = {}_ref;",
-                        c_name,
-                        n + 1,
-                        c_name
-                    )?;
-                } else {
-                    let c_ty = c_type(&p.basic_type);
-                    // Array remains as pointer: int32_t* arr = arr_ref;
-                    writeln_code!(output, "    {}* {} = {}_ref;", c_ty, c_name, c_name)?;
-                }
-                // Emit size tracking variable for REDIM _PRESERVE support
-                // Must be static so it persists across function calls
-                writeln_code!(output, "    static size_t {}_sz__ = 0;", c_name)?;
-            } else if let BasicType::FixedString(n) = p.basic_type {
-                // Fixed-length strings need special handling - use a pointer alias
-                // instead of copying (arrays can't be assigned directly in C)
-                // Create pointer alias: char* name = (*name_ref);
-                // This allows direct access to the array contents
-                writeln_code!(output, "    char* {} = (*{}_ref);", c_name, c_name)?;
-                let _ = n; // Silence unused warning
-            } else {
-                let c_ty = c_type(&p.basic_type);
-                // Create local copy: int32_t t1 = *t1_ref;
-                writeln_code!(output, "    {} {} = *{}_ref;", c_ty, c_name, c_name)?;
-            }
-        }
-    }
-    Ok(())
 }
 
 /// Emits writebacks for STRING byref parameters at function exit.

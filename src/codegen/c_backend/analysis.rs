@@ -11,11 +11,12 @@
 //! These analysis passes run before code generation to gather all the
 //! information needed for the C output's structure.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::codegen::error::CodeGenError;
 use crate::semantic::typed_ir::{
-    TypedDataValue, TypedParameter, TypedProgram, TypedStatement, TypedStatementKind,
+    TypedDataValue, TypedExternalDeclaration, TypedParameter, TypedProgram, TypedStatement,
+    TypedStatementKind,
 };
 use crate::semantic::types::BasicType;
 use crate::writeln_code;
@@ -50,6 +51,51 @@ impl DataPoolInfo {
             label_indices: HashMap::new(),
         }
     }
+}
+
+/// Information for one DECLARE DYNAMIC LIBRARY block (runtime-loaded shared library).
+///
+/// Used to emit handle variable, function pointers, and init code (dlopen/LoadLibrary
+/// and dlsym/GetProcAddress) before main.
+pub(super) struct DynamicLibInfo {
+    /// Unique handle id (e.g. 0, 1) for variable names like qb_dll_0.
+    pub handle_id: usize,
+    /// Library path/name as in the DECLARE (user-provided string).
+    pub library_name: Option<String>,
+    /// External function/sub declarations in this block.
+    pub declarations: Vec<TypedExternalDeclaration>,
+}
+
+/// Collects DECLARE DYNAMIC LIBRARY blocks and the set of C names that are dynamically loaded.
+///
+/// Returns (list of dynamic lib infos, set of c_name for each declared function).
+/// Used to emit handle/pointer declarations and qb_init_dynamic_libs(), and to call
+/// through function pointers (qb_dyn_<c_name>) instead of direct symbols.
+pub(super) fn collect_dynamic_libraries(
+    program: &TypedProgram,
+) -> (Vec<DynamicLibInfo>, HashSet<String>) {
+    let mut libs = Vec::new();
+    let mut dynamic_c_names = HashSet::new();
+    let mut handle_id = 0usize;
+    for stmt in &program.statements {
+        if let TypedStatementKind::DeclareLibrary {
+            library_name,
+            is_dynamic: true,
+            declarations,
+        } = &stmt.kind
+        {
+            for decl in declarations {
+                dynamic_c_names.insert(decl.c_name.clone());
+            }
+            libs.push(DynamicLibInfo {
+                handle_id,
+                library_name: library_name.clone(),
+                declarations: declarations.clone(),
+            });
+            handle_id += 1;
+        }
+    }
+    (libs, dynamic_c_names)
 }
 
 /// Collects TYPE definitions from the program (user-defined types).
@@ -252,6 +298,9 @@ pub(super) fn collect_globals(
                             false,
                             &std::collections::HashMap::new(),
                             &std::collections::HashSet::new(),
+                            &std::collections::HashSet::new(),
+                            &std::collections::HashSet::new(),
+                            &std::collections::HashSet::new(),
                         )
                         .unwrap_or_else(|_| "0".to_string());
 
@@ -427,17 +476,19 @@ pub(super) fn collect_globals(
         collect_implicit_vars_from_stmt(stmt, &mut declared_vars, &mut globals, false);
     }
 
-    // Add initialization for all global string variables
+    // Add initialization for all global string variables.
     // In BASIC, uninitialized strings are empty (""), not null.
-    // We can't initialize qb_string* at global scope in C, so we do it at program start.
+    // We initialize to NULL at declaration time (C requires constant initializers for globals)
+    // and then initialize to empty string at program start.
     for decl in &globals {
-        // Match declarations like "QbString* name = NULL;" or "QbString* name_str = NULL;"
+        // Match declarations like "QbString* name = NULL;"
         if decl.starts_with("QbString* ") && decl.ends_with(" = NULL;") {
             // Extract variable name: "QbString* foo = NULL;" -> "foo"
             let after_type = &decl["QbString* ".len()..];
             if let Some(name) = after_type.strip_suffix(" = NULL;") {
-                // Add initialization: foo = qb_string_new("");
-                string_const_inits.push(format!("{} = qb_string_new(\"\");", name));
+                // Add initialization: foo = _STR_EMPTY;
+                // This uses the macro which handles both inline and external runtime modes
+                string_const_inits.push(format!("{} = _STR_EMPTY;", name));
             }
         }
     }

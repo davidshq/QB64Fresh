@@ -845,7 +845,7 @@ fn test_incremental_parse_basic() {
         // Note: The statement count might differ slightly due to how incremental parsing works
         // The important thing is that it parses without errors
         assert!(
-            !new_program.statements.is_empty(),
+            !new_program.0.statements.is_empty(),
             "Should have at least one statement"
         );
     }

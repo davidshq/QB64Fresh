@@ -285,7 +285,11 @@ LOOP WHILE _SCREENEXISTS
 
 **Frame Limiting:** To prevent the above loop from running forever, the stubs track frame count:
 - `_DISPLAY` increments a frame counter
-- After 1000 frames (default), `_SCREENEXISTS` returns FALSE and `qb_gfx_poll_events` returns 0
+- `CLS` also increments the frame counter (to catch programs that clear screen in loops)
+- After 1000 frames (default), the behavior depends on the function:
+  - `_DISPLAY`: Exits the program with `exit(0)` to prevent infinite loops
+  - `_SCREENEXISTS`: Returns `0` (FALSE) to signal window closed
+  - `_POLLEVENTS` (via `qb_gfx_poll_events`): Returns `0` to signal window closed
 - This causes game loops to exit gracefully
 
 **Configuring the limit:** Set the `QB64FRESH_MAX_FRAMES` environment variable:
@@ -302,10 +306,11 @@ Warning: Graphics functions require external runtime. Use --runtime external
 ```
 
 When the frame limit is reached:
-```
-Note: Stub graphics reached 1000 frames, signaling window close.
-      Set QB64FRESH_MAX_FRAMES environment variable to change limit.
-```
+- In `_DISPLAY`: Prints "Note: Stub graphics reached 1000 frames in DISPLAY, exiting to prevent infinite loop."
+- In `_SCREENEXISTS` or `_POLLEVENTS`: Prints "Note: Stub graphics reached 1000 frames, signaling window close."
+- All messages include: "Set QB64FRESH_MAX_FRAMES environment variable to change limit."
+
+**Frame counter reset:** The frame counter is reset to 0 when a new `SCREEN` statement is executed, allowing programs to change screen modes and continue.
 
 ### External Runtime
 
@@ -553,6 +558,8 @@ The following BASIC graphics statements are fully supported:
 - `VIEW` - Set viewport for graphics
 - `WINDOW` - Set world coordinate system
 - `PALETTE` - Set palette entries
+- `PALETTE USING` - Set palette from array
+- `PALETTE RESET` - Reset palette to default
 - `_COPYPALETTE` - Copy palette between images
 
 ### Window Control (QB64 Extensions)
@@ -560,11 +567,25 @@ The following BASIC graphics statements are fully supported:
 - `_SCREENMOVE` - Move window to position
 - `_SCREENSHOW` - Show window
 - `_SCREENHIDE` - Hide window
+- `_SCREENEXISTS` - Check if graphics window exists (returns -1 if open, 0 if closed)
+- `_SCREENX`, `_SCREENY` - Get window position
+- `_DESKTOPWIDTH`, `_DESKTOPHEIGHT` - Get desktop resolution
+- `_TITLE` - Get/set window title
+- `_WINDOWHANDLE` - Get native window handle (Windows: HWND, others: 0)
+- `_WINDOWHASFOCUS` - Check if window has focus (returns -1 if focused, 0 otherwise)
+
+### Windows-Only Window Functions
+- `_SCREENCLICK x, y [, button]` - Simulate mouse click on desktop (Windows only)
+- `_SCREENPRINT text$` - Simulate keyboard input to focused window (Windows only)
+- `_SCREENIMAGE([x1, y1, x2, y2])` - Capture desktop screenshot (Windows only)
+  - If all coordinates are 0, captures full screen
+  - Otherwise captures specified rectangle
+  - Returns image handle or -1 on error
 
 ### Drawing Primitives
 - `PSET` / `PSET STEP` - Plot pixel
 - `POINT` - Get pixel color
-- `LINE` / `LINE STEP` - Draw line or box
+- `LINE` / `LINE STEP` - Draw line or box (supports line styles via `style` parameter)
 - `CIRCLE` / `CIRCLE STEP` - Draw circle (filled or outline)
 - `PAINT` / `PAINT STEP` - Flood fill
 - `DRAW` - Turtle graphics commands
@@ -574,20 +595,34 @@ The following BASIC graphics statements are fully supported:
   - Maps texture coordinates from source image to destination triangle
   - Supports perspective-correct interpolation
   - Used for 3D rendering without OpenGL
+  - Basic form: `_MAPTRIANGLE (sx1, sy1)-(sx2, sy2)-(sx3, sy3), (dx1, dy1)-(dx2, dy2)-(dx3, dy3)`
+- `_MAPTRIANGLE` (extended form) - Advanced texture mapping with options
+  - Extended form: `_MAPTRIANGLE (sx1, sy1)-(sx2, sy2)-(sx3, sy3), (dx1, dy1)-(dx2, dy2)-(dx3, dy3), source_handle, dest_handle, smooth, seamless`
+  - `smooth`: Enable bilinear filtering (0=off, non-zero=on)
+  - `seamless`: Enable seamless tiling (0=off, non-zero=on)
 
 ### Image Buffers (QB64 Extensions)
 - `_NEWIMAGE` - Create new image buffer
 - `_LOADIMAGE` - Load image from file
 - `_PUTIMAGE` - Copy image to screen or buffer
+  - Simple form: `_PUTIMAGE (x, y), handle, scale_mode`
+  - Rectangular form: `_PUTIMAGE (x1, y1)-(x2, y2), handle, scale_mode`
+  - Full form: `_PUTIMAGE (dx1, dy1)-(dx2, dy2), handle, (sx1, sy1)-(sx2, sy2), scale_mode`
+  - `scale_mode`: 0 = default, 1 = smooth (bilinear), 2 = stretch (nearest-neighbor)
 - `_FREEIMAGE` - Release image buffer
 - `_SOURCE` / `_DEST` - Set source/destination buffer
 - `_AUTODISPLAY` - Enable/disable auto-display
 - `_DISPLAYORDER` - Control rendering layer order (hardware, software, text layers)
+- `_COPYIMAGE` - Create copy of existing image buffer
+- `_IMAGE` - Get image handle from memory block (for `_MEMIMAGE`)
+- `_IMAGEWIDTH`, `_IMAGEHEIGHT` - Get image dimensions
 
 ### Alpha Blending (QB64 Extensions)
 - `_BLEND` - Enable alpha blending for image (uses alpha channel during `_PUTIMAGE`)
 - `_DONTBLEND` - Disable alpha blending (direct pixel copy)
 - `_CLEARCOLOR` - Set transparency key (pixels matching color are skipped during copy)
+- `_CLEARCOLOR` (function form) - Get current clear color for image handle (returns -1 if not set)
+- `_CLEARCOLOR NONE` - Remove clear color setting for image handle
 
 ### Pixel Arrays
 - `GET` - Read pixels to array
@@ -621,6 +656,136 @@ The following BASIC graphics statements are fully supported:
 - `_UCHARPOS(text$, pos)` - Get character X position within string
 - `_MAPUNICODE` - CP437 to Unicode mapping table (256 codepoints)
 
+**Note:** In inline runtime mode, Unicode functions fall back to ASCII rendering using the built-in 8x8 font. For full Unicode support with TrueType fonts, use `--runtime external` with FreeType support.
+
+### Dialog Boxes (QB64 Extensions)
+- `_MESSAGEBOX` - Display message box (Windows: native dialog, others: console output)
+- `_INPUTBOX$` - Display input dialog (Windows: native dialog, others: console input)
+- `_OPENFILEDIALOG$` - Open file dialog (requires external runtime for GUI support)
+- `_SELECTFOLDERDIALOG$` - Select folder dialog (requires external runtime for GUI support)
+
+**Note:** In inline runtime mode, file/folder dialogs return empty strings and print a note that GUI support requires the external runtime.
+
 ---
 
-*Last updated: 2026-01-26*
+## Inline Runtime Stub Functions
+
+The inline runtime provides comprehensive stubs for all graphics functions. While these don't perform actual rendering, they:
+
+1. **Allow compilation** - Programs using graphics can compile without the external runtime
+2. **Prevent infinite loops** - Frame limiting ensures game loops exit gracefully
+3. **Provide safe defaults** - Functions return sensible default values (0, empty strings, -1 for errors)
+4. **Log warnings** - First graphics call prints a warning about using external runtime
+
+### Complete Stub Function List
+
+The inline runtime includes stubs for:
+
+**Core Graphics:**
+- `qb_gfx_init`, `qb_gfx_shutdown`
+- `qb_gfx_screen` (4-parameter SCREEN statement)
+- `qb_gfx_cls`, `qb_gfx_cls_mode`
+- `qb_gfx_color`, `qb_gfx_locate`
+- `qb_gfx_pset`, `qb_gfx_pset_step`
+- `qb_gfx_point`
+- `qb_gfx_line`, `qb_gfx_line_step` (with style parameter)
+- `qb_gfx_box`, `qb_gfx_box_step` (with style parameter)
+- `qb_gfx_circle`, `qb_gfx_circle_step`
+- `qb_gfx_paint`, `qb_gfx_paint_step`
+- `qb_gfx_display`, `qb_gfx_poll_events`
+- `qb_gfx_width`, `qb_gfx_height`
+
+**Viewport and Coordinate Systems:**
+- `qb_gfx_view`, `qb_gfx_view_reset`
+- `qb_gfx_window`, `qb_gfx_window_reset`
+- `qb_gfx_pmap` (coordinate mapping)
+- `qb_view_print`, `qb_view_print_reset` (text viewport)
+
+**Palette and Pages:**
+- `qb_gfx_palette`, `qb_gfx_palette_reset`
+- `qb_gfx_pcopy` (page copy)
+- `qb_gfx_set_active_page`, `qb_gfx_set_visual_page`
+- `qb_gfx_get_pages`
+
+**Image Operations:**
+- `qb_gfx_newimage`, `qb_gfx_loadimage`, `qb_gfx_copyimage`
+- `qb_gfx_freeimage`
+- `qb_gfx_putimage`, `qb_gfx_putimage_simple`, `qb_gfx_putimage_full` (with scale_mode)
+- `qb_gfx_source`, `qb_gfx_dest`
+- `qb_gfx_image_width`, `qb_gfx_image_height`
+- `qb_gfx_autodisplay`
+- `qb_gfx_printstring` (text rendering at pixel coordinates)
+
+**Color Functions:**
+- `qb_rgb`, `qb_rgba`, `qb_rgb32`, `qb_rgba32`
+- `qb__rgb32`, `qb__rgb32_4`, `qb__rgba32` (QB64 naming)
+- `qb__rgb`, `qb__rgba` (paletted modes - stubs return 0)
+- `qb_red32`, `qb_green32`, `qb_blue32`, `qb_alpha32`
+- `qb_red`, `qb_green`, `qb_blue`, `qb_alpha` (paletted modes)
+
+**GET/PUT Arrays:**
+- `qb_gfx_get`, `qb_gfx_get_step`, `qb_gfx_get_step1`, `qb_gfx_get_step2`, `qb_gfx_get_step_both`
+- `qb_gfx_put`, `qb_gfx_put_step` (with action, clip, trans_color parameters)
+- `QB_PUT_XOR`, `QB_PUT_PSET`, `QB_PUT_PRESET`, `QB_PUT_AND`, `QB_PUT_OR` (action constants)
+
+**Mouse Input:**
+- `qb_mouse_x`, `qb_mouse_y`
+- `qb_mouse_button`
+- `qb_mouse_input`
+- `qb_mouse_movement_x`, `qb_mouse_movement_y`
+- `qb_mouse_wheel`
+- `qb_mouse_hide`, `qb_mouse_show`
+- `qb_mouse_move`
+
+**Clipboard:**
+- `qb_clipboard_get`, `qb_clipboard_set`
+
+**Fonts:**
+- `qb_loadfont`, `qb_font`, `qb_font_get`, `qb_freefont`
+- `qb_fontheight`, `qb_fontwidth`
+- `qb_printwidth`
+- Unicode font functions: `qb_uprintstring`, `qb_uprintwidth`, `qb_ucharpos`, `qb_ufontheight`, `qb_ulinespacing`
+- Font flags: `QB_FONT_DONTBLEND`, `QB_FONT_MONOSPACE`, `QB_FONT_UNICODE`, `QB_FONT_AUTOMONO`
+
+**Window Control:**
+- `qb_screenexists` (with frame limit checking)
+- `qb_screenx`, `qb_screeny`
+- `qb_desktopwidth`, `qb_desktopheight`
+- `qb_title_get`, `qb_title_set`
+- `qb_windowhandle`, `qb_windowhasfocus`
+- `qb_screenmove`, `qb_screenshow`, `qb_screenhide`
+- `qb_fullscreen`, `qb_fullscreen_get`
+- `qb_screenclick`, `qb_screenprint`, `qb_screenimage` (Windows only)
+
+**Alpha Blending:**
+- `qb_blend`, `qb_dontblend`
+- `qb_clearcolor`, `qb_clearcolor_none`, `qb_clearcolor_get`
+
+**Palette Operations:**
+- `qb_copypalette`
+
+**Display Ordering:**
+- `qb_displayorder`
+
+**3D Graphics:**
+- `qb_maptriangle`, `qb_maptriangle_ex`
+
+**Dialog Boxes:**
+- `qb_messagebox`, `qb_inputbox`
+- `qb_openfiledialog`, `qb_selectfolderdialog`
+
+**OpenGL Stubs:**
+- `qb_glrender`, `qb_glcompat` (no-ops; raw `_GL*` commands excluded per ADR-0014)
+
+**File Content Helpers:**
+- `qb_readfile`, `qb_writefile`
+
+**System Functions:**
+- `qb_commandcount`, `qb_environcount`
+
+**Legacy File I/O:**
+- `qb_file_open_legacy` (for compatibility with old OPEN syntax)
+
+---
+
+*Last updated: 2026-01-28*

@@ -19,6 +19,9 @@ This directory contains Architecture Decision Records (ADRs) for QB64Fresh.
 - [ADR-0013: Debugger Architecture (DAP, tools/debug)](ADR-0013-debugger-architecture.md)
 - [ADR-0014: Scope and Intentionally Excluded Features](ADR-0014-scope-and-excluded-features.md)
 - [ADR-0015: No-Sandbox Execution Model](ADR-0015-no-sandbox-execution-model.md)
+- [ADR-0016: Intentional Behavioral Differences from QB64pe](ADR-0016-intentional-behavioral-differences.md)
+- [ADR-0017: Generated Code Is Ephemeral](ADR-0017-generated-code-is-ephemeral.md)
+- [ADR-0018: Compiler Execution Resource Limits](ADR-0018-compiler-execution-resource-limits.md)
 
 ## Format
 

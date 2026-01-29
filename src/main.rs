@@ -7,6 +7,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use qb64fresh::codegen::{CBackend, CodeGenerator, RuntimeMode};
+use qb64fresh::error_formatting::{format_parse_errors, format_semantic_errors};
 use qb64fresh::lexer::{TokenKind, lex, lex_with_progress};
 use qb64fresh::parser::Parser;
 use qb64fresh::preprocessor::preprocess;
@@ -187,20 +188,9 @@ fn main() {
     let program = match parser.parse() {
         Ok(p) => p,
         Err(errors) => {
-            eprintln!("Parse errors:");
-            for err in &errors {
-                // Compute line number from span if available
-                if let Some(span) = err.span() {
-                    let line = if span.start <= source.len() {
-                        source[..span.start].chars().filter(|&c| c == '\n').count() + 1
-                    } else {
-                        1 // Fallback if span is out of bounds
-                    };
-                    eprintln!("  line {}: {}", line, err);
-                } else {
-                    eprintln!("  {}", err);
-                }
-            }
+            let file_path = args.input.to_string_lossy();
+            let formatted = format_parse_errors(&source, &errors, &file_path);
+            eprint!("{}", formatted);
             std::process::exit(1);
         }
     };
@@ -230,17 +220,9 @@ fn main() {
     let typed_program = match analyzer.analyze(&program) {
         Ok(tp) => tp,
         Err(errors) => {
-            eprintln!("Semantic errors:");
-            for err in &errors {
-                // Compute line number from span
-                let span = err.span();
-                let line = if span.start <= source.len() {
-                    source[..span.start].chars().filter(|&c| c == '\n').count() + 1
-                } else {
-                    1 // Fallback if span is out of bounds
-                };
-                eprintln!("  line {}: {}", line, err);
-            }
+            let file_path = args.input.to_string_lossy();
+            let formatted = format_semantic_errors(&source, &errors, &file_path);
+            eprint!("{}", formatted);
             std::process::exit(1);
         }
     };

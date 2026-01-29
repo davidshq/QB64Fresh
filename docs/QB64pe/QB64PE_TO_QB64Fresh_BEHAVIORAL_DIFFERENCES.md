@@ -3,7 +3,8 @@
 This document details semantic and behavioral differences between QB64Fresh and QB64pe discovered during the bootstrap project (compiling QB64pe with QB64Fresh).
 
 **See also:**
-- [ARCHITECTURE.md](ARCHITECTURE.md) - QB64Fresh architecture
+- [INTENTIONAL_DIFFERENCES_FROM_QB64PE.md](../INTENTIONAL_DIFFERENCES_FROM_QB64PE.md) - **Intentional** design differences (stricter, excluded, or different-by-choice)
+- [ARCHITECTURE.md](../ARCHITECTURE.md) - QB64Fresh architecture
 - [QB64pe_ARCHITECTURE.md](QB64pe_ARCHITECTURE.md) - QB64pe architecture
 
 ---

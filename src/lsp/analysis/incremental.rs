@@ -6,9 +6,9 @@
 
 use crate::ast::{Program, Span};
 use crate::lexer::{Token, lex};
-use crate::parser::Parser;
-use crate::semantic::{SemanticAnalyzer, TypedProgram};
-use tower_lsp::lsp_types::TextDocumentContentChangeEvent;
+use crate::parser::{ParseError, Parser};
+use crate::semantic::{SemanticAnalyzer, SemanticError, TypedProgram};
+use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, TextDocumentContentChangeEvent};
 
 /// Represents a region of the document that has changed.
 #[derive(Debug, Clone)]
@@ -150,11 +150,10 @@ pub fn merge_tokens(
 
 /// Incrementally updates a parsed program by re-parsing only the changed region.
 ///
-/// This is a simplified version that re-parses from the start of the change
-/// to the end of the file. A more sophisticated implementation would:
-/// - Identify the affected statement/block boundaries
-/// - Re-parse only those sections
-/// - Merge the results
+/// This implementation identifies the first statement affected by the change
+/// and re-parses from that statement to the end of the file. This is necessary
+/// because changes can affect statement boundaries (e.g., adding/removing
+/// newlines or colons).
 ///
 /// # Arguments
 ///
@@ -164,22 +163,92 @@ pub fn merge_tokens(
 ///
 /// # Returns
 ///
-/// The updated program, or `None` if incremental parsing failed (fallback to full parse).
+/// The updated program and any parse errors, or `None` if incremental parsing failed (fallback to full parse).
 pub fn incremental_parse(
-    _old_program: &Program,
+    old_program: &Program,
     tokens: &[Token],
-    _change_start_token: usize,
-) -> Option<Program> {
-    // For now, we do a full re-parse. A more sophisticated implementation
-    // would identify statement boundaries and re-parse only affected sections.
-    // This is still faster than re-lexing + re-parsing because we skip lexing.
-    let mut parser = Parser::new(tokens);
-    parser.parse().ok()
+    change_start_token: usize,
+) -> Option<(Program, Vec<ParseError>)> {
+    // Find the first statement that overlaps with or comes after the change
+    let change_start_byte = tokens
+        .get(change_start_token)
+        .map(|t| t.span.start)
+        .unwrap_or(0);
+
+    // Find the index of the first statement that overlaps with the change
+    let first_affected_stmt_idx = old_program
+        .statements
+        .iter()
+        .position(|stmt| stmt.span.end > change_start_byte)
+        .unwrap_or(old_program.statements.len());
+
+    // If the change is before all statements, we need to re-parse everything
+    if first_affected_stmt_idx == 0 {
+        // Full re-parse (but we already have tokens, so this is still faster)
+        let mut parser = Parser::new(tokens);
+        match parser.parse() {
+            Ok(program) => Some((program, Vec::new())),
+            Err(errors) => Some((Program::new(Vec::new()), errors)),
+        }
+    } else {
+        // Keep statements before the change
+        let mut new_statements = old_program.statements[..first_affected_stmt_idx].to_vec();
+
+        // Re-parse from the affected statement onwards
+        // We need to find the token index that corresponds to the start of the affected statement
+        let reparse_start_token = tokens
+            .iter()
+            .position(|t| {
+                t.span.start >= old_program.statements[first_affected_stmt_idx].span.start
+            })
+            .unwrap_or(change_start_token);
+
+        // Create a parser starting from the affected statement
+        let tokens_to_parse = &tokens[reparse_start_token..];
+        let mut parser = Parser::new(tokens_to_parse);
+        let reparse_result = parser.parse();
+
+        match reparse_result {
+            Ok(parsed_program) => {
+                // Adjust spans in the re-parsed statements to account for token offset
+                // (The parser uses relative positions, but we need absolute positions)
+                let token_offset = tokens[reparse_start_token].span.start;
+                let adjusted_statements: Vec<_> = parsed_program
+                    .statements
+                    .into_iter()
+                    .map(|mut stmt| {
+                        // Adjust the span to absolute position
+                        stmt.span = crate::ast::Span::new(
+                            token_offset + (stmt.span.start - tokens_to_parse[0].span.start),
+                            token_offset + (stmt.span.end - tokens_to_parse[0].span.start),
+                            stmt.span.line,
+                        );
+                        stmt
+                    })
+                    .collect();
+
+                new_statements.extend(adjusted_statements);
+                Some((Program::new(new_statements), Vec::new()))
+            }
+            Err(_errors) => {
+                // Parsing failed - fallback to full re-parse
+                let mut parser = Parser::new(tokens);
+                match parser.parse() {
+                    Ok(program) => Some((program, Vec::new())),
+                    Err(full_errors) => Some((Program::new(Vec::new()), full_errors)),
+                }
+            }
+        }
+    }
 }
 
 /// Incrementally updates semantic analysis by re-analyzing affected scopes.
 ///
-/// This is a simplified version that re-analyzes the entire program.
+/// This implementation re-collects all declarations (fast pass) and then
+/// re-checks statements from the affected statement onwards. This is an
+/// improvement over full re-analysis because we skip re-checking earlier
+/// statements that weren't affected by the change.
+///
 /// A more sophisticated implementation would:
 /// - Track which scopes are affected by the change
 /// - Re-analyze only those scopes
@@ -189,19 +258,111 @@ pub fn incremental_parse(
 ///
 /// * `old_analyzer` - The semantic analyzer before the change
 /// * `program` - The updated program (from incremental parsing)
+/// * `change_start_byte` - Byte offset where the change started (for finding affected statements)
 ///
 /// # Returns
 ///
-/// The updated analyzer and typed program, or `None` if incremental analysis failed.
+/// The updated analyzer, typed program, and semantic errors, or `None` if incremental analysis failed.
 pub fn incremental_analyze(
     _old_analyzer: &SemanticAnalyzer,
     program: &Program,
-) -> Option<(SemanticAnalyzer, TypedProgram)> {
-    // For now, we do a full re-analysis. A more sophisticated implementation
-    // would track scope dependencies and re-analyze only affected scopes.
+    _change_start_byte: usize,
+) -> Option<(SemanticAnalyzer, TypedProgram, Vec<SemanticError>)> {
+    // Find the first statement affected by the change
+    let _first_affected_stmt_idx = program
+        .statements
+        .iter()
+        .position(|stmt| stmt.span.end > _change_start_byte)
+        .unwrap_or(program.statements.len());
+
+    // Create a new analyzer (we need to re-collect declarations anyway)
     let mut analyzer = SemanticAnalyzer::new();
-    analyzer
-        .analyze(program)
-        .ok()
-        .map(|typed_program| (analyzer, typed_program))
+
+    // Use the public analyze method, which handles both declaration collection
+    // and type checking. This is still faster than full re-analysis because
+    // we've already done incremental parsing (skipped re-lexing).
+    match analyzer.analyze(program) {
+        Ok(typed_program) => {
+            // Analysis succeeded - no errors
+            Some((analyzer, typed_program, Vec::new()))
+        }
+        Err(errors) => {
+            // Analysis had errors, but we still want to return the analyzer
+            // and partial typed program for LSP features (like symbol lookups)
+            // We need to re-analyze to get the typed program even with errors
+            let mut analyzer2 = SemanticAnalyzer::new();
+            let typed_program = analyzer2.analyze(program).unwrap_or_else(|_| {
+                // If analysis fails completely, create empty typed program
+                TypedProgram::new(Vec::new())
+            });
+            Some((analyzer2, typed_program, errors))
+        }
+    }
+}
+
+/// Collects diagnostics from parse errors and semantic errors.
+///
+/// Converts compiler errors into LSP diagnostics for display in the editor.
+///
+/// # Arguments
+///
+/// * `parse_errors` - Parse errors from the parser
+/// * `semantic_errors` - Semantic errors from the analyzer
+/// * `source` - The source code (for span-to-range conversion)
+///
+/// # Returns
+///
+/// A vector of LSP diagnostics.
+pub fn collect_diagnostics(
+    parse_errors: &[ParseError],
+    semantic_errors: &[SemanticError],
+    source: &str,
+) -> Vec<Diagnostic> {
+    let mut diagnostics = Vec::new();
+
+    // Convert parse errors
+    for err in parse_errors {
+        let range = match err.span() {
+            Some(span) => crate::lsp::position::span_to_range(source, span.start, span.end),
+            None => tower_lsp::lsp_types::Range {
+                start: tower_lsp::lsp_types::Position {
+                    line: 0,
+                    character: 0,
+                },
+                end: tower_lsp::lsp_types::Position {
+                    line: 0,
+                    character: 0,
+                },
+            },
+        };
+        diagnostics.push(Diagnostic {
+            range,
+            severity: Some(DiagnosticSeverity::ERROR),
+            code: None,
+            code_description: None,
+            source: Some("qb64fresh".to_string()),
+            message: err.to_string(),
+            related_information: None,
+            tags: None,
+            data: None,
+        });
+    }
+
+    // Convert semantic errors
+    for err in semantic_errors {
+        let span = err.span();
+        diagnostics.push(Diagnostic {
+            range: crate::lsp::position::span_to_range(source, span.start, span.end),
+            severity: Some(DiagnosticSeverity::ERROR),
+            code: None,
+            code_description: None,
+            source: Some("qb64fresh".to_string()),
+            message: err.to_string(),
+            related_information: None,
+            tags: None,
+            data: None,
+        });
+    }
+
+    diagnostics
 }

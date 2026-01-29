@@ -32,6 +32,13 @@ use crate::writeln_code;
 pub(super) fn emit_file_io_functions(output: &mut String) -> Result<(), CodeGenError> {
     writeln_code!(output, "/* File I/O Functions */")?;
     writeln_code!(output)?;
+    writeln_code!(output, "#ifndef _WIN32")?;
+    writeln_code!(
+        output,
+        "#include <sys/file.h>  /* flock for OPEN lock modes */"
+    )?;
+    writeln_code!(output, "#endif")?;
+    writeln_code!(output)?;
 
     // File handle table (max 511 files as per QB64)
     writeln_code!(output, "#define QB_MAX_FILES 512")?;
@@ -95,12 +102,26 @@ pub(super) fn emit_file_io_functions(output: &mut String) -> Result<(), CodeGenE
     writeln_code!(output, "#endif")?;
     writeln_code!(output)?;
 
-    // qb_file_open - Open a file
-    // Handles path normalization and creating files for "r+b" mode if they don't exist
+    // OPEN access/lock constants (match qb64fresh_rt.h)
+    writeln_code!(output, "#define QB_FILE_ACCESS_DEFAULT 0")?;
+    writeln_code!(output, "#define QB_FILE_ACCESS_READ    1")?;
+    writeln_code!(output, "#define QB_FILE_ACCESS_WRITE   2")?;
+    writeln_code!(output, "#define QB_FILE_ACCESS_READ_WRITE 3")?;
+    writeln_code!(output, "#define QB_FILE_LOCK_DEFAULT    0")?;
+    writeln_code!(output, "#define QB_FILE_LOCK_SHARED     1")?;
+    writeln_code!(output, "#define QB_FILE_LOCK_READ       2")?;
+    writeln_code!(output, "#define QB_FILE_LOCK_WRITE      3")?;
+    writeln_code!(output, "#define QB_FILE_LOCK_READ_WRITE 4")?;
+    writeln_code!(output, "#define QB_FILE_LOCK_ONLY       5")?;
+    writeln_code!(output)?;
+
+    // qb_file_open - Open a file (access/lock: QB_FILE_ACCESS_*, QB_FILE_LOCK_*; 0 = default)
+    // Handles path normalization, creating files for "r+b" mode if missing, and flock on Unix
     writeln_code!(
         output,
-        "void qb_file_open(int32_t fnum, const char* filename, const char* mode) {{"
+        "void qb_file_open(int32_t fnum, const char* filename, const char* mode, int32_t access, int32_t lock) {{"
     )?;
+    writeln_code!(output, "    (void)access;")?;
     writeln_code!(output, "    if (fnum < 1 || fnum >= QB_MAX_FILES) return;")?;
     writeln_code!(output, "    if (_qb_files[fnum]) fclose(_qb_files[fnum]);")?;
     writeln_code!(output, "#ifdef _WIN32")?;
@@ -131,6 +152,16 @@ pub(super) fn emit_file_io_functions(output: &mut String) -> Result<(), CodeGenE
     )?;
     writeln_code!(output, "    }}")?;
     writeln_code!(output, "    if (normalized) free(normalized);")?;
+    writeln_code!(output, "#endif")?;
+    // Apply flock on Unix only for explicit lock modes (LOCK_READ, LOCK_WRITE, LOCK_READ_WRITE, ONLY)
+    writeln_code!(output, "#ifndef _WIN32")?;
+    writeln_code!(
+        output,
+        "    if (_qb_files[fnum] && (lock == QB_FILE_LOCK_READ || lock == QB_FILE_LOCK_WRITE || lock == QB_FILE_LOCK_READ_WRITE || lock == QB_FILE_LOCK_ONLY)) {{"
+    )?;
+    writeln_code!(output, "        int fd = fileno(_qb_files[fnum]);")?;
+    writeln_code!(output, "        if (fd >= 0) flock(fd, LOCK_EX);")?;
+    writeln_code!(output, "    }}")?;
     writeln_code!(output, "#endif")?;
     writeln_code!(
         output,

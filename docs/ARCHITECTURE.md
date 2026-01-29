@@ -20,26 +20,26 @@ This document describes the high-level architecture of QB64Fresh, a BASIC compil
         ▼
 ┌───────────────┐
 │    Lexer      │  Tokenizes source into a stream of tokens
-│  (src/lexer)  │  Uses `logos` crate for fast lexical analysis (~1,850 lines)
+│  (src/lexer)  │  Uses `logos` crate for fast lexical analysis (~1,950 lines)
 └───────┬───────┘
         │ Vec<Token>
         ▼
 ┌───────────────┐
 │    Parser     │  Builds Abstract Syntax Tree from tokens
 │ (src/parser)  │  Pratt parsing for expressions, recursive descent for statements
-│               │  12 specialized modules (~11,450 lines)
+│               │  12 specialized modules (~11,450 lines total)
 └───────┬───────┘
         │ Program (AST)
         ▼
 ┌───────────────┐
 │   Semantic    │  Type checking, symbol resolution, validation
-│ (src/semantic)│  Two-pass analysis, constant evaluation (~15,800 lines)
+│ (src/semantic)│  Two-pass analysis, constant evaluation (~18,600 lines)
 └───────┬───────┘
         │ TypedProgram (IR)
         ▼
 ┌───────────────┐
 │   CodeGen     │  Generates target code via backend trait
-│ (src/codegen) │  C backend with inline runtime (~14,750 lines)
+│ (src/codegen) │  C backend with inline runtime (~23,650 lines)
 └───────┬───────┘
         │ Generated C code
         ▼
@@ -51,7 +51,7 @@ This document describes the high-level architecture of QB64Fresh, a BASIC compil
         ▼
 ┌───────────────┐
 │   Runtime     │  Graphics (SDL2), Audio (Rodio), I/O, Strings
-│   (runtime/)  │  Rust library with C FFI (~11,700 lines)
+│   (runtime/)  │  Rust library with C FFI (~19,300 lines)
 └───────┬───────┘
         │
         ▼
@@ -70,7 +70,7 @@ src/
 │   ├── mod.rs            # Lexer struct, iterator interface
 │   └── token.rs          # TokenKind enum (logos-generated)
 │
-├── ast/                  # AST Type Definitions (~2,651 lines)
+├── ast/                  # AST Type Definitions (~2,825 lines)
 │   ├── mod.rs            # Span, Program types
 │   ├── expr.rs           # Expression AST nodes
 │   └── stmt.rs           # Statement AST nodes (comprehensive coverage)
@@ -96,7 +96,7 @@ src/
 │   ├── tests.rs          # Parser test utilities
 │   └── error.rs          # ParseError types with spans
 │
-├── semantic/             # Phase 3: Semantic Analysis (~15,153 lines) ✓
+├── semantic/             # Phase 3: Semantic Analysis (~18,600 lines) ✓
 │   ├── mod.rs            # Analysis entry point, built-in registration
 │   ├── builtins.rs       # Built-in function and constant registration
 │   ├── collect.rs        # Declaration collection (Pass 1)
@@ -104,6 +104,7 @@ src/
 │   ├── types.rs          # BasicType enum, type inference
 │   ├── typed_ir.rs       # TypedProgram, TypedExpr, TypedStatement
 │   ├── error.rs          # Semantic error types with spans
+│   ├── suggestions.rs    # Name suggestions for undefined variable/label/procedure
 │   └── checker/          # Type Checker Submodule
 │       ├── mod.rs        # Checker entry point
 │       ├── expressions.rs # Expression type checking
@@ -119,18 +120,20 @@ src/
 │       ├── definitions.rs  # Definition handling
 │       └── const_eval.rs   # Constant expression evaluation
 │
-├── codegen/              # Phase 4: Code Generation (~19,800 lines) ✓
+├── codegen/              # Phase 4: Code Generation (~23,650 lines) ✓
 │   ├── mod.rs            # CodeGenerator trait, GeneratedOutput
 │   ├── error.rs          # CodeGenError types
-│   └── c_backend/        # C Code Generator Submodule (~19,800 lines)
-│       ├── mod.rs        # Backend entry point (~631 lines)
+│   └── c_backend/        # C Code Generator Submodule
+│       ├── mod.rs        # Backend entry point
 │       ├── expr.rs       # Expression code generation
 │       ├── types.rs      # Type mapping (BASIC → C)
+│       ├── type_registry.rs # C type/identifier registry for codegen
 │       ├── analysis.rs   # DATA/label collection pre-pass
 │       ├── const_fold.rs # Constant folding optimization
 │       ├── file_io.rs    # File I/O code generation
 │       ├── implicit_vars.rs # Implicit variable handling
-│       ├── stmt/         # Statement code generation (~5,195 lines)
+│       ├── write_helpers.rs # Error-handling write! wrappers for codegen
+│       ├── stmt/         # Statement code generation
 │       │   ├── mod.rs    # Core StmtEmitter and dispatcher
 │       │   ├── assignments.rs # Assignment statements
 │       │   ├── control_flow.rs # IF, FOR, WHILE, DO, SELECT CASE
@@ -162,26 +165,32 @@ src/
 │   ├── lexer.rs          # C token lexer
 │   └── parser.rs         # C declaration parser
 │
-└── lsp/                  # Language Server Protocol ✓
+└── lsp/                  # Language Server Protocol (~3,000 lines) ✓
     ├── mod.rs            # LSP server implementation (tower-lsp)
+    ├── analysis.rs       # Analysis cache and document state
+    ├── analysis/         # Incremental parsing and analysis
+    │   └── incremental.rs # Incremental parse/analyze, changed-region merge
     ├── position.rs       # Position/offset conversion utilities
-    ├── signatures.rs    # Built-in function signature helpers
-    ├── tests.rs         # LSP test utilities
-    └── main.rs          # qb64fresh-lsp binary entry
+    ├── signatures.rs     # Built-in function signature helpers
+    ├── tests.rs          # LSP test utilities
+    └── main.rs           # qb64fresh-lsp binary entry
 
 tools/                    # Development Tools
 ├── fix_encoding.rs       # DOS encoding converter
 ├── fmt/                  # Code formatter
 │   └── src/              # Formatter implementation
-└── lint/                 # Code linter
-    └── src/              # Linter implementation
+├── lint/                 # Code linter
+│   └── src/              # Linter implementation
+└── debug/                # Debugger (DAP)
+    └── src/              # Debug adapter, symbols, frames, watch
 
-runtime/                  # Runtime Library (workspace member) (~9,026 lines) ✓
+runtime/                  # Runtime Library (workspace member) (~19,300 lines) ✓
 ├── src/
 │   ├── lib.rs            # Crate root, init/shutdown
 │   ├── string.rs         # Reference-counted dynamic strings
 │   ├── io.rs             # PRINT, INPUT, console operations
 │   ├── math.rs           # Mathematical functions
+│   ├── memory.rs         # Conventional memory (PEEK/POKE) and _MEM helpers
 │   ├── graphics_ffi.rs   # C FFI layer for graphics
 │   ├── font_ffi.rs       # Font rendering FFI layer
 │   ├── font_manager.rs   # Font management and caching
@@ -320,11 +329,13 @@ Handles:
 - **Validation** - Check for undefined labels, duplicate definitions, EXIT context
 - **Two-Pass Analysis** - Pass 1 collects declarations (`collect.rs`), Pass 2 type checks
 - **Built-in Functions** - 30+ standard functions registered in `builtins.rs` (LEN, CHR$, SIN, etc.)
+- **Name Suggestions** - `suggestions.rs` provides find_best_match/find_similar_names for undefined variable/label/procedure errors
 
 **Module Organization:**
 - `mod.rs` - Main analyzer entry point
 - `builtins.rs` - Built-in function and constant registration
 - `collect.rs` - Declaration collection (Pass 1: SUB/FUNCTION/labels)
+- `suggestions.rs` - Name similarity and “did you mean?” for undefined symbols
 - `checker/` - Type checking (Pass 2):
   - `statements.rs` - Statement dispatcher
   - `statements/` - Specialized statement type checking:
@@ -353,7 +364,7 @@ pub trait CodeGenerator {
 }
 ```
 
-**C Backend (implemented, ~19,800 lines across multiple modules):**
+**C Backend (implemented, ~23,650 lines across multiple modules):**
 - Proven approach (QB64pe uses C++)
 - Refactored into specialized submodules for maintainability:
   - **Core modules:**
@@ -364,7 +375,7 @@ pub trait CodeGenerator {
     - `const_fold.rs` - Constant folding optimization
     - `file_io.rs` - File I/O code generation
     - `implicit_vars.rs` - Implicit variable handling
-  - **Statement generation (`stmt/` subdirectory, ~5,195 lines):**
+  - **Statement generation (`stmt/` subdirectory):**
     - `mod.rs` - Core `StmtEmitter` struct and main dispatcher
     - `assignments.rs` - Assignment statement helpers
     - `control_flow.rs` - IF, FOR, WHILE, DO, SELECT CASE
@@ -373,7 +384,7 @@ pub trait CodeGenerator {
     - `definitions.rs` - DIM, REDIM, SUB/FUNCTION definitions, DECLARE LIBRARY
     - `error_jump.rs` - Error handling (ON ERROR) and computed jumps
     - `io.rs` - PRINT and INPUT helpers
-  - **Runtime library (`runtime/` subdirectory, ~8,748 lines):**
+  - **Runtime library (`runtime/` subdirectory, inline C):**
     - `mod.rs` - Runtime module root
     - `types.rs` - String type definition and type size helpers
     - `strings.rs` - Core string operations (LEFT$, MID$, etc.)
@@ -433,7 +444,7 @@ This would improve:
 - Easier maintenance (changes to one context don't affect others)
 
 **Write Helpers:**
-The `write_helpers.rs` module provides error-handling wrappers for `write!`/`writeln!` macros, ensuring consistent error handling throughout codegen. See [docs/reference/CODEGEN_WRITE_HELPERS.md](../reference/CODEGEN_WRITE_HELPERS.md) for details.
+The `write_helpers.rs` module (in `codegen/c_backend/`) provides error-handling wrappers for `write!`/`writeln!` macros, ensuring consistent error handling throughout codegen. See [reference/CODEGEN_WRITE_HELPERS.md](reference/CODEGEN_WRITE_HELPERS.md) for details.
 
 **Future backends (possible):**
 - LLVM via `inkwell`
@@ -491,8 +502,8 @@ pub trait AudioBackend {
 ### Dual Binary Architecture
 
 The project builds two binaries:
-- **`qb64fresh`** - Compiler CLI (lexer → parser → semantic → codegen)
-- **`qb64fresh-lsp`** - Language server for IDE integration (stdio JSON-RPC)
+- **`qb64fresh`** - Compiler CLI (lexer → parser → semantic → codegen). Uses `error_formatting.rs` to format parse and semantic errors with source context and suggestions.
+- **`qb64fresh-lsp`** - Language server for IDE integration (stdio JSON-RPC). Caches analysis and supports incremental parsing/analysis (`lsp/analysis.rs`, `lsp/analysis/incremental.rs`) to re-analyze only changed regions when possible.
 
 ### Runtime Modes
 
@@ -662,7 +673,7 @@ dialogs = ["rfd"]  # Native file dialogs
 
 ## Build Configuration
 
-- **Workspace** - Multiple crates: `qb64fresh` (compiler), `qb64fresh-runtime`, `tools`, `tools/fmt`, `tools/lint`
+- **Workspace** - Multiple crates: `qb64fresh` (compiler), `qb64fresh-runtime`, `tools`, `tools/fmt`, `tools/lint`, `tools/debug`
 - **Pre-commit hooks** - `cargo-husky` runs fmt/clippy
 - **CI/CD** - GitHub Actions in `.github/workflows/`
 - **Benchmarks** - Criterion benchmarks in `benches/`
@@ -702,6 +713,9 @@ dialogs = ["rfd"]  # Native file dialogs
 | ADR-0013 | Debugger architecture (DAP, tools/debug) |
 | ADR-0014 | Scope and intentionally excluded features |
 | ADR-0015 | No-sandbox execution model (SHELL, file ops) |
+| ADR-0016 | Intentional behavioral differences from QB64pe |
+| ADR-0017 | Generated code is ephemeral (fix code generator, never patch output) |
+| ADR-0018 | Compiler execution resource limits (memory limits) |
 
 ## Design Decisions Summary
 
@@ -725,13 +739,13 @@ For detailed architecture decision records, see [docs/adrs/](../adrs/README.md).
 
 | Component | Lines | Status |
 |-----------|-------|--------|
-| Lexer | ~1,850 | ✓ Complete (logos-based) |
-| AST | ~2,651 | ✓ Complete |
+| Lexer | ~1,950 | ✓ Complete (logos-based) |
+| AST | ~2,825 | ✓ Complete |
 | Parser | ~11,450 | ✓ Complete |
-| Semantic Analysis | ~15,800 | ✓ Complete |
-| Code Generation | ~19,800 | ✓ Complete (refactored into submodules) |
-| LSP | ~2,200 | ✓ Complete |
-| Runtime Library | ~9,026 | ✓ Complete (Rust + inline C) |
+| Semantic Analysis | ~18,600 | ✓ Complete |
+| Code Generation | ~23,650 | ✓ Complete (refactored into submodules) |
+| LSP | ~3,000 | ✓ Complete (includes incremental analysis) |
+| Runtime Library | ~19,300 | ✓ Complete (Rust + inline C) |
 | Formatter (fmt) | ~1,500 | ✓ Complete |
 | Linter (lint) | ~1,200 | ✓ Complete |
 | **Test Suite** | **1,500+** | Unit, integration, golden, fuzz |
@@ -774,4 +788,4 @@ For detailed implementation history and technical challenges, see [docs/archive/
 
 ---
 
-*Last updated: 2026-01-26*
+*Last updated: 2026-01-28*

@@ -40,11 +40,72 @@ use super::types::{c_identifier, c_type};
 /// variable shadows a parameter. If a variable name is both in `variable_renames` and
 /// `param_names`, and it's used as a simple variable (not array access), we use the
 /// parameter name instead of the renamed local variable.
+///
+/// `byref_scalar_names` contains BYREF scalar parameter names that need to be dereferenced
+/// when accessed (they are pointers in the generated C code).
+/// Set of C names for external functions from DECLARE DYNAMIC LIBRARY.
+/// When non-empty and `c_name` is in the set, calls use the function pointer `qb_dyn_<c_name>`.
 pub(super) fn emit_expr(
     expr: &TypedExpr,
     no_shell: bool,
     variable_renames: &std::collections::HashMap<String, String>,
     param_names: &std::collections::HashSet<String>,
+    byref_scalar_names: &std::collections::HashSet<String>,
+    byref_udt_names: &std::collections::HashSet<String>,
+    dynamic_external_c_names: &std::collections::HashSet<String>,
+) -> Result<String, CodeGenError> {
+    emit_expr_internal(
+        expr,
+        no_shell,
+        variable_renames,
+        param_names,
+        byref_scalar_names,
+        byref_udt_names,
+        dynamic_external_c_names,
+        false,
+    )
+}
+
+/// Emits C code for an expression, optionally wrapping string temporaries.
+///
+/// When `wrap_string_temps` is true (external runtime mode), string-returning
+/// expressions (literals, function calls, concatenations) are wrapped with
+/// `qbs_tmp_register()` to ensure proper cleanup.
+///
+/// This is needed for external runtime because the Rust library functions don't
+/// internally register strings with the temp pool, unlike the inline C runtime.
+pub(super) fn emit_expr_external(
+    expr: &TypedExpr,
+    no_shell: bool,
+    variable_renames: &std::collections::HashMap<String, String>,
+    param_names: &std::collections::HashSet<String>,
+    byref_scalar_names: &std::collections::HashSet<String>,
+    byref_udt_names: &std::collections::HashSet<String>,
+    dynamic_external_c_names: &std::collections::HashSet<String>,
+) -> Result<String, CodeGenError> {
+    emit_expr_internal(
+        expr,
+        no_shell,
+        variable_renames,
+        param_names,
+        byref_scalar_names,
+        byref_udt_names,
+        dynamic_external_c_names,
+        true,
+    )
+}
+
+/// Internal implementation of emit_expr with wrap_string_temps flag.
+#[allow(clippy::too_many_arguments)]
+fn emit_expr_internal(
+    expr: &TypedExpr,
+    no_shell: bool,
+    variable_renames: &std::collections::HashMap<String, String>,
+    param_names: &std::collections::HashSet<String>,
+    byref_scalar_names: &std::collections::HashSet<String>,
+    byref_udt_names: &std::collections::HashSet<String>,
+    dynamic_external_c_names: &std::collections::HashSet<String>,
+    wrap_string_temps: bool,
 ) -> Result<String, CodeGenError> {
     // Try to fold the expression to a constant first
     // Only fold complex expressions (binary, unary, function calls) to avoid
@@ -80,7 +141,13 @@ pub(super) fn emit_expr(
 
         TypedExprKind::StringLiteral(s) => {
             let escaped = escape_string(s);
-            Ok(format!("qb_string_new(\"{}\")", escaped))
+            let code = format!("qb_string_new(\"{}\")", escaped);
+            // For external runtime, wrap string literals with qbs_tmp_register
+            if wrap_string_temps {
+                Ok(format!("qbs_tmp_register({})", code))
+            } else {
+                Ok(code)
+            }
         }
 
         TypedExprKind::Variable(name) => {
@@ -97,21 +164,47 @@ pub(super) fn emit_expr(
                     c_name = renamed.clone();
                 }
             }
+            // Check if this is a BYREF scalar parameter - if so, dereference the pointer
+            let needs_deref = byref_scalar_names.contains(&c_name);
             // Fixed-length strings are char arrays in C, but need to be wrapped
             // when used in contexts expecting qb_string* (e.g., string concatenation)
             if matches!(expr.basic_type, BasicType::FixedString(_)) {
-                Ok(format!("qb_str_from_c({})", c_name))
+                if needs_deref {
+                    Ok(format!("qb_str_from_c(*{})", c_name))
+                } else {
+                    Ok(format!("qb_str_from_c({})", c_name))
+                }
+            } else if needs_deref {
+                Ok(format!("*{}", c_name))
             } else {
                 Ok(c_name)
             }
         }
 
-        TypedExprKind::Binary { left, op, right } => {
-            emit_binary_expr(left, op, right, no_shell, variable_renames, param_names)
-        }
+        TypedExprKind::Binary { left, op, right } => emit_binary_expr(
+            left,
+            op,
+            right,
+            no_shell,
+            variable_renames,
+            param_names,
+            byref_scalar_names,
+            byref_udt_names,
+            dynamic_external_c_names,
+            wrap_string_temps,
+        ),
 
         TypedExprKind::Unary { op, operand } => {
-            let operand_code = emit_expr(operand, no_shell, variable_renames, param_names)?;
+            let operand_code = emit_expr_internal(
+                operand,
+                no_shell,
+                variable_renames,
+                param_names,
+                byref_scalar_names,
+                byref_udt_names,
+                dynamic_external_c_names,
+                wrap_string_temps,
+            )?;
             let op_str = match op {
                 crate::ast::UnaryOp::Negate => "-",
                 crate::ast::UnaryOp::Not => "~", // Bitwise NOT for numeric types
@@ -120,7 +213,16 @@ pub(super) fn emit_expr(
         }
 
         TypedExprKind::Grouped(inner) => {
-            let inner_code = emit_expr(inner, no_shell, variable_renames, param_names)?;
+            let inner_code = emit_expr_internal(
+                inner,
+                no_shell,
+                variable_renames,
+                param_names,
+                byref_scalar_names,
+                byref_udt_names,
+                dynamic_external_c_names,
+                wrap_string_temps,
+            )?;
             Ok(format!("({})", inner_code))
         }
 
@@ -133,7 +235,17 @@ pub(super) fn emit_expr(
             if upper_name == "_IIF" {
                 let args_code: Result<Vec<_>, _> = args
                     .iter()
-                    .map(|e| emit_expr(e, no_shell, variable_renames, param_names))
+                    .map(|e| {
+                        emit_expr(
+                            e,
+                            no_shell,
+                            variable_renames,
+                            param_names,
+                            byref_scalar_names,
+                            byref_udt_names,
+                            dynamic_external_c_names,
+                        )
+                    })
                     .collect();
                 let args_str = args_code?.join(", ");
                 let c_name = if expr.basic_type.is_string() {
@@ -148,7 +260,17 @@ pub(super) fn emit_expr(
             if upper_name == "MID$" && args.len() == 2 {
                 let args_code: Result<Vec<_>, _> = args
                     .iter()
-                    .map(|e| emit_expr(e, no_shell, variable_renames, param_names))
+                    .map(|e| {
+                        emit_expr(
+                            e,
+                            no_shell,
+                            variable_renames,
+                            param_names,
+                            byref_scalar_names,
+                            byref_udt_names,
+                            dynamic_external_c_names,
+                        )
+                    })
                     .collect();
                 let args_str = args_code?.join(", ");
                 return Ok(format!("qb_mid2({})", args_str));
@@ -158,7 +280,17 @@ pub(super) fn emit_expr(
             if upper_name == "INSTR" && args.len() == 2 {
                 let args_code: Result<Vec<_>, _> = args
                     .iter()
-                    .map(|e| emit_expr(e, no_shell, variable_renames, param_names))
+                    .map(|e| {
+                        emit_expr(
+                            e,
+                            no_shell,
+                            variable_renames,
+                            param_names,
+                            byref_scalar_names,
+                            byref_udt_names,
+                            dynamic_external_c_names,
+                        )
+                    })
                     .collect();
                 let args_str = args_code?.join(", ");
                 return Ok(format!("qb_instr2({})", args_str));
@@ -169,7 +301,17 @@ pub(super) fn emit_expr(
             if upper_name == "_INSTRREV" && args.len() == 3 {
                 let args_code: Result<Vec<_>, _> = args
                     .iter()
-                    .map(|e| emit_expr(e, no_shell, variable_renames, param_names))
+                    .map(|e| {
+                        emit_expr(
+                            e,
+                            no_shell,
+                            variable_renames,
+                            param_names,
+                            byref_scalar_names,
+                            byref_udt_names,
+                            dynamic_external_c_names,
+                        )
+                    })
                     .collect();
                 let args_vec = args_code?;
                 // Reorder: BASIC (start, source, search) -> C (source, search, start)
@@ -182,7 +324,15 @@ pub(super) fn emit_expr(
             // Special case: LBOUND with 1 argument (array) uses qb_lbound
             // Don't convert fixed-length strings - pass array pointer directly
             if upper_name == "LBOUND" && args.len() == 1 {
-                let arg_code = emit_expr(&args[0], no_shell, variable_renames, param_names)?;
+                let arg_code = emit_expr(
+                    &args[0],
+                    no_shell,
+                    variable_renames,
+                    param_names,
+                    byref_scalar_names,
+                    byref_udt_names,
+                    dynamic_external_c_names,
+                )?;
                 // For fixed-length strings, unwrap qb_str_from_c() if present
                 // LBOUND needs the raw array pointer, not a converted string
                 let unwrapped = if arg_code.starts_with("qb_str_from_c(") {
@@ -197,7 +347,17 @@ pub(super) fn emit_expr(
             if upper_name == "LBOUND" && args.len() == 2 {
                 let args_code: Result<Vec<_>, _> = args
                     .iter()
-                    .map(|e| emit_expr(e, no_shell, variable_renames, param_names))
+                    .map(|e| {
+                        emit_expr(
+                            e,
+                            no_shell,
+                            variable_renames,
+                            param_names,
+                            byref_scalar_names,
+                            byref_udt_names,
+                            dynamic_external_c_names,
+                        )
+                    })
                     .collect();
                 let args_str = args_code?.join(", ");
                 return Ok(format!("qb_lbound2({})", args_str));
@@ -206,7 +366,15 @@ pub(super) fn emit_expr(
             // Special case: UBOUND with 1 argument (array) uses qb_ubound
             // Don't convert fixed-length strings - pass array pointer directly
             if upper_name == "UBOUND" && args.len() == 1 {
-                let arg_code = emit_expr(&args[0], no_shell, variable_renames, param_names)?;
+                let arg_code = emit_expr(
+                    &args[0],
+                    no_shell,
+                    variable_renames,
+                    param_names,
+                    byref_scalar_names,
+                    byref_udt_names,
+                    dynamic_external_c_names,
+                )?;
                 // For fixed-length strings, unwrap qb_str_from_c() if present
                 // UBOUND needs the raw array pointer, not a converted string
                 let unwrapped = if arg_code.starts_with("qb_str_from_c(") {
@@ -221,7 +389,17 @@ pub(super) fn emit_expr(
             if upper_name == "UBOUND" && args.len() == 2 {
                 let args_code: Result<Vec<_>, _> = args
                     .iter()
-                    .map(|e| emit_expr(e, no_shell, variable_renames, param_names))
+                    .map(|e| {
+                        emit_expr(
+                            e,
+                            no_shell,
+                            variable_renames,
+                            param_names,
+                            byref_scalar_names,
+                            byref_udt_names,
+                            dynamic_external_c_names,
+                        )
+                    })
                     .collect();
                 let args_str = args_code?.join(", ");
                 return Ok(format!("qb_ubound2({})", args_str));
@@ -229,7 +407,15 @@ pub(super) fn emit_expr(
 
             // Special case: LEN - use qb_len_str for strings, sizeof for numeric types
             if upper_name == "LEN" && args.len() == 1 {
-                let arg_code = emit_expr(&args[0], no_shell, variable_renames, param_names)?;
+                let arg_code = emit_expr(
+                    &args[0],
+                    no_shell,
+                    variable_renames,
+                    param_names,
+                    byref_scalar_names,
+                    byref_udt_names,
+                    dynamic_external_c_names,
+                )?;
                 if args[0].basic_type.is_string() {
                     return Ok(format!("qb_len_str({})", arg_code));
                 } else {
@@ -250,7 +436,15 @@ pub(super) fn emit_expr(
                         | TypedExprKind::FieldAccess { .. }
                 );
                 if is_lvalue {
-                    let arg_code = emit_expr(arg, no_shell, variable_renames, param_names)?;
+                    let arg_code = emit_expr(
+                        arg,
+                        no_shell,
+                        variable_renames,
+                        param_names,
+                        byref_scalar_names,
+                        byref_udt_names,
+                        dynamic_external_c_names,
+                    )?;
                     return Ok(format!("((int32_t)(intptr_t)&({}))", arg_code));
                 } else {
                     // Non-lvalue - can't take address, return 0
@@ -268,7 +462,15 @@ pub(super) fn emit_expr(
                         | TypedExprKind::FieldAccess { .. }
                 );
                 if is_lvalue {
-                    let arg_code = emit_expr(arg, no_shell, variable_renames, param_names)?;
+                    let arg_code = emit_expr(
+                        arg,
+                        no_shell,
+                        variable_renames,
+                        param_names,
+                        byref_scalar_names,
+                        byref_udt_names,
+                        dynamic_external_c_names,
+                    )?;
                     return Ok(format!("qb_varptr_str(&({}))", arg_code));
                 } else {
                     return Ok("qb_string_new(\"\")".to_string());
@@ -283,7 +485,15 @@ pub(super) fn emit_expr(
 
             // Special case: SADD - returns address of string data
             if upper_name == "SADD" && args.len() == 1 {
-                let arg_code = emit_expr(&args[0], no_shell, variable_renames, param_names)?;
+                let arg_code = emit_expr(
+                    &args[0],
+                    no_shell,
+                    variable_renames,
+                    param_names,
+                    byref_scalar_names,
+                    byref_udt_names,
+                    dynamic_external_c_names,
+                )?;
                 return Ok(format!("((int32_t)(intptr_t)({}).data)", arg_code));
             }
 
@@ -291,7 +501,17 @@ pub(super) fn emit_expr(
             if upper_name == "_MESSAGEBOX" {
                 let args_code: Result<Vec<_>, _> = args
                     .iter()
-                    .map(|e| emit_expr(e, no_shell, variable_renames, param_names))
+                    .map(|e| {
+                        emit_expr(
+                            e,
+                            no_shell,
+                            variable_renames,
+                            param_names,
+                            byref_scalar_names,
+                            byref_udt_names,
+                            dynamic_external_c_names,
+                        )
+                    })
                     .collect();
                 let args_str = args_code?.join(", ");
                 return match args.len() {
@@ -307,7 +527,17 @@ pub(super) fn emit_expr(
             if upper_name == "_LOADFONT" {
                 let args_code: Result<Vec<_>, _> = args
                     .iter()
-                    .map(|e| emit_expr(e, no_shell, variable_renames, param_names))
+                    .map(|e| {
+                        emit_expr(
+                            e,
+                            no_shell,
+                            variable_renames,
+                            param_names,
+                            byref_scalar_names,
+                            byref_udt_names,
+                            dynamic_external_c_names,
+                        )
+                    })
                     .collect();
                 let args_str = args_code?.join(", ");
                 return match args.len() {
@@ -334,7 +564,17 @@ pub(super) fn emit_expr(
             if upper_name == "_RGB32" {
                 let args_code: Result<Vec<_>, _> = args
                     .iter()
-                    .map(|e| emit_expr(e, no_shell, variable_renames, param_names))
+                    .map(|e| {
+                        emit_expr(
+                            e,
+                            no_shell,
+                            variable_renames,
+                            param_names,
+                            byref_scalar_names,
+                            byref_udt_names,
+                            dynamic_external_c_names,
+                        )
+                    })
                     .collect();
                 let args_str = args_code?.join(", ");
                 return match args.len() {
@@ -350,7 +590,17 @@ pub(super) fn emit_expr(
             if upper_name == "SCREEN" {
                 let args_code: Result<Vec<_>, _> = args
                     .iter()
-                    .map(|e| emit_expr(e, no_shell, variable_renames, param_names))
+                    .map(|e| {
+                        emit_expr(
+                            e,
+                            no_shell,
+                            variable_renames,
+                            param_names,
+                            byref_scalar_names,
+                            byref_udt_names,
+                            dynamic_external_c_names,
+                        )
+                    })
                     .collect();
                 let args_str = args_code?.join(", ");
                 return match args.len() {
@@ -366,7 +616,17 @@ pub(super) fn emit_expr(
             if upper_name == "STRING$" && args.len() == 2 {
                 let args_code: Result<Vec<_>, _> = args
                     .iter()
-                    .map(|e| emit_expr(e, no_shell, variable_renames, param_names))
+                    .map(|e| {
+                        emit_expr(
+                            e,
+                            no_shell,
+                            variable_renames,
+                            param_names,
+                            byref_scalar_names,
+                            byref_udt_names,
+                            dynamic_external_c_names,
+                        )
+                    })
                     .collect();
                 let args_vec = args_code?;
                 if !args[1].basic_type.is_string() {
@@ -387,7 +647,15 @@ pub(super) fn emit_expr(
             if upper_name == "_SAVEFILEDIALOG$" {
                 let mut args_codes = Vec::new();
                 for arg in args.iter() {
-                    let arg_code = emit_expr(arg, no_shell, variable_renames, param_names)?;
+                    let arg_code = emit_expr(
+                        arg,
+                        no_shell,
+                        variable_renames,
+                        param_names,
+                        byref_scalar_names,
+                        byref_udt_names,
+                        dynamic_external_c_names,
+                    )?;
                     // Convert QbString* to const char* using qb_string_data()
                     let arg_data = if arg_code.starts_with("qb_str_from_c(") {
                         // Fixed-length string - unwrap and use directly (it's already const char*)
@@ -407,7 +675,17 @@ pub(super) fn emit_expr(
             if upper_name == "_OPENFILEDIALOG$" {
                 let args_code: Result<Vec<_>, _> = args
                     .iter()
-                    .map(|e| emit_expr(e, no_shell, variable_renames, param_names))
+                    .map(|e| {
+                        emit_expr(
+                            e,
+                            no_shell,
+                            variable_renames,
+                            param_names,
+                            byref_scalar_names,
+                            byref_udt_names,
+                            dynamic_external_c_names,
+                        )
+                    })
                     .collect();
                 let args_str = args_code?.join(", ");
                 return match args.len() {
@@ -425,7 +703,17 @@ pub(super) fn emit_expr(
             if upper_name == "_SELECTFOLDERDIALOG$" {
                 let args_code: Result<Vec<_>, _> = args
                     .iter()
-                    .map(|e| emit_expr(e, no_shell, variable_renames, param_names))
+                    .map(|e| {
+                        emit_expr(
+                            e,
+                            no_shell,
+                            variable_renames,
+                            param_names,
+                            byref_scalar_names,
+                            byref_udt_names,
+                            dynamic_external_c_names,
+                        )
+                    })
                     .collect();
                 let args_vec = args_code?;
                 return match args_vec.len() {
@@ -452,7 +740,17 @@ pub(super) fn emit_expr(
             if upper_name == "_SCREENIMAGE" {
                 let args_code: Result<Vec<_>, _> = args
                     .iter()
-                    .map(|e| emit_expr(e, no_shell, variable_renames, param_names))
+                    .map(|e| {
+                        emit_expr(
+                            e,
+                            no_shell,
+                            variable_renames,
+                            param_names,
+                            byref_scalar_names,
+                            byref_udt_names,
+                            dynamic_external_c_names,
+                        )
+                    })
                     .collect();
                 let args_str = args_code?.join(", ");
                 return match args.len() {
@@ -466,7 +764,17 @@ pub(super) fn emit_expr(
             if upper_name == "COMMAND$" && !args.is_empty() {
                 let args_code: Result<Vec<_>, _> = args
                     .iter()
-                    .map(|e| emit_expr(e, no_shell, variable_renames, param_names))
+                    .map(|e| {
+                        emit_expr(
+                            e,
+                            no_shell,
+                            variable_renames,
+                            param_names,
+                            byref_scalar_names,
+                            byref_udt_names,
+                            dynamic_external_c_names,
+                        )
+                    })
                     .collect();
                 let args_str = args_code?.join(", ");
                 return Ok(format!("qb_command_n({})", args_str));
@@ -476,7 +784,17 @@ pub(super) fn emit_expr(
             if upper_name == "ASC" && args.len() == 2 {
                 let args_code: Result<Vec<_>, _> = args
                     .iter()
-                    .map(|e| emit_expr(e, no_shell, variable_renames, param_names))
+                    .map(|e| {
+                        emit_expr(
+                            e,
+                            no_shell,
+                            variable_renames,
+                            param_names,
+                            byref_scalar_names,
+                            byref_udt_names,
+                            dynamic_external_c_names,
+                        )
+                    })
                     .collect();
                 let args_str = args_code?.join(", ");
                 return Ok(format!("qb_asc2({})", args_str));
@@ -487,7 +805,17 @@ pub(super) fn emit_expr(
             if upper_name == "STRIG" && args.len() == 2 {
                 let args_code: Result<Vec<_>, _> = args
                     .iter()
-                    .map(|e| emit_expr(e, no_shell, variable_renames, param_names))
+                    .map(|e| {
+                        emit_expr(
+                            e,
+                            no_shell,
+                            variable_renames,
+                            param_names,
+                            byref_scalar_names,
+                            byref_udt_names,
+                            dynamic_external_c_names,
+                        )
+                    })
                     .collect();
                 let args_str = args_code?.join(", ");
                 return Ok(format!("qb_strig2({})", args_str));
@@ -497,7 +825,17 @@ pub(super) fn emit_expr(
             if upper_name == "TIMER" && !args.is_empty() {
                 let args_code: Result<Vec<_>, _> = args
                     .iter()
-                    .map(|e| emit_expr(e, no_shell, variable_renames, param_names))
+                    .map(|e| {
+                        emit_expr(
+                            e,
+                            no_shell,
+                            variable_renames,
+                            param_names,
+                            byref_scalar_names,
+                            byref_udt_names,
+                            dynamic_external_c_names,
+                        )
+                    })
                     .collect();
                 let args_str = args_code?.join(", ");
                 return Ok(format!("qb_timer_n({})", args_str));
@@ -510,7 +848,17 @@ pub(super) fn emit_expr(
                 } else {
                     let args_code: Result<Vec<_>, _> = args
                         .iter()
-                        .map(|e| emit_expr(e, no_shell, variable_renames, param_names))
+                        .map(|e| {
+                            emit_expr(
+                                e,
+                                no_shell,
+                                variable_renames,
+                                param_names,
+                                byref_scalar_names,
+                                byref_udt_names,
+                                dynamic_external_c_names,
+                            )
+                        })
                         .collect();
                     let args_str = args_code?.join(", ");
                     return Ok(format!("qb_console({})", args_str));
@@ -521,7 +869,17 @@ pub(super) fn emit_expr(
             if upper_name == "_MAPUNICODE" {
                 let args_code: Result<Vec<_>, _> = args
                     .iter()
-                    .map(|e| emit_expr(e, no_shell, variable_renames, param_names))
+                    .map(|e| {
+                        emit_expr(
+                            e,
+                            no_shell,
+                            variable_renames,
+                            param_names,
+                            byref_scalar_names,
+                            byref_udt_names,
+                            dynamic_external_c_names,
+                        )
+                    })
                     .collect();
                 let args_str = args_code?.join(", ");
                 return match args.len() {
@@ -538,7 +896,17 @@ pub(super) fn emit_expr(
             if upper_name == "_PALETTECOLOR" {
                 let args_code: Result<Vec<_>, _> = args
                     .iter()
-                    .map(|e| emit_expr(e, no_shell, variable_renames, param_names))
+                    .map(|e| {
+                        emit_expr(
+                            e,
+                            no_shell,
+                            variable_renames,
+                            param_names,
+                            byref_scalar_names,
+                            byref_udt_names,
+                            dynamic_external_c_names,
+                        )
+                    })
                     .collect();
                 let args_vec = args_code?;
                 return match args.len() {
@@ -561,7 +929,17 @@ pub(super) fn emit_expr(
             if upper_name == "_ICON" {
                 let args_code: Result<Vec<_>, _> = args
                     .iter()
-                    .map(|e| emit_expr(e, no_shell, variable_renames, param_names))
+                    .map(|e| {
+                        emit_expr(
+                            e,
+                            no_shell,
+                            variable_renames,
+                            param_names,
+                            byref_scalar_names,
+                            byref_udt_names,
+                            dynamic_external_c_names,
+                        )
+                    })
                     .collect();
                 let args_str = args_code?.join(", ");
                 return match args.len() {
@@ -576,7 +954,17 @@ pub(super) fn emit_expr(
             if upper_name == "_ACCEPTFILEDROP" {
                 let args_code: Result<Vec<_>, _> = args
                     .iter()
-                    .map(|e| emit_expr(e, no_shell, variable_renames, param_names))
+                    .map(|e| {
+                        emit_expr(
+                            e,
+                            no_shell,
+                            variable_renames,
+                            param_names,
+                            byref_scalar_names,
+                            byref_udt_names,
+                            dynamic_external_c_names,
+                        )
+                    })
                     .collect();
                 let args_str = args_code?.join(", ");
                 return match args.len() {
@@ -591,7 +979,15 @@ pub(super) fn emit_expr(
             // Must be checked before c_function_name() is called
             if upper_name == "SHELL" {
                 // SHELL always takes 1 string argument
-                let cmd_code = emit_expr(&args[0], no_shell, variable_renames, param_names)?;
+                let cmd_code = emit_expr(
+                    &args[0],
+                    no_shell,
+                    variable_renames,
+                    param_names,
+                    byref_scalar_names,
+                    byref_udt_names,
+                    dynamic_external_c_names,
+                )?;
                 // Convert QbString* to const char* using qb_string_data()
                 // qb_shell expects const char*, so we need to extract the data pointer
                 let cmd_data = if cmd_code.starts_with("qb_str_from_c(") {
@@ -607,7 +1003,15 @@ pub(super) fn emit_expr(
             // Special case: _OPENHOST expects const char* connection string, not QbString*
             if upper_name == "_OPENHOST" {
                 // _OPENHOST takes 1 string argument (connection string like "TCP/IP:port")
-                let conn_code = emit_expr(&args[0], no_shell, variable_renames, param_names)?;
+                let conn_code = emit_expr(
+                    &args[0],
+                    no_shell,
+                    variable_renames,
+                    param_names,
+                    byref_scalar_names,
+                    byref_udt_names,
+                    dynamic_external_c_names,
+                )?;
                 // Convert QbString* to const char* using qb_string_data()
                 let conn_data = if conn_code.starts_with("qb_str_from_c(") {
                     // Fixed-length string - unwrap and use directly (it's already const char*)
@@ -622,7 +1026,15 @@ pub(super) fn emit_expr(
             // Special case: _OPENCLIENT expects const char* connection string, not QbString*
             if upper_name == "_OPENCLIENT" {
                 // _OPENCLIENT takes 1 string argument (connection string like "TCP/IP:port:host")
-                let conn_code = emit_expr(&args[0], no_shell, variable_renames, param_names)?;
+                let conn_code = emit_expr(
+                    &args[0],
+                    no_shell,
+                    variable_renames,
+                    param_names,
+                    byref_scalar_names,
+                    byref_udt_names,
+                    dynamic_external_c_names,
+                )?;
                 // Convert QbString* to const char* using qb_string_data()
                 let conn_data = if conn_code.starts_with("qb_str_from_c(") {
                     // Fixed-length string - unwrap and use directly (it's already const char*)
@@ -639,7 +1051,15 @@ pub(super) fn emit_expr(
             if c_function_name(name) == "qb_removestringenclosingpair_str" {
                 let mut args_codes = Vec::new();
                 for arg in args {
-                    let arg_code = emit_expr(arg, no_shell, variable_renames, param_names)?;
+                    let arg_code = emit_expr(
+                        arg,
+                        no_shell,
+                        variable_renames,
+                        param_names,
+                        byref_scalar_names,
+                        byref_udt_names,
+                        dynamic_external_c_names,
+                    )?;
                     // Check if expression is an lvalue (can take address of)
                     let is_lvalue = matches!(
                         arg.kind,
@@ -685,7 +1105,15 @@ pub(super) fn emit_expr(
             if c_function_name(name) == "qb_hasstringenclosingpair_int_int" {
                 let mut args_codes = Vec::new();
                 for arg in args {
-                    let arg_code = emit_expr(arg, no_shell, variable_renames, param_names)?;
+                    let arg_code = emit_expr(
+                        arg,
+                        no_shell,
+                        variable_renames,
+                        param_names,
+                        byref_scalar_names,
+                        byref_udt_names,
+                        dynamic_external_c_names,
+                    )?;
                     // Check if expression is an lvalue (can take address of)
                     let is_lvalue = matches!(
                         arg.kind,
@@ -736,12 +1164,32 @@ pub(super) fn emit_expr(
             if !params.is_empty() {
                 let mut args_codes = Vec::new();
                 for (i, arg) in args.iter().enumerate() {
-                    let arg_code = emit_expr(arg, no_shell, variable_renames, param_names)?;
+                    let arg_code = emit_expr_internal(
+                        arg,
+                        no_shell,
+                        variable_renames,
+                        param_names,
+                        byref_scalar_names,
+                        byref_udt_names,
+                        dynamic_external_c_names,
+                        wrap_string_temps,
+                    )?;
+
+                    // Check if the argument is a UDT variable that's already a pointer
+                    // (from being a BYREF UDT parameter in the current function)
+                    let arg_is_udt_pointer = matches!(&arg.kind, TypedExprKind::Variable(name)
+                    if {
+                        let c_arg = c_identifier(name).to_lowercase();
+                        byref_udt_names.iter().any(|s| s.to_lowercase() == c_arg)
+                    });
+
                     // Check if this parameter is byref (and not an array)
-                    let is_byref = params
-                        .get(i)
-                        .map(|p| !p.by_val && !p.is_array)
-                        .unwrap_or(false);
+                    // For UDT arguments that are already pointers, we don't need to add &
+                    let is_byref = !arg_is_udt_pointer
+                        && params
+                            .get(i)
+                            .map(|p| !p.by_val && !p.is_array)
+                            .unwrap_or(false);
 
                     if is_byref {
                         // Check if expression is an lvalue (can take address of)
@@ -773,10 +1221,30 @@ pub(super) fn emit_expr(
                         if is_lvalue && types_match {
                             // For simple variable names, use &variable (no parentheses needed)
                             // For complex expressions, use &(expr)
+                            // Special case: If the variable is const (like HASHFLAG_*, DEPENDENCY_*),
+                            // we need to cast away const to match function signatures that expect non-const pointers
                             let needs_parens = arg_code.contains(' ')
                                 || arg_code.contains('(')
                                 || arg_code.contains('[');
-                            if needs_parens {
+
+                            // Check if this looks like a const variable (all uppercase with underscores)
+                            // Common patterns: HASHFLAG_*, DEPENDENCY_*
+                            let is_likely_const = !needs_parens
+                                && arg_code
+                                    .chars()
+                                    .all(|c| c.is_uppercase() || c == '_' || c.is_ascii_digit())
+                                && (arg_code.starts_with("HASHFLAG_")
+                                    || arg_code.starts_with("DEPENDENCY_")
+                                    || arg_code.contains("_FLAG")
+                                    || arg_code.contains("_DEPENDENCY"));
+
+                            if is_likely_const {
+                                // Cast away const: (int32_t*)&CONSTANT
+                                let c_ty = param_type
+                                    .map(c_type)
+                                    .unwrap_or_else(|| "int32_t".to_string());
+                                args_codes.push(format!("({}*)&{}", c_ty, arg_code));
+                            } else if needs_parens {
                                 args_codes.push(format!("&({})", arg_code));
                             } else {
                                 args_codes.push(format!("&{}", arg_code));
@@ -788,12 +1256,12 @@ pub(super) fn emit_expr(
                                 .map(c_type)
                                 .unwrap_or_else(|| "int32_t".to_string());
 
-                            // Check if parameter type is a pointer type (ends with *)
-                            // Compound literals can't be pointer types, so use statement-expression
+                            // Use C99 compound literals for all types including pointer types.
+                            // Compound literals have block-scope lifetime, so they remain valid
+                            // for the entire function call.
+                            // Format: &(type){expr}
                             if c_ty.ends_with('*') {
-                                // For pointer types (including QbString*), use statement-expression
-                                // Generate unique temp name to avoid conflicts in nested calls
-                                let temp_name = format!("_tmp_ptr_byref_{}", i);
+                                // For pointer types (including QbString*), use compound literal
                                 if needs_fixed_string_conversion(arg) {
                                     // Fixed-length string - convert first
                                     let mut inner_code = unwrap_qb_str_from_c(&arg_code);
@@ -801,15 +1269,12 @@ pub(super) fn emit_expr(
                                         inner_code = unwrap_qb_str_from_c(&inner_code);
                                     }
                                     args_codes.push(format!(
-                                        "({{ {} {} = qb_str_from_c({}); &{}; }})",
-                                        c_ty, temp_name, inner_code, temp_name
+                                        "&({}){{qb_str_from_c({})}}",
+                                        c_ty, inner_code
                                     ));
                                 } else {
                                     // Dynamic string or other pointer type
-                                    args_codes.push(format!(
-                                        "({{ {} {} = {}; &{}; }})",
-                                        c_ty, temp_name, arg_code, temp_name
-                                    ));
+                                    args_codes.push(format!("&({}){{{}}}", c_ty, arg_code));
                                 }
                             } else {
                                 // Non-pointer type - can use compound literal
@@ -843,7 +1308,13 @@ pub(super) fn emit_expr(
                     }
                 }
                 let args_str = args_codes.join(", ");
-                return Ok(format!("{}({})", c_name, args_str));
+                let call_code = format!("{}({})", c_name, args_str);
+                // For external runtime, wrap string-returning user-defined functions
+                if wrap_string_temps && expr.basic_type.is_string() {
+                    return Ok(format!("qbs_tmp_register({})", call_code));
+                } else {
+                    return Ok(call_code);
+                }
             }
 
             // Built-in functions - all args are BYVAL
@@ -851,7 +1322,16 @@ pub(super) fn emit_expr(
             let args_code: Result<Vec<_>, _> = args
                 .iter()
                 .map(|arg| {
-                    let code = emit_expr(arg, no_shell, variable_renames, param_names)?;
+                    let code = emit_expr_internal(
+                        arg,
+                        no_shell,
+                        variable_renames,
+                        param_names,
+                        byref_scalar_names,
+                        byref_udt_names,
+                        dynamic_external_c_names,
+                        wrap_string_temps,
+                    )?;
                     // Check if this is a fixed-length string that needs conversion
                     // This includes FieldAccess of fixed-length string fields
                     if needs_fixed_string_conversion(arg) {
@@ -865,7 +1345,13 @@ pub(super) fn emit_expr(
                 .collect();
             let args_str = args_code?.join(", ");
 
-            Ok(format!("{}({})", c_name, args_str))
+            let call_code = format!("{}({})", c_name, args_str);
+            // For external runtime, wrap string-returning function calls with qbs_tmp_register
+            if wrap_string_temps && expr.basic_type.is_string() {
+                Ok(format!("qbs_tmp_register({})", call_code))
+            } else {
+                Ok(call_code)
+            }
         }
 
         TypedExprKind::ArrayAccess {
@@ -880,6 +1366,9 @@ pub(super) fn emit_expr(
                 no_shell,
                 variable_renames,
                 param_names,
+                byref_scalar_names,
+                byref_udt_names,
+                dynamic_external_c_names,
             )?;
             // Fixed-length string array elements need conversion to qb_string*
             if matches!(expr.basic_type, BasicType::FixedString(_)) {
@@ -890,7 +1379,15 @@ pub(super) fn emit_expr(
         }
 
         TypedExprKind::Convert { expr, to_type } => {
-            let inner_code = emit_expr(expr, no_shell, variable_renames, param_names)?;
+            let inner_code = emit_expr(
+                expr,
+                no_shell,
+                variable_renames,
+                param_names,
+                byref_scalar_names,
+                byref_udt_names,
+                dynamic_external_c_names,
+            )?;
 
             // Handle string-to-string conversion (no-op)
             if expr.basic_type.is_string() && to_type.is_string() {
@@ -909,9 +1406,27 @@ pub(super) fn emit_expr(
         }
 
         TypedExprKind::FieldAccess { object, field } => {
-            let obj_code = emit_expr(object, no_shell, variable_renames, param_names)?;
+            let obj_code = emit_expr(
+                object,
+                no_shell,
+                variable_renames,
+                param_names,
+                byref_scalar_names,
+                byref_udt_names,
+                dynamic_external_c_names,
+            )?;
             let c_field = c_identifier(field);
-            let field_access = format!("{}.{}", obj_code, c_field);
+            // UDT parameters (BYREF/BYVAL) are pointers in C; use -> for field access
+            let sep = if let TypedExprKind::Variable(name) = &object.kind {
+                if byref_udt_names.contains(&c_identifier(name)) {
+                    "->"
+                } else {
+                    "."
+                }
+            } else {
+                "."
+            };
+            let field_access = format!("{}{}{}", obj_code, sep, c_field);
             // Fixed-length string fields need conversion to qb_string*
             if matches!(expr.basic_type, BasicType::FixedString(_)) {
                 Ok(format!("qb_str_from_c({})", field_access))
@@ -931,14 +1446,25 @@ pub(super) fn emit_expr(
             args,
             params,
             ..
-        } => emit_external_function_call(
-            c_name,
-            args,
-            params,
-            no_shell,
-            variable_renames,
-            param_names,
-        ),
+        } => {
+            // DECLARE DYNAMIC LIBRARY: call through function pointer qb_dyn_<c_name>
+            let call_name = if dynamic_external_c_names.contains(c_name) {
+                format!("qb_dyn_{}", c_name)
+            } else {
+                c_name.clone()
+            };
+            emit_external_function_call(
+                &call_name,
+                args,
+                params,
+                no_shell,
+                variable_renames,
+                param_names,
+                byref_scalar_names,
+                byref_udt_names,
+                dynamic_external_c_names,
+            )
+        }
 
         TypedExprKind::ProcPtr { wrapper_name, .. } => {
             // Return the address of the C wrapper function as an intptr_t
@@ -946,7 +1472,15 @@ pub(super) fn emit_expr(
         }
 
         TypedExprKind::CvFunc { target_type, value } => {
-            let value_code = emit_expr(value, no_shell, variable_renames, param_names)?;
+            let value_code = emit_expr(
+                value,
+                no_shell,
+                variable_renames,
+                param_names,
+                byref_scalar_names,
+                byref_udt_names,
+                dynamic_external_c_names,
+            )?;
             // Use the appropriate qb_cv* function based on target type
             let func = match target_type {
                 BasicType::Integer => "qb_cvi",
@@ -960,7 +1494,15 @@ pub(super) fn emit_expr(
         }
 
         TypedExprKind::MkDollarFunc { source_type, value } => {
-            let value_code = emit_expr(value, no_shell, variable_renames, param_names)?;
+            let value_code = emit_expr(
+                value,
+                no_shell,
+                variable_renames,
+                param_names,
+                byref_scalar_names,
+                byref_udt_names,
+                dynamic_external_c_names,
+            )?;
             // Use the appropriate qb_mk*$ function based on source type
             let func = match source_type {
                 BasicType::Integer => "qb_mki",
@@ -974,14 +1516,30 @@ pub(super) fn emit_expr(
         }
 
         TypedExprKind::CastFunc { target_type, value } => {
-            let value_code = emit_expr(value, no_shell, variable_renames, param_names)?;
+            let value_code = emit_expr(
+                value,
+                no_shell,
+                variable_renames,
+                param_names,
+                byref_scalar_names,
+                byref_udt_names,
+                dynamic_external_c_names,
+            )?;
             // Explicit cast to the target C type
             let c_ty = c_type(target_type);
             Ok(format!("(({})({})", c_ty, value_code))
         }
 
         TypedExprKind::ValWithType { value, target_type } => {
-            let value_code = emit_expr(value, no_shell, variable_renames, param_names)?;
+            let value_code = emit_expr(
+                value,
+                no_shell,
+                variable_renames,
+                param_names,
+                byref_scalar_names,
+                byref_udt_names,
+                dynamic_external_c_names,
+            )?;
             // VAL with type specifier uses specific conversion functions
             // that parse the string and return the specified type
             let func = match target_type {
@@ -1003,8 +1561,24 @@ pub(super) fn emit_expr(
             offset,
             target_type,
         } => {
-            let mem_code = emit_expr(mem, no_shell, variable_renames, param_names)?;
-            let offset_code = emit_expr(offset, no_shell, variable_renames, param_names)?;
+            let mem_code = emit_expr(
+                mem,
+                no_shell,
+                variable_renames,
+                param_names,
+                byref_scalar_names,
+                byref_udt_names,
+                dynamic_external_c_names,
+            )?;
+            let offset_code = emit_expr(
+                offset,
+                no_shell,
+                variable_renames,
+                param_names,
+                byref_scalar_names,
+                byref_udt_names,
+                dynamic_external_c_names,
+            )?;
             // _MEMGET reads raw bytes from memory at the given offset
             // and interprets them as the specified type.
             // Generated code: *((type*)((char*)(mem).offset + (offset)))
@@ -1021,6 +1595,7 @@ pub(super) fn emit_expr(
 /// External functions (from DECLARE LIBRARY) need special handling:
 /// - STRING arguments are converted to char* via qb_string_data()
 /// - The C function name is used directly (not prefixed with qb_)
+#[allow(clippy::too_many_arguments)]
 fn emit_external_function_call(
     c_name: &str,
     args: &[TypedExpr],
@@ -1028,11 +1603,22 @@ fn emit_external_function_call(
     no_shell: bool,
     variable_renames: &std::collections::HashMap<String, String>,
     param_names: &std::collections::HashSet<String>,
+    byref_scalar_names: &std::collections::HashSet<String>,
+    byref_udt_names: &std::collections::HashSet<String>,
+    dynamic_external_c_names: &std::collections::HashSet<String>,
 ) -> Result<String, CodeGenError> {
     let mut marshalled_args = Vec::new();
 
     for (i, arg) in args.iter().enumerate() {
-        let arg_code = emit_expr(arg, no_shell, variable_renames, param_names)?;
+        let arg_code = emit_expr(
+            arg,
+            no_shell,
+            variable_renames,
+            param_names,
+            byref_scalar_names,
+            byref_udt_names,
+            dynamic_external_c_names,
+        )?;
 
         // Check if this argument needs string marshalling
         let needs_marshalling = if i < params.len() {
@@ -1055,6 +1641,7 @@ fn emit_external_function_call(
 }
 
 /// Emits a binary expression.
+#[allow(clippy::too_many_arguments)]
 fn emit_binary_expr(
     left: &TypedExpr,
     op: &BinaryOp,
@@ -1062,9 +1649,31 @@ fn emit_binary_expr(
     no_shell: bool,
     variable_renames: &std::collections::HashMap<String, String>,
     param_names: &std::collections::HashSet<String>,
+    byref_scalar_names: &std::collections::HashSet<String>,
+    byref_udt_names: &std::collections::HashSet<String>,
+    dynamic_external_c_names: &std::collections::HashSet<String>,
+    wrap_string_temps: bool,
 ) -> Result<String, CodeGenError> {
-    let left_code = emit_expr(left, no_shell, variable_renames, param_names)?;
-    let right_code = emit_expr(right, no_shell, variable_renames, param_names)?;
+    let left_code = emit_expr_internal(
+        left,
+        no_shell,
+        variable_renames,
+        param_names,
+        byref_scalar_names,
+        byref_udt_names,
+        dynamic_external_c_names,
+        wrap_string_temps,
+    )?;
+    let right_code = emit_expr_internal(
+        right,
+        no_shell,
+        variable_renames,
+        param_names,
+        byref_scalar_names,
+        byref_udt_names,
+        dynamic_external_c_names,
+        wrap_string_temps,
+    )?;
 
     // Handle string concatenation specially
     if left.basic_type.is_string() && matches!(op, BinaryOp::Add) {
@@ -1089,10 +1698,13 @@ fn emit_binary_expr(
         } else {
             right_code
         };
-        return Ok(format!(
-            "qb_string_concat({}, {})",
-            left_wrapped, right_wrapped
-        ));
+        let concat_code = format!("qb_string_concat({}, {})", left_wrapped, right_wrapped);
+        // For external runtime, wrap concatenation result with qbs_tmp_register
+        if wrap_string_temps {
+            return Ok(format!("qbs_tmp_register({})", concat_code));
+        } else {
+            return Ok(concat_code);
+        }
     }
 
     // Handle string comparisons
@@ -1166,6 +1778,7 @@ fn emit_binary_expr(
 }
 
 /// Emits C code for array access.
+#[allow(clippy::too_many_arguments)]
 fn emit_array_access(
     name: &str,
     indices: &[TypedExpr],
@@ -1173,6 +1786,9 @@ fn emit_array_access(
     no_shell: bool,
     variable_renames: &std::collections::HashMap<String, String>,
     param_names: &std::collections::HashSet<String>,
+    byref_scalar_names: &std::collections::HashSet<String>,
+    byref_udt_names: &std::collections::HashSet<String>,
+    dynamic_external_c_names: &std::collections::HashSet<String>,
 ) -> Result<String, CodeGenError> {
     let mut c_name = c_identifier(name);
 
@@ -1204,7 +1820,15 @@ fn emit_array_access(
     let indices_code: Result<Vec<_>, _> = indices
         .iter()
         .map(|idx| {
-            let code = emit_expr(idx, no_shell, variable_renames, param_names)?;
+            let code = emit_expr(
+                idx,
+                no_shell,
+                variable_renames,
+                param_names,
+                byref_scalar_names,
+                byref_udt_names,
+                dynamic_external_c_names,
+            )?;
             // Cast to int64_t to ensure integer subscript
             // This handles VAL(), floating-point expressions, and implicit conversions
             Ok(format!("(int64_t)({})", code))
@@ -1972,16 +2596,32 @@ mod tests {
     #[test]
     fn test_emit_integer_literal() {
         let expr = TypedExpr::integer(42, Span::new(0, 2, 1));
-        let result = emit_expr(&expr, false, &HashMap::new(), &HashSet::new())
-            .expect("emitting integer literal should succeed");
+        let result = emit_expr(
+            &expr,
+            false,
+            &HashMap::new(),
+            &HashSet::new(),
+            &HashSet::new(),
+            &HashSet::new(),
+            &HashSet::new(),
+        )
+        .expect("emitting integer literal should succeed");
         assert_eq!(result, "42LL");
     }
 
     #[test]
     fn test_emit_string_literal() {
         let expr = TypedExpr::string("Hello".to_string(), Span::new(0, 7, 1));
-        let result = emit_expr(&expr, false, &HashMap::new(), &HashSet::new())
-            .expect("emitting string literal should succeed");
+        let result = emit_expr(
+            &expr,
+            false,
+            &HashMap::new(),
+            &HashSet::new(),
+            &HashSet::new(),
+            &HashSet::new(),
+            &HashSet::new(),
+        )
+        .expect("emitting string literal should succeed");
         assert_eq!(result, "qb_string_new(\"Hello\")");
     }
 
@@ -1997,8 +2637,16 @@ mod tests {
             BasicType::Double,
             Span::new(0, 5, 1),
         );
-        let result = emit_expr(&expr, false, &HashMap::new(), &HashSet::new())
-            .expect("emitting constant-folded power operator should succeed");
+        let result = emit_expr(
+            &expr,
+            false,
+            &HashMap::new(),
+            &HashSet::new(),
+            &HashSet::new(),
+            &HashSet::new(),
+            &HashSet::new(),
+        )
+        .expect("emitting constant-folded power operator should succeed");
         assert_eq!(result, "8LL"); // 2^3 = 8, folded at compile time
     }
 
@@ -2018,8 +2666,16 @@ mod tests {
             BasicType::Double,
             Span::new(0, 5, 1),
         );
-        let result = emit_expr(&expr, false, &HashMap::new(), &HashSet::new())
-            .expect("emitting power operator with variable should succeed");
+        let result = emit_expr(
+            &expr,
+            false,
+            &HashMap::new(),
+            &HashSet::new(),
+            &HashSet::new(),
+            &HashSet::new(),
+            &HashSet::new(),
+        )
+        .expect("emitting power operator with variable should succeed");
         assert_eq!(result, "pow(x, 3LL)");
     }
 
@@ -2035,8 +2691,16 @@ mod tests {
             BasicType::Long,
             Span::new(0, 7, 1),
         );
-        let result = emit_expr(&expr, false, &HashMap::new(), &HashSet::new())
-            .expect("emitting constant-folded EQV operator should succeed");
+        let result = emit_expr(
+            &expr,
+            false,
+            &HashMap::new(),
+            &HashSet::new(),
+            &HashSet::new(),
+            &HashSet::new(),
+            &HashSet::new(),
+        )
+        .expect("emitting constant-folded EQV operator should succeed");
         // EQV: !(5 XOR 3) = !6 = -7 (bitwise NOT)
         assert_eq!(result, "-7LL");
     }
@@ -2057,8 +2721,16 @@ mod tests {
             BasicType::Long,
             Span::new(0, 7, 1),
         );
-        let result = emit_expr(&expr, false, &HashMap::new(), &HashSet::new())
-            .expect("emitting EQV operator with variable should succeed");
+        let result = emit_expr(
+            &expr,
+            false,
+            &HashMap::new(),
+            &HashSet::new(),
+            &HashSet::new(),
+            &HashSet::new(),
+            &HashSet::new(),
+        )
+        .expect("emitting EQV operator with variable should succeed");
         assert_eq!(result, "(~(x ^ 3LL))");
     }
 
@@ -2074,8 +2746,16 @@ mod tests {
             BasicType::Long,
             Span::new(0, 7, 1),
         );
-        let result = emit_expr(&expr, false, &HashMap::new(), &HashSet::new())
-            .expect("emitting constant-folded IMP operator should succeed");
+        let result = emit_expr(
+            &expr,
+            false,
+            &HashMap::new(),
+            &HashSet::new(),
+            &HashSet::new(),
+            &HashSet::new(),
+            &HashSet::new(),
+        )
+        .expect("emitting constant-folded IMP operator should succeed");
         // IMP: (!5) OR 3 = -6 OR 3 = -5
         assert_eq!(result, "-5LL");
     }
@@ -2096,8 +2776,16 @@ mod tests {
             BasicType::Long,
             Span::new(0, 7, 1),
         );
-        let result = emit_expr(&expr, false, &HashMap::new(), &HashSet::new())
-            .expect("emitting IMP operator with variable should succeed");
+        let result = emit_expr(
+            &expr,
+            false,
+            &HashMap::new(),
+            &HashSet::new(),
+            &HashSet::new(),
+            &HashSet::new(),
+            &HashSet::new(),
+        )
+        .expect("emitting IMP operator with variable should succeed");
         assert_eq!(result, "((~x) | 3LL)");
     }
 

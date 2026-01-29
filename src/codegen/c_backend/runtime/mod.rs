@@ -275,12 +275,15 @@ pub(in crate::codegen) fn emit_header_with_debug(
             writeln_code!(output, "    return s ? (int32_t)qb_string_len(s) : 0;")?;
             writeln_code!(output, "}}")?;
             writeln_code!(output)?;
-            // Temporary string pool functions - no-ops for external runtime (strings managed by library)
-            writeln_code!(output, "uint64_t qbs_tmp_base_get(void) {{ return 0; }}")?;
-            writeln_code!(
-                output,
-                "void qbs_cleanup(uint64_t base, int dummy) {{ (void)base; (void)dummy; }}"
-            )?;
+            // Temporary string pool functions - CRITICAL: Must be emitted even in external mode
+            // The external runtime library doesn't provide temp string pool management, so we need
+            // to emit it inline to prevent memory leaks from temporary strings created during
+            // expression evaluation (e.g., qb_string_concat, qb_string_new, etc.)
+            // Without this, all temporary strings leak, causing unbounded memory growth.
+            //
+            // Note: The struct definition is already emitted above, so QbString is complete here.
+            // We emit a version that uses QbString (external mode type) instead of qb_string.
+            strings::emit_temp_string_pool_external_mode(output)?;
             writeln_code!(output)?;
             // qb_mid_assign - MID$ assignment for external runtime
             // MID$(str$, start [, length]) = value$
@@ -391,16 +394,10 @@ pub(in crate::codegen) fn emit_header_with_debug(
             writeln_code!(output, "        case 'B': case 'b': mode = \"r+b\"; break;")?;
             writeln_code!(output, "        default: mode = \"r\"; break;")?;
             writeln_code!(output, "    }}")?;
-            writeln_code!(output, "    qb_file_open(fnum, fname, mode);")?;
+            writeln_code!(output, "    qb_file_open(fnum, fname, mode, 0, 0);")?;
             writeln_code!(output, "}}")?;
             writeln_code!(output)?;
-            // qb_ubound2 - 2-argument UBOUND function
-            // Stub implementation - returns 0 for now
-            // Proper implementation would require array metadata tracking
-            writeln_code!(output, "int32_t qb_ubound2(void* arr, int32_t dim) {{")?;
-            writeln_code!(output, "    (void)arr; (void)dim;")?;
-            writeln_code!(output, "    return 0;")?;
-            writeln_code!(output, "}}")?;
+            // qb_ubound2, qb_array_register, qb_ubound, qb_array_register_md, qb_lbound, qb_lbound2, qb_array_erase, qb_array_update - provided by runtime library (qb64fresh_rt.h)
             writeln_code!(output)?;
             // qb_mki - make integer (for CV functions)
             writeln_code!(output, "QbString* qb_mki(int16_t n) {{")?;
@@ -449,28 +446,6 @@ pub(in crate::codegen) fn emit_header_with_debug(
             writeln_code!(output, "    return (unsigned char)data[pos - 1];")?;
             writeln_code!(output, "}}")?;
             writeln_code!(output)?;
-            // qb_array_register - register array metadata (1D version)
-            // Stub implementation - no-op for now
-            // Proper implementation would track array bounds for UBOUND/LBOUND functions
-            writeln_code!(
-                output,
-                "void qb_array_register(void* ptr, int32_t lower, int32_t upper) {{"
-            )?;
-            writeln_code!(output, "    (void)ptr; (void)lower; (void)upper;")?;
-            writeln_code!(
-                output,
-                "    // Array metadata registration not yet implemented"
-            )?;
-            writeln_code!(output, "}}")?;
-            writeln_code!(output)?;
-            // qb_ubound - return upper bound of array (first dimension)
-            // Stub implementation - returns 0 for now
-            // Proper implementation would require array metadata tracking
-            writeln_code!(output, "int32_t qb_ubound(void* arr) {{")?;
-            writeln_code!(output, "    (void)arr;")?;
-            writeln_code!(output, "    return 0;")?;
-            writeln_code!(output, "}}")?;
-            writeln_code!(output)?;
             // qb_cvl - unpack 4-byte string to 32-bit long
             writeln_code!(output, "int32_t qb_cvl(QbString* s) {{")?;
             writeln_code!(output, "    if (!s || qb_string_len(s) < 4) return 0;")?;
@@ -500,6 +475,32 @@ pub(in crate::codegen) fn emit_header_with_debug(
             writeln_code!(output, "int64_t qb_commandcount(void) {{")?;
             writeln_code!(output, "    return _qb_argc - 1;")?;
             writeln_code!(output, "}}")?;
+            writeln_code!(output)?;
+            // qb_environcount - _ENVIRONCOUNT - returns number of environment variables
+            writeln_code!(output, "#ifdef _WIN32")?;
+            writeln_code!(output, "int64_t qb_environcount(void) {{")?;
+            writeln_code!(output, "    int count = 0;")?;
+            writeln_code!(output, "    char* env = GetEnvironmentStringsA();")?;
+            writeln_code!(output, "    if (env) {{")?;
+            writeln_code!(output, "        char* p = env;")?;
+            writeln_code!(
+                output,
+                "        while (*p) {{ count++; p += strlen(p) + 1; }}"
+            )?;
+            writeln_code!(output, "        FreeEnvironmentStringsA(env);")?;
+            writeln_code!(output, "    }}")?;
+            writeln_code!(output, "    return count;")?;
+            writeln_code!(output, "}}")?;
+            writeln_code!(output, "#else")?;
+            writeln_code!(output, "extern char** environ;")?;
+            writeln_code!(output, "int64_t qb_environcount(void) {{")?;
+            writeln_code!(output, "    int count = 0;")?;
+            writeln_code!(output, "    if (environ) {{")?;
+            writeln_code!(output, "        while (environ[count]) count++;")?;
+            writeln_code!(output, "    }}")?;
+            writeln_code!(output, "    return count;")?;
+            writeln_code!(output, "}}")?;
+            writeln_code!(output, "#endif")?;
             writeln_code!(output)?;
             // qb_fullpath - _FULLPATH$
             writeln_code!(output, "QbString* qb_fullpath(QbString* path) {{")?;
@@ -574,23 +575,6 @@ pub(in crate::codegen) fn emit_header_with_debug(
             // qb_file_get_string - GET # for strings (binary read into string buffer)
             // This function is provided by the runtime library (declared in qb64fresh_rt.h)
             // Do NOT emit stub in external mode
-            writeln_code!(output)?;
-            // qb_array_register_md - multi-dimensional array registration
-            // Stub implementation - no-op for now
-            // Proper implementation would track array bounds for UBOUND/LBOUND functions
-            writeln_code!(
-                output,
-                "void qb_array_register_md(void* ptr, int32_t num_dims, int32_t* lowers, int32_t* uppers) {{"
-            )?;
-            writeln_code!(
-                output,
-                "    (void)ptr; (void)num_dims; (void)lowers; (void)uppers;"
-            )?;
-            writeln_code!(
-                output,
-                "    // Multi-dimensional array metadata registration not yet implemented"
-            )?;
-            writeln_code!(output, "}}")?;
             writeln_code!(output)?;
             // qb_environ - ENVIRON$ function
             writeln_code!(output, "QbString* qb_environ(QbString* name) {{")?;
@@ -788,10 +772,7 @@ pub(in crate::codegen) fn emit_header_with_debug(
                 output,
                 "int32_t qb_green(uint32_t c, int32_t mode) {{ (void)mode; return (c >> 8) & 0xFF; }}"
             )?;
-            writeln_code!(
-                output,
-                "int32_t qb_lbound(void* arr) {{ (void)arr; return 0; }}"
-            )?;
+            // qb_lbound / qb_lbound2 - provided by runtime library (qb64fresh_rt.h)
             writeln_code!(
                 output,
                 "int32_t qb_loadfont3(QbString* path, int32_t size, QbString* req) {{ (void)path; (void)size; (void)req; return 0; }}"
@@ -857,6 +838,13 @@ pub(in crate::codegen) fn emit_header_with_debug(
             writeln_code!(output, "        }}")?;
             writeln_code!(output, "    }}")?;
             writeln_code!(output, "    qb_last_frame_time = qb_get_time_seconds();")?;
+            writeln_code!(
+                output,
+                "    /* Poll SDL2 events to keep window responsive */"
+            )?;
+            writeln_code!(output, "    qb_gfx_poll_events();")?;
+            writeln_code!(output, "    /* Update display */")?;
+            writeln_code!(output, "    qb_gfx_display();")?;
             writeln_code!(output, "}}")?;
             writeln_code!(output)?;
             // Note: qb_strig_check_event and qb_strig_event_done are provided by the runtime library
@@ -1147,6 +1135,10 @@ fn emit_forward_declarations(output: &mut String) -> Result<(), CodeGenError> {
         output,
         "/* Forward declarations for cross-module dependencies */"
     )?;
+
+    // Forward declare qb_string type so function prototypes can use it
+    // The full struct definition comes later in types::emit_string_type
+    writeln_code!(output, "typedef struct QbString qb_string;")?;
 
     // Graphics warning function (defined in graphics.rs, used by memory.rs and system.rs)
     writeln_code!(output, "static void _qb_gfx_warn(void);")?;
