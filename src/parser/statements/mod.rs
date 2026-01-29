@@ -134,8 +134,8 @@ impl<'a> Parser<'a> {
             TokenKind::MetaStatic => self.parse_meta_static(),
             TokenKind::MetaDynamic => self.parse_meta_dynamic(),
             TokenKind::MetaDebug => self.parse_meta_debug(),
-            TokenKind::MetaAsserts => self.parse_meta_asserts(false),
-            TokenKind::MetaAssertsConsole => self.parse_meta_asserts(true),
+            // Note: $ASSERTS and $ASSERTS:CONSOLE are handled in parse_meta_command
+            // due to logos bug (similar to $CONSOLE)
             TokenKind::MetaIncludeOnce => self.parse_meta_includeonce(),
             TokenKind::MetaExeIcon => self.parse_meta_exeicon(),
             TokenKind::MetaVersionInfo => self.parse_meta_versioninfo(),
