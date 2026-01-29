@@ -313,6 +313,29 @@ fn main() {
                 std::process::exit(1);
             }
         }
+
+        // Write resource files (icon.rc, manifest.h, *.manifest) if any
+        if !output.resource_files.is_empty() {
+            let output_dir = output_path
+                .parent()
+                .unwrap_or_else(|| std::path::Path::new("."));
+            for (filename, content) in &output.resource_files {
+                let resource_path = output_dir.join(filename);
+                match fs::write(&resource_path, content) {
+                    Ok(()) => {
+                        println!("Generated: {}", resource_path.display());
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "Warning: Error writing resource file '{}': {}",
+                            resource_path.display(),
+                            e
+                        );
+                    }
+                }
+            }
+        }
+
         return;
     }
 

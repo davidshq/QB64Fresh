@@ -52,6 +52,13 @@ pub struct GeneratedOutput {
 
     /// Suggested file extension for the output.
     pub extension: String,
+
+    /// Windows resource files (generated from $EXEICON and $VERSIONINFO).
+    ///
+    /// Map of filename -> content for resource files that should be written
+    /// alongside the generated C code. Keys are filenames like "icon.rc",
+    /// "manifest.h", "{basename}.manifest".
+    pub resource_files: std::collections::HashMap<String, String>,
 }
 
 impl GeneratedOutput {
@@ -61,7 +68,13 @@ impl GeneratedOutput {
             code,
             format: "C99".to_string(),
             extension: "c".to_string(),
+            resource_files: std::collections::HashMap::new(),
         }
+    }
+
+    /// Adds a resource file to the output.
+    pub fn add_resource_file(&mut self, filename: String, content: String) {
+        self.resource_files.insert(filename, content);
     }
 }
 
@@ -185,6 +198,7 @@ mod tests {
         let output = GeneratedOutput::c_code("int main() { return 0; }".to_string());
         assert_eq!(output.format, "C99");
         assert_eq!(output.extension, "c");
+        assert!(output.resource_files.is_empty());
     }
 
     #[test]

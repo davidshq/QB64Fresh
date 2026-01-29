@@ -56,6 +56,7 @@ mod const_fold;
 mod expr;
 mod file_io;
 mod implicit_vars;
+mod resources;
 mod runtime;
 mod stmt;
 mod type_registry;
@@ -76,6 +77,7 @@ use self::analysis::{
     collect_type_definitions,
 };
 use self::implicit_vars::collect_implicit_locals;
+use self::resources::{ResourceInfo, generate_resource_files};
 use self::runtime::emit_header_with_debug;
 use self::stmt::{StmtEmitter, emit_dynamic_library_section, emit_params};
 use self::types::c_identifier;
@@ -1095,7 +1097,47 @@ impl CodeGenerator for CBackend {
         collect_err!(ctx, writeln_code!(&mut output, "    return 0;"));
         collect_err!(ctx, writeln_code!(&mut output, "}}"));
 
-        ctx.into_result(GeneratedOutput::c_code(output))
+        // Collect and generate resource files from $EXEICON and $VERSIONINFO
+        let mut generated_output = GeneratedOutput::c_code(output);
+        let resource_info = match ResourceInfo::collect_from_program(&program.statements) {
+            Ok(info) => info,
+            Err(errors) => {
+                for err in errors {
+                    ctx.push_error(err);
+                }
+                ResourceInfo::new()
+            }
+        };
+
+        if resource_info.has_resources() {
+            // Determine output base name from source file or use default
+            let output_base = self
+                .source_file
+                .as_ref()
+                .and_then(|f| std::path::Path::new(f).file_stem().and_then(|s| s.to_str()))
+                .unwrap_or("output")
+                .to_string();
+
+            match generate_resource_files(&resource_info, &output_base) {
+                Ok((rc_content, manifest_h, manifest_xml)) => {
+                    if !rc_content.is_empty() {
+                        generated_output.add_resource_file("icon.rc".to_string(), rc_content);
+                    }
+                    if !manifest_h.is_empty() {
+                        generated_output.add_resource_file("manifest.h".to_string(), manifest_h);
+                    }
+                    if !manifest_xml.is_empty() {
+                        generated_output
+                            .add_resource_file(format!("{}.manifest", output_base), manifest_xml);
+                    }
+                }
+                Err(e) => {
+                    ctx.push_error(e);
+                }
+            }
+        }
+
+        ctx.into_result(generated_output)
     }
 
     fn backend_name(&self) -> &str {
