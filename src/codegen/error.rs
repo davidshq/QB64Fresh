@@ -82,6 +82,12 @@ pub enum CodeGenErrorKind {
 
     /// Failed to write output.
     IoError(String),
+
+    /// Resource file generation error (e.g., duplicate $EXEICON, invalid version info).
+    ResourceError {
+        /// Error message describing the resource error.
+        message: String,
+    },
 }
 
 impl fmt::Display for CodeGenErrorKind {
@@ -101,6 +107,9 @@ impl fmt::Display for CodeGenErrorKind {
             }
             CodeGenErrorKind::IoError(msg) => {
                 write!(f, "I/O error: {}", msg)
+            }
+            CodeGenErrorKind::ResourceError { message } => {
+                write!(f, "resource error: {}", message)
             }
         }
     }
