@@ -245,3 +245,22 @@ impl<'a> TypeChecker<'a> {
         TypedStatement::new(TypedStatementKind::Randomize { seed: typed_seed }, span)
     }
 }
+
+/// Dispatch function for data statements.
+pub(super) fn check_data_stmt(
+    checker: &mut super::super::TypeChecker,
+    kind: &crate::ast::StatementKind,
+    span: crate::ast::Span,
+) -> crate::semantic::typed_ir::TypedStatement {
+    match kind {
+        crate::ast::StatementKind::Data { values } => checker.check_data(values, span),
+        crate::ast::StatementKind::Read { targets } => checker.check_read(targets, span),
+        crate::ast::StatementKind::Restore { label } => {
+            checker.check_restore(label.as_deref(), span)
+        }
+        crate::ast::StatementKind::Randomize { seed } => {
+            checker.check_randomize(seed.as_ref(), span)
+        }
+        _ => unreachable!("Not a data statement"),
+    }
+}

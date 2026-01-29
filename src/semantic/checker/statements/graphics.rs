@@ -777,3 +777,181 @@ impl<'a> TypeChecker<'a> {
         TypedStatement::new(TypedStatementKind::AutoDisplay { enabled }, span)
     }
 }
+
+/// Dispatch function for graphics statements.
+pub(super) fn check_graphics_stmt(
+    checker: &mut super::super::TypeChecker,
+    kind: &crate::ast::StatementKind,
+    span: crate::ast::Span,
+) -> crate::semantic::typed_ir::TypedStatement {
+    match kind {
+        crate::ast::StatementKind::Screen {
+            mode,
+            color_switch,
+            active_page,
+            visual_page,
+        } => checker.check_screen(
+            mode.as_ref(),
+            color_switch.as_ref(),
+            active_page.as_ref(),
+            visual_page.as_ref(),
+            span,
+        ),
+        crate::ast::StatementKind::Cls { mode } => checker.check_cls(mode.as_ref(), span),
+        crate::ast::StatementKind::Color {
+            foreground,
+            background,
+            border,
+        } => checker.check_color(
+            foreground.as_ref(),
+            background.as_ref(),
+            border.as_ref(),
+            span,
+        ),
+        crate::ast::StatementKind::Locate { row, col } => {
+            checker.check_locate(row.as_ref(), col.as_ref(), span)
+        }
+        crate::ast::StatementKind::Pset { step, x, y, color } => {
+            checker.check_pset(*step, x, y, color.as_ref(), span)
+        }
+        crate::ast::StatementKind::Preset { step, x, y } => checker.check_preset(*step, x, y, span),
+        crate::ast::StatementKind::Line {
+            x1,
+            y1,
+            x2,
+            y2,
+            step2,
+            color,
+            box_style,
+            style,
+        } => checker.check_line(
+            x1.as_ref(),
+            y1.as_ref(),
+            x2,
+            y2,
+            *step2,
+            color.as_ref(),
+            *box_style,
+            style.as_ref(),
+            span,
+        ),
+        crate::ast::StatementKind::Circle {
+            step,
+            x,
+            y,
+            radius,
+            color,
+            filled,
+        } => checker.check_circle(*step, x, y, radius, color.as_ref(), *filled, span),
+        crate::ast::StatementKind::Paint {
+            step,
+            x,
+            y,
+            color,
+            border,
+        } => checker.check_paint(*step, x, y, color.as_ref(), border.as_ref(), span),
+        crate::ast::StatementKind::GfxDisplay => checker.check_gfx_display(span),
+        crate::ast::StatementKind::ControlChr { enabled } => {
+            checker.check_control_chr(*enabled, span)
+        }
+        crate::ast::StatementKind::MapUnicode {
+            unicode_value,
+            char_position,
+        } => checker.check_map_unicode(unicode_value, char_position, span),
+        crate::ast::StatementKind::GfxResize { enabled } => {
+            checker.check_gfx_resize(*enabled, span)
+        }
+        crate::ast::StatementKind::Palette { attribute, color } => {
+            checker.check_palette(attribute.as_ref(), color.as_ref(), span)
+        }
+        crate::ast::StatementKind::Pcopy { source, dest } => {
+            checker.check_pcopy(source, dest, span)
+        }
+        crate::ast::StatementKind::Width { columns, rows } => {
+            checker.check_width(columns, rows.as_ref(), span)
+        }
+        crate::ast::StatementKind::View {
+            screen,
+            coords,
+            fill_color,
+            border_color,
+        } => checker.check_view(
+            *screen,
+            coords.as_ref(),
+            fill_color.as_ref(),
+            border_color.as_ref(),
+            span,
+        ),
+        crate::ast::StatementKind::ViewPrint { top, bottom } => {
+            checker.check_view_print(top.as_ref(), bottom.as_ref(), span)
+        }
+        crate::ast::StatementKind::WindowCoords { screen, coords } => {
+            checker.check_window(*screen, coords.as_ref(), span)
+        }
+        crate::ast::StatementKind::DrawCmd { commands } => checker.check_draw_cmd(commands, span),
+        crate::ast::StatementKind::GraphicsGet {
+            step1,
+            x1,
+            y1,
+            step2,
+            x2,
+            y2,
+            array_name,
+            array_indices,
+        } => checker.check_gfx_get(
+            *step1,
+            x1,
+            y1,
+            *step2,
+            x2,
+            y2,
+            array_name,
+            array_indices,
+            span,
+        ),
+        crate::ast::StatementKind::GraphicsPut {
+            x,
+            y,
+            step,
+            array_name,
+            array_indices,
+            clip,
+            action,
+            transparent_color,
+        } => checker.check_gfx_put(
+            x,
+            y,
+            *step,
+            array_name,
+            array_indices,
+            *clip,
+            *action,
+            transparent_color.as_ref(),
+            span,
+        ),
+        crate::ast::StatementKind::FreeImage { handle } => checker.check_free_image(handle, span),
+        crate::ast::StatementKind::PutImage {
+            dest_coords,
+            source,
+            dest,
+            source_coords,
+            scale_mode,
+        } => checker.check_put_image(
+            dest_coords.as_deref(),
+            source.as_ref(),
+            dest.as_ref(),
+            source_coords.as_deref(),
+            *scale_mode,
+            span,
+        ),
+        crate::ast::StatementKind::SourceImg { handle } => checker.check_source_img(handle, span),
+        crate::ast::StatementKind::DestImg { handle } => checker.check_dest_img(handle, span),
+        crate::ast::StatementKind::PrintStringStmt { x, y, text } => {
+            checker.check_print_string_stmt(x, y, text, span)
+        }
+        crate::ast::StatementKind::AutoDisplay { enabled } => {
+            checker.check_auto_display(*enabled, span)
+        }
+        _ => unreachable!("Not a graphics statement"),
+    }
+}
