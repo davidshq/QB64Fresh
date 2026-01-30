@@ -1,0 +1,10 @@
+---
+alwaysApply: true
+---
+When building QB64pe, remember:
+1. Make sure you have a build of QB64Fresh that includes all the latest code changes.
+2. Make sure you compile QB64pe in its directory (../QB64pe) so it has access to all its files.
+3. Make sure you cap it at 4 GB of RAM (it shouldn't need nearly that much).
+4. Make sure you run it and attempt to use the IDE.
+5. Troubleshoot any problems.
+6. You may want to use a C profiler to help you understand why it isn't working.

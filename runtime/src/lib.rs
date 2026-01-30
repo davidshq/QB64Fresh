@@ -120,36 +120,13 @@ pub unsafe extern "C" fn qb_run(path: *const crate::string::QbString) {
 // Program Initialization Functions
 // ============================================================================
 
-use std::os::raw::c_char;
 use std::sync::OnceLock;
-
-/// Storage for command line arguments
-static ARGS: OnceLock<(i32, Vec<String>)> = OnceLock::new();
 
 /// Storage for starting directory
 static START_DIR: OnceLock<String> = OnceLock::new();
 
-/// Initialize command line arguments.
-///
-/// Stores argc and argv for later access by COMMAND$ function.
-///
-/// # Safety
-/// - `argv` must be a valid array of null-terminated C strings with `argc` elements
-#[no_mangle]
-pub unsafe extern "C" fn qb_init_args(argc: i32, argv: *const *const c_char) {
-    let mut args = Vec::new();
-    if !argv.is_null() && argc > 0 {
-        for i in 0..argc as usize {
-            let arg_ptr = *argv.add(i);
-            if !arg_ptr.is_null() {
-                if let Ok(s) = std::ffi::CStr::from_ptr(arg_ptr).to_str() {
-                    args.push(s.to_string());
-                }
-            }
-        }
-    }
-    let _ = ARGS.set((argc, args));
-}
+/// Command-line args are set by generated C's `qb_init_args` (sets _qb_argc/_qb_argv)
+/// so COMMAND$(n) and _COMMANDCOUNT work. The library does not export qb_init_args.
 
 /// Initialize the starting directory.
 ///

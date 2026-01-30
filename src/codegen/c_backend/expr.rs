@@ -43,8 +43,14 @@ use super::types::{c_identifier, c_type};
 ///
 /// `byref_scalar_names` contains BYREF scalar parameter names that need to be dereferenced
 /// when accessed (they are pointers in the generated C code).
+/// `byref_string_names` contains BYREF string parameter C names; we must not apply
+/// variable_renames to them so we use the local name (e.g. `a_str`) that emit_byref_copies
+/// created, not the global scalar name (e.g. `a_str_scalar`).
+/// `byref_string_basic_names` is the parallel list of BASIC parameter names; used to match
+/// abbreviated variable references (e.g. Variable "e" → param "elements" → use "elements_str").
 /// Set of C names for external functions from DECLARE DYNAMIC LIBRARY.
 /// When non-empty and `c_name` is in the set, calls use the function pointer `qb_dyn_<c_name>`.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn emit_expr(
     expr: &TypedExpr,
     no_shell: bool,
@@ -52,6 +58,8 @@ pub(super) fn emit_expr(
     param_names: &std::collections::HashSet<String>,
     byref_scalar_names: &std::collections::HashSet<String>,
     byref_udt_names: &std::collections::HashSet<String>,
+    byref_string_names: &[String],
+    byref_string_basic_names: &[String],
     dynamic_external_c_names: &std::collections::HashSet<String>,
 ) -> Result<String, CodeGenError> {
     emit_expr_internal(
@@ -61,6 +69,8 @@ pub(super) fn emit_expr(
         param_names,
         byref_scalar_names,
         byref_udt_names,
+        byref_string_names,
+        byref_string_basic_names,
         dynamic_external_c_names,
         false,
     )
@@ -74,6 +84,7 @@ pub(super) fn emit_expr(
 ///
 /// This is needed for external runtime because the Rust library functions don't
 /// internally register strings with the temp pool, unlike the inline C runtime.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn emit_expr_external(
     expr: &TypedExpr,
     no_shell: bool,
@@ -81,6 +92,8 @@ pub(super) fn emit_expr_external(
     param_names: &std::collections::HashSet<String>,
     byref_scalar_names: &std::collections::HashSet<String>,
     byref_udt_names: &std::collections::HashSet<String>,
+    byref_string_names: &[String],
+    byref_string_basic_names: &[String],
     dynamic_external_c_names: &std::collections::HashSet<String>,
 ) -> Result<String, CodeGenError> {
     emit_expr_internal(
@@ -90,6 +103,8 @@ pub(super) fn emit_expr_external(
         param_names,
         byref_scalar_names,
         byref_udt_names,
+        byref_string_names,
+        byref_string_basic_names,
         dynamic_external_c_names,
         true,
     )
@@ -104,6 +119,8 @@ fn emit_expr_internal(
     param_names: &std::collections::HashSet<String>,
     byref_scalar_names: &std::collections::HashSet<String>,
     byref_udt_names: &std::collections::HashSet<String>,
+    byref_string_names: &[String],
+    byref_string_basic_names: &[String],
     dynamic_external_c_names: &std::collections::HashSet<String>,
     wrap_string_temps: bool,
 ) -> Result<String, CodeGenError> {
@@ -152,31 +169,52 @@ fn emit_expr_internal(
 
         TypedExprKind::Variable(name) => {
             let mut c_name = c_identifier(name);
+            // If the variable could be a BYREF string param by abbreviation (e.g. "e" for "elements"),
+            // use that param's C name so we emit the local (value), not the global scalar.
+            // Only do this when the variable is actually string-typed; otherwise we would emit
+            // e.g. n2_str (QbString*) where an integer is expected (FOR end value, array index).
+            let mut resolved_byref_param = byref_string_names.contains(&c_name);
+            if !resolved_byref_param
+                && !byref_string_basic_names.is_empty()
+                && byref_string_basic_names.len() == byref_string_names.len()
+                && expr.basic_type.is_string()
+                && let Some(i) = byref_string_basic_names.iter().position(|basic| {
+                    basic.eq_ignore_ascii_case(name)
+                        || (name.len() <= basic.len()
+                            && basic.to_lowercase().starts_with(&name.to_lowercase()))
+                })
+            {
+                c_name = byref_string_names[i].clone();
+                resolved_byref_param = true;
+            }
             // Apply variable renaming if this variable was renamed to avoid parameter shadowing.
             // However, if the variable name is also a parameter name, and this is a simple variable
             // reference (not array access), we should use the parameter name instead of the renamed
             // local variable. This handles cases like `countFunctionElements(args)` where `args`
             // is a parameter, not the local variable that shadows it.
             if let Some(renamed) = variable_renames.get(&c_name) {
-                // Only apply rename if this is NOT a parameter name, or if it's an array access
-                // (which would refer to the local array, not the parameter)
-                if !param_names.contains(&c_name) {
+                // Only apply rename if this is NOT a parameter name, and NOT a BYREF string
+                // parameter. BYREF string params get a local (e.g. a_str) from emit_byref_copies;
+                // we must use that name, not the global scalar name (e.g. a_str_scalar).
+                if !param_names.contains(&c_name) && !resolved_byref_param {
                     c_name = renamed.clone();
                 }
             }
             // Check if this is a BYREF scalar parameter - if so, dereference the pointer
+            // to get the value. Exception: BYREF string parameters get a local that is
+            // already the value (QbString* name = *name_ref or char* name = (*name_ref)),
+            // so we must emit the variable name (value), not *name.
             let needs_deref = byref_scalar_names.contains(&c_name);
+            let is_byref_string = needs_deref && expr.basic_type.is_string();
             // Fixed-length strings are char arrays in C, but need to be wrapped
             // when used in contexts expecting qb_string* (e.g., string concatenation)
             if matches!(expr.basic_type, BasicType::FixedString(_)) {
-                if needs_deref {
-                    Ok(format!("qb_str_from_c(*{})", c_name))
-                } else {
-                    Ok(format!("qb_str_from_c({})", c_name))
-                }
-            } else if needs_deref {
+                // BYREF fixed-length: local is char* (value); never dereference
+                Ok(format!("qb_str_from_c({})", c_name))
+            } else if needs_deref && !is_byref_string {
                 Ok(format!("*{}", c_name))
             } else {
+                // BYREF string: local is QbString* (value); use as-is
                 Ok(c_name)
             }
         }
@@ -190,6 +228,8 @@ fn emit_expr_internal(
             param_names,
             byref_scalar_names,
             byref_udt_names,
+            byref_string_names,
+            byref_string_basic_names,
             dynamic_external_c_names,
             wrap_string_temps,
         ),
@@ -202,6 +242,8 @@ fn emit_expr_internal(
                 param_names,
                 byref_scalar_names,
                 byref_udt_names,
+                byref_string_names,
+                byref_string_basic_names,
                 dynamic_external_c_names,
                 wrap_string_temps,
             )?;
@@ -220,6 +262,8 @@ fn emit_expr_internal(
                 param_names,
                 byref_scalar_names,
                 byref_udt_names,
+                byref_string_names,
+                byref_string_basic_names,
                 dynamic_external_c_names,
                 wrap_string_temps,
             )?;
@@ -243,6 +287,8 @@ fn emit_expr_internal(
                             param_names,
                             byref_scalar_names,
                             byref_udt_names,
+                            byref_string_names,
+                            byref_string_basic_names,
                             dynamic_external_c_names,
                         )
                     })
@@ -268,6 +314,8 @@ fn emit_expr_internal(
                             param_names,
                             byref_scalar_names,
                             byref_udt_names,
+                            byref_string_names,
+                            byref_string_basic_names,
                             dynamic_external_c_names,
                         )
                     })
@@ -288,6 +336,8 @@ fn emit_expr_internal(
                             param_names,
                             byref_scalar_names,
                             byref_udt_names,
+                            byref_string_names,
+                            byref_string_basic_names,
                             dynamic_external_c_names,
                         )
                     })
@@ -309,6 +359,8 @@ fn emit_expr_internal(
                             param_names,
                             byref_scalar_names,
                             byref_udt_names,
+                            byref_string_names,
+                            byref_string_basic_names,
                             dynamic_external_c_names,
                         )
                     })
@@ -331,6 +383,8 @@ fn emit_expr_internal(
                     param_names,
                     byref_scalar_names,
                     byref_udt_names,
+                    byref_string_names,
+                    byref_string_basic_names,
                     dynamic_external_c_names,
                 )?;
                 // For fixed-length strings, unwrap qb_str_from_c() if present
@@ -355,6 +409,8 @@ fn emit_expr_internal(
                             param_names,
                             byref_scalar_names,
                             byref_udt_names,
+                            byref_string_names,
+                            byref_string_basic_names,
                             dynamic_external_c_names,
                         )
                     })
@@ -373,6 +429,8 @@ fn emit_expr_internal(
                     param_names,
                     byref_scalar_names,
                     byref_udt_names,
+                    byref_string_names,
+                    byref_string_basic_names,
                     dynamic_external_c_names,
                 )?;
                 // For fixed-length strings, unwrap qb_str_from_c() if present
@@ -397,6 +455,8 @@ fn emit_expr_internal(
                             param_names,
                             byref_scalar_names,
                             byref_udt_names,
+                            byref_string_names,
+                            byref_string_basic_names,
                             dynamic_external_c_names,
                         )
                     })
@@ -414,6 +474,8 @@ fn emit_expr_internal(
                     param_names,
                     byref_scalar_names,
                     byref_udt_names,
+                    byref_string_names,
+                    byref_string_basic_names,
                     dynamic_external_c_names,
                 )?;
                 if args[0].basic_type.is_string() {
@@ -443,6 +505,8 @@ fn emit_expr_internal(
                         param_names,
                         byref_scalar_names,
                         byref_udt_names,
+                        byref_string_names,
+                        byref_string_basic_names,
                         dynamic_external_c_names,
                     )?;
                     return Ok(format!("((int32_t)(intptr_t)&({}))", arg_code));
@@ -469,6 +533,8 @@ fn emit_expr_internal(
                         param_names,
                         byref_scalar_names,
                         byref_udt_names,
+                        byref_string_names,
+                        byref_string_basic_names,
                         dynamic_external_c_names,
                     )?;
                     return Ok(format!("qb_varptr_str(&({}))", arg_code));
@@ -492,6 +558,8 @@ fn emit_expr_internal(
                     param_names,
                     byref_scalar_names,
                     byref_udt_names,
+                    byref_string_names,
+                    byref_string_basic_names,
                     dynamic_external_c_names,
                 )?;
                 return Ok(format!("((int32_t)(intptr_t)({}).data)", arg_code));
@@ -509,6 +577,8 @@ fn emit_expr_internal(
                             param_names,
                             byref_scalar_names,
                             byref_udt_names,
+                            byref_string_names,
+                            byref_string_basic_names,
                             dynamic_external_c_names,
                         )
                     })
@@ -535,6 +605,8 @@ fn emit_expr_internal(
                             param_names,
                             byref_scalar_names,
                             byref_udt_names,
+                            byref_string_names,
+                            byref_string_basic_names,
                             dynamic_external_c_names,
                         )
                     })
@@ -572,6 +644,8 @@ fn emit_expr_internal(
                             param_names,
                             byref_scalar_names,
                             byref_udt_names,
+                            byref_string_names,
+                            byref_string_basic_names,
                             dynamic_external_c_names,
                         )
                     })
@@ -598,6 +672,8 @@ fn emit_expr_internal(
                             param_names,
                             byref_scalar_names,
                             byref_udt_names,
+                            byref_string_names,
+                            byref_string_basic_names,
                             dynamic_external_c_names,
                         )
                     })
@@ -624,6 +700,8 @@ fn emit_expr_internal(
                             param_names,
                             byref_scalar_names,
                             byref_udt_names,
+                            byref_string_names,
+                            byref_string_basic_names,
                             dynamic_external_c_names,
                         )
                     })
@@ -654,6 +732,8 @@ fn emit_expr_internal(
                         param_names,
                         byref_scalar_names,
                         byref_udt_names,
+                        byref_string_names,
+                        byref_string_basic_names,
                         dynamic_external_c_names,
                     )?;
                     // Convert QbString* to const char* using qb_string_data()
@@ -683,6 +763,8 @@ fn emit_expr_internal(
                             param_names,
                             byref_scalar_names,
                             byref_udt_names,
+                            byref_string_names,
+                            byref_string_basic_names,
                             dynamic_external_c_names,
                         )
                     })
@@ -711,6 +793,8 @@ fn emit_expr_internal(
                             param_names,
                             byref_scalar_names,
                             byref_udt_names,
+                            byref_string_names,
+                            byref_string_basic_names,
                             dynamic_external_c_names,
                         )
                     })
@@ -748,6 +832,8 @@ fn emit_expr_internal(
                             param_names,
                             byref_scalar_names,
                             byref_udt_names,
+                            byref_string_names,
+                            byref_string_basic_names,
                             dynamic_external_c_names,
                         )
                     })
@@ -772,6 +858,8 @@ fn emit_expr_internal(
                             param_names,
                             byref_scalar_names,
                             byref_udt_names,
+                            byref_string_names,
+                            byref_string_basic_names,
                             dynamic_external_c_names,
                         )
                     })
@@ -792,6 +880,8 @@ fn emit_expr_internal(
                             param_names,
                             byref_scalar_names,
                             byref_udt_names,
+                            byref_string_names,
+                            byref_string_basic_names,
                             dynamic_external_c_names,
                         )
                     })
@@ -813,6 +903,8 @@ fn emit_expr_internal(
                             param_names,
                             byref_scalar_names,
                             byref_udt_names,
+                            byref_string_names,
+                            byref_string_basic_names,
                             dynamic_external_c_names,
                         )
                     })
@@ -833,6 +925,8 @@ fn emit_expr_internal(
                             param_names,
                             byref_scalar_names,
                             byref_udt_names,
+                            byref_string_names,
+                            byref_string_basic_names,
                             dynamic_external_c_names,
                         )
                     })
@@ -856,6 +950,8 @@ fn emit_expr_internal(
                                 param_names,
                                 byref_scalar_names,
                                 byref_udt_names,
+                                byref_string_names,
+                                byref_string_basic_names,
                                 dynamic_external_c_names,
                             )
                         })
@@ -877,6 +973,8 @@ fn emit_expr_internal(
                             param_names,
                             byref_scalar_names,
                             byref_udt_names,
+                            byref_string_names,
+                            byref_string_basic_names,
                             dynamic_external_c_names,
                         )
                     })
@@ -904,6 +1002,8 @@ fn emit_expr_internal(
                             param_names,
                             byref_scalar_names,
                             byref_udt_names,
+                            byref_string_names,
+                            byref_string_basic_names,
                             dynamic_external_c_names,
                         )
                     })
@@ -937,6 +1037,8 @@ fn emit_expr_internal(
                             param_names,
                             byref_scalar_names,
                             byref_udt_names,
+                            byref_string_names,
+                            byref_string_basic_names,
                             dynamic_external_c_names,
                         )
                     })
@@ -962,6 +1064,8 @@ fn emit_expr_internal(
                             param_names,
                             byref_scalar_names,
                             byref_udt_names,
+                            byref_string_names,
+                            byref_string_basic_names,
                             dynamic_external_c_names,
                         )
                     })
@@ -986,6 +1090,8 @@ fn emit_expr_internal(
                     param_names,
                     byref_scalar_names,
                     byref_udt_names,
+                    byref_string_names,
+                    byref_string_basic_names,
                     dynamic_external_c_names,
                 )?;
                 // Convert QbString* to const char* using qb_string_data()
@@ -1010,6 +1116,8 @@ fn emit_expr_internal(
                     param_names,
                     byref_scalar_names,
                     byref_udt_names,
+                    byref_string_names,
+                    byref_string_basic_names,
                     dynamic_external_c_names,
                 )?;
                 // Convert QbString* to const char* using qb_string_data()
@@ -1033,6 +1141,8 @@ fn emit_expr_internal(
                     param_names,
                     byref_scalar_names,
                     byref_udt_names,
+                    byref_string_names,
+                    byref_string_basic_names,
                     dynamic_external_c_names,
                 )?;
                 // Convert QbString* to const char* using qb_string_data()
@@ -1058,6 +1168,8 @@ fn emit_expr_internal(
                         param_names,
                         byref_scalar_names,
                         byref_udt_names,
+                        byref_string_names,
+                        byref_string_basic_names,
                         dynamic_external_c_names,
                     )?;
                     // Check if expression is an lvalue (can take address of)
@@ -1112,6 +1224,8 @@ fn emit_expr_internal(
                         param_names,
                         byref_scalar_names,
                         byref_udt_names,
+                        byref_string_names,
+                        byref_string_basic_names,
                         dynamic_external_c_names,
                     )?;
                     // Check if expression is an lvalue (can take address of)
@@ -1171,6 +1285,8 @@ fn emit_expr_internal(
                         param_names,
                         byref_scalar_names,
                         byref_udt_names,
+                        byref_string_names,
+                        byref_string_basic_names,
                         dynamic_external_c_names,
                         wrap_string_temps,
                     )?;
@@ -1329,6 +1445,8 @@ fn emit_expr_internal(
                         param_names,
                         byref_scalar_names,
                         byref_udt_names,
+                        byref_string_names,
+                        byref_string_basic_names,
                         dynamic_external_c_names,
                         wrap_string_temps,
                     )?;
@@ -1368,6 +1486,8 @@ fn emit_expr_internal(
                 param_names,
                 byref_scalar_names,
                 byref_udt_names,
+                byref_string_names,
+                byref_string_basic_names,
                 dynamic_external_c_names,
             )?;
             // Fixed-length string array elements need conversion to qb_string*
@@ -1386,6 +1506,8 @@ fn emit_expr_internal(
                 param_names,
                 byref_scalar_names,
                 byref_udt_names,
+                byref_string_names,
+                byref_string_basic_names,
                 dynamic_external_c_names,
             )?;
 
@@ -1413,6 +1535,8 @@ fn emit_expr_internal(
                 param_names,
                 byref_scalar_names,
                 byref_udt_names,
+                byref_string_names,
+                byref_string_basic_names,
                 dynamic_external_c_names,
             )?;
             let c_field = c_identifier(field);
@@ -1462,6 +1586,8 @@ fn emit_expr_internal(
                 param_names,
                 byref_scalar_names,
                 byref_udt_names,
+                byref_string_names,
+                byref_string_basic_names,
                 dynamic_external_c_names,
             )
         }
@@ -1479,6 +1605,8 @@ fn emit_expr_internal(
                 param_names,
                 byref_scalar_names,
                 byref_udt_names,
+                byref_string_names,
+                byref_string_basic_names,
                 dynamic_external_c_names,
             )?;
             // Use the appropriate qb_cv* function based on target type
@@ -1501,6 +1629,8 @@ fn emit_expr_internal(
                 param_names,
                 byref_scalar_names,
                 byref_udt_names,
+                byref_string_names,
+                byref_string_basic_names,
                 dynamic_external_c_names,
             )?;
             // Use the appropriate qb_mk*$ function based on source type
@@ -1523,6 +1653,8 @@ fn emit_expr_internal(
                 param_names,
                 byref_scalar_names,
                 byref_udt_names,
+                byref_string_names,
+                byref_string_basic_names,
                 dynamic_external_c_names,
             )?;
             // Explicit cast to the target C type
@@ -1538,6 +1670,8 @@ fn emit_expr_internal(
                 param_names,
                 byref_scalar_names,
                 byref_udt_names,
+                byref_string_names,
+                byref_string_basic_names,
                 dynamic_external_c_names,
             )?;
             // VAL with type specifier uses specific conversion functions
@@ -1568,6 +1702,8 @@ fn emit_expr_internal(
                 param_names,
                 byref_scalar_names,
                 byref_udt_names,
+                byref_string_names,
+                byref_string_basic_names,
                 dynamic_external_c_names,
             )?;
             let offset_code = emit_expr(
@@ -1577,6 +1713,8 @@ fn emit_expr_internal(
                 param_names,
                 byref_scalar_names,
                 byref_udt_names,
+                byref_string_names,
+                byref_string_basic_names,
                 dynamic_external_c_names,
             )?;
             // _MEMGET reads raw bytes from memory at the given offset
@@ -1605,6 +1743,8 @@ fn emit_external_function_call(
     param_names: &std::collections::HashSet<String>,
     byref_scalar_names: &std::collections::HashSet<String>,
     byref_udt_names: &std::collections::HashSet<String>,
+    byref_string_names: &[String],
+    byref_string_basic_names: &[String],
     dynamic_external_c_names: &std::collections::HashSet<String>,
 ) -> Result<String, CodeGenError> {
     let mut marshalled_args = Vec::new();
@@ -1617,6 +1757,8 @@ fn emit_external_function_call(
             param_names,
             byref_scalar_names,
             byref_udt_names,
+            byref_string_names,
+            byref_string_basic_names,
             dynamic_external_c_names,
         )?;
 
@@ -1651,6 +1793,8 @@ fn emit_binary_expr(
     param_names: &std::collections::HashSet<String>,
     byref_scalar_names: &std::collections::HashSet<String>,
     byref_udt_names: &std::collections::HashSet<String>,
+    byref_string_names: &[String],
+    byref_string_basic_names: &[String],
     dynamic_external_c_names: &std::collections::HashSet<String>,
     wrap_string_temps: bool,
 ) -> Result<String, CodeGenError> {
@@ -1661,6 +1805,8 @@ fn emit_binary_expr(
         param_names,
         byref_scalar_names,
         byref_udt_names,
+        byref_string_names,
+        byref_string_basic_names,
         dynamic_external_c_names,
         wrap_string_temps,
     )?;
@@ -1671,6 +1817,8 @@ fn emit_binary_expr(
         param_names,
         byref_scalar_names,
         byref_udt_names,
+        byref_string_names,
+        byref_string_basic_names,
         dynamic_external_c_names,
         wrap_string_temps,
     )?;
@@ -1788,6 +1936,8 @@ fn emit_array_access(
     param_names: &std::collections::HashSet<String>,
     byref_scalar_names: &std::collections::HashSet<String>,
     byref_udt_names: &std::collections::HashSet<String>,
+    byref_string_names: &[String],
+    byref_string_basic_names: &[String],
     dynamic_external_c_names: &std::collections::HashSet<String>,
 ) -> Result<String, CodeGenError> {
     let mut c_name = c_identifier(name);
@@ -1827,6 +1977,8 @@ fn emit_array_access(
                 param_names,
                 byref_scalar_names,
                 byref_udt_names,
+                byref_string_names,
+                byref_string_basic_names,
                 dynamic_external_c_names,
             )?;
             // Cast to int64_t to ensure integer subscript
@@ -2606,6 +2758,8 @@ mod tests {
             &HashSet::new(),
             &HashSet::new(),
             &HashSet::new(),
+            &[] as &[String],
+            &[] as &[String],
             &HashSet::new(),
         )
         .expect("emitting integer literal should succeed");
@@ -2622,6 +2776,8 @@ mod tests {
             &HashSet::new(),
             &HashSet::new(),
             &HashSet::new(),
+            &[] as &[String],
+            &[] as &[String],
             &HashSet::new(),
         )
         .expect("emitting string literal should succeed");
@@ -2647,6 +2803,8 @@ mod tests {
             &HashSet::new(),
             &HashSet::new(),
             &HashSet::new(),
+            &[] as &[String],
+            &[] as &[String],
             &HashSet::new(),
         )
         .expect("emitting constant-folded power operator should succeed");
@@ -2676,6 +2834,8 @@ mod tests {
             &HashSet::new(),
             &HashSet::new(),
             &HashSet::new(),
+            &[] as &[String],
+            &[] as &[String],
             &HashSet::new(),
         )
         .expect("emitting power operator with variable should succeed");
@@ -2701,6 +2861,8 @@ mod tests {
             &HashSet::new(),
             &HashSet::new(),
             &HashSet::new(),
+            &[] as &[String],
+            &[] as &[String],
             &HashSet::new(),
         )
         .expect("emitting constant-folded EQV operator should succeed");
@@ -2731,6 +2893,8 @@ mod tests {
             &HashSet::new(),
             &HashSet::new(),
             &HashSet::new(),
+            &[] as &[String],
+            &[] as &[String],
             &HashSet::new(),
         )
         .expect("emitting EQV operator with variable should succeed");
@@ -2756,6 +2920,8 @@ mod tests {
             &HashSet::new(),
             &HashSet::new(),
             &HashSet::new(),
+            &[] as &[String],
+            &[] as &[String],
             &HashSet::new(),
         )
         .expect("emitting constant-folded IMP operator should succeed");
@@ -2786,6 +2952,8 @@ mod tests {
             &HashSet::new(),
             &HashSet::new(),
             &HashSet::new(),
+            &[] as &[String],
+            &[] as &[String],
             &HashSet::new(),
         )
         .expect("emitting IMP operator with variable should succeed");

@@ -336,7 +336,17 @@ impl StmtEmitter {
 
         for target in targets {
             let (target_code, var_type) = match target {
-                Variable { name, basic_type } => (c_identifier(name), basic_type.clone()),
+                Variable { name, basic_type } => {
+                    let c_name = c_identifier(name);
+                    // Check if this variable was renamed (e.g., due to array/scalar name collision)
+                    let final_name =
+                        if let Some(renamed) = self.procedure.variable_renames.get(&c_name) {
+                            renamed.clone()
+                        } else {
+                            c_name
+                        };
+                    (final_name, basic_type.clone())
+                }
                 ArrayElement {
                     name,
                     indices,
@@ -386,8 +396,18 @@ impl StmtEmitter {
                     field_type,
                 } => {
                     let c_var = c_identifier(name);
+                    // Check if this variable was renamed (e.g., due to array/scalar name collision)
+                    let final_name =
+                        if let Some(renamed) = self.procedure.variable_renames.get(&c_var) {
+                            renamed.clone()
+                        } else {
+                            c_var
+                        };
                     let field_chain = fields.join(".");
-                    (format!("{}.{}", c_var, field_chain), field_type.clone())
+                    (
+                        format!("{}.{}", final_name, field_chain),
+                        field_type.clone(),
+                    )
                 }
             };
 
@@ -438,7 +458,15 @@ impl StmtEmitter {
         let file_num_code = self.emit_expr(file_num)?;
 
         let target_code = match target {
-            Variable { name, .. } => c_identifier(name),
+            Variable { name, .. } => {
+                let c_name = c_identifier(name);
+                // Check if this variable was renamed (e.g., due to array/scalar name collision)
+                if let Some(renamed) = self.procedure.variable_renames.get(&c_name) {
+                    renamed.clone()
+                } else {
+                    c_name
+                }
+            }
             ArrayElement {
                 name,
                 indices,
@@ -481,8 +509,15 @@ impl StmtEmitter {
             }
             Field { name, fields, .. } => {
                 let c_name = c_identifier(name);
+                // Check if this variable was renamed (e.g., due to array/scalar name collision)
+                let final_name = if let Some(renamed) = self.procedure.variable_renames.get(&c_name)
+                {
+                    renamed.clone()
+                } else {
+                    c_name
+                };
                 let field_chain = fields.join(".");
-                format!("{}.{}", c_name, field_chain)
+                format!("{}.{}", final_name, field_chain)
             }
         };
 
@@ -524,7 +559,17 @@ impl StmtEmitter {
 
         // Get target code and type for size calculation
         let (target_code, var_type) = match target {
-            Variable { name, basic_type } => (c_identifier(name), basic_type.clone()),
+            Variable { name, basic_type } => {
+                let c_name = c_identifier(name);
+                // Check if this variable was renamed (e.g., due to array/scalar name collision)
+                let final_name = if let Some(renamed) = self.procedure.variable_renames.get(&c_name)
+                {
+                    renamed.clone()
+                } else {
+                    c_name
+                };
+                (final_name, basic_type.clone())
+            }
             ArrayElement {
                 name,
                 indices,
@@ -574,8 +619,18 @@ impl StmtEmitter {
                 field_type,
             } => {
                 let c_name = c_identifier(name);
+                // Check if this variable was renamed (e.g., due to array/scalar name collision)
+                let final_name = if let Some(renamed) = self.procedure.variable_renames.get(&c_name)
+                {
+                    renamed.clone()
+                } else {
+                    c_name
+                };
                 let field_chain = fields.join(".");
-                (format!("{}.{}", c_name, field_chain), field_type.clone())
+                (
+                    format!("{}.{}", final_name, field_chain),
+                    field_type.clone(),
+                )
             }
         };
 
@@ -630,7 +685,17 @@ impl StmtEmitter {
 
         // Get target code and type for size calculation
         let (target_code, var_type) = match target {
-            Variable { name, basic_type } => (c_identifier(name), basic_type.clone()),
+            Variable { name, basic_type } => {
+                let c_name = c_identifier(name);
+                // Check if this variable was renamed (e.g., due to array/scalar name collision)
+                let final_name = if let Some(renamed) = self.procedure.variable_renames.get(&c_name)
+                {
+                    renamed.clone()
+                } else {
+                    c_name
+                };
+                (final_name, basic_type.clone())
+            }
             ArrayElement {
                 name,
                 indices,

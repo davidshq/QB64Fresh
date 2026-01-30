@@ -314,6 +314,8 @@ pub(super) fn collect_globals(
                             &std::collections::HashSet::new(),
                             &std::collections::HashSet::new(),
                             &std::collections::HashSet::new(),
+                            &[] as &[String],
+                            &[] as &[String],
                             &std::collections::HashSet::new(),
                         )
                         .unwrap_or_else(|_| "0".to_string());

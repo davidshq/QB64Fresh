@@ -108,6 +108,9 @@ pub(super) struct ProcedureContext {
     /// Current function's byref STRING parameter names (for EXIT FUNCTION writebacks).
     /// These need to be written back before any return statement.
     pub current_func_byref_strings: Vec<String>,
+    /// BYREF string parameter basic names (same order as `current_func_byref_strings`).
+    /// Used to match abbreviated variable references (e.g. Variable "e" → param "elements").
+    pub current_func_byref_string_basic_names: Vec<String>,
     /// Current function's parameter names (for detecting variable shadowing in DIM statements).
     /// In BASIC, local variables can shadow parameters, but in C this causes compilation errors.
     /// We need to rename local variables that shadow BYVAL parameters.
@@ -132,6 +135,7 @@ impl ProcedureContext {
             current_proc: None,
             current_func_ret_var: None,
             current_func_byref_strings: Vec::new(),
+            current_func_byref_string_basic_names: Vec::new(),
             current_func_param_names: std::collections::HashSet::new(),
             current_func_byref_scalar_names: std::collections::HashSet::new(),
             current_func_byref_udt_names: std::collections::HashSet::new(),
@@ -144,6 +148,7 @@ impl ProcedureContext {
         self.current_proc = None;
         self.current_func_ret_var = None;
         self.current_func_byref_strings.clear();
+        self.current_func_byref_string_basic_names.clear();
         self.current_func_param_names.clear();
         self.current_func_byref_scalar_names.clear();
         self.current_func_byref_udt_names.clear();
@@ -336,6 +341,8 @@ impl StmtEmitter {
                 &self.procedure.current_func_param_names,
                 &self.procedure.current_func_byref_scalar_names,
                 &self.procedure.current_func_byref_udt_names,
+                &self.procedure.current_func_byref_strings,
+                &self.procedure.current_func_byref_string_basic_names,
                 &self.dynamic_external_c_names,
             )
         } else {
@@ -346,6 +353,8 @@ impl StmtEmitter {
                 &self.procedure.current_func_param_names,
                 &self.procedure.current_func_byref_scalar_names,
                 &self.procedure.current_func_byref_udt_names,
+                &self.procedure.current_func_byref_strings,
+                &self.procedure.current_func_byref_string_basic_names,
                 &self.dynamic_external_c_names,
             )
         }

@@ -113,6 +113,13 @@ pub enum PreprocessorError {
         /// The file that defined it.
         from_file: PathBuf,
     },
+    /// Preprocessed source exceeds maximum allowed size.
+    SourceTooLarge {
+        /// The actual size in bytes.
+        size: usize,
+        /// The maximum allowed size in bytes.
+        limit: usize,
+    },
 }
 
 impl std::fmt::Display for PreprocessorError {
@@ -172,6 +179,26 @@ impl std::fmt::Display for PreprocessorError {
                     from_file.display()
                 )
             }
+            PreprocessorError::SourceTooLarge { size, limit } => {
+                writeln!(
+                    f,
+                    "Preprocessed source too large: {} bytes (maximum allowed: {} bytes)",
+                    size, limit
+                )?;
+                writeln!(
+                    f,
+                    "This usually indicates a very large program or excessive $INCLUDE expansion."
+                )?;
+                writeln!(
+                    f,
+                    "To override this limit, set QB64FRESH_MAX_SOURCE_BYTES environment variable."
+                )?;
+                writeln!(
+                    f,
+                    "Alternatively, use 'ulimit -v' to limit virtual memory, or split your program into smaller modules."
+                )?;
+                Ok(())
+            }
         }
     }
 }
@@ -180,6 +207,20 @@ impl std::error::Error for PreprocessorError {}
 
 /// Maximum nesting depth for includes (to prevent stack overflow).
 const MAX_INCLUDE_DEPTH: usize = 64;
+
+/// Default maximum size for preprocessed source (100MB).
+const DEFAULT_MAX_SOURCE_BYTES: usize = 100_000_000;
+
+/// Gets the maximum allowed size for preprocessed source from environment variable.
+///
+/// Reads `QB64FRESH_MAX_SOURCE_BYTES` environment variable, or returns the default
+/// (100MB) if not set or if parsing fails.
+fn get_max_source_bytes() -> usize {
+    std::env::var("QB64FRESH_MAX_SOURCE_BYTES")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(DEFAULT_MAX_SOURCE_BYTES)
+}
 
 /// Context for preprocessing, tracking the include stack and visited files.
 struct PreprocessContext {
@@ -540,6 +581,15 @@ pub fn preprocess(
     // Collect embedded files from context
     let embedded_files = context.embedded_files.clone();
 
+    // Check final output size before returning
+    let max_source_bytes = get_max_source_bytes();
+    if final_output.len() > max_source_bytes {
+        return Err(PreprocessorError::SourceTooLarge {
+            size: final_output.len(),
+            limit: max_source_bytes,
+        });
+    }
+
     Ok(PreprocessResult {
         source: final_output,
         embedded_files,
@@ -729,6 +779,15 @@ pub fn preprocess_file(path: &Path) -> Result<PreprocessResult, PreprocessorErro
     // Collect embedded files from context
     let embedded_files = context.embedded_files.clone();
 
+    // Check final output size before returning
+    let max_source_bytes = get_max_source_bytes();
+    if final_output.len() > max_source_bytes {
+        return Err(PreprocessorError::SourceTooLarge {
+            size: final_output.len(),
+            limit: max_source_bytes,
+        });
+    }
+
     Ok(PreprocessResult {
         source: final_output,
         embedded_files,
@@ -741,6 +800,7 @@ fn preprocess_internal(
     base_path: &Path,
     context: &mut PreprocessContext,
 ) -> Result<String, PreprocessorError> {
+    let max_source_bytes = get_max_source_bytes();
     let mut result = String::with_capacity(source.len());
 
     for (line_idx, line) in source.lines().enumerate() {
@@ -886,6 +946,14 @@ fn preprocess_internal(
             let processed = preprocess_internal(&include_source, include_base, context)?;
             result.push_str(&processed);
 
+            // Check size after appending processed include
+            if result.len() > max_source_bytes {
+                return Err(PreprocessorError::SourceTooLarge {
+                    size: result.len(),
+                    limit: max_source_bytes,
+                });
+            }
+
             // Ensure there's a newline after the included content
             if !processed.ends_with('\n') {
                 result.push('\n');
@@ -894,6 +962,14 @@ fn preprocess_internal(
             // Add a comment marking the end of the include
             let directive = if is_once { "$INCLUDEONCE" } else { "$INCLUDE" };
             result.push_str(&format!("' <<< END {}: '{}'\n", directive, include_path));
+
+            // Check size after appending end marker
+            if result.len() > max_source_bytes {
+                return Err(PreprocessorError::SourceTooLarge {
+                    size: result.len(),
+                    limit: max_source_bytes,
+                });
+            }
 
             // Exit the include
             context.exit_include();
@@ -1384,5 +1460,45 @@ mod tests {
             }
             _ => panic!("expected FileNotFound, got {:?}", err),
         }
+    }
+
+    #[test]
+    fn test_preprocess_source_too_large() {
+        use std::env;
+
+        // Save original env value if set
+        let original = env::var("QB64FRESH_MAX_SOURCE_BYTES").ok();
+
+        // Set a very low limit (1000 bytes)
+        unsafe {
+            env::set_var("QB64FRESH_MAX_SOURCE_BYTES", "1000");
+        }
+
+        // Create a source that will exceed the limit when expanded
+        let temp_dir = TempDir::new().expect("creating temp directory should succeed");
+        let include_path = temp_dir.path().join("large.bi");
+
+        // Create an included file that, when combined with the main source,
+        // will exceed 1000 bytes
+        let large_content = "x".repeat(1500); // 1500 bytes
+        fs::write(&include_path, &large_content)
+            .expect("writing large include file should succeed");
+
+        let source = format!("$INCLUDE: '{}'\n", include_path.display());
+        let result = preprocess(&source, temp_dir.path(), None);
+
+        // Restore original env value
+        unsafe {
+            match original {
+                Some(val) => env::set_var("QB64FRESH_MAX_SOURCE_BYTES", &val),
+                None => env::remove_var("QB64FRESH_MAX_SOURCE_BYTES"),
+            }
+        }
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            PreprocessorError::SourceTooLarge { .. }
+        ));
     }
 }

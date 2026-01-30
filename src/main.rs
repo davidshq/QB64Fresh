@@ -13,6 +13,57 @@ use qb64fresh::parser::Parser;
 use qb64fresh::preprocessor::preprocess;
 use qb64fresh::semantic::SemanticAnalyzer;
 
+/// Default maximum size for raw input file (100MB).
+const DEFAULT_MAX_INPUT_BYTES: usize = 100_000_000;
+
+/// Gets the maximum allowed size for raw input from environment variable.
+///
+/// Reads `QB64FRESH_MAX_INPUT_BYTES` environment variable, or returns the default
+/// (100MB) if not set or if parsing fails.
+fn get_max_input_bytes() -> usize {
+    std::env::var("QB64FRESH_MAX_INPUT_BYTES")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(DEFAULT_MAX_INPUT_BYTES)
+}
+
+/// Gets current RSS (Resident Set Size) in bytes, or 0 if unavailable.
+///
+/// On Linux, reads `/proc/self/status` and parses VmRSS. On other platforms,
+/// returns 0 (no-op for diagnostics).
+fn get_rss_bytes() -> usize {
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
+            for line in status.lines() {
+                if line.starts_with("VmRSS:")
+                    && let Some(value) = line.split_whitespace().nth(1)
+                    && let Ok(kb) = value.parse::<usize>()
+                {
+                    return kb * 1024; // Convert KB to bytes
+                }
+            }
+        }
+    }
+    0
+}
+
+/// Reports RSS if verbose mode or QB64FRESH_REPORT_RSS is set.
+fn report_rss(phase: &str, verbose: bool) {
+    let should_report = verbose
+        || std::env::var("QB64FRESH_REPORT_RSS")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+
+    if should_report {
+        let rss_bytes = get_rss_bytes();
+        if rss_bytes > 0 {
+            let rss_mib = rss_bytes as f64 / (1024.0 * 1024.0);
+            eprintln!("[{}] RSS: {:.1} MiB", phase, rss_mib);
+        }
+    }
+}
+
 /// QB64Fresh - A modern BASIC compiler
 #[derive(ClapParser, Debug)]
 #[command(name = "qb64fresh")]
@@ -103,6 +154,23 @@ fn main() {
         println!("Source length: {} bytes", raw_source.len());
     }
 
+    // Check raw input size
+    let max_input_bytes = get_max_input_bytes();
+    if raw_source.len() > max_input_bytes {
+        eprintln!(
+            "Error: Input file too large: {} bytes (maximum allowed: {} bytes)",
+            raw_source.len(),
+            max_input_bytes
+        );
+        eprintln!("To override this limit, set QB64FRESH_MAX_INPUT_BYTES environment variable.");
+        eprintln!(
+            "Alternatively, use 'ulimit -v' to limit virtual memory, or split your program into smaller modules."
+        );
+        std::process::exit(1);
+    }
+
+    report_rss("After read", args.verbose);
+
     // Preprocessor phase (expand $INCLUDE directives)
     let (source, embedded_files) = if args.no_preprocess {
         (raw_source, Vec::new())
@@ -131,6 +199,8 @@ fn main() {
             }
         }
     };
+
+    report_rss("After preprocess", args.verbose);
 
     // Write preprocessed source if requested
     if let Some(preproc_path) = &args.write_preprocessed {
@@ -163,6 +233,8 @@ fn main() {
         use std::io::Write;
         let _ = std::io::stderr().flush();
     }
+
+    report_rss("After lex", args.verbose);
 
     if args.tokens {
         // Print tokens for debugging
@@ -207,6 +279,8 @@ fn main() {
         );
     }
 
+    report_rss("After parse", args.verbose);
+
     if args.ast {
         println!("AST for {}:", args.input.display());
         println!("{:-<60}", "");
@@ -238,6 +312,8 @@ fn main() {
             typed_program.statements.len()
         );
     }
+
+    report_rss("After semantic", args.verbose);
 
     if args.typed_ir {
         println!("Typed IR for {}:", args.input.display());
@@ -299,6 +375,8 @@ fn main() {
             p.set_extension("c");
             p
         });
+
+        report_rss("After codegen", args.verbose);
 
         match fs::write(&output_path, &output.code) {
             Ok(()) => {

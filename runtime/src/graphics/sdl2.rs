@@ -1923,6 +1923,12 @@ impl GraphicsBackend for SDL2Backend {
         self.active_page = 0;
         self.visual_page = 0;
 
+        // Show window immediately so it is visible (e.g. IDE startup)
+        if let Some(ref mut c) = self.canvas {
+            c.window_mut().show();
+            self.screen_visible = true;
+        }
+
         // Initialize turtle to center of screen
         self.turtle.x = width as f64 / 2.0;
         self.turtle.y = height as f64 / 2.0;
@@ -3063,6 +3069,20 @@ impl GraphicsBackend for SDL2Backend {
 
         let mut px = x;
         for ch in text.bytes() {
+            self.draw_char(ch, px, y, self.fg_color, self.bg_color);
+            px += FONT_WIDTH as i32;
+        }
+
+        Ok(())
+    }
+
+    fn print_string_bytes(&mut self, x: i32, y: i32, text: &[u8]) -> Result<(), GraphicsError> {
+        if !self.initialized {
+            return Err(GraphicsError::not_initialized());
+        }
+
+        let mut px = x;
+        for &ch in text {
             self.draw_char(ch, px, y, self.fg_color, self.bg_color);
             px += FONT_WIDTH as i32;
         }

@@ -128,7 +128,8 @@ pub(in crate::codegen) fn emit_header_with_debug(
     writeln_code!(output, "#define _LESS (-1)")?;
     // String constants (initialized after qb_string type is defined)
     // For external runtime, _STR_EMPTY will be redefined after including the header
-    writeln_code!(output, "#define _STR_EMPTY (&_qbs_empty)")?;
+    // Initial definition is NULL - will be redefined to use qb_string_empty() after _qbs_empty is declared
+    writeln_code!(output, "#define _STR_EMPTY NULL")?;
     writeln_code!(output, "#define _STR_CRLF qb_string_new(\"\\r\\n\")")?;
     writeln_code!(output, "#define _STR_LF qb_string_new(\"\\n\")")?;
     writeln_code!(output, "#define _STR_CR qb_string_new(\"\\r\")")?;
@@ -266,13 +267,19 @@ pub(in crate::codegen) fn emit_header_with_debug(
                 "    if (!_qbs_empty) _qbs_empty = qb_string_empty();"
             )?;
             writeln_code!(output, "}}")?;
-            writeln_code!(output)?;
-            // Redefine _STR_EMPTY to use the cached empty string
-            writeln_code!(output, "#undef _STR_EMPTY")?;
+            // Use GCC constructor to initialize before main() runs
+            // This ensures _qbs_empty is set before any global initializers or code uses _STR_EMPTY
             writeln_code!(
                 output,
-                "#define _STR_EMPTY (_qbs_empty ? _qbs_empty : (_init_qbs_empty(), _qbs_empty))"
+                "__attribute__((constructor)) static void _qbs_empty_ctor(void) {{"
             )?;
+            writeln_code!(output, "    _init_qbs_empty();")?;
+            writeln_code!(output, "}}")?;
+            writeln_code!(output)?;
+            // Redefine _STR_EMPTY to use the cached empty string
+            // Now _qbs_empty is guaranteed to be initialized before any code runs
+            writeln_code!(output, "#undef _STR_EMPTY")?;
+            writeln_code!(output, "#define _STR_EMPTY _qbs_empty")?;
             writeln_code!(output)?;
             // Type size dummy variables - needed by generated code even with external runtime
             types::emit_type_size_dummies(output)?;
@@ -467,11 +474,15 @@ pub(in crate::codegen) fn emit_header_with_debug(
             writeln_code!(output, "}}")?;
             writeln_code!(output)?;
             // Command line arguments - needed by COMMAND$ functions
-            // Note: qb_init_args is provided by the runtime library
-            // We only need the static variables for qb_command_n and qb_commandcount
+            // We must set _qb_argc/_qb_argv here; the library's qb_init_args is not used
+            // so that COMMAND$(n) and _COMMANDCOUNT in the generated code see argv.
             writeln_code!(output, "/* Command line arguments */")?;
             writeln_code!(output, "static int _qb_argc = 0;")?;
             writeln_code!(output, "static char** _qb_argv = NULL;")?;
+            writeln_code!(
+                output,
+                "void qb_init_args(int argc, char** argv) {{ _qb_argc = argc; _qb_argv = argv; }}"
+            )?;
             writeln_code!(output)?;
             // qb_command_n - COMMAND$(n) - get command line argument
             writeln_code!(output, "QbString* qb_command_n(int64_t n) {{")?;

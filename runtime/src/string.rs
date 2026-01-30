@@ -163,20 +163,38 @@ pub extern "C" fn qb_string_empty() -> *mut QbString {
         .0
 }
 
-/// Create a string from raw bytes.
+/// Create a QbString from a byte array.
 ///
 /// # Safety
-/// - If `data` is not null, it must point to at least `len` valid bytes
+/// - `data` must be valid for reads of `len` bytes, or null if `len` is 0
 /// - The returned string must be released with `qb_string_release`
+///
+/// # Returns
+/// - A pointer to the newly allocated QbString, or NULL if allocation fails
+/// - Returns NULL if `len` exceeds MAX_STRING_SIZE (100MB)
+///
+/// # Error Handling
+/// This function returns NULL on allocation failure instead of aborting,
+/// allowing callers to handle errors gracefully. Callers should check for NULL
+/// before using the returned pointer.
 #[no_mangle]
 pub unsafe extern "C" fn qb_string_from_bytes(data: *const u8, len: usize) -> *mut QbString {
+    // Check for reasonable size limit to prevent huge allocations
+    // 100MB should be more than enough for any legitimate string
+    const MAX_STRING_SIZE: usize = 100 * 1024 * 1024;
+    if len > MAX_STRING_SIZE {
+        // Return NULL for oversized strings instead of aborting
+        return std::ptr::null_mut();
+    }
+
     let capacity = len.max(16); // Minimum capacity for small string optimization
     let layout = string_layout(capacity);
 
     let ptr = alloc(layout);
     if ptr.is_null() {
-        // Allocation failed - in a real runtime we'd handle this better
-        std::process::abort();
+        // Allocation failed - return NULL instead of aborting
+        // Callers should check for NULL and handle gracefully
+        return std::ptr::null_mut();
     }
 
     // Initialize header
