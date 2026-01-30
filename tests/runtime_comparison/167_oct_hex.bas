@@ -1,0 +1,7 @@
+$CONSOLE:ONLY
+' Runtime comparison: OCT$, HEX$
+PRINT OCT$(255)
+PRINT HEX$(255)
+PRINT OCT$(8)
+PRINT HEX$(16)
+END

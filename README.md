@@ -49,7 +49,7 @@ QB64Fresh can compile **QB64pe itself** — a 59,000-line BASIC compiler — int
 | Parse + Codegen | ~800ms |
 | Status | ✅ `-h` works, ✅ Runtime features complete, ⚠️ Full execution testing in progress |
 
-The bootstrapped QB64pe runs and displays help. Runtime features (file I/O, keyboard input) are implemented and validated. QB64pe is compiled with external runtime (requires graphics support for GUI). Full execution testing (compiling BASIC programs with bootstrapped QB64pe) is in progress. See [docs/ThingsToDo/BOOTSTRAP_VALIDATION.md](docs/ThingsToDo/BOOTSTRAP_VALIDATION.md) for current status.
+The bootstrapped QB64pe runs and displays help. Runtime features (file I/O, keyboard input) are implemented and validated. QB64pe is compiled with external runtime (requires graphics support for GUI). Full execution testing (compiling BASIC programs with bootstrapped QB64pe) is in progress. See [docs/archive/BOOTSTRAP_VALIDATION.md](docs/archive/BOOTSTRAP_VALIDATION.md) for current status.
 
 **IMPORTANT:** Always use memory limits when running either compiler. See [docs/MEMORY_LIMITS.md](docs/MEMORY_LIMITS.md).
 
@@ -122,8 +122,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed documentation.
 ### Developer Docs
 - [DEVELOPMENT.md](docs/DEVELOPMENT.md) — Setup & contributing
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md) — Compiler pipeline design
-- [Intentional Differences](docs/INTENTIONAL_DIFFERENCES_FROM_QB64PE.md) — Design choices that differ from QB64pe
-- [Behavioral Differences](docs/QB64pe/QB64PE_TO_QB64Fresh_BEHAVIORAL_DIFFERENCES.md) — QB64Fresh vs QB64pe semantics
+- [QB64Fresh vs QB64pe (all differences)](docs/QB64pe/QB64Fresh_VS_QB64pe_DIFFERENCES.md) — Intentional design choices and behavioral/architectural differences
 - [QB64Fresh and Modern Languages](docs/ThingsToDo/QB64Fresh_AND_MODERN_LANGUAGES.md) — Comparison to modern languages
 - [Bootstrap Achievement](docs/ARCHITECTURE.md#bootstrap-achievement) — Compiling QB64pe with QB64Fresh
 - [AgenticLogs/](AgenticLogs/) — Development history

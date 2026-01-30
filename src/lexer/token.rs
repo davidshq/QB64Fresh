@@ -177,6 +177,10 @@ pub enum TokenKind {
     #[token("IS", ignore(ascii_case))]
     Is,
 
+    /// BYREF keyword - pass parameter by reference
+    #[token("BYREF", ignore(ascii_case))]
+    ByRef,
+
     /// BYVAL keyword - pass parameter by value
     #[token("BYVAL", ignore(ascii_case))]
     ByVal,

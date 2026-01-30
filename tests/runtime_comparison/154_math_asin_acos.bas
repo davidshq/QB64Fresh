@@ -1,0 +1,7 @@
+$CONSOLE:ONLY
+' Runtime comparison: _ASIN, _ACOS
+PRINT _ASIN(0)
+PRINT _ASIN(1)
+PRINT _ACOS(0)
+PRINT _ACOS(1)
+END

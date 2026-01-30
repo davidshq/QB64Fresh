@@ -161,7 +161,7 @@ p.Name = "John"        ' Implicitly pads to 20 characters
 p.Name = LEFT$("John" + SPACE$(20), 20)  ' Explicit padding
 ```
 
-**Note:** This is an intentional difference for type safety. See [INTENTIONAL_DIFFERENCES_FROM_QB64PE.md](../INTENTIONAL_DIFFERENCES_FROM_QB64PE.md) for details.
+**Note:** This is an intentional difference for type safety. See [QB64Fresh_VS_QB64pe_DIFFERENCES.md](QB64Fresh_VS_QB64pe_DIFFERENCES.md) for details.
 
 ### 3. OpenGL Commands Not Supported
 
@@ -224,7 +224,7 @@ END SUB
 ' Error: undefined label 'Label2' - label must be in current procedure
 ```
 
-**Rationale:** This stricter behavior catches typos and prevents scope confusion. See [INTENTIONAL_DIFFERENCES_FROM_QB64PE.md](../INTENTIONAL_DIFFERENCES_FROM_QB64PE.md) for details.
+**Rationale:** This stricter behavior catches typos and prevents scope confusion. See [QB64Fresh_VS_QB64pe_DIFFERENCES.md](QB64Fresh_VS_QB64pe_DIFFERENCES.md) for details.
 
 ### 7. Error Reporting
 
@@ -453,8 +453,7 @@ error[E0042]: type mismatch
 ### Resources
 
 - [QB64Fresh TODO.md](../TODO.md) - Known issues and roadmap
-- [INTENTIONAL_DIFFERENCES_FROM_QB64PE.md](../INTENTIONAL_DIFFERENCES_FROM_QB64PE.md) - Deliberate behavioral differences
-- [QB64PE_TO_QB64Fresh_BEHAVIORAL_DIFFERENCES.md](QB64PE_TO_QB64Fresh_BEHAVIORAL_DIFFERENCES.md) - All behavioral differences (architectural and intentional)
+- [QB64Fresh_VS_QB64pe_DIFFERENCES.md](QB64Fresh_VS_QB64pe_DIFFERENCES.md) - All differences: intentional design choices and behavioral/architectural
 - [PARTIAL_IMPLEMENTATIONS.md](../ThingsToDo/PARTIAL_IMPLEMENTATIONS.md) - Implementation status by feature
 - [MEMORY_LIMITS.md](../MEMORY_LIMITS.md) - Memory limit requirements and usage
 - [DEVELOPMENT.md](../DEVELOPMENT.md) - Contributing guide
@@ -493,7 +492,7 @@ Options:
 
 ### Q: Is QB64Fresh stable enough for production?
 
-For most programs, yes. The 99.1% compatibility rate (114/115 test files) covers the vast majority of QB64 code. QB64Fresh successfully compiles the 59K-line QB64pe compiler itself (bootstrap validation). Check the [Known Issues](#changes-required) section and [INTENTIONAL_DIFFERENCES_FROM_QB64PE.md](../INTENTIONAL_DIFFERENCES_FROM_QB64PE.md) for potential edge cases.
+For most programs, yes. The 99.1% compatibility rate (114/115 test files) covers the vast majority of QB64 code. QB64Fresh successfully compiles the 59K-line QB64pe compiler itself (bootstrap validation). Check the [Known Issues](#changes-required) section and [QB64Fresh_VS_QB64pe_DIFFERENCES.md](QB64Fresh_VS_QB64pe_DIFFERENCES.md) for potential edge cases.
 
 ### Q: Why does QB64Fresh behave differently in some cases?
 
@@ -503,7 +502,7 @@ Some differences are **intentional** for safety, clarity, or portability:
 - Different PRNG (implementation choice)
 - Excluded OpenGL commands (portability)
 
-See [INTENTIONAL_DIFFERENCES_FROM_QB64PE.md](../INTENTIONAL_DIFFERENCES_FROM_QB64PE.md) for the complete list and rationale.
+See [QB64Fresh_VS_QB64pe_DIFFERENCES.md](QB64Fresh_VS_QB64pe_DIFFERENCES.md) for the complete list and rationale.
 
 ---
 
@@ -516,7 +515,7 @@ See [INTENTIONAL_DIFFERENCES_FROM_QB64PE.md](../INTENTIONAL_DIFFERENCES_FROM_QB6
 - [ ] Check for cross-procedure GOTO (must be in same procedure)
 - [ ] Replace any `_GL*` commands if used
 - [ ] Replace Windows-specific features if used
-- [ ] Review [INTENTIONAL_DIFFERENCES_FROM_QB64PE.md](../INTENTIONAL_DIFFERENCES_FROM_QB64PE.md) for behavioral differences
+- [ ] Review [QB64Fresh_VS_QB64pe_DIFFERENCES.md](QB64Fresh_VS_QB64pe_DIFFERENCES.md) for behavioral differences
 - [ ] Set up your preferred editor with LSP (optional but recommended)
 - [ ] Compile to C and build executable (with memory limits)
 - [ ] Test the compiled program

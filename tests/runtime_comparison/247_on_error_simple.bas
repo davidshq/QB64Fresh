@@ -1,0 +1,10 @@
+$CONSOLE:ONLY
+' Runtime comparison: ON ERROR GOTO, PRINT ERR/ERL, RESUME NEXT (no DECLARE LIBRARY)
+ON ERROR GOTO eh
+PRINT "before"
+ERROR 5
+PRINT "after error"
+END
+eh:
+PRINT "handler"; ERR; ERL
+RESUME NEXT

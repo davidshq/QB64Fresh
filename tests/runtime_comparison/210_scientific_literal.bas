@@ -1,0 +1,7 @@
+$CONSOLE:ONLY
+' Runtime comparison: 1E10, 1.5D-3 etc (same as 134)
+PRINT 1E10
+PRINT 1.5D-3
+PRINT 2.5E-2
+PRINT 9.9D+2
+END

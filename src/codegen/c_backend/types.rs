@@ -138,13 +138,9 @@ pub(super) fn declare_scalar_var(
                 return false;
             }
         } else {
-            // No array info available - assume it's an array collision and rename
-            // (safer than assuming it's a scalar collision)
-            let renamed = format!("{}_scalar", c_name);
-            if let Some(renames) = variable_renames {
-                renames.insert(c_name.clone(), renamed.clone());
-            }
-            renamed
+            // No array info available - avoid creating a duplicate scalar name.
+            // This prevents accidental divergence of SHARED scalars across modules.
+            return false;
         }
     } else {
         c_name.clone()

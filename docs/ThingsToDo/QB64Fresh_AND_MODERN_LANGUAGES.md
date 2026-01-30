@@ -108,7 +108,7 @@ QB64Fresh is a **ground-up rewrite** of QB64: a BASIC compiler that targets QBas
 ### 3.4 Gaps vs. QB64pe and Modern BASIC
 
 - **Not yet:** hardware-accelerated backends, `_THREAD`, full `_MEM` model. (Alpha blending is done: _BLEND, _DONTBLEND, _CLEARCOLOR.) Some QB64-specific libs (e.g. InForm, raw OpenGL) are out of scope or require DECLARE LIBRARY and custom C.
-- **Behavioral differences:** A few edge cases in semantics, graphics, or built-ins. Documented in [QB64PE_TO_QB64Fresh_BEHAVIORAL_DIFFERENCES.md](../QB64pe/QB64PE_TO_QB64Fresh_BEHAVIORAL_DIFFERENCES.md).
+- **Behavioral differences:** A few edge cases in semantics, graphics, or built-ins. Documented in [QB64Fresh_VS_QB64pe_DIFFERENCES.md](../QB64pe/QB64Fresh_VS_QB64pe_DIFFERENCES.md).
 
 **Comparison:** Better for “typical” QB4.5/QB64 workloads than for the full superset of QB64pe + all extensions.
 
@@ -210,9 +210,8 @@ QB64Fresh does not try to be a general-purpose, do-everything language. It focus
 ## 7. Related Documents
 
 - [ARCHITECTURE.md](../ARCHITECTURE.md) — Compiler pipeline and design
-- [QB64PE_TO_QB64Fresh_BEHAVIORAL_DIFFERENCES.md](../QB64pe/QB64PE_TO_QB64Fresh_BEHAVIORAL_DIFFERENCES.md) — QB64Fresh vs QB64pe semantics
+- [QB64Fresh_VS_QB64pe_DIFFERENCES.md](../QB64pe/QB64Fresh_VS_QB64pe_DIFFERENCES.md) — QB64Fresh vs QB64pe (all differences: intentional and behavioral)
 - [QB64PE_TO_QB64Fresh_MIGRATION_GUIDE.md](../QB64pe/QB64PE_TO_QB64Fresh_MIGRATION_GUIDE.md) — Moving from QB64 to QB64Fresh
-- [INTENTIONAL_DIFFERENCES_FROM_QB64PE.md](../INTENTIONAL_DIFFERENCES_FROM_QB64PE.md) — Documented intentional behavioral differences
 - [TESTING.md](../TESTING.md) — Test types, counts, and how to run them
 - [DEVELOPMENT.md](../DEVELOPMENT.md) — Contributing and development setup
 - [adrs/README.md](../adrs/README.md) — Architecture decision records

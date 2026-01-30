@@ -231,84 +231,170 @@ impl<'a> TypeChecker<'a> {
         span: crate::ast::Span,
     ) -> TypedStatement {
         // Look up the array using array-specific lookup (dual namespace model)
-        let (resolved_name, element_type, dimensions) =
-            if let Some(symbol) = self.symbols.lookup_array(name) {
-                let dimensions = if let SymbolKind::ArrayVariable { dimensions } = &symbol.kind {
-                    dimensions.clone()
-                } else {
-                    vec![]
-                };
+        let (resolved_name, element_type, dimensions) = if let Some(symbol) =
+            self.symbols.lookup_array(name)
+        {
+            let dimensions = if let SymbolKind::ArrayVariable { dimensions } = &symbol.kind {
+                dimensions.clone()
+            } else {
+                vec![]
+            };
 
-                // Verify dimension count - skip if dimensions are unknown (empty, for array params)
-                if !dimensions.is_empty() && indices.len() != dimensions.len() {
-                    self.errors.push(SemanticError::ArrayDimensionMismatch {
-                        name: name.to_string(),
-                        expected: dimensions.len(),
-                        found: indices.len(),
-                        span,
-                    });
-                }
-
-                // For dynamic arrays (empty dimensions), create placeholder dimensions
-                let typed_dims: Vec<TypedArrayDimension> = if dimensions.is_empty() {
-                    indices
-                        .iter()
-                        .map(|_| TypedArrayDimension { lower: 0, upper: 0 })
-                        .collect()
-                } else {
-                    dimensions
-                        .iter()
-                        .map(|d| TypedArrayDimension {
-                            lower: d.lower_bound,
-                            upper: d.upper_bound,
-                        })
-                        .collect()
-                };
-
-                (symbol.name.clone(), symbol.basic_type.clone(), typed_dims)
-            } else if self.symbols.lookup_scalar(name).is_some() {
-                // Scalar variable exists but no array with this name
-                self.errors.push(SemanticError::NotAnArray {
+            // Verify dimension count - skip if dimensions are unknown (empty, for array params)
+            if !dimensions.is_empty() && indices.len() != dimensions.len() {
+                self.errors.push(SemanticError::ArrayDimensionMismatch {
                     name: name.to_string(),
+                    expected: dimensions.len(),
+                    found: indices.len(),
                     span,
                 });
-                (name.to_string(), BasicType::Unknown, Vec::new())
-            } else {
-                // Classic BASIC: implicitly declare array on first use with default bounds (0-10)
-                // Determine type from name suffix (e.g., A$ -> String, X% -> Integer)
-                let element_type = type_from_suffix(name).unwrap_or(BasicType::Single);
+            }
 
-                // Create dimensions with default bounds (0 TO 10) for each index
-                let dim_info: Vec<ArrayDimInfo> = indices
+            // For dynamic arrays (empty dimensions), create placeholder dimensions
+            let typed_dims: Vec<TypedArrayDimension> = if dimensions.is_empty() {
+                indices
                     .iter()
-                    .map(|_| ArrayDimInfo {
-                        lower_bound: 0,
-                        upper_bound: 10,
-                    })
-                    .collect();
-
-                // Define the implicit array
-                let implicit_array = Symbol {
-                    name: name.to_string(),
-                    kind: SymbolKind::ArrayVariable {
-                        dimensions: dim_info.clone(),
-                    },
-                    basic_type: element_type.clone(),
-                    span,
-                    is_mutable: true,
-                };
-                self.symbols.update_or_define_symbol(implicit_array);
-
-                let typed_dims: Vec<TypedArrayDimension> = dim_info
+                    .map(|_| TypedArrayDimension { lower: 0, upper: 0 })
+                    .collect()
+            } else {
+                dimensions
                     .iter()
                     .map(|d| TypedArrayDimension {
                         lower: d.lower_bound,
                         upper: d.upper_bound,
                     })
-                    .collect();
-
-                (name.to_string(), element_type, typed_dims)
+                    .collect()
             };
+
+            (symbol.name.clone(), symbol.basic_type.clone(), typed_dims)
+        } else if name.contains('.') {
+            // UDT field array: w.arr(1) = value
+            let parts: Vec<&str> = name.splitn(2, '.').collect();
+            let u = (parts.len() == 2)
+                .then(|| {
+                    let (base, field) = (parts[0], parts[1]);
+                    let sym = self.symbols.lookup_scalar(base)?;
+                    let type_name = match &sym.basic_type {
+                        BasicType::UserDefined(t) => t.clone(),
+                        _ => return None,
+                    };
+                    let (elt_type, dims) = self.symbols.lookup_type_member(&type_name, field)?;
+                    if dims.is_empty() || indices.len() != dims.len() {
+                        return None;
+                    }
+                    let typed_dims: Vec<TypedArrayDimension> = dims
+                        .iter()
+                        .map(|d| TypedArrayDimension {
+                            lower: d.lower,
+                            upper: d.upper,
+                        })
+                        .collect();
+                    Some((name.to_string(), elt_type, typed_dims))
+                })
+                .flatten();
+            if let Some(triple) = u {
+                triple
+            } else {
+                // Build implicit-array triple for fall-through cases
+                let implicit_triple = {
+                    let element_type = type_from_suffix(name).unwrap_or(BasicType::Single);
+                    let dim_info: Vec<ArrayDimInfo> = indices
+                        .iter()
+                        .map(|_| ArrayDimInfo {
+                            lower_bound: 0,
+                            upper_bound: 10,
+                        })
+                        .collect();
+                    let typed_dims: Vec<TypedArrayDimension> = dim_info
+                        .iter()
+                        .map(|d| TypedArrayDimension {
+                            lower: d.lower_bound,
+                            upper: d.upper_bound,
+                        })
+                        .collect();
+                    (name.to_string(), element_type, typed_dims)
+                };
+                // UDT scalar field indexed? (e.g. w.id(1) when id is scalar) -> NotAnArray
+                if parts.len() == 2 {
+                    let (base, field) = (parts[0], parts[1]);
+                    if let Some(sym) = self.symbols.lookup_scalar(base) {
+                        if let BasicType::UserDefined(type_name) = &sym.basic_type {
+                            if let Some((_, dims)) =
+                                self.symbols.lookup_type_member(type_name, field)
+                            {
+                                if dims.is_empty() && !indices.is_empty() {
+                                    self.errors.push(SemanticError::NotAnArray {
+                                        name: name.to_string(),
+                                        span,
+                                    });
+                                    (name.to_string(), BasicType::Unknown, Vec::new())
+                                } else if !dims.is_empty() && indices.len() != dims.len() {
+                                    self.errors.push(SemanticError::ArrayDimensionMismatch {
+                                        name: name.to_string(),
+                                        expected: dims.len(),
+                                        found: indices.len(),
+                                        span,
+                                    });
+                                    (name.to_string(), BasicType::Unknown, Vec::new())
+                                } else {
+                                    implicit_triple
+                                }
+                            } else {
+                                implicit_triple
+                            }
+                        } else {
+                            implicit_triple
+                        }
+                    } else {
+                        implicit_triple
+                    }
+                } else {
+                    implicit_triple
+                }
+            }
+        } else if self.symbols.lookup_scalar(name).is_some() {
+            // Scalar variable exists but no array with this name
+            self.errors.push(SemanticError::NotAnArray {
+                name: name.to_string(),
+                span,
+            });
+            (name.to_string(), BasicType::Unknown, Vec::new())
+        } else {
+            // Classic BASIC: implicitly declare array on first use with default bounds (0-10)
+            // Determine type from name suffix (e.g., A$ -> String, X% -> Integer)
+            let element_type = type_from_suffix(name).unwrap_or(BasicType::Single);
+
+            // Create dimensions with default bounds (0 TO 10) for each index
+            let dim_info: Vec<ArrayDimInfo> = indices
+                .iter()
+                .map(|_| ArrayDimInfo {
+                    lower_bound: 0,
+                    upper_bound: 10,
+                })
+                .collect();
+
+            // Define the implicit array
+            let implicit_array = Symbol {
+                name: name.to_string(),
+                kind: SymbolKind::ArrayVariable {
+                    dimensions: dim_info.clone(),
+                },
+                basic_type: element_type.clone(),
+                span,
+                is_mutable: true,
+            };
+            self.symbols.update_or_define_symbol(implicit_array);
+
+            let typed_dims: Vec<TypedArrayDimension> = dim_info
+                .iter()
+                .map(|d| TypedArrayDimension {
+                    lower: d.lower_bound,
+                    upper: d.upper_bound,
+                })
+                .collect();
+
+            (name.to_string(), element_type, typed_dims)
+        };
 
         // Check and type the indices
         let mut typed_indices = Vec::new();
@@ -857,7 +943,8 @@ impl<'a> TypeChecker<'a> {
         for field in fields {
             match &current_type {
                 BasicType::UserDefined(type_name) => {
-                    if let Some(field_type) = self.symbols.lookup_type_member(type_name, field) {
+                    if let Some((field_type, _)) = self.symbols.lookup_type_member(type_name, field)
+                    {
                         current_type = field_type;
                     } else {
                         // Field not found in this UDT - return Unknown

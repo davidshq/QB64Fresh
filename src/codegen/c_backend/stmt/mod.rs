@@ -361,9 +361,16 @@ impl StmtEmitter {
     }
 
     /// Converts a BASIC label to a C label, prefixing with procedure name if in a procedure.
-    /// This ensures line number labels (e.g., _line_1) are unique per procedure.
+    /// C identifiers cannot start with a digit, so labels whose first character is a digit
+    /// (e.g. "0", "100") are prefixed with `qb_line_` to produce valid C (e.g. `qb_line_0`).
     fn proc_label(&self, label: &str) -> String {
-        let base_label = c_identifier(label);
+        let base_label = if label.is_empty() {
+            "qb_line_empty".to_string()
+        } else if label.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+            format!("qb_line_{}", label)
+        } else {
+            c_identifier(label)
+        };
         if let Some(ref proc) = self.procedure.current_proc {
             format!("{}_{}", proc, base_label)
         } else {
@@ -1452,6 +1459,13 @@ impl StmtEmitter {
 
             TypedStatementKind::CloseFile { file_nums } => {
                 self.emit_close_file(&indent, file_nums, output)?;
+            }
+
+            TypedStatementKind::LockFile { file_num } => {
+                self.emit_lock_file(&indent, file_num, output)?;
+            }
+            TypedStatementKind::UnlockFile { file_num } => {
+                self.emit_unlock_file(&indent, file_num, output)?;
             }
 
             TypedStatementKind::FilePrint {

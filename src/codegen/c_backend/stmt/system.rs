@@ -23,6 +23,7 @@ pub(super) fn emit_system_stmt(
             let filename_access =
                 emit_string_data_access(filename, &filename_code, &emitter.config.runtime_mode);
             writeln_code!(output, "{}qb_file_kill({});", indent, filename_access)?;
+            emitter.emit_error_pending_goto_handler(indent, output)?;
         }
 
         TypedStatementKind::Rename { old_name, new_name } => {
@@ -39,6 +40,7 @@ pub(super) fn emit_system_stmt(
                 old_access,
                 new_access
             )?;
+            emitter.emit_error_pending_goto_handler(indent, output)?;
         }
 
         TypedStatementKind::Mkdir { path } => {
@@ -46,6 +48,7 @@ pub(super) fn emit_system_stmt(
             let path_access =
                 emit_string_data_access(path, &path_code, &emitter.config.runtime_mode);
             writeln_code!(output, "{}qb_mkdir({});", indent, path_access)?;
+            emitter.emit_error_pending_goto_handler(indent, output)?;
         }
 
         TypedStatementKind::Rmdir { path } => {
@@ -53,6 +56,7 @@ pub(super) fn emit_system_stmt(
             let path_access =
                 emit_string_data_access(path, &path_code, &emitter.config.runtime_mode);
             writeln_code!(output, "{}qb_rmdir({});", indent, path_access)?;
+            emitter.emit_error_pending_goto_handler(indent, output)?;
         }
 
         TypedStatementKind::Chdir { path } => {
@@ -60,6 +64,7 @@ pub(super) fn emit_system_stmt(
             let path_access =
                 emit_string_data_access(path, &path_code, &emitter.config.runtime_mode);
             writeln_code!(output, "{}qb_chdir({});", indent, path_access)?;
+            emitter.emit_error_pending_goto_handler(indent, output)?;
         }
 
         TypedStatementKind::Environ { env_string } => {
@@ -80,6 +85,7 @@ pub(super) fn emit_system_stmt(
             } else {
                 writeln_code!(output, "{}qb_shell(NULL);", indent)?;
             }
+            emitter.emit_error_pending_goto_handler(indent, output)?;
         }
 
         TypedStatementKind::ShellHide { command } => {

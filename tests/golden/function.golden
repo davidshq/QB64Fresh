@@ -6,6 +6,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
@@ -28,7 +29,7 @@
 #define _EQUAL (0)
 #define _GREATER (1)
 #define _LESS (-1)
-#define _STR_EMPTY (&_qbs_empty)
+#define _STR_EMPTY NULL
 #define _STR_CRLF qb_string_new("\r\n")
 #define _STR_LF qb_string_new("\n")
 #define _STR_CR qb_string_new("\r")
@@ -214,17 +215,30 @@
 /* QB64Fresh Runtime Library */
 
 /* Forward declarations for cross-module dependencies */
+typedef struct QbString qb_string;
 static void _qb_gfx_warn(void);
 static int _qb_gfx_frame_count;
 static void _qb_gfx_init_max_frames(void);
+int qb_gfx_poll_events(void);
+int qb_gfx_display(void);
 static uint32_t _qb_palette[256];
+void qb_print_string(qb_string* s);
+void qb_print_newline(void);
+void qb_print_int(int64_t n);
+void qb_print_float(double n);
+const char* qb_string_data(qb_string* s);
+size_t qb_string_len(qb_string* s);
+qb_string* qb_string_new(const char* s);
+qb_string* qb_string_empty(void);
 
-typedef struct qb_string {
+struct QbString {
     char* data;
     size_t len;
     size_t capacity;
     int refcount;
-} qb_string;
+};
+typedef struct QbString QbString;
+typedef struct QbString qb_string;
 
 /* Dummy variables for LEN() type sizing pattern */
 int32_t dummy = 0;
@@ -269,7 +283,9 @@ qb_string* qbs_tmp_register(qb_string* s) {
             /* Don't track this string to preserve scoping correctness */
             /* Overwriting any index would break nested scope cleanup */
             /* The string will leak, but this is safer than undefined behavior */
-            /* TODO: Consider adding debug logging/warning when this occurs */
+            if (getenv("QB64FRESH_DEBUG_STRING_POOL") != NULL) {
+                fprintf(stderr, "QB64Fresh: string temp pool overflow (pool and overflow list full); temporary string leak possible.\n");
+            }
         }
     }
     return s;
@@ -367,318 +383,8 @@ const char* qb_string_data(qb_string* s) {
     return s ? s->data : "";
 }
 
-/* Stub function implementations */
-
-#include <sys/stat.h>
-#ifdef _WIN32
-#include <direct.h>
-#define mkdir(path, mode) _mkdir(path)
-#else
-#include <unistd.h>
-#endif
-
-#ifndef _WIN32
-static void _qb_normalize_path_inplace(char* path) {
-    if (!path) return;
-    for (char* p = path; *p; p++) {
-        if (*p == '\\') *p = '/';
-    }
-}
-#else
-#define _qb_normalize_path_inplace(p) ((void)0)
-#endif
-
-int32_t qb_file_exists(qb_string* path) {
-    if (!path || !path->data) return 0;
-    struct stat st;
-    if (stat(path->data, &st) == 0 && S_ISREG(st.st_mode)) return -1;
-#ifndef _WIN32
-    /* Try with normalized path */
-    char* norm = strdup(path->data);
-    _qb_normalize_path_inplace(norm);
-    int result = stat(norm, &st) == 0 && S_ISREG(st.st_mode) ? -1 : 0;
-    free(norm);
-    return result;
-#else
-    return 0;
-#endif
-}
-int32_t qb_dir_exists(qb_string* path) {
-    if (!path || !path->data) return 0;
-    struct stat st;
-    if (stat(path->data, &st) == 0 && S_ISDIR(st.st_mode)) return -1;
-#ifndef _WIN32
-    /* Try with normalized path */
-    char* norm = strdup(path->data);
-    _qb_normalize_path_inplace(norm);
-    int result = stat(norm, &st) == 0 && S_ISDIR(st.st_mode) ? -1 : 0;
-    free(norm);
-    return result;
-#else
-    return 0;
-#endif
-}
-qb_string* qb_fullpath(qb_string* path) {
-    if (!path || !path->data) return qb_string_new("");
-    char resolved[4096];
-#ifdef _WIN32
-    if (_fullpath(resolved, path->data, sizeof(resolved)))
-        return qb_string_new(resolved);
-#else
-    char* normalized = strdup(path->data);
-    if (normalized) {
-        _qb_normalize_path_inplace(normalized);
-        if (realpath(normalized, resolved)) {
-            free(normalized);
-            return qb_string_new(resolved);
-        }
-        free(normalized);
-    }
-#endif
-    return qb_string_new(path->data ? path->data : "");
-}
-qb_string* qb_dir(qb_string* spec) { (void)spec; return qb_string_new(""); }
-int32_t qb_chdir(const char* path) {
-    if (!path) return -1;
-#ifdef _WIN32
-    return _chdir(path) == 0 ? 0 : -1;
-#else
-    char* n = strdup(path);
-    if (!n) return -1;
-    _qb_normalize_path_inplace(n);
-    int r = chdir(n) == 0 ? 0 : -1;
-    free(n);
-    return r;
-#endif
-}
-int32_t qb_mkdir(const char* path) {
-    if (!path) return -1;
-#ifdef _WIN32
-    return mkdir(path, 0755) == 0 ? 0 : -1;
-#else
-    char* n = strdup(path);
-    if (!n) return -1;
-    _qb_normalize_path_inplace(n);
-    int r = mkdir(n, 0755) == 0 ? 0 : -1;
-    free(n);
-    return r;
-#endif
-}
-int32_t qb_rmdir(const char* path) {
-    if (!path) return -1;
-#ifdef _WIN32
-    return _rmdir(path) == 0 ? 0 : -1;
-#else
-    char* n = strdup(path);
-    if (!n) return -1;
-    _qb_normalize_path_inplace(n);
-    int r = rmdir(n) == 0 ? 0 : -1;
-    free(n);
-    return r;
-#endif
-}
-int32_t qb_file_kill(const char* filename) {
-    if (!filename) return -1;
-#ifdef _WIN32
-    return remove(filename) == 0 ? 0 : -1;
-#else
-    char* n = strdup(filename);
-    if (!n) return -1;
-    _qb_normalize_path_inplace(n);
-    int r = remove(n) == 0 ? 0 : -1;
-    free(n);
-    return r;
-#endif
-}
-int32_t qb_file_rename(const char* old_name, const char* new_name) {
-    if (!old_name || !new_name) return -1;
-#ifdef _WIN32
-    return rename(old_name, new_name) == 0 ? 0 : -1;
-#else
-    char* o = strdup(old_name);
-    char* n = strdup(new_name);
-    if (!o || !n) { free(o); free(n); return -1; }
-    _qb_normalize_path_inplace(o);
-    _qb_normalize_path_inplace(n);
-    int r = rename(o, n) == 0 ? 0 : -1;
-    free(o);
-    free(n);
-    return r;
-#endif
-}
-
-int32_t qb_console_get(void) { return 1; }
-int32_t qb_console(int32_t mode) { (void)mode; return 1; }
-int32_t qb_shell(qb_string* cmd) {
-    if (!cmd || !cmd->data) return -1;
-    return system(cmd->data);
-}
-int32_t qb_shell_hide(qb_string* cmd) { return qb_shell(cmd); }
-int32_t qb_shellhide(qb_string* cmd) { return qb_shell(cmd); }
-int32_t qb_echo(int32_t state) { (void)state; return 0; }
-void qb_controlchr(int32_t state) { (void)state; }
-
-void qb_asc_assign(qb_string** s, int32_t pos, int32_t ch) {
-    if (!s || !*s || pos < 1 || pos > (int32_t)(*s)->len) return;
-    (*s)->data[pos - 1] = (char)ch;
-}
-int32_t qb_instrrev3(qb_string* s, qb_string* sub, int32_t start) {
-    if (!s || !sub || !s->data || !sub->data) return 0;
-    if (sub->len == 0) return start;
-    if (s->len < sub->len) return 0;
-    int32_t search_start = (start < 1 || start > (int32_t)s->len) ? (int32_t)s->len : start;
-    for (int32_t i = search_start - sub->len; i >= 0; i--) {
-        if (memcmp(s->data + i, sub->data, sub->len) == 0) return i + 1;
-    }
-    return 0;
-}
-
-void qb_sub__font(int32_t handle) { (void)handle; }
-void qb_sub__freefont(int32_t handle) { (void)handle; }
-int32_t qb_loadfont3(qb_string* path, int32_t size, qb_string* req) { (void)path; (void)size; (void)req; return 0; }
-/* _MAPUNICODE - Code Page 437 to Unicode mapping */
-static int32_t _qb_unicode_map[256] = {
-    /* 0x00-0x0F */ 0x0000, 0x0001, 0x0002, 0x0003, 0x0004, 0x0005, 0x0006, 0x0007,
-                    0x0008, 0x0009, 0x000A, 0x000B, 0x000C, 0x000D, 0x000E, 0x000F,
-    /* 0x10-0x1F */ 0x0010, 0x0011, 0x0012, 0x0013, 0x0014, 0x0015, 0x0016, 0x0017,
-                    0x0018, 0x0019, 0x001A, 0x001B, 0x001C, 0x001D, 0x001E, 0x001F,
-    /* 0x20-0x2F */ 0x0020, 0x0021, 0x0022, 0x0023, 0x0024, 0x0025, 0x0026, 0x0027,
-                    0x0028, 0x0029, 0x002A, 0x002B, 0x002C, 0x002D, 0x002E, 0x002F,
-    /* 0x30-0x3F */ 0x0030, 0x0031, 0x0032, 0x0033, 0x0034, 0x0035, 0x0036, 0x0037,
-                    0x0038, 0x0039, 0x003A, 0x003B, 0x003C, 0x003D, 0x003E, 0x003F,
-    /* 0x40-0x4F */ 0x0040, 0x0041, 0x0042, 0x0043, 0x0044, 0x0045, 0x0046, 0x0047,
-                    0x0048, 0x0049, 0x004A, 0x004B, 0x004C, 0x004D, 0x004E, 0x004F,
-    /* 0x50-0x5F */ 0x0050, 0x0051, 0x0052, 0x0053, 0x0054, 0x0055, 0x0056, 0x0057,
-                    0x0058, 0x0059, 0x005A, 0x005B, 0x005C, 0x005D, 0x005E, 0x005F,
-    /* 0x60-0x6F */ 0x0060, 0x0061, 0x0062, 0x0063, 0x0064, 0x0065, 0x0066, 0x0067,
-                    0x0068, 0x0069, 0x006A, 0x006B, 0x006C, 0x006D, 0x006E, 0x006F,
-    /* 0x70-0x7F */ 0x0070, 0x0071, 0x0072, 0x0073, 0x0074, 0x0075, 0x0076, 0x0077,
-                    0x0078, 0x0079, 0x007A, 0x007B, 0x007C, 0x007D, 0x007E, 0x007F,
-    /* 0x80-0x8F */ 0x00C7, 0x00FC, 0x00E9, 0x00E2, 0x00E4, 0x00E0, 0x00E5, 0x00E7,
-                    0x00EA, 0x00EB, 0x00E8, 0x00EF, 0x00EE, 0x00EC, 0x00C4, 0x00C5,
-    /* 0x90-0x9F */ 0x00C9, 0x00E6, 0x00C6, 0x00F4, 0x00F6, 0x00F2, 0x00FB, 0x00F9,
-                    0x00FF, 0x00D6, 0x00DC, 0x00A2, 0x00A3, 0x00A5, 0x20A7, 0x0192,
-    /* 0xA0-0xAF */ 0x00E1, 0x00ED, 0x00F3, 0x00FA, 0x00F1, 0x00D1, 0x00AA, 0x00BA,
-                    0x00BF, 0x2310, 0x00AC, 0x00BD, 0x00BC, 0x00A1, 0x00AB, 0x00BB,
-    /* 0xB0-0xBF */ 0x2591, 0x2592, 0x2593, 0x2502, 0x2524, 0x2561, 0x2562, 0x2556,
-                    0x2555, 0x2563, 0x2551, 0x2557, 0x255D, 0x255C, 0x255B, 0x2510,
-    /* 0xC0-0xCF */ 0x2514, 0x2534, 0x252C, 0x251C, 0x2500, 0x253C, 0x255E, 0x255F,
-                    0x255A, 0x2554, 0x2569, 0x2566, 0x2560, 0x2550, 0x256C, 0x2567,
-    /* 0xD0-0xDF */ 0x2568, 0x2564, 0x2565, 0x2559, 0x2558, 0x2552, 0x2553, 0x256B,
-                    0x256A, 0x2518, 0x250C, 0x2588, 0x2584, 0x258C, 0x2590, 0x2580,
-    /* 0xE0-0xEF */ 0x03B1, 0x00DF, 0x0393, 0x03C0, 0x03A3, 0x03C3, 0x00B5, 0x03C4,
-                    0x03A6, 0x0398, 0x03A9, 0x03B4, 0x221E, 0x03C6, 0x03B5, 0x2229,
-    /* 0xF0-0xFF */ 0x2261, 0x00B1, 0x2265, 0x2264, 0x2320, 0x2321, 0x00F7, 0x2248,
-                    0x00B0, 0x2219, 0x00B7, 0x221A, 0x207F, 0x00B2, 0x25A0, 0x00A0
-};
-#define _MAPUNICODE _qb_unicode_map
-
-void qb_mapunicode(int32_t unicode_code, int32_t ascii_pos) {
-    if (ascii_pos >= 0 && ascii_pos < 256) {
-        _qb_unicode_map[ascii_pos] = unicode_code;
-    }
-}
-int32_t qb__mapunicode1(int32_t ascii_pos) {
-    if (ascii_pos >= 0 && ascii_pos < 256) {
-        return _qb_unicode_map[ascii_pos];
-    }
-    return 0;
-}
-int32_t qb__mapunicode2(int32_t ascii_pos, int32_t fontpage) { (void)fontpage; return qb__mapunicode1(ascii_pos); }
-int32_t qb__mapunicode(int32_t ascii_pos, int32_t fontpage, int32_t chr) { (void)fontpage; (void)chr; return qb__mapunicode1(ascii_pos); }
-
-void qb_sub__title(qb_string* title) { (void)title; }
-void qb_sub__screenmove(int32_t x, int32_t y) { (void)x; (void)y; }
-void qb_sub__screenshow(void) { }
-void qb_icon(void) { }
-void qb_icon1(int32_t handle) { (void)handle; }
-void qb_icon2(int32_t handle, qb_string* cmd) { (void)handle; (void)cmd; }
-
-void qb_sub_environ(qb_string* env) {
-    if (!env || !env->data) return;
-    const char* env_str = env->data;
-
-    // Parse 'name=value' format
-    char* eq = strchr(env_str, '=');
-    if (!eq || eq == env_str) return; // Invalid format (no '=' or name is empty)
-
-    // Allocate buffer for 'name=value' (putenv requires persistent string)
-    size_t total_len = strlen(env_str);
-    char* env_buf = (char*)malloc(total_len + 1);
-    if (!env_buf) return;
-    strcpy(env_buf, env_str);
-
-    // Use putenv (works on both Windows and Unix)
-#ifdef _WIN32
-    _putenv(env_buf);
-#else
-    putenv(env_buf); // Note: putenv takes ownership of the string
-#endif
-    // Don't free env_buf - putenv takes ownership
-}
-
-int32_t qb_inclerrorline(void) { return 0; }
-qb_string* qb_inclerrorfile(void) { return qb_string_new(""); }
-int32_t qb_exit_state(void) { return 0; }
-int32_t qb_statuscode(int32_t handle) { (void)handle; return 0; }
-
-int64_t qb_net_openhost(int64_t port) { (void)port; return 0; }
-int32_t qb_net_openconnection(int32_t host) { (void)host; return 0; }
-int32_t qb_net_openclient(qb_string* addr) { (void)addr; return 0; }
-int32_t qb_net_connected(int32_t handle) { (void)handle; return 0; }
-int64_t qb__statuscode(int64_t handle) { (void)handle; return 200; }
-static int64_t _STATUSCODE[256] = {[0 ... 255] = 200};
-
-size_t qb_net_get(int64_t handle, uint8_t* data, size_t size) { (void)handle; (void)data; (void)size; return 0; }
-size_t qb_net_put(int64_t handle, const uint8_t* data, size_t size) { (void)handle; (void)data; (void)size; return 0; }
-size_t qb_net_get_string(int64_t handle, qb_string* s) { (void)handle; (void)s; return 0; }
-size_t qb_net_put_string(int64_t handle, const qb_string* s) { (void)handle; (void)s; return 0; }
-int32_t qb_net_eof(int64_t handle) { (void)handle; return -1; }
-int64_t qb_net_lof(int64_t handle) { (void)handle; return 0; }
-void qb_net_close(int64_t handle) { (void)handle; }
-
-int32_t qb_totaldroppedfiles(void) { return 0; }
-qb_string* qb_droppedfile_str(int32_t index) { (void)index; return qb_string_new(""); }
-void qb_finishdrop(void) { }
-void qb_acceptfiledrop(void) { }
-void qb_acceptfiledrop1(int32_t state) { (void)state; }
-
-int32_t qb_messagebox4(qb_string* title, qb_string* msg, qb_string* btns, int32_t def) { (void)title; (void)msg; (void)btns; (void)def; return 1; }
-qb_string* qb_savefiledialog4(qb_string* title, qb_string* filter, qb_string* def, int32_t flags) { (void)title; (void)filter; (void)def; (void)flags; return qb_string_new(""); }
-qb_string* qb_openfiledialog5(qb_string* title, qb_string* filter, qb_string* def, qb_string* opts, int32_t flags) { (void)title; (void)filter; (void)def; (void)opts; (void)flags; return qb_string_new(""); }
-
-int64_t qb_val_int64(qb_string* s) { if (!s || !s->data) return 0; return strtoll(s->data, NULL, 10); }
-uint64_t qb_val_uint64(qb_string* s) { if (!s || !s->data) return 0; return strtoull(s->data, NULL, 10); }
-double qb_fix(double x) { return x >= 0 ? floor(x) : ceil(x); }
-qb_string* qb_mkq(double val) { char buf[64]; snprintf(buf, sizeof(buf), "%.17g", val); return qb_string_new(buf); }
-double qb_cvq(qb_string* s) { if (!s || !s->data || s->len < 8) return 0.0; double d; memcpy(&d, s->data, 8); return d; }
-
-qb_string* qb_deflate(qb_string* data) { (void)data; return qb_string_new(""); }
-qb_string* qb_md5(qb_string* data) { (void)data; return qb_string_new("00000000000000000000000000000000"); }
-
-int32_t logical_drives(void) { return 0; }
-int32_t qb_defaultcolor(void) { return 7; }
-int32_t qb_defaultcolor1(int32_t handle) { (void)handle; return 7; }
-int32_t qb_backgroundcolor(void) { return 0; }
-int32_t qb_backgroundcolor1(int32_t handle) { (void)handle; return 0; }
-int32_t qb_screen(int32_t row, int32_t col) { (void)row; (void)col; return 32; }
-int32_t qb_screen3(int32_t row, int32_t col, int32_t attr) { (void)row; (void)col; (void)attr; return attr ? 7 : 32; }
-void qb_gfx_screen(int32_t mode, int32_t colorSwitch, int32_t activePage, int32_t visiblePage) {
-    _qb_gfx_warn();
-    _qb_gfx_init_max_frames();
-    _qb_gfx_frame_count = 0; /* Reset frame counter on SCREEN */
-    (void)mode; (void)colorSwitch; (void)activePage; (void)visiblePage;
-}
-void qb_gfx_resize(int32_t flag) { (void)flag; }
-int32_t qb_palettecolor(int32_t attr, int32_t col, int32_t handle) { (void)attr; (void)col; (void)handle; return _qb_palette[attr & 255]; }
-int32_t qb_palettecolor_get(int32_t attr, int32_t handle) { (void)handle; return _qb_palette[attr & 255]; }
-int32_t qb_resize(void) { return 0; }
-int32_t qb_resizewidth(void) { return 80; }
-int32_t qb_resizeheight(void) { return 25; }
-void qb_sub_set_foreground_window(intptr_t hwnd) { (void)hwnd; }
-qb_string* qb_string_copy(qb_string* s) {
-    if (!s) return qb_string_new("");
-    return qb_string_new(s->data ? s->data : "");
+size_t qb_string_len(qb_string* s) {
+    return s ? s->len : 0;
 }
 
 void qb_print_int(int64_t n) {
@@ -828,7 +534,7 @@ void qb_print_using(qb_string* fmt, QbPrintValue* values, int num_values) {
     }
 }
 
-void qb_input_string(const char* prompt, qb_string** var) {
+void qb_input_string(const char* prompt, qb_string** var, int same_line) {
     char buffer[1024];
     if (prompt) printf("%s", prompt);
     if (fgets(buffer, sizeof(buffer), stdin)) {
@@ -837,16 +543,341 @@ void qb_input_string(const char* prompt, qb_string** var) {
         if (*var) qb_string_free(*var);
         *var = qb_string_new(buffer);
     }
+    if (same_line == 0) printf("\n");
 }
 
-void qb_input_int(const char* prompt, int32_t* var) {
+void qb_input_int(const char* prompt, int32_t* var, int same_line) {
     if (prompt) printf("%s", prompt);
     scanf("%d", var);
+    if (same_line == 0) printf("\n");
 }
 
-void qb_input_float(const char* prompt, double* var) {
+void qb_input_float(const char* prompt, double* var, int same_line) {
     if (prompt) printf("%s", prompt);
     scanf("%lf", var);
+    if (same_line == 0) printf("\n");
+}
+
+/* Stub function implementations */
+
+#include <sys/stat.h>
+#ifdef _WIN32
+#include <direct.h>
+#define mkdir(path, mode) _mkdir(path)
+#else
+#include <unistd.h>
+#endif
+
+#ifndef _WIN32
+static void _qb_normalize_path_inplace(char* path) {
+    if (!path) return;
+    for (char* p = path; *p; p++) {
+        if (*p == '\\') *p = '/';
+    }
+}
+#else
+#define _qb_normalize_path_inplace(p) ((void)0)
+#endif
+
+int32_t qb_file_exists(QbString* path) {
+    if (!path || !path->data) return 0;
+    struct stat st;
+    if (stat(path->data, &st) == 0 && S_ISREG(st.st_mode)) return -1;
+#ifndef _WIN32
+    /* Try with normalized path */
+    char* norm = strdup(path->data);
+    _qb_normalize_path_inplace(norm);
+    int result = stat(norm, &st) == 0 && S_ISREG(st.st_mode) ? -1 : 0;
+    free(norm);
+    return result;
+#else
+    return 0;
+#endif
+}
+int32_t qb_dir_exists(QbString* path) {
+    if (!path || !path->data) return 0;
+    struct stat st;
+    if (stat(path->data, &st) == 0 && S_ISDIR(st.st_mode)) return -1;
+#ifndef _WIN32
+    /* Try with normalized path */
+    char* norm = strdup(path->data);
+    _qb_normalize_path_inplace(norm);
+    int result = stat(norm, &st) == 0 && S_ISDIR(st.st_mode) ? -1 : 0;
+    free(norm);
+    return result;
+#else
+    return 0;
+#endif
+}
+QbString* qb_fullpath(QbString* path) {
+    if (!path || !path->data) return qb_string_new("");
+    char resolved[4096];
+#ifdef _WIN32
+    if (_fullpath(resolved, path->data, sizeof(resolved)))
+        return qb_string_new(resolved);
+#else
+    char* normalized = strdup(path->data);
+    if (normalized) {
+        _qb_normalize_path_inplace(normalized);
+        if (realpath(normalized, resolved)) {
+            free(normalized);
+            return qb_string_new(resolved);
+        }
+        free(normalized);
+    }
+#endif
+    return qb_string_new(path->data ? path->data : "");
+}
+QbString* qb_dir(QbString* spec) { (void)spec; return qb_string_new(""); }
+int32_t qb_chdir(const char* path) {
+    if (!path) return -1;
+#ifdef _WIN32
+    return _chdir(path) == 0 ? 0 : -1;
+#else
+    char* n = strdup(path);
+    if (!n) return -1;
+    _qb_normalize_path_inplace(n);
+    int r = chdir(n) == 0 ? 0 : -1;
+    free(n);
+    return r;
+#endif
+}
+int32_t qb_mkdir(const char* path) {
+    if (!path) return -1;
+#ifdef _WIN32
+    return mkdir(path, 0755) == 0 ? 0 : -1;
+#else
+    char* n = strdup(path);
+    if (!n) return -1;
+    _qb_normalize_path_inplace(n);
+    int r = mkdir(n, 0755) == 0 ? 0 : -1;
+    free(n);
+    return r;
+#endif
+}
+int32_t qb_rmdir(const char* path) {
+    if (!path) return -1;
+#ifdef _WIN32
+    return _rmdir(path) == 0 ? 0 : -1;
+#else
+    char* n = strdup(path);
+    if (!n) return -1;
+    _qb_normalize_path_inplace(n);
+    int r = rmdir(n) == 0 ? 0 : -1;
+    free(n);
+    return r;
+#endif
+}
+int32_t qb_file_kill(const char* filename) {
+    if (!filename) return -1;
+#ifdef _WIN32
+    return remove(filename) == 0 ? 0 : -1;
+#else
+    char* n = strdup(filename);
+    if (!n) return -1;
+    _qb_normalize_path_inplace(n);
+    int r = remove(n) == 0 ? 0 : -1;
+    free(n);
+    return r;
+#endif
+}
+int32_t qb_file_rename(const char* old_name, const char* new_name) {
+    if (!old_name || !new_name) return -1;
+#ifdef _WIN32
+    return rename(old_name, new_name) == 0 ? 0 : -1;
+#else
+    char* o = strdup(old_name);
+    char* n = strdup(new_name);
+    if (!o || !n) { free(o); free(n); return -1; }
+    _qb_normalize_path_inplace(o);
+    _qb_normalize_path_inplace(n);
+    int r = rename(o, n) == 0 ? 0 : -1;
+    free(o);
+    free(n);
+    return r;
+#endif
+}
+
+int32_t qb_console_get(void) { return 1; }
+int32_t qb_console(int32_t mode) { (void)mode; return 1; }
+int32_t qb_shell(const char* cmd) {
+    if (!cmd) return -1;
+    return system(cmd);
+}
+int32_t qb_shell_hide(QbString* cmd) { return qb_shell(cmd ? qb_string_data(cmd) : NULL); }
+int32_t qb_shellhide(QbString* cmd) { return qb_shell(cmd ? qb_string_data(cmd) : NULL); }
+void qb_run(QbString* path) {
+    if (!path) return;
+    const char* cmd = qb_string_data(path);
+    if (!cmd || !*cmd) return;
+    (void)system(cmd);
+    exit(0);
+}
+void qb_echo(QbString* text) { if (text) { qb_print_string(text); qb_print_newline(); } }
+void qb_controlchr(int32_t state) { (void)state; }
+
+void qb_asc_assign(QbString** s, int32_t pos, int32_t ch) {
+    if (!s || !*s || pos < 1 || pos > (int32_t)qb_string_len(*s)) return;
+    ((char*)qb_string_data(*s))[pos - 1] = (char)ch;
+}
+int32_t qb_instrrev3(QbString* s, QbString* sub, int32_t start) {
+    if (!s || !sub || !s->data || !sub->data) return 0;
+    if (sub->len == 0) return start;
+    if (s->len < sub->len) return 0;
+    int32_t search_start = (start < 1 || start > (int32_t)s->len) ? (int32_t)s->len : start;
+    for (int32_t i = search_start - sub->len; i >= 0; i--) {
+        if (memcmp(s->data + i, sub->data, sub->len) == 0) return i + 1;
+    }
+    return 0;
+}
+
+void qb_sub__font(int32_t handle) { (void)handle; }
+void qb_sub__freefont(int32_t handle) { (void)handle; }
+int32_t qb_loadfont3(QbString* path, int32_t size, QbString* req) { (void)path; (void)size; (void)req; return 0; }
+/* _MAPUNICODE - Code Page 437 to Unicode mapping */
+static int32_t _qb_unicode_map[256] = {
+    /* 0x00-0x0F */ 0x0000, 0x0001, 0x0002, 0x0003, 0x0004, 0x0005, 0x0006, 0x0007,
+                    0x0008, 0x0009, 0x000A, 0x000B, 0x000C, 0x000D, 0x000E, 0x000F,
+    /* 0x10-0x1F */ 0x0010, 0x0011, 0x0012, 0x0013, 0x0014, 0x0015, 0x0016, 0x0017,
+                    0x0018, 0x0019, 0x001A, 0x001B, 0x001C, 0x001D, 0x001E, 0x001F,
+    /* 0x20-0x2F */ 0x0020, 0x0021, 0x0022, 0x0023, 0x0024, 0x0025, 0x0026, 0x0027,
+                    0x0028, 0x0029, 0x002A, 0x002B, 0x002C, 0x002D, 0x002E, 0x002F,
+    /* 0x30-0x3F */ 0x0030, 0x0031, 0x0032, 0x0033, 0x0034, 0x0035, 0x0036, 0x0037,
+                    0x0038, 0x0039, 0x003A, 0x003B, 0x003C, 0x003D, 0x003E, 0x003F,
+    /* 0x40-0x4F */ 0x0040, 0x0041, 0x0042, 0x0043, 0x0044, 0x0045, 0x0046, 0x0047,
+                    0x0048, 0x0049, 0x004A, 0x004B, 0x004C, 0x004D, 0x004E, 0x004F,
+    /* 0x50-0x5F */ 0x0050, 0x0051, 0x0052, 0x0053, 0x0054, 0x0055, 0x0056, 0x0057,
+                    0x0058, 0x0059, 0x005A, 0x005B, 0x005C, 0x005D, 0x005E, 0x005F,
+    /* 0x60-0x6F */ 0x0060, 0x0061, 0x0062, 0x0063, 0x0064, 0x0065, 0x0066, 0x0067,
+                    0x0068, 0x0069, 0x006A, 0x006B, 0x006C, 0x006D, 0x006E, 0x006F,
+    /* 0x70-0x7F */ 0x0070, 0x0071, 0x0072, 0x0073, 0x0074, 0x0075, 0x0076, 0x0077,
+                    0x0078, 0x0079, 0x007A, 0x007B, 0x007C, 0x007D, 0x007E, 0x007F,
+    /* 0x80-0x8F */ 0x00C7, 0x00FC, 0x00E9, 0x00E2, 0x00E4, 0x00E0, 0x00E5, 0x00E7,
+                    0x00EA, 0x00EB, 0x00E8, 0x00EF, 0x00EE, 0x00EC, 0x00C4, 0x00C5,
+    /* 0x90-0x9F */ 0x00C9, 0x00E6, 0x00C6, 0x00F4, 0x00F6, 0x00F2, 0x00FB, 0x00F9,
+                    0x00FF, 0x00D6, 0x00DC, 0x00A2, 0x00A3, 0x00A5, 0x20A7, 0x0192,
+    /* 0xA0-0xAF */ 0x00E1, 0x00ED, 0x00F3, 0x00FA, 0x00F1, 0x00D1, 0x00AA, 0x00BA,
+                    0x00BF, 0x2310, 0x00AC, 0x00BD, 0x00BC, 0x00A1, 0x00AB, 0x00BB,
+    /* 0xB0-0xBF */ 0x2591, 0x2592, 0x2593, 0x2502, 0x2524, 0x2561, 0x2562, 0x2556,
+                    0x2555, 0x2563, 0x2551, 0x2557, 0x255D, 0x255C, 0x255B, 0x2510,
+    /* 0xC0-0xCF */ 0x2514, 0x2534, 0x252C, 0x251C, 0x2500, 0x253C, 0x255E, 0x255F,
+                    0x255A, 0x2554, 0x2569, 0x2566, 0x2560, 0x2550, 0x256C, 0x2567,
+    /* 0xD0-0xDF */ 0x2568, 0x2564, 0x2565, 0x2559, 0x2558, 0x2552, 0x2553, 0x256B,
+                    0x256A, 0x2518, 0x250C, 0x2588, 0x2584, 0x258C, 0x2590, 0x2580,
+    /* 0xE0-0xEF */ 0x03B1, 0x00DF, 0x0393, 0x03C0, 0x03A3, 0x03C3, 0x00B5, 0x03C4,
+                    0x03A6, 0x0398, 0x03A9, 0x03B4, 0x221E, 0x03C6, 0x03B5, 0x2229,
+    /* 0xF0-0xFF */ 0x2261, 0x00B1, 0x2265, 0x2264, 0x2320, 0x2321, 0x00F7, 0x2248,
+                    0x00B0, 0x2219, 0x00B7, 0x221A, 0x207F, 0x00B2, 0x25A0, 0x00A0
+};
+#define _MAPUNICODE _qb_unicode_map
+
+void qb_mapunicode(int32_t unicode_code, int32_t ascii_pos) {
+    if (ascii_pos >= 0 && ascii_pos < 256) {
+        _qb_unicode_map[ascii_pos] = unicode_code;
+    }
+}
+int32_t qb__mapunicode1(int32_t ascii_pos) {
+    if (ascii_pos >= 0 && ascii_pos < 256) {
+        return _qb_unicode_map[ascii_pos];
+    }
+    return 0;
+}
+int32_t qb__mapunicode2(int32_t ascii_pos, int32_t fontpage) { (void)fontpage; return qb__mapunicode1(ascii_pos); }
+int32_t qb__mapunicode(int32_t ascii_pos, int32_t fontpage, int32_t chr) { (void)fontpage; (void)chr; return qb__mapunicode1(ascii_pos); }
+
+void qb_sub__title(QbString* title) { (void)title; }
+void qb_sub__screenmove(int32_t x, int32_t y) { (void)x; (void)y; }
+void qb_sub__screenshow(void) { }
+void qb_icon(void) { }
+void qb_icon1(int32_t handle) { (void)handle; }
+void qb_icon2(int32_t handle, QbString* cmd) { (void)handle; (void)cmd; }
+
+void qb_sub_environ(QbString* env) {
+    if (!env || !env->data) return;
+    const char* env_str = env->data;
+
+    // Parse 'name=value' format
+    char* eq = strchr(env_str, '=');
+    if (!eq || eq == env_str) return; // Invalid format (no '=' or name is empty)
+
+    // Allocate buffer for 'name=value' (putenv requires persistent string)
+    size_t total_len = strlen(env_str);
+    char* env_buf = (char*)malloc(total_len + 1);
+    if (!env_buf) return;
+    strcpy(env_buf, env_str);
+
+    // Use putenv (works on both Windows and Unix)
+#ifdef _WIN32
+    _putenv(env_buf);
+#else
+    putenv(env_buf); // Note: putenv takes ownership of the string
+#endif
+    // Don't free env_buf - putenv takes ownership
+}
+
+int32_t qb_inclerrorline(void) { return 0; }
+QbString* qb_inclerrorfile(void) { return qb_string_new(""); }
+int32_t qb_exit_state(void) { return 0; }
+int32_t qb_statuscode(int32_t handle) { (void)handle; return 0; }
+
+static int64_t qb_net_openhost(const char* connection_string) { (void)connection_string; return 0; }
+int32_t qb_net_openconnection(int32_t host) { (void)host; return 0; }
+int32_t qb_net_openclient(const char* addr) { (void)addr; return 0; }
+int32_t qb_net_connected(int32_t handle) { (void)handle; return 0; }
+int64_t qb__statuscode(int64_t handle) { (void)handle; return 200; }
+static int64_t _STATUSCODE[256] = {[0 ... 255] = 200};
+
+size_t qb_net_get(int64_t handle, uint8_t* data, size_t size) { (void)handle; (void)data; (void)size; return 0; }
+size_t qb_net_put(int64_t handle, const uint8_t* data, size_t size) { (void)handle; (void)data; (void)size; return 0; }
+size_t qb_net_get_string(int64_t handle, QbString* s) { (void)handle; (void)s; return 0; }
+size_t qb_net_put_string(int64_t handle, const QbString* s) { (void)handle; (void)s; return 0; }
+int32_t qb_net_eof(int64_t handle) { (void)handle; return -1; }
+int64_t qb_net_lof(int64_t handle) { (void)handle; return 0; }
+void qb_net_close(int64_t handle) { (void)handle; }
+
+int32_t qb_totaldroppedfiles(void) { return 0; }
+QbString* qb_droppedfile_str(int32_t index) { (void)index; return qb_string_new(""); }
+void qb_finishdrop(void) { }
+void qb_acceptfiledrop(void) { }
+void qb_acceptfiledrop1(int32_t state) { (void)state; }
+
+int32_t qb_messagebox4(QbString* title, QbString* msg, QbString* btns, QbString* icon) { (void)title; (void)msg; (void)btns; (void)icon; return 1; }
+QbString* qb_savefiledialog(const char* title, const char* initial_dir, const char* default_name, const char* filter) { (void)title; (void)initial_dir; (void)default_name; (void)filter; return qb_string_new(""); }
+QbString* qb_openfiledialog5(QbString* title, QbString* filter, QbString* def, QbString* opts, int32_t flags) { (void)title; (void)filter; (void)def; (void)opts; (void)flags; return qb_string_new(""); }
+
+int64_t qb_val_int64(QbString* s) { if (!s || !s->data) return 0; return strtoll(s->data, NULL, 10); }
+uint64_t qb_val_uint64(QbString* s) { if (!s || !s->data) return 0; return strtoull(s->data, NULL, 10); }
+double qb_fix(double x) { return x >= 0 ? floor(x) : ceil(x); }
+QbString* qb_mkq(double val) { char buf[64]; snprintf(buf, sizeof(buf), "%.17g", val); return qb_string_new(buf); }
+double qb_cvq(QbString* s) { if (!s || !s->data || s->len < 8) return 0.0; double d; memcpy(&d, s->data, 8); return d; }
+
+QbString* qb_deflate(QbString* data) { (void)data; return qb_string_new(""); }
+QbString* qb_md5(QbString* data) { (void)data; return qb_string_new("00000000000000000000000000000000"); }
+
+int32_t logical_drives(void) { return 0; }
+int32_t qb_defaultcolor(void) { return 7; }
+int32_t qb_defaultcolor1(int32_t handle) { (void)handle; return 7; }
+int32_t qb_backgroundcolor(void) { return 0; }
+int32_t qb_backgroundcolor1(int32_t handle) { (void)handle; return 0; }
+int32_t qb_screen(int32_t row, int32_t col) { (void)row; (void)col; return 32; }
+int32_t qb_screen3(int32_t row, int32_t col, int32_t attr) { (void)row; (void)col; (void)attr; return attr ? 7 : 32; }
+int qb_gfx_screen(int32_t mode, int32_t colorSwitch, int32_t activePage, int32_t visiblePage) {
+    _qb_gfx_warn();
+    _qb_gfx_init_max_frames();
+    _qb_gfx_frame_count = 0; /* Reset frame counter on SCREEN */
+    (void)mode; (void)colorSwitch; (void)activePage; (void)visiblePage;
+    return 0; /* Success - stub mode accepts any screen mode */
+}
+void qb_gfx_resize(int32_t flag) { (void)flag; }
+int32_t qb_palettecolor(int32_t attr, int32_t col, int32_t handle) { (void)attr; (void)col; (void)handle; return _qb_palette[attr & 255]; }
+int32_t qb_palettecolor_get(int32_t attr, int32_t handle) { (void)handle; return _qb_palette[attr & 255]; }
+int32_t qb_resize(void) { return 0; }
+int32_t qb_resizewidth(void) { return 80; }
+int32_t qb_resizeheight(void) { return 25; }
+void qb_sub_set_foreground_window(intptr_t hwnd) { (void)hwnd; }
+QbString* qb_string_copy(QbString* s) {
+    if (!s) return qb_string_new("");
+    return qb_string_new(s->data ? s->data : "");
 }
 
 int qb_string_compare(qb_string* a, qb_string* b) {
@@ -1215,6 +1246,10 @@ qb_string* qb_string_fill_code(int32_t n, int32_t code) {
     return qbs_tmp_register(result);
 }
 
+qb_string* qb_string_fill_str(int32_t n, qb_string* c) {
+    return qb_string_fill(n, c);
+}
+
 // UTF-8 helper functions
 size_t qb_utf8_char_count(qb_string* s) {
     if (!s) return 0;
@@ -1251,8 +1286,8 @@ int32_t qb_strlen_chars(qb_string* s) {
     return (int32_t)qb_utf8_char_count(s);
 }
 
-qb_string* qb_str_from_c(const char* s) {
-    return qb_string_new(s);
+QbString* qb_str_from_c(const char* s) {
+    return (QbString*)qb_string_new(s);
 }
 
 qb_string* qb_str_float(double n) {
@@ -1303,6 +1338,10 @@ qb_string* qb_iif_str(int64_t cond, qb_string* true_val, qb_string* false_val) {
 
 /* File I/O Functions */
 
+#ifndef _WIN32
+#include <sys/file.h>  /* flock for OPEN lock modes */
+#endif
+
 #define QB_MAX_FILES 512
 static FILE* _qb_files[QB_MAX_FILES];
 static int32_t _qb_file_reclen[QB_MAX_FILES];
@@ -1335,7 +1374,19 @@ static char* _qb_normalize_path(const char* path) {
 }
 #endif
 
-void qb_file_open(int32_t fnum, const char* filename, const char* mode) {
+#define QB_FILE_ACCESS_DEFAULT 0
+#define QB_FILE_ACCESS_READ    1
+#define QB_FILE_ACCESS_WRITE   2
+#define QB_FILE_ACCESS_READ_WRITE 3
+#define QB_FILE_LOCK_DEFAULT    0
+#define QB_FILE_LOCK_SHARED     1
+#define QB_FILE_LOCK_READ       2
+#define QB_FILE_LOCK_WRITE      3
+#define QB_FILE_LOCK_READ_WRITE 4
+#define QB_FILE_LOCK_ONLY       5
+
+void qb_file_open(int32_t fnum, const char* filename, const char* mode, int32_t access, int32_t lock) {
+    (void)access;
     if (fnum < 1 || fnum >= QB_MAX_FILES) return;
     if (_qb_files[fnum]) fclose(_qb_files[fnum]);
 #ifdef _WIN32
@@ -1349,6 +1400,12 @@ void qb_file_open(int32_t fnum, const char* filename, const char* mode) {
         _qb_files[fnum] = fopen(path_to_use, mode);
     }
     if (normalized) free(normalized);
+#endif
+#ifndef _WIN32
+    if (_qb_files[fnum] && (lock == QB_FILE_LOCK_READ || lock == QB_FILE_LOCK_WRITE || lock == QB_FILE_LOCK_READ_WRITE || lock == QB_FILE_LOCK_ONLY)) {
+        int fd = fileno(_qb_files[fnum]);
+        if (fd >= 0) flock(fd, LOCK_EX);
+    }
 #endif
     _qb_file_reclen[fnum] = 128; /* default record length */
 }
@@ -1425,7 +1482,8 @@ void qb_file_input_string(int32_t fnum, qb_string** s) {
         } else buf[i++] = (char)ch;
     }
     buf[i] = '\0';
-    *s = qb_string_new(buf);
+    if (*s) qb_string_release(*s);
+    *s = qb_string_retain(qb_string_new(buf));
 }
 
 void qb_file_input_int(int32_t fnum, int32_t* val) {
@@ -1448,8 +1506,12 @@ void qb_file_line_input(int32_t fnum, qb_string** s) {
     if (fgets(buf, sizeof(buf), _qb_files[fnum])) {
         size_t len = strlen(buf);
         if (len > 0 && buf[len-1] == '\n') buf[--len] = '\0';
-        *s = qb_string_new(buf);
-    } else *s = qb_string_new("");
+        if (*s) qb_string_release(*s);
+        *s = qb_string_retain(qb_string_new(buf));
+    } else {
+        if (*s) qb_string_release(*s);
+        *s = qb_string_retain(qb_string_new(""));
+    }
 }
 
 void qb_file_seek(int32_t fnum, int64_t pos) {
@@ -1527,6 +1589,12 @@ int64_t qb_loc(int32_t fnum) {
     return 0;
 }
 
+int64_t qb_seek(int32_t fnum) {
+    if (fnum >= 1 && fnum < QB_MAX_FILES && _qb_files[fnum])
+        return (int64_t)ftell(_qb_files[fnum]) + 1;
+    return 0;
+}
+
 int32_t qb_freefile(void) {
     for (int i = 1; i < QB_MAX_FILES; i++)
         if (!_qb_files[i]) return i;
@@ -1552,30 +1620,30 @@ void qb_field_add(int32_t width, qb_string** var) {
        For now, we create a fixed-length string. */
     if (*var) qb_string_release(*var);
     *var = qb_string_new_len(width);
-    memset((*var)->data, ' ', width);
+    memset(qb_string_data(*var), ' ', width);
 }
 
 void qb_lset(qb_string** var, qb_string* value) {
     if (!*var || !value) return;
-    int32_t var_len = (*var)->len;
-    int32_t val_len = value->len;
+    int32_t var_len = (int32_t)qb_string_len(*var);
+    int32_t val_len = (int32_t)qb_string_len(value);
     /* Fill with spaces first */
-    memset((*var)->data, ' ', var_len);
+    memset(qb_string_data(*var), ' ', var_len);
     /* Copy value left-justified */
     int32_t copy_len = val_len < var_len ? val_len : var_len;
-    memcpy((*var)->data, value->data, copy_len);
+    memcpy(qb_string_data(*var), qb_string_data(value), copy_len);
 }
 
 void qb_rset(qb_string** var, qb_string* value) {
     if (!*var || !value) return;
-    int32_t var_len = (*var)->len;
-    int32_t val_len = value->len;
+    int32_t var_len = (int32_t)qb_string_len(*var);
+    int32_t val_len = (int32_t)qb_string_len(value);
     /* Fill with spaces first */
-    memset((*var)->data, ' ', var_len);
+    memset(qb_string_data(*var), ' ', var_len);
     /* Copy value right-justified */
     int32_t copy_len = val_len < var_len ? val_len : var_len;
     int32_t offset = var_len - copy_len;
-    memcpy((*var)->data + offset, value->data, copy_len);
+    memcpy(qb_string_data(*var) + offset, qb_string_data(value), copy_len);
 }
 
 /* Error Handling */
@@ -1590,6 +1658,7 @@ static qb_string* _INCLERRORFILE_str = NULL; /* Include file with error */
 
 void qb_error(int32_t code) {
     _qb_err = code;
+    _qb_erl = 0;
     if (_qb_error_handler) {
         /* Jump to error handler - handled by generated code */
     }
@@ -1627,6 +1696,26 @@ qb_string* qb_errormessage(void) {
     char buf[64];
     snprintf(buf, sizeof(buf), "Error %d", _qb_err);
     return qb_string_new(buf);
+}
+
+/* Assertion Support ($ASSERTS) */
+
+/* Runtime flags for assertion checking (set by $ASSERTS directive) */
+/* These are declared as extern in generated code when $ASSERTS is used */
+int _qb_asserts_enabled = 0;  /* Set to 1 when $ASSERTS is used */
+int _qb_asserts_console = 0;  /* Set to 1 when $ASSERTS:CONSOLE is used */
+
+/* qb_assert - Runtime assertion checking */
+/* When $ASSERTS is enabled, this function checks conditions and aborts on failure */
+/* When $ASSERTS:CONSOLE is enabled, assertion failures are printed to stderr */
+void qb_assert(int condition, const char* message) {
+    if (_qb_asserts_enabled && !condition) {
+        if (_qb_asserts_console) {
+            fprintf(stderr, "Assertion failed: %s\n", message ? message : "(no message)");
+            fflush(stderr);
+        }
+        abort();
+    }
 }
 
 /* Keyboard Input Functions */
@@ -1842,6 +1931,10 @@ qb_string* qb_os(void) {
     return qb_string_new("[LINUX][32BIT]");
   #endif
 #endif
+}
+
+qb_string* qb_version(void) {
+    return qb_string_new("QB64Fresh 0.1.0");
 }
 
 static char _qb_startdir[4096] = {};
@@ -2324,6 +2417,10 @@ void qb_limit(int fps) {
         }
     }
     qb_last_frame_time = qb_get_time_seconds();
+    /* Poll SDL2 events to keep window responsive */
+    qb_gfx_poll_events();
+    /* Update display */
+    qb_gfx_display();
 }
 
 /* Array Bounds Registry */
@@ -2613,13 +2710,24 @@ int qb_gfx_locate(int32_t row, int32_t col) { (void)row; (void)col; return 0; }
 int qb_gfx_pset(int32_t x, int32_t y, uint32_t color) { (void)x; (void)y; (void)color; return 0; }
 uint32_t qb_gfx_point(int32_t x, int32_t y) { (void)x; (void)y; return 0; }
 int qb_gfx_line(int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color) { (void)x1; (void)y1; (void)x2; (void)y2; (void)color; return 0; }
+int qb_gfx_line_step(int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color, int step1, int step2, uint16_t style) { (void)x1; (void)y1; (void)x2; (void)y2; (void)color; (void)step1; (void)step2; (void)style; return 0; }
 int qb_gfx_box(int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color, int filled) { (void)x1; (void)y1; (void)x2; (void)y2; (void)color; (void)filled; return 0; }
+int qb_gfx_box_step(int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color, int filled, int step1, int step2, uint16_t style) { (void)x1; (void)y1; (void)x2; (void)y2; (void)color; (void)filled; (void)step1; (void)step2; (void)style; return 0; }
 int qb_gfx_circle(int32_t x, int32_t y, int32_t radius, uint32_t color, int filled) { (void)x; (void)y; (void)radius; (void)color; (void)filled; return 0; }
 int qb_gfx_paint(int32_t x, int32_t y, uint32_t color, uint32_t boundary) { (void)x; (void)y; (void)color; (void)boundary; return 0; }
 
 int qb_gfx_display(void) {
     _qb_gfx_init_max_frames();
     _qb_gfx_frame_count++;
+    if (_qb_gfx_frame_count >= _qb_gfx_max_frames) {
+        if (_qb_gfx_frame_count == _qb_gfx_max_frames) {
+            fprintf(stderr, "Note: Stub graphics reached %d frames in DISPLAY, exiting to prevent infinite loop.\n", _qb_gfx_max_frames);
+            fprintf(stderr, "      Set QB64FRESH_MAX_FRAMES environment variable to change limit.\n");
+            fflush(stderr);
+            _qb_gfx_frame_count++; /* Only print once */
+        }
+        exit(0); /* Exit to prevent infinite loop */
+    }
     return 0;
 }
 
@@ -2920,7 +3028,7 @@ int64_t qb_screenx(void) { return 0; }
 int64_t qb_screeny(void) { return 0; }
 static char _qb_window_title[256] = "QB64Fresh";
 qb_string* qb_title_get(void) { return qb_string_new(_qb_window_title); }
-void qb_title_set(qb_string* title) { if (title && title->data) strncpy(_qb_window_title, title->data, 255); }
+void qb_title_set(qb_string* title) { if (title && qb_string_data(title)) strncpy(_qb_window_title, qb_string_data(title), 255); }
 int64_t qb_windowhandle(void) {
 #ifdef _WIN32
     return (int64_t)GetActiveWindow();
@@ -3153,11 +3261,11 @@ void qb_displayorder(int32_t layer1, int32_t layer2, int32_t layer3, int32_t lay
 
 #ifdef _WIN32
 int64_t qb_messagebox(qb_string* title, qb_string* msg) {
-    return MessageBoxA(NULL, msg ? msg->data : "", title ? title->data : "", MB_OK);
+    return MessageBoxA(NULL, msg ? qb_string_data(msg) : "", title ? qb_string_data(title) : "", MB_OK);
 }
 #else
 int64_t qb_messagebox(qb_string* title, qb_string* msg) {
-    printf("[%s] %s\n", title ? title->data : "", msg ? msg->data : "");
+    printf("[%s] %s\n", title ? qb_string_data(title) : "", msg ? qb_string_data(msg) : "");
     return 1;
 }
 #endif
@@ -3181,15 +3289,8 @@ qb_string* qb_openfiledialog(qb_string* title, qb_string* filter) {
     return qb_string_new("");
 }
 
-qb_string* qb_savefiledialog(qb_string* title, qb_string* filter) {
-    (void)title; (void)filter;
-    fprintf(stderr, "Note: _SAVEFILEDIALOG$ requires external runtime for GUI support\n");
-    fflush(stderr);
-    return qb_string_new("");
-}
-
-qb_string* qb_selectfolderdialog(qb_string* title) {
-    (void)title;
+qb_string* qb_selectfolderdialog(const char* title, const char* initial_dir) {
+    (void)title; (void)initial_dir;
     fprintf(stderr, "Note: _SELECTFOLDERDIALOG$ requires external runtime for GUI support\n");
     fflush(stderr);
     return qb_string_new("");
@@ -3568,11 +3669,11 @@ int qb_strig2(int64_t n, int64_t controller) {
 
 /* QB4.5 Memory Functions (stubs) */
 
-int32_t qb_fre(int64_t n) {
+int64_t qb_fre(int64_t n) {
     (void)n;
     // Return a large value indicating plenty of memory
     // n=-1: string space, n=-2: stack, n=0: far heap
-    return 64 * 1024 * 1024; // 64 MB (arbitrary large value)
+    return (int64_t)(64 * 1024 * 1024);  /* 64 MB (arbitrary large value) */
 }
 
 void qb_free(void) {
@@ -3845,11 +3946,11 @@ float qb_square(int32_t* num_ref);
 
 float qb_square(int32_t* num_ref) {
     float Square = 0.0;
-    int32_t num = *num_ref;
+    int32_t* num = num_ref;
 
     uint64_t _qbs_proc_base = qbs_tmp_base_get();
 
-    Square = (float)((num * num));
+    Square = ((float)((*num * *num)));
     qbs_cleanup(_qbs_proc_base, 0);
     goto _qb_strig_dispatch_end;
 _qb_strig_dispatch:
@@ -3876,7 +3977,7 @@ int main(int argc, char** argv) {
     qbs_cleanup(_qbs_main_base, 0);
     x = 5LL;
     qbs_cleanup(_qbs_main_base, 0);
-    qb_print_float(qb_square(&(x)));
+    qb_print_float(qb_square(&x));
     qb_print_newline();
     qbs_cleanup(_qbs_main_base, 0);
     exit(0);

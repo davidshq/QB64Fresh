@@ -91,6 +91,7 @@ impl<'a> TypeChecker<'a> {
     ) -> TypedStatement {
         let typed_test = self.check_expr(test_expr);
 
+        self.loop_context.select_depth += 1;
         let typed_cases: Vec<TypedCaseClause> = cases
             .iter()
             .map(|case| TypedCaseClause {
@@ -102,8 +103,8 @@ impl<'a> TypeChecker<'a> {
                 body: self.check_statements(&case.body),
             })
             .collect();
-
         let typed_else = case_else.as_ref().map(|stmts| self.check_statements(stmts));
+        self.loop_context.select_depth -= 1;
 
         if is_everycase {
             TypedStatement::new(
@@ -483,6 +484,7 @@ impl<'a> TypeChecker<'a> {
             ExitType::Do => self.loop_context.do_depth > 0,
             ExitType::Sub => self.in_sub,
             ExitType::Function => self.in_function,
+            ExitType::Select => self.loop_context.select_depth > 0,
         };
 
         if !valid {
@@ -492,6 +494,7 @@ impl<'a> TypeChecker<'a> {
                 ExitType::Do => "DO",
                 ExitType::Sub => "SUB",
                 ExitType::Function => "FUNCTION",
+                ExitType::Select => "SELECT",
             };
             self.errors.push(SemanticError::ExitOutsideLoop {
                 exit_type: exit_name.to_string(),

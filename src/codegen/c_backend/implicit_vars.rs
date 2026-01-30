@@ -183,7 +183,7 @@ fn collect_dims(
             // Hoist DIM declarations to function scope (BASIC semantics)
             for var in variables {
                 let c_name = c_identifier(&var.name);
-                if var.dimensions.is_empty() {
+                if var.dimensions.is_empty() && !var.is_dynamic_array {
                     // Scalar variable - check if global exists AND we're in main
                     // In main program: DIM of existing global = use global (for module-level sharing)
                     // In SUB/FUNCTION: DIM always creates local (can shadow globals)
@@ -201,8 +201,24 @@ fn collect_dims(
                             Some(array_names),
                         );
                     }
+                } else if var.dimensions.is_empty() && var.is_dynamic_array {
+                    // DIM a() AS LONG = dynamic array: declare pointer + size var
+                    if is_main_program && existing_vars.contains(&c_name) {
+                        declared_vars.insert(c_name);
+                    } else {
+                        declare_array_var(
+                            &var.name,
+                            &var.basic_type,
+                            declared_vars,
+                            locals,
+                            false, // is_global (main body locals)
+                            false, // is_static
+                            &[],
+                        );
+                        array_names.insert(c_name);
+                    }
                 } else {
-                    // Array - mark as declared only, emit at statement location
+                    // Array with dimensions - mark as declared only, emit at statement location
                     // (arrays need runtime allocation)
                     declared_vars.insert(c_name.clone());
                     // Track that this is an array (for dual namespace collision detection)

@@ -586,10 +586,13 @@ pub trait GraphicsBackend {
         Ok(())
     }
 
-    /// Print byte text at pixel coordinates (QB64 strings are byte-oriented, not UTF-8).
+    /// Print byte text at pixel coordinates.
+    ///
+    /// Bytes are interpreted as CP437 (IBM PC / DOS) so box-drawing and
+    /// accented characters render correctly; see [`crate::cp437`].
     fn print_string_bytes(&mut self, x: i32, y: i32, text: &[u8]) -> Result<(), GraphicsError> {
-        let lossy = String::from_utf8_lossy(text);
-        self.print_string(x, y, &lossy)
+        let s = crate::cp437::cp437_string_to_unicode(text);
+        self.print_string(x, y, &s)
     }
 
     /// Set auto-display mode.
@@ -1056,6 +1059,10 @@ pub static mut GRAPHICS_BACKEND: Option<Box<dyn GraphicsBackend>> = None;
 /// # Errors
 /// Returns an error if initialization fails.
 pub fn init_graphics(width: u32, height: u32) -> Result<(), GraphicsError> {
+    if std::env::var("QB64FRESH_GFX_TRACE").is_ok() {
+        eprintln!("QB64Fresh: init_graphics {}x{}", width, height);
+        let _ = std::io::Write::flush(&mut std::io::stderr());
+    }
     #[cfg(feature = "graphics-sdl2")]
     {
         let mut backend = Box::new(sdl2::SDL2Backend::new());

@@ -273,6 +273,12 @@ pub struct SDL2Backend {
     // Screen palette (for handle 0)
     /// Palette for the main screen buffer
     screen_palette: [u32; 256],
+    // Text mode sizing
+    text_cols: Option<u32>,
+    text_rows: Option<u32>,
+    text_font_height: u32,
+    text_font_handle: i64,
+    text_scale: u32,
     // Keyboard state
     /// Current keyboard state (scancode -> pressed)
     /// Updated in poll_events using SDL_GetKeyboardState
@@ -351,11 +357,104 @@ impl SDL2Backend {
             display_order: [1, 2, 3, 4], // _SOFTWARE, _HARDWARE, _HARDWARE1, _GLRENDER
             // Screen palette
             screen_palette: ColorPalette::default().colors,
+            // Text mode sizing
+            text_cols: None,
+            text_rows: None,
+            text_font_height: FONT_HEIGHT,
+            text_font_handle: 0,
+            text_scale: {
+                let scale = std::env::var("QB64FRESH_TEXT_SCALE")
+                    .ok()
+                    .and_then(|v| v.parse::<u32>().ok())
+                    .unwrap_or(0);
+                if scale > 0 {
+                    scale
+                } else if std::env::var("QB64FRESH_IDE_COMPAT").is_ok() {
+                    2
+                } else {
+                    1
+                }
+            },
             // Keyboard state
             keyboard_state: HashMap::new(),
             // Icon state
             current_icon_handle: 0, // No icon set initially
         }
+    }
+
+    fn resize_text_grid(&mut self, columns: u32, rows: u32) -> Result<(), GraphicsError> {
+        if columns == 0 || rows == 0 {
+            return Ok(());
+        }
+
+        let scale = self.text_scale.max(1);
+        let new_width = columns * FONT_WIDTH * scale;
+        let new_height = rows * self.text_font_height * scale;
+
+        if new_width == self.width && new_height == self.height {
+            return Ok(());
+        }
+
+        if let Some(canvas) = self.canvas.as_mut() {
+            let _ = canvas.window_mut().set_size(new_width, new_height);
+        }
+
+        self.width = new_width;
+        self.height = new_height;
+
+        let page_size = (new_width * new_height) as usize;
+        self.page_buffers = (0..self.max_pages)
+            .map(|_| vec![self.bg_color; page_size])
+            .collect();
+
+        if let Some(tc) = self.texture_creator.as_ref() {
+            self.page_textures = (0..self.max_pages)
+                .map(|_| {
+                    tc.create_texture_streaming(PixelFormatEnum::ARGB8888, new_width, new_height)
+                        .ok()
+                })
+                .collect();
+        }
+
+        self.page_dirty = vec![true; self.max_pages];
+        self.active_page = 0;
+        self.visual_page = 0;
+        self.turtle.x = new_width as f64 / 2.0;
+        self.turtle.y = new_height as f64 / 2.0;
+        self.cursor_row = 1;
+        self.cursor_col = 1;
+
+        self.cls()?;
+        self.display()?;
+
+        Ok(())
+    }
+
+    fn maybe_autodisplay_for_page(&mut self, page: usize) {
+        if self.autodisplay && page == self.visual_page {
+            let _ = self.display();
+        }
+    }
+
+    fn mark_active_dirty_no_autodisplay(&mut self) {
+        if self.dest_handle != 0 {
+            return;
+        }
+        if let Some(dirty) = self.page_dirty.get_mut(self.active_page) {
+            *dirty = true;
+        }
+    }
+
+    fn mark_active_dirty(&mut self) {
+        self.mark_active_dirty_no_autodisplay();
+        self.maybe_autodisplay_for_page(self.active_page);
+    }
+
+    fn mark_page_dirty(&mut self, page: usize) {
+        if let Some(dirty) = self.page_dirty.get_mut(page) {
+            *dirty = true;
+        }
+        self.maybe_autodisplay_for_page(page);
     }
 
     fn argb_to_sdl_color(argb: u32) -> Color {
@@ -464,10 +563,7 @@ impl SDL2Backend {
             }
         }
 
-        // Mark page as dirty for deferred texture upload in display()
-        if let Some(dirty) = self.page_dirty.get_mut(self.active_page) {
-            *dirty = true;
-        }
+        self.mark_active_dirty();
     }
 
     fn set_pixel_buffer(&mut self, x: i32, y: i32, color: u32) {
@@ -670,10 +766,16 @@ impl SDL2Backend {
         let bitmap = get_char_bitmap(ch);
         let width = self.width;
         let height = self.height;
+        let font_height = self.text_font_height.max(1);
+        let scale = self.text_scale.max(1);
+        let target_height = font_height * scale;
+        let target_width = FONT_WIDTH * scale;
 
         // Update pixel buffer only - canvas update deferred to display()
-        for row in 0..FONT_HEIGHT {
-            for col in 0..FONT_WIDTH {
+        for row in 0..target_height {
+            let src_row = ((row * FONT_HEIGHT) / target_height) as usize;
+            for col in 0..target_width {
+                let src_col = ((col * FONT_WIDTH) / target_width) as usize;
                 let x = px + col as i32;
                 let y = py + row as i32;
 
@@ -681,7 +783,7 @@ impl SDL2Backend {
                     continue;
                 }
 
-                let color = if is_pixel_set(bitmap, row as usize, col as usize) {
+                let color = if is_pixel_set(bitmap, src_row, src_col) {
                     fg_color
                 } else {
                     bg_color
@@ -698,10 +800,7 @@ impl SDL2Backend {
             }
         }
 
-        // Mark page as dirty for deferred texture upload in display()
-        if let Some(dirty) = self.page_dirty.get_mut(self.active_page) {
-            *dirty = true;
-        }
+        self.mark_active_dirty_no_autodisplay();
     }
 
     /// Draw a FreeType glyph with alpha blending.
@@ -761,10 +860,7 @@ impl SDL2Backend {
             }
         }
 
-        // Mark page as dirty for deferred texture upload in display()
-        if let Some(dirty) = self.page_dirty.get_mut(self.active_page) {
-            *dirty = true;
-        }
+        self.mark_active_dirty_no_autodisplay();
     }
 
     /// Blend a foreground color with an alpha value onto a background color.
@@ -828,12 +924,7 @@ impl SDL2Backend {
             self.set_pixel_buffer(cx - y, cy - x, color);
         }
 
-        // Mark page as dirty for deferred texture upload in display()
-        if self.dest_handle == 0 {
-            if let Some(dirty) = self.page_dirty.get_mut(self.active_page) {
-                *dirty = true;
-            }
-        }
+        self.mark_active_dirty();
     }
 
     fn draw_circle_filled(&mut self, cx: i32, cy: i32, radius: i32, color: u32) {
@@ -879,12 +970,7 @@ impl SDL2Backend {
             }
         }
 
-        // Mark page as dirty for deferred texture upload in display()
-        if self.dest_handle == 0 {
-            if let Some(dirty) = self.page_dirty.get_mut(self.active_page) {
-                *dirty = true;
-            }
-        }
+        self.mark_active_dirty();
     }
 
     fn flood_fill(&mut self, start_x: i32, start_y: i32, fill_color: u32, boundary: Option<u32>) {
@@ -938,11 +1024,8 @@ impl SDL2Backend {
             stack.push((x, y - 1));
         }
 
-        // Mark page as dirty for deferred texture upload in display()
-        if filled && self.dest_handle == 0 {
-            if let Some(dirty) = self.page_dirty.get_mut(self.active_page) {
-                *dirty = true;
-            }
+        if filled {
+            self.mark_active_dirty();
         }
     }
 
@@ -1373,11 +1456,8 @@ impl SDL2Backend {
             }
         }
 
-        // Mark page as dirty for deferred texture upload in display()
         if dest_handle == 0 {
-            if let Some(dirty) = self.page_dirty.get_mut(self.active_page) {
-                *dirty = true;
-            }
+            self.mark_active_dirty();
         }
 
         Ok(())
@@ -1554,7 +1634,7 @@ impl SDL2Backend {
     #[cfg(not(feature = "graphics-sdl2-ttf"))]
     /// Get the height of the current font.
     pub fn get_font_height(&self) -> u32 {
-        FONT_HEIGHT
+        self.text_font_height * self.text_scale.max(1)
     }
 
     #[cfg(feature = "graphics-sdl2-ttf")]
@@ -1572,7 +1652,7 @@ impl SDL2Backend {
     #[cfg(not(feature = "graphics-sdl2-ttf"))]
     /// Get the width of the current font.
     pub fn get_font_width(&self) -> u32 {
-        FONT_WIDTH
+        FONT_WIDTH * self.text_scale.max(1)
     }
 
     #[cfg(feature = "graphics-sdl2-ttf")]
@@ -1982,10 +2062,7 @@ impl GraphicsBackend for SDL2Backend {
             page.fill(self.bg_color);
         }
 
-        // Mark page as dirty for deferred texture upload in display()
-        if let Some(dirty) = self.page_dirty.get_mut(self.active_page) {
-            *dirty = true;
-        }
+        self.mark_active_dirty();
 
         self.cursor_row = 1;
         self.cursor_col = 1;
@@ -2032,8 +2109,8 @@ impl GraphicsBackend for SDL2Backend {
             return Err(GraphicsError::not_initialized());
         }
 
-        let char_width = FONT_WIDTH;
-        let char_height = FONT_HEIGHT;
+        let char_width = self.get_font_width().max(1);
+        let char_height = self.get_font_height().max(1);
         let cols = self.width / char_width;
         let rows = self.height / char_height;
 
@@ -2078,6 +2155,8 @@ impl GraphicsBackend for SDL2Backend {
             }
         }
 
+        self.maybe_autodisplay_for_page(self.active_page);
+
         Ok(())
     }
 
@@ -2109,12 +2188,7 @@ impl GraphicsBackend for SDL2Backend {
 
         self.set_pixel_buffer(sx, sy, final_color);
 
-        // Mark page as dirty for deferred texture upload in display()
-        if self.dest_handle == 0 {
-            if let Some(dirty) = self.page_dirty.get_mut(self.active_page) {
-                *dirty = true;
-            }
-        }
+        self.mark_active_dirty();
 
         Ok(())
     }
@@ -2201,12 +2275,7 @@ impl GraphicsBackend for SDL2Backend {
             self.draw_line_with_style(sx1, sy1, sx2, sy2, color, style);
         }
 
-        // Mark page as dirty for deferred texture upload in display()
-        if self.dest_handle == 0 {
-            if let Some(dirty) = self.page_dirty.get_mut(self.active_page) {
-                *dirty = true;
-            }
-        }
+        self.mark_active_dirty();
 
         Ok(())
     }
@@ -2420,10 +2489,7 @@ impl GraphicsBackend for SDL2Backend {
                 }
             }
 
-            // Mark destination page as dirty - texture upload deferred to display()
-            if let Some(dirty) = self.page_dirty.get_mut(dst_page) {
-                *dirty = true;
-            }
+            self.mark_page_dirty(dst_page);
         }
 
         Ok(())
@@ -2465,9 +2531,7 @@ impl GraphicsBackend for SDL2Backend {
             self.visual_page = page_num;
 
             // Mark new visual page as dirty so display() will upload it
-            if let Some(dirty) = self.page_dirty.get_mut(page_num) {
-                *dirty = true;
-            }
+            self.mark_page_dirty(page_num);
         }
 
         Ok(())
@@ -2711,6 +2775,42 @@ impl GraphicsBackend for SDL2Backend {
         if let Some(fc) = fill_color {
             self.line(x1 + 1, y1 + 1, x2 - 1, y2 - 1, fc, true, false, None)?;
         }
+
+        Ok(())
+    }
+
+    fn set_font(&mut self, handle: i64) -> i64 {
+        let prev = self.text_font_handle;
+        if handle == 8 || handle == 16 || handle == 0 {
+            self.text_font_handle = handle;
+            self.text_font_height = if handle == 16 { 16 } else { FONT_HEIGHT };
+
+            if let (Some(cols), Some(rows)) = (self.text_cols, self.text_rows) {
+                let _ = self.resize_text_grid(cols, rows);
+            }
+        }
+
+        prev
+    }
+
+    fn set_width(&mut self, columns: u32, rows: u32) -> Result<(), GraphicsError> {
+        if !self.initialized {
+            return Err(GraphicsError::not_initialized());
+        }
+
+        if columns == 0 {
+            return Ok(());
+        }
+
+        let mut effective_rows = rows;
+        if effective_rows == 0 {
+            effective_rows = (self.height / self.text_font_height.max(1)).max(1);
+        }
+
+        self.text_cols = Some(columns);
+        self.text_rows = Some(effective_rows);
+
+        self.resize_text_grid(columns, effective_rows)?;
 
         Ok(())
     }
@@ -3068,30 +3168,43 @@ impl GraphicsBackend for SDL2Backend {
         }
 
         let mut px = x;
+        let step = self.get_font_width().max(1) as i32;
         for ch in text.bytes() {
             self.draw_char(ch, px, y, self.fg_color, self.bg_color);
-            px += FONT_WIDTH as i32;
+            px += step;
         }
+
+        self.maybe_autodisplay_for_page(self.active_page);
 
         Ok(())
     }
 
+    /// Renders byte-oriented text at pixel coordinates.
+    ///
+    /// Bytes are interpreted as CP437; the embedded 8×8 font is CP437 so
+    /// box-drawing (0xB0–0xDF) and accented characters display correctly for IDE menus.
     fn print_string_bytes(&mut self, x: i32, y: i32, text: &[u8]) -> Result<(), GraphicsError> {
         if !self.initialized {
             return Err(GraphicsError::not_initialized());
         }
 
         let mut px = x;
+        let step = self.get_font_width().max(1) as i32;
         for &ch in text {
             self.draw_char(ch, px, y, self.fg_color, self.bg_color);
-            px += FONT_WIDTH as i32;
+            px += step;
         }
+
+        self.maybe_autodisplay_for_page(self.active_page);
 
         Ok(())
     }
 
     fn set_autodisplay(&mut self, enabled: bool) -> Result<(), GraphicsError> {
         self.autodisplay = enabled;
+        if enabled {
+            self.maybe_autodisplay_for_page(self.visual_page);
+        }
         Ok(())
     }
 
@@ -3562,6 +3675,8 @@ impl GraphicsBackend for SDL2Backend {
                 }
             }
         }
+
+        self.maybe_autodisplay_for_page(self.active_page);
 
         Ok(())
     }

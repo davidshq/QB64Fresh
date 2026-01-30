@@ -51,6 +51,8 @@ impl<'a> Parser<'a> {
             TokenKind::Get => self.parse_get(),
             TokenKind::Put => self.parse_put(),
             TokenKind::Seek => self.parse_seek(),
+            TokenKind::Lock => self.parse_lock(),
+            TokenKind::Unlock => self.parse_unlock(),
 
             // Variable statements
             TokenKind::Let => self.parse_let_explicit(),

@@ -391,7 +391,7 @@ mod tests {
 
         assert!(rc.contains("0 ICON"));
         assert!(rc.contains("VERSIONINFO"));
-        assert!(rc.contains("COMPANYNAME"));
+        assert!(rc.contains("CompanyName"));
         assert!(h.contains("RESOURCE_H"));
         assert!(xml.contains("Test Company"));
     }

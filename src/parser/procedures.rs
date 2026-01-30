@@ -194,6 +194,7 @@ impl<'a> Parser<'a> {
 
                     members.push(TypeMember {
                         name: member_name,
+                        dimensions: vec![],
                         type_spec: type_spec.clone(),
                     });
 
@@ -203,10 +204,17 @@ impl<'a> Parser<'a> {
                     }
                 }
             } else {
-                // Standard syntax: member AS type
-                // Use expect_name to allow keywords as member names (e.g., name, type)
+                // Standard syntax: member [ ( dims ) ] AS type (e.g. arr(1 TO 3) AS LONG)
                 let member_name_token = self.expect_name("member name")?;
                 let member_name = member_name_token.text.to_string();
+
+                let dimensions = if self.match_token(&TokenKind::LeftParen) {
+                    let dims = self.parse_array_dimensions()?;
+                    self.expect(&TokenKind::RightParen, "`)` after array dimensions")?;
+                    dims
+                } else {
+                    vec![]
+                };
 
                 self.expect(&TokenKind::As, "AS in type member definition")?;
 
@@ -214,6 +222,7 @@ impl<'a> Parser<'a> {
 
                 members.push(TypeMember {
                     name: member_name,
+                    dimensions,
                     type_spec,
                 });
             }
@@ -264,13 +273,19 @@ impl<'a> Parser<'a> {
         }
 
         loop {
-            let by_val = self.match_token(&TokenKind::ByVal);
+            // BYREF (default) or BYVAL
+            let by_val = if self.match_token(&TokenKind::ByRef) {
+                false
+            } else {
+                self.match_token(&TokenKind::ByVal)
+            };
 
             let name_token = self.expect_name("parameter name")?;
             let name = name_token.text.to_string();
 
-            // Check for array parameter: name()
+            // Check for array parameter: name() or name(,) for multi-dimensional
             let is_array = if self.match_token(&TokenKind::LeftParen) {
+                while self.match_token(&TokenKind::Comma) {}
                 self.expect(&TokenKind::RightParen, "`)` after array parameter")?;
                 true
             } else {

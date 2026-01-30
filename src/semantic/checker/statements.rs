@@ -200,6 +200,8 @@ impl<'a> TypeChecker<'a> {
             k @ (StatementKind::OpenFile { .. }
             | StatementKind::OpenFileLegacy { .. }
             | StatementKind::CloseFile { .. }
+            | StatementKind::LockFile { .. }
+            | StatementKind::UnlockFile { .. }
             | StatementKind::FilePrint { .. }
             | StatementKind::FileWrite { .. }
             | StatementKind::FileInput { .. }
@@ -1441,12 +1443,13 @@ impl<'a> TypeChecker<'a> {
             return;
         }
 
-        // Convert C struct members to BASIC type members
+        // Convert C struct members to BASIC type members (C structs have no array field syntax here)
         let members: Vec<UserTypeMember> = struct_def
             .members
             .iter()
             .map(|m| UserTypeMember {
                 name: m.name.clone(),
+                dimensions: vec![],
                 basic_type: m.typ.clone(),
             })
             .collect();

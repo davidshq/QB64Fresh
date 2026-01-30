@@ -357,6 +357,18 @@ The header declares all FFI functions available in the external runtime:
 #define qb__rgb32_4(r, g, b, a) qb_rgba(r, g, b, a)
 ```
 
+**Runtime environment variables (external runtime):**
+
+When using the external runtime (SDL2), these environment variables control IDE compatibility and diagnostics:
+
+| Variable | Effect |
+|----------|--------|
+| `QB64FRESH_IDE_COMPAT=1` | Enable IDE compatibility behaviors (e.g. ignore `_SCREENHIDE` after first `_SCREENSHOW`, text-cell coordinates for `_PRINTSTRING`). |
+| `QB64FRESH_TEXT_SCALE=<n>` | Scale the text grid. Default is 2 in IDE compatibility mode. |
+| `QB64FRESH_SCREEN_TRACE=1` | Trace `_SCREENSHOW` / `_SCREENHIDE` calls to stderr for debugging. |
+
+See [IDE_DIAGNOSIS_AND_RECOMMENDATIONS.md](IDE_DIAGNOSIS_AND_RECOMMENDATIONS.md) for context on IDE compatibility.
+
 ---
 
 ## Usage Examples

@@ -607,6 +607,7 @@ mod tests {
                         name: "x".to_string(),
                         dimensions: vec![],
                         type_spec: Some(crate::ast::TypeSpec::Integer),
+                        is_dynamic_array: false,
                     }],
                     shared: false,
                 },

@@ -1,0 +1,12 @@
+$CONSOLE:ONLY
+' Runtime comparison: FOR/NEXT
+DIM i AS LONG
+FOR i = 1 TO 5
+    PRINT i;
+NEXT i
+PRINT
+FOR i = 5 TO 1 STEP -1
+    PRINT i;
+NEXT i
+PRINT
+END

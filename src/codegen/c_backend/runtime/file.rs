@@ -328,7 +328,8 @@ pub(super) fn emit_file_io_functions(output: &mut String) -> Result<(), CodeGenE
     writeln_code!(output, "        }} else buf[i++] = (char)ch;")?;
     writeln_code!(output, "    }}")?;
     writeln_code!(output, "    buf[i] = '\\0';")?;
-    writeln_code!(output, "    *s = qb_string_new(buf);")?;
+    writeln_code!(output, "    if (*s) qb_string_release(*s);")?;
+    writeln_code!(output, "    *s = qb_string_retain(qb_string_new(buf));")?;
     writeln_code!(output, "}}")?;
     writeln_code!(output)?;
 
@@ -373,6 +374,8 @@ pub(super) fn emit_file_io_functions(output: &mut String) -> Result<(), CodeGenE
     writeln_code!(output)?;
 
     // qb_file_line_input - LINE INPUT #
+    // Assign to *s a string that survives qbs_cleanup: qb_string_new() registers in temp pool,
+    // so we retain() so the variable holds a reference; release old *s first to avoid leak.
     writeln_code!(
         output,
         "void qb_file_line_input(int32_t fnum, qb_string** s) {{"
@@ -391,8 +394,15 @@ pub(super) fn emit_file_io_functions(output: &mut String) -> Result<(), CodeGenE
         output,
         "        if (len > 0 && buf[len-1] == '\\n') buf[--len] = '\\0';"
     )?;
-    writeln_code!(output, "        *s = qb_string_new(buf);")?;
-    writeln_code!(output, "    }} else *s = qb_string_new(\"\");")?;
+    writeln_code!(output, "        if (*s) qb_string_release(*s);")?;
+    writeln_code!(output, "        *s = qb_string_retain(qb_string_new(buf));")?;
+    writeln_code!(output, "    }} else {{")?;
+    writeln_code!(output, "        if (*s) qb_string_release(*s);")?;
+    writeln_code!(
+        output,
+        "        *s = qb_string_retain(qb_string_new(\"\"));"
+    )?;
+    writeln_code!(output, "    }}")?;
     writeln_code!(output, "}}")?;
     writeln_code!(output)?;
 
@@ -537,6 +547,21 @@ pub(super) fn emit_file_io_functions(output: &mut String) -> Result<(), CodeGenE
         output,
         "        return (int64_t)ftell(_qb_files[fnum]) + 1;"
     )?;
+    writeln_code!(output, "    return 0;")?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(output)?;
+
+    // SEEK(filenum) - returns current file position (1-based), same as LOC
+    writeln_code!(output, "int64_t qb_seek(int32_t fnum) {{")?;
+    writeln_code!(
+        output,
+        "    if (fnum >= 1 && fnum < QB_MAX_FILES && _qb_files[fnum]) {{"
+    )?;
+    writeln_code!(
+        output,
+        "        return (int64_t)ftell(_qb_files[fnum]) + 1;"
+    )?;
+    writeln_code!(output, "    }}")?;
     writeln_code!(output, "    return 0;")?;
     writeln_code!(output, "}}")?;
     writeln_code!(output)?;

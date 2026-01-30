@@ -229,6 +229,10 @@ pub extern "C" fn qb_gfx_cls() -> c_int {
 pub extern "C" fn qb_gfx_color(foreground: u32, background: u32) -> c_int {
     unsafe {
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            if gfx_trace_enabled() {
+                eprintln!("QB64Fresh: COLOR fg={} bg={}", foreground, background);
+                let _ = std::io::Write::flush(&mut std::io::stderr());
+            }
             let fg = if foreground == u32::MAX {
                 backend.get_foreground_color()
             } else if foreground <= 255 {
@@ -748,6 +752,10 @@ pub extern "C" fn qb_gfx_paint_step(
 pub extern "C" fn qb_gfx_display() -> c_int {
     unsafe {
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            if gfx_trace_enabled() {
+                eprintln!("QB64Fresh: _DISPLAY");
+                let _ = std::io::Write::flush(&mut std::io::stderr());
+            }
             match backend.display() {
                 Ok(()) => 0,
                 Err(e) => log_ffi_error!("qb_gfx_display", e),
@@ -773,6 +781,10 @@ pub extern "C" fn qb_gfx_display() -> c_int {
 pub extern "C" fn qb_gfx_pcopy(src: i32, dst: i32) -> c_int {
     unsafe {
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            if gfx_trace_enabled() {
+                eprintln!("QB64Fresh: PCOPY {} -> {}", src, dst);
+                let _ = std::io::Write::flush(&mut std::io::stderr());
+            }
             match backend.pcopy(src, dst) {
                 Ok(()) => 0,
                 Err(e) => log_ffi_error!("qb_gfx_pcopy", e),
@@ -796,6 +808,10 @@ pub extern "C" fn qb_gfx_pcopy(src: i32, dst: i32) -> c_int {
 pub extern "C" fn qb_gfx_set_active_page(page: i32) -> c_int {
     unsafe {
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            if gfx_trace_enabled() {
+                eprintln!("QB64Fresh: _SCREEN , active={}", page);
+                let _ = std::io::Write::flush(&mut std::io::stderr());
+            }
             match backend.set_active_page(page) {
                 Ok(()) => 0,
                 Err(e) => log_ffi_error!("qb_gfx_set_active_page", e),
@@ -819,6 +835,10 @@ pub extern "C" fn qb_gfx_set_active_page(page: i32) -> c_int {
 pub extern "C" fn qb_gfx_set_visual_page(page: i32) -> c_int {
     unsafe {
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            if gfx_trace_enabled() {
+                eprintln!("QB64Fresh: _SCREEN , visual={}", page);
+                let _ = std::io::Write::flush(&mut std::io::stderr());
+            }
             match backend.set_visual_page(page) {
                 Ok(()) => 0,
                 Err(e) => log_ffi_error!("qb_gfx_set_visual_page", e),
@@ -1384,6 +1404,9 @@ pub extern "C" fn qb_gfx_dest(handle: i32) -> c_int {
 
 /// Print string at pixel coordinates.
 ///
+/// The C string is interpreted as a CP437-encoded byte string so box-drawing
+/// and accented characters (e.g. IDE menus) render correctly.
+///
 /// # Safety
 /// - `text` must be a valid null-terminated C string
 #[no_mangle]
@@ -1393,9 +1416,53 @@ pub unsafe extern "C" fn qb_gfx_printstring(x: i32, y: i32, text: *const c_char)
     }
 
     let bytes = CStr::from_ptr(text).to_bytes();
+    let mut mapped_bytes_storage = Vec::new();
+    let text_bytes: &[u8] = if ide_compat_enabled() {
+        if let Ok(utf8_text) = std::str::from_utf8(bytes) {
+            mapped_bytes_storage = crate::cp437::utf8_to_cp437_bytes(utf8_text);
+            mapped_bytes_storage.as_slice()
+        } else {
+            bytes
+        }
+    } else {
+        bytes
+    };
+    if gfx_trace_enabled() {
+        let preview_len = bytes.len().min(8);
+        let mut preview = String::new();
+        for (i, b) in bytes.iter().take(preview_len).enumerate() {
+            if i > 0 {
+                preview.push(' ');
+            }
+            use std::fmt::Write;
+            let _ = write!(preview, "{:02X}", b);
+        }
+        eprintln!(
+            "QB64Fresh: _PRINTSTRING x={} y={} len={} bytes=[{}]",
+            x,
+            y,
+            bytes.len(),
+            preview
+        );
+        let _ = std::io::Write::flush(&mut std::io::stderr());
+    }
 
     if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
-        match backend.print_string_bytes(x, y, bytes) {
+        let mut px = x;
+        let mut py = y;
+        if ide_compat_enabled() {
+            let fw = backend.get_font_width() as i32;
+            let fh = backend.get_font_height() as i32;
+            // Treat coordinates as 1-based character cells in IDE mode.
+            if px > 0 {
+                px = (px - 1) * fw;
+            }
+            if py > 0 {
+                py = (py - 1) * fh;
+            }
+        }
+
+        match backend.print_string_bytes(px, py, text_bytes) {
             Ok(()) => 0,
             Err(e) => log_ffi_error!("qb_gfx_printstring", e),
         }
@@ -1410,6 +1477,10 @@ pub unsafe extern "C" fn qb_gfx_printstring(x: i32, y: i32, text: *const c_char)
 pub extern "C" fn qb_gfx_autodisplay(enabled: c_int) -> c_int {
     unsafe {
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            if gfx_trace_enabled() {
+                eprintln!("QB64Fresh: _AUTODISPLAY {}", enabled);
+                let _ = std::io::Write::flush(&mut std::io::stderr());
+            }
             match backend.set_autodisplay(enabled != 0) {
                 Ok(()) => 0,
                 Err(e) => log_ffi_error!("qb_gfx_autodisplay", e),
@@ -1942,8 +2013,16 @@ fn screen_trace_enabled() -> bool {
     std::env::var("QB64FRESH_SCREEN_TRACE").is_ok()
 }
 
+fn gfx_trace_enabled() -> bool {
+    std::env::var("QB64FRESH_GFX_TRACE").is_ok()
+}
+
 fn screenhide_disabled() -> bool {
     std::env::var("QB64FRESH_DISABLE_SCREENHIDE").is_ok()
+}
+
+fn ide_compat_enabled() -> bool {
+    std::env::var("QB64FRESH_IDE_COMPAT").is_ok()
 }
 
 /// _SCREENSHOW - Show the window (make visible).
@@ -1975,6 +2054,13 @@ pub extern "C" fn qb_screenshow() {
 #[no_mangle]
 pub extern "C" fn qb_screenhide() {
     unsafe {
+        if ide_compat_enabled() {
+            if screen_trace_enabled() {
+                eprintln!("QB64Fresh: _SCREENHIDE ignored (IDE compat)");
+                let _ = std::io::Write::flush(&mut std::io::stderr());
+            }
+            return;
+        }
         if screenhide_disabled() {
             if screen_trace_enabled() {
                 eprintln!("QB64Fresh: _SCREENHIDE suppressed");

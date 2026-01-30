@@ -666,6 +666,43 @@ impl<'a> TypeChecker<'a> {
             return self.check_array_access(&resolved_name, args, dimensions, element_type, span);
         }
 
+        // UDT field array access: `udt.field(index)` e.g. w.arr(1).
+        // Only one level of dot is supported (udt.field); nested UDT (w.player.arr(1)) is not.
+        if name.contains('.') {
+            let parts: Vec<&str> = name.splitn(2, '.').collect();
+            if parts.len() == 2 {
+                let (base, field) = (parts[0], parts[1]);
+                if let Some(sym) = self.symbols.lookup_scalar(base)
+                    && let BasicType::UserDefined(type_name) = &sym.basic_type
+                    && let Some((element_type, dims)) =
+                        self.symbols.lookup_type_member(type_name, field)
+                {
+                    if !dims.is_empty() {
+                        let dim_info: Vec<ArrayDimInfo> = dims
+                            .iter()
+                            .map(|d| ArrayDimInfo {
+                                lower_bound: d.lower,
+                                upper_bound: d.upper,
+                            })
+                            .collect();
+                        return self.check_array_access(name, args, dim_info, element_type, span);
+                    }
+                    if dims.is_empty() && !args.is_empty() {
+                        // Scalar field indexed: w.id(1) when id is scalar
+                        self.errors.push(SemanticError::NotAnArray {
+                            name: name.to_string(),
+                            span,
+                        });
+                        return TypedExpr::new(
+                            TypedExprKind::IntegerLiteral(0),
+                            BasicType::Long,
+                            span,
+                        );
+                    }
+                }
+            }
+        }
+
         // Check for external functions (these are stored as scalars but have special handling)
         if let Some(symbol) = self.symbols.lookup_scalar(name)
             && let SymbolKind::ExternalFunction {
@@ -693,11 +730,9 @@ impl<'a> TypeChecker<'a> {
         // Check for unimplemented legacy functions (matching QB64pe behavior)
         // These functions exist in classic BASIC but are meaningless in modern systems
         // and QB64pe throws compile errors for them
+        // FRE is implemented (returns approximate free memory; see builtins + runtime).
         let upper_name = name.to_uppercase();
-        if matches!(
-            upper_name.as_str(),
-            "FRE" | "IOCTL$" | "SETMEM" | "FILEATTR"
-        ) {
+        if matches!(upper_name.as_str(), "IOCTL$" | "SETMEM" | "FILEATTR") {
             self.errors.push(SemanticError::CommandNotImplemented {
                 name: name.to_string(),
                 span,

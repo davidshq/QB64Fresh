@@ -208,6 +208,24 @@ impl<'a> Parser<'a> {
         Ok(Statement::new(StatementKind::CloseFile { file_nums }, span))
     }
 
+    /// Parses a LOCK statement: `LOCK [#]filenum` (optional record range omitted for stub).
+    pub(super) fn parse_lock(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("LOCK keyword").span.start;
+        self.match_token(&TokenKind::Hash);
+        let file_num = self.parse_expression()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::LockFile { file_num }, span))
+    }
+
+    /// Parses an UNLOCK statement: `UNLOCK [#]filenum`.
+    pub(super) fn parse_unlock(&mut self) -> Result<Statement, ()> {
+        let start = self.advance().expect("UNLOCK keyword").span.start;
+        self.match_token(&TokenKind::Hash);
+        let file_num = self.parse_expression()?;
+        let span = self.span_from(start);
+        Ok(Statement::new(StatementKind::UnlockFile { file_num }, span))
+    }
+
     /// Parses a WRITE # statement.
     ///
     /// Syntax: `WRITE #filenum, [expression [, expression]...]`

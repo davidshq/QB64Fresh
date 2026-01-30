@@ -128,8 +128,9 @@ impl<'a> TypeChecker<'a> {
                 // Note: We'll still mark as static=false below to avoid codegen issues
             }
 
-            // Define symbol
-            let symbol_kind = if var.dimensions.is_empty() {
+            // Define symbol. DIM a() AS type = dynamic array (ArrayVariable with empty dims),
+            // so lookup_array finds it for a(1) and REDIM a(1 TO 5).
+            let symbol_kind = if var.dimensions.is_empty() && !var.is_dynamic_array {
                 SymbolKind::Variable
             } else {
                 SymbolKind::ArrayVariable {
@@ -193,6 +194,7 @@ impl<'a> TypeChecker<'a> {
                 basic_type,
                 dimensions: typed_dims,
                 is_static,
+                is_dynamic_array: var.is_dynamic_array,
             });
         }
 

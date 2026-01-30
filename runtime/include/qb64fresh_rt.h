@@ -304,7 +304,11 @@ void qb_file_put_string(int32_t fnum, const QbString* s);
 int32_t qb_eof(int32_t fnum);
 int64_t qb_lof(int32_t fnum);
 int64_t qb_loc(int32_t fnum);
+int64_t qb_seek(int32_t fnum);
 int32_t qb_freefile(void);
+
+/* Memory (QB4.5 compatibility) */
+int64_t qb_fre(int64_t n);  /* FRE(n) - approximate free memory; n=0 far heap, n=-1 string space */
 
 /* System/shell functions */
 int32_t qb_shell(const char* command);  /* SHELL statement - execute command */
@@ -411,13 +415,22 @@ void qb_run(QbString* path);
 void qb_init_startdir(void);
 void _qb_init_palette(void);
 
-/* Error handling functions */
+/* Error handling functions (Option B: error-pending and RESUME support) */
+uint32_t qb_error_pending(void);    /* Non-zero if error pending (e.g. after failed OPEN) */
+void qb_set_error(uint32_t code, int32_t line);  /* Set pending error from runtime */
+void qb_clear_error(void);         /* Clear pending (e.g. RESUME NEXT) */
+void qb_commit_error(void);        /* Copy pending to ERR/ERL then clear; call before goto handler */
+
 int32_t qb_err_code(void);          /* ERR function - returns error code */
 int32_t qb_err_line(void);          /* ERL function - returns error line */
 int64_t qb_errorline(void);         /* _ERRORLINE - returns error line as 64-bit */
 QbString* qb_errormessage(void);   /* _ERRORMESSAGE$ - returns error message */
 int32_t qb_inclerrorline(void);    /* _INCLERRORLINE - error line in include file */
 QbString* qb_inclerrorfile(void);  /* _INCLERRORFILE$ - include file with error */
+
+/* Debug event hooks (Option B: evnt for IDE/debugger) */
+extern uint32_t qbevent;           /* 0 = no debug; non-zero = call qb_evnt at statement boundaries */
+void qb_evnt(uint32_t line, uint32_t incline, const char* incfile);
 
 /* Compatibility macros for inline runtime naming conventions */
 #define qb__rgb32(r, g, b) qb_rgb(r, g, b)

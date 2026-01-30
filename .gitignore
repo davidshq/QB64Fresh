@@ -35,6 +35,9 @@ examples/*.c
 # Test artifacts
 /tmp/
 
+# Runtime comparison test output (run_comparison.sh writes results/fresh/, results/qb64pe/)
+/tests/runtime_comparison/results/
+
 # Mutation testing output (cargo-mutants)
 /mutants.out/
 /mutants.out.old/

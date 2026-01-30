@@ -92,6 +92,85 @@ macro_rules! collect_err {
     };
 }
 
+fn collect_module_shared_dims(stmt: &TypedStatement, shared: &mut HashSet<String>) {
+    match &stmt.kind {
+        TypedStatementKind::Dim {
+            variables,
+            shared: is_shared,
+        } => {
+            if *is_shared {
+                for var in variables {
+                    shared.insert(c_identifier(&var.name));
+                }
+            }
+        }
+        TypedStatementKind::ConditionalBlock {
+            then_branch,
+            elseif_branches,
+            else_branch,
+            ..
+        } => {
+            for s in then_branch {
+                collect_module_shared_dims(s, shared);
+            }
+            for (_, branch) in elseif_branches {
+                for s in branch {
+                    collect_module_shared_dims(s, shared);
+                }
+            }
+            if let Some(branch) = else_branch {
+                for s in branch {
+                    collect_module_shared_dims(s, shared);
+                }
+            }
+        }
+        TypedStatementKind::ConditionalBlockResolved { statements, .. } => {
+            for s in statements {
+                collect_module_shared_dims(s, shared);
+            }
+        }
+        TypedStatementKind::If {
+            then_branch,
+            elseif_branches,
+            else_branch,
+            ..
+        } => {
+            for s in then_branch {
+                collect_module_shared_dims(s, shared);
+            }
+            for (_, branch) in elseif_branches {
+                for s in branch {
+                    collect_module_shared_dims(s, shared);
+                }
+            }
+            if let Some(branch) = else_branch {
+                for s in branch {
+                    collect_module_shared_dims(s, shared);
+                }
+            }
+        }
+        TypedStatementKind::For { body, .. }
+        | TypedStatementKind::While { body, .. }
+        | TypedStatementKind::DoLoop { body, .. } => {
+            for s in body {
+                collect_module_shared_dims(s, shared);
+            }
+        }
+        TypedStatementKind::SelectCase { cases, .. } => {
+            for case in cases {
+                for s in &case.body {
+                    collect_module_shared_dims(s, shared);
+                }
+            }
+        }
+        TypedStatementKind::SubDefinition { .. }
+        | TypedStatementKind::FunctionDefinition { .. } => {
+            // DIM SHARED inside procedures is not module-shared.
+        }
+        _ => {}
+    }
+}
+
 /// Runtime mode for code generation.
 ///
 /// This enum encapsulates the runtime mode with associated data needed for each mode.
@@ -707,17 +786,12 @@ impl CodeGenerator for CBackend {
             collect_err!(ctx, writeln_code!(&mut output));
         }
 
-        // Collect names of DIM SHARED variables - these are accessible from all functions
-        // without needing local SHARED statements, so they shouldn't be shadowed by implicit locals
+        // Collect names of DIM SHARED variables declared at module level. These are accessible
+        // from all functions without needing local SHARED statements, so they shouldn't be
+        // shadowed by implicit locals. Be careful to avoid DIM SHARED inside procedures.
         let mut shared_global_names: HashSet<String> = HashSet::new();
         for stmt in &program.statements {
-            if let TypedStatementKind::Dim { variables, shared } = &stmt.kind
-                && *shared
-            {
-                for var in variables {
-                    shared_global_names.insert(c_identifier(&var.name));
-                }
-            }
+            collect_module_shared_dims(stmt, &mut shared_global_names);
         }
 
         // Collect names of global CONST values - these shouldn't be redeclared as local variables
@@ -755,15 +829,16 @@ impl CodeGenerator for CBackend {
             };
 
             if parts.len() > name_idx {
-                let type_part = parts.get(type_idx).unwrap_or(&"");
+                let type_part = *parts.get(type_idx).unwrap_or(&"");
                 let raw_name = parts[name_idx];
 
                 // Determine if this is an array:
                 // - Type contains * (pointer = dynamic array)
                 // - Name contains [ (static array)
                 // - Pattern (*name) (fixed-length string array)
+                let is_pointer_array = type_part.contains('*') && type_part != "QbString*";
                 let is_array =
-                    type_part.contains('*') || raw_name.contains('[') || raw_name.starts_with("(*");
+                    is_pointer_array || raw_name.contains('[') || raw_name.starts_with("(*");
 
                 // Handle fixed-length string array: "char (*name)[N]"
                 // Pattern: (*name) or (*name)[N] - extract name from parens

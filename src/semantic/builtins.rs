@@ -357,6 +357,7 @@ impl SemanticAnalyzer {
         self.register_builtin_function("EOF", &[("fnum", BasicType::Integer)], BasicType::Integer);
         self.register_builtin_function("LOF", &[("fnum", BasicType::Integer)], BasicType::Long);
         self.register_builtin_function("LOC", &[("fnum", BasicType::Integer)], BasicType::Long);
+        // FRE(n) - registered once in Memory Functions section below (Long -> Long)
         self.register_builtin_function("SEEK", &[("fnum", BasicType::Integer)], BasicType::Long);
         self.register_builtin_function("FREEFILE", &[], BasicType::Integer);
 

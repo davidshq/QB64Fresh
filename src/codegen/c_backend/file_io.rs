@@ -119,6 +119,7 @@ impl StmtEmitter {
             )?;
         }
 
+        self.emit_error_pending_goto_handler(indent, output)?;
         Ok(())
     }
 
@@ -163,6 +164,7 @@ impl StmtEmitter {
             )?;
         }
 
+        self.emit_error_pending_goto_handler(indent, output)?;
         Ok(())
     }
 
@@ -182,6 +184,27 @@ impl StmtEmitter {
                 writeln_code!(output, "{}qb_file_close({});", indent, file_num_code)?;
             }
         }
+        self.emit_error_pending_goto_handler(indent, output)?;
+        Ok(())
+    }
+
+    /// Emits a LOCK # statement (stub: no-op in inline runtime).
+    pub(super) fn emit_lock_file(
+        &self,
+        _indent: &str,
+        _file_num: &TypedExpr,
+        _output: &mut String,
+    ) -> Result<(), CodeGenError> {
+        Ok(())
+    }
+
+    /// Emits an UNLOCK # statement (stub: no-op in inline runtime).
+    pub(super) fn emit_unlock_file(
+        &self,
+        _indent: &str,
+        _file_num: &TypedExpr,
+        _output: &mut String,
+    ) -> Result<(), CodeGenError> {
         Ok(())
     }
 
@@ -266,6 +289,7 @@ impl StmtEmitter {
             )?;
         }
 
+        self.emit_error_pending_goto_handler(indent, output)?;
         Ok(())
     }
 
@@ -320,6 +344,7 @@ impl StmtEmitter {
             file_num_code
         )?;
 
+        self.emit_error_pending_goto_handler(indent, output)?;
         Ok(())
     }
 
@@ -442,6 +467,7 @@ impl StmtEmitter {
             }
         }
 
+        self.emit_error_pending_goto_handler(indent, output)?;
         Ok(())
     }
 
@@ -529,6 +555,7 @@ impl StmtEmitter {
             target_code
         )?;
 
+        self.emit_error_pending_goto_handler(indent, output)?;
         Ok(())
     }
 
@@ -655,6 +682,7 @@ impl StmtEmitter {
             )?;
         }
 
+        self.emit_error_pending_goto_handler(indent, output)?;
         Ok(())
     }
 
@@ -771,6 +799,7 @@ impl StmtEmitter {
             )?;
         }
 
+        self.emit_error_pending_goto_handler(indent, output)?;
         Ok(())
     }
 
@@ -793,6 +822,7 @@ impl StmtEmitter {
             pos_code
         )?;
 
+        self.emit_error_pending_goto_handler(indent, output)?;
         Ok(())
     }
 }

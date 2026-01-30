@@ -1,0 +1,8 @@
+$CONSOLE:ONLY
+' Runtime comparison: CHR$/ASC with values > 127 (CP437/encoding)
+PRINT ASC(CHR$(65))
+PRINT ASC(CHR$(127))
+PRINT ASC(CHR$(128))
+PRINT ASC(CHR$(255))
+PRINT LEN(CHR$(128))
+END

@@ -27,6 +27,7 @@
 pub mod array_registry;
 pub mod audio;
 pub mod audio_ffi;
+pub mod cp437;
 pub mod dialogs;
 pub mod events;
 pub mod font_ffi;
@@ -170,15 +171,90 @@ pub extern "C" fn _qb_init_palette() {
 }
 
 // ============================================================================
-// Error Handling Functions
+// Error Handling Functions (Option B: error-pending and RESUME support)
 // ============================================================================
+//
+// QB64pe-style flow:
+// - When a runtime operation fails, it calls qb_set_error(code, line) which sets
+//   NEW_ERROR (pending). No jump happens yet.
+// - Generated code (or ON ERROR path) checks qb_error_pending(); if non-zero,
+//   it calls qb_commit_error() then goto handler. qb_commit_error() copies
+//   pending to ERR_CODE/ERR_LINE so ERR/ERL work in the handler, then clears pending.
+// - RESUME clears state via qb_clear_error() so execution can continue.
+//
+// See docs/OPTION_B_IMPLEMENTATION_PLAN.md Phase 1 and 4.
 
-use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::atomic::{AtomicI32, AtomicU32, Ordering};
 
-/// Error state variables
+/// Committed error code (ERR function). Set when error is delivered to handler.
 static ERR_CODE: AtomicI32 = AtomicI32::new(0);
+/// Committed error line (ERL). Set when error is delivered to handler.
 static ERR_LINE: AtomicI32 = AtomicI32::new(0);
+/// Include-file error line (_INCLERRORLINE).
 static INCL_ERROR_LINE: AtomicI32 = AtomicI32::new(0);
+
+/// Pending error code (not yet delivered). Non-zero means an error occurred and
+/// should be handled (e.g. goto ON ERROR handler). Set by runtime on failure.
+static NEW_ERROR: AtomicU32 = AtomicU32::new(0);
+/// Line number for the pending error (for ERL after commit).
+static NEW_ERROR_LINE: AtomicI32 = AtomicI32::new(0);
+
+/// Returns non-zero if an error is pending (runtime failed and handler should run).
+///
+/// Equivalent to QB64pe's `new_error != 0`. Generated code may check this after
+/// operations that can fail (e.g. OPEN, file I/O) and jump to ON ERROR handler.
+///
+/// # Safety
+/// This function is safe to call from C.
+#[no_mangle]
+pub extern "C" fn qb_error_pending() -> u32 {
+    NEW_ERROR.load(Ordering::Relaxed)
+}
+
+/// Sets the pending error (and its line). Call from runtime when an operation fails.
+///
+/// Does not transfer control; the program must check qb_error_pending() and
+/// jump to the error handler (and call qb_commit_error() before jumping).
+///
+/// # Safety
+/// This function is safe to call from C.
+#[no_mangle]
+pub extern "C" fn qb_set_error(code: u32, line: i32) {
+    if std::env::var("QB64FRESH_ERROR_TRACE").is_ok() {
+        eprintln!("QB64Fresh: ERROR code={} line={}", code, line);
+        let _ = std::io::Write::flush(&mut std::io::stderr());
+    }
+    NEW_ERROR.store(code, Ordering::Relaxed);
+    NEW_ERROR_LINE.store(line, Ordering::Relaxed);
+}
+
+/// Clears the pending error. Call on RESUME NEXT (or when resuming after handling)
+/// so that qb_error_pending() returns 0 and execution can continue.
+///
+/// # Safety
+/// This function is safe to call from C.
+#[no_mangle]
+pub extern "C" fn qb_clear_error() {
+    NEW_ERROR.store(0, Ordering::Relaxed);
+    NEW_ERROR_LINE.store(0, Ordering::Relaxed);
+}
+
+/// Commits the pending error into ERR_CODE and ERR_LINE, then clears pending.
+///
+/// Call immediately before jumping to the ON ERROR handler so that ERR and ERL
+/// return the correct values in the handler. After this, qb_error_pending() is 0.
+///
+/// # Safety
+/// This function is safe to call from C.
+#[no_mangle]
+pub extern "C" fn qb_commit_error() {
+    let code = NEW_ERROR.load(Ordering::Relaxed);
+    let line = NEW_ERROR_LINE.load(Ordering::Relaxed);
+    ERR_CODE.store(code as i32, Ordering::Relaxed);
+    ERR_LINE.store(line, Ordering::Relaxed);
+    NEW_ERROR.store(0, Ordering::Relaxed);
+    NEW_ERROR_LINE.store(0, Ordering::Relaxed);
+}
 
 /// ERR function - returns current error code.
 ///
@@ -233,11 +309,21 @@ pub extern "C" fn qb_errormessage() -> *mut string::QbString {
         14 => "Out of string space",
         15 => "String too long",
         16 => "String formula too complex",
+        52 => "Bad file number", // File not open or invalid handle (Option B Step 1.2)
+        53 => "File not found",  // OPEN failure (Option B: set by qb_file_open)
+        54 => "Bad file mode",   // Wrong mode for operation (Option B Step 1.2)
+        57 => "Device I/O error", // Read/write failure (Option B Step 1.2)
+        62 => "Input past end",  // Read past EOF (Option B Step 1.2)
+        64 => "Bad file name",   // Empty or invalid filename (Option B Step 1.2)
         _ => {
-            // Unknown error code - format as "Error N"
-            unsafe {
-                let buf = format!("Error {}", code);
-                return string::qb_string_new(buf.as_ptr() as *const std::os::raw::c_char);
+            // Unknown error code - format as "Error N" (must be null-terminated for qb_string_new)
+            match std::ffi::CString::new(format!("Error {}", code)) {
+                Ok(c_str) => return unsafe { string::qb_string_new(c_str.as_ptr()) },
+                Err(_) => {
+                    return unsafe {
+                        string::qb_string_new(b"Error\0".as_ptr() as *const std::os::raw::c_char)
+                    }
+                }
             }
         }
     };
@@ -264,6 +350,34 @@ pub extern "C" fn qb_inclerrorfile() -> *mut string::QbString {
     string::qb_string_empty()
 }
 
+// ============================================================================
+// Debug Event Hooks (Option B Phase 2: evnt for IDE/debugger)
+// ============================================================================
+//
+// QB64pe wraps statements in do { ... ; if (!qbevent) break; evnt(line, file); } while (r);
+// so the IDE/debugger can intercept. We provide qbevent (global) and qb_evnt() so
+// codegen can emit this pattern later. See docs/OPTION_B_IMPLEMENTATION_PLAN.md Phase 2.
+
+/// Debug event flag: 0 = no debug, non-zero = call qb_evnt at statement boundaries.
+///
+/// C code may read/write this (e.g. `if (!qbevent) break;`). Exported for QB64pe-style
+/// generated code. Single-threaded BASIC execution; no synchronization.
+#[no_mangle]
+pub static mut qbevent: u32 = 0;
+
+/// Statement-level debug hook (evnt). Called when qbevent is non-zero.
+///
+/// No-op for now; can be used by IDE/debugger to set breakpoints or single-step.
+/// `line` / `incline` are source line numbers; `incfile` is include filename (may be NULL).
+///
+/// # Safety
+/// Caller must ensure `incfile` is either NULL or a valid null-terminated C string.
+#[no_mangle]
+pub unsafe extern "C" fn qb_evnt(line: u32, incline: u32, incfile: *const std::ffi::c_char) {
+    let _ = (line, incline, incfile);
+    // No-op; hook for future debugger integration
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -273,5 +387,20 @@ mod tests {
         qb_runtime_init();
         qb_runtime_shutdown();
         // Should not panic
+    }
+
+    #[test]
+    fn test_error_pending_clear_commit() {
+        // Option B: error-pending API
+        assert_eq!(qb_error_pending(), 0);
+        qb_set_error(53, 10);
+        assert_ne!(qb_error_pending(), 0);
+        assert_eq!(qb_err_code(), 0); // not committed yet
+        qb_commit_error();
+        assert_eq!(qb_error_pending(), 0);
+        assert_eq!(qb_err_code(), 53);
+        assert_eq!(qb_err_line(), 10);
+        qb_clear_error(); // RESUME NEXT: clear pending only; ERR/ERL may still return last error
+        assert_eq!(qb_error_pending(), 0);
     }
 }

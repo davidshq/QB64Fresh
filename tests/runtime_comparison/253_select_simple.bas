@@ -1,0 +1,14 @@
+$CONSOLE:ONLY
+' SELECT CASE with numeric and IS
+DIM x AS LONG
+x = 2
+SELECT CASE x
+  CASE 1: PRINT "one"
+  CASE 2: PRINT "two"
+  CASE ELSE: PRINT "other"
+END SELECT
+SELECT CASE x
+  CASE IS < 2: PRINT "lt2"
+  CASE IS >= 2: PRINT "ge2"
+END SELECT
+END

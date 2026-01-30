@@ -1,0 +1,8 @@
+$CONSOLE:ONLY
+' Runtime comparison: _SEC, _CSC, _COT
+DIM x AS DOUBLE
+x = 0
+PRINT _SEC(x)
+PRINT _CSC(1)
+PRINT _COT(1)
+END

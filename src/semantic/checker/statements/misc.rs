@@ -9,7 +9,9 @@ use crate::semantic::{error::SemanticError, typed_ir::*};
 
 use super::super::super::TypeChecker;
 
-use crate::semantic::symbols::{Symbol, SymbolKind, UserTypeDefinition, UserTypeMember};
+use crate::semantic::symbols::{
+    ConstValue, Symbol, SymbolKind, UserTypeDefinition, UserTypeMember,
+};
 use crate::semantic::types::{BasicType, from_type_spec, type_from_suffix};
 
 /// Type checks miscellaneous statements.
@@ -207,12 +209,51 @@ pub(super) fn check_misc_stmt(
             members,
             custom_type,
         } => {
-            // Convert AST type members to semantic type members
+            // Convert AST type members to semantic type members (evaluate array bounds to constants)
             let typed_members: Vec<TypedMember> = members
                 .iter()
-                .map(|m| TypedMember {
-                    name: m.name.clone(),
-                    basic_type: from_type_spec(&m.type_spec),
+                .map(|m| {
+                    let dimensions: Vec<TypedArrayDimension> = m
+                        .dimensions
+                        .iter()
+                        .map(|d| {
+                            let lower = match &d.lower {
+                                Some(lower_expr) => {
+                                    let typed_lower = checker.check_expr(lower_expr);
+                                    match checker.try_evaluate_const_expr(&typed_lower) {
+                                        Some(ConstValue::Integer(v)) => v,
+                                        Some(ConstValue::Float(v)) => v as i64,
+                                        _ => {
+                                            checker.errors.push(
+                                                SemanticError::NonConstantExpression {
+                                                    span: lower_expr.span,
+                                                },
+                                            );
+                                            0
+                                        }
+                                    }
+                                }
+                                None => checker.symbols.option_base(),
+                            };
+                            let typed_upper = checker.check_expr(&d.upper);
+                            let upper = match checker.try_evaluate_const_expr(&typed_upper) {
+                                Some(ConstValue::Integer(v)) => v,
+                                Some(ConstValue::Float(v)) => v as i64,
+                                _ => {
+                                    checker.errors.push(SemanticError::NonConstantExpression {
+                                        span: d.upper.span,
+                                    });
+                                    0
+                                }
+                            };
+                            TypedArrayDimension { lower, upper }
+                        })
+                        .collect();
+                    TypedMember {
+                        name: m.name.clone(),
+                        dimensions,
+                        basic_type: from_type_spec(&m.type_spec),
+                    }
                 })
                 .collect();
 
@@ -223,6 +264,7 @@ pub(super) fn check_misc_stmt(
                     .iter()
                     .map(|m| UserTypeMember {
                         name: m.name.clone(),
+                        dimensions: m.dimensions.clone(),
                         basic_type: m.basic_type.clone(),
                     })
                     .collect(),
@@ -284,6 +326,9 @@ pub(super) fn check_misc_stmt(
         }
 
         StatementKind::CloseFile { file_nums } => checker.check_close_file(file_nums, span),
+
+        StatementKind::LockFile { file_num } => checker.check_lock_file(file_num, span),
+        StatementKind::UnlockFile { file_num } => checker.check_unlock_file(file_num, span),
 
         StatementKind::FilePrint {
             file_num,
@@ -540,8 +585,8 @@ pub(super) fn check_misc_stmt(
                     })
                     .collect();
 
-                // Define symbol in current scope (it's a local, but static)
-                let symbol_kind = if var.dimensions.is_empty() {
+                // Define symbol. STATIC a() AS type = static dynamic array (ArrayVariable with empty dims).
+                let symbol_kind = if var.dimensions.is_empty() && !var.is_dynamic_array {
                     SymbolKind::Variable
                 } else {
                     SymbolKind::ArrayVariable {
@@ -587,6 +632,7 @@ pub(super) fn check_misc_stmt(
                     basic_type,
                     dimensions: typed_dims,
                     is_static,
+                    is_dynamic_array: var.is_dynamic_array,
                 });
             }
 
