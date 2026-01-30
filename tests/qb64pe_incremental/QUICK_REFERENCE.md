@@ -62,7 +62,7 @@ cargo run --bin qb64fresh -- tests/qb64pe_incremental/02_utilities_type.bas --em
 - `QUICK_START.md` - Getting started guide
 - `WORKFLOW_EXAMPLE.md` - Practical examples
 - `EXTRACTION_GUIDE.md` - How to extract sections
-- `FINAL_STATUS.md` - Complete status
+- `SUMMARY.md` - Status summary
 
 ## Tips
 

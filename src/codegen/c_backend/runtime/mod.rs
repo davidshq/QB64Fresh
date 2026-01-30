@@ -704,10 +704,9 @@ pub(in crate::codegen) fn emit_header_with_debug(
             writeln_code!(output)?;
             // qb_file_put_string - Provided by runtime library (declared in qb64fresh_rt.h)
             // qb_echo - Provided by runtime library (declared in qb64fresh_rt.h)
-            // qb_error - ERROR statement
+            // qb_error - ERROR statement (Option B: set pending error; handler jump is elsewhere)
             writeln_code!(output, "void qb_error(int32_t code) {{")?;
-            writeln_code!(output, "    fprintf(stderr, \"ERROR %d\\n\", code);")?;
-            writeln_code!(output, "    exit(code);")?;
+            writeln_code!(output, "    qb_set_error((uint32_t)code, 0);")?;
             writeln_code!(output, "}}")?;
             writeln_code!(output)?;
             // qb_sgn - SGN function
@@ -1149,6 +1148,7 @@ fn emit_ascii_constants(output: &mut String) -> Result<(), CodeGenError> {
 /// defined in other modules. This function emits forward declarations to
 /// ensure proper compilation order:
 /// - `_qb_gfx_warn` - defined in graphics.rs, used by memory.rs
+/// - `qb_gfx_poll_events` / `qb_gfx_display` - defined in graphics.rs, called by timing.rs (qb_limit)
 /// - `_qb_palette` - defined in legacy.rs, used by system.rs
 /// - I/O functions (from io.rs) - used by system.rs (qb_echo calls qb_print_string, qb_print_newline)
 /// - String functions (from strings.rs) - used by many modules (qb_string_data, etc.)
@@ -1168,6 +1168,10 @@ fn emit_forward_declarations(output: &mut String) -> Result<(), CodeGenError> {
     // Graphics frame counter and init function (defined in graphics.rs, used by system.rs)
     writeln_code!(output, "static int _qb_gfx_frame_count;")?;
     writeln_code!(output, "static void _qb_gfx_init_max_frames(void);")?;
+
+    // Graphics stubs called by qb_limit in timing.rs (defined in graphics.rs)
+    writeln_code!(output, "int qb_gfx_poll_events(void);")?;
+    writeln_code!(output, "int qb_gfx_display(void);")?;
 
     // Palette array (defined in legacy.rs, used by system.rs)
     writeln_code!(output, "static uint32_t _qb_palette[256];")?;

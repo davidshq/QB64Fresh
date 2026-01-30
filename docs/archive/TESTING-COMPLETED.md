@@ -6,6 +6,24 @@
 
 ---
 
+## Resolved 2026-01-30 (Recent Completions)
+
+### ✅ QB64pe Incremental Testing Strategy Complete (2026-01-28)
+
+**Source:** [QB64PE_INCREMENTAL_TESTING.md](QB64PE_INCREMENTAL_TESTING.md) (this archive).
+
+**Status:** Full QB64pe compilation succeeds through all QB64Fresh phases (preprocess, lex, parse, semantic, codegen); generated C compiles with 0 errors.
+
+**Completed phases:**
+- **Phase 1:** Core infrastructure (version, settings, constants) — PASSES
+- **Phase 2:** Utilities (hash, type; const_eval partial) — PASSES where tested
+- **Phase 4:** Core compiler (without IDE) — COMPILES SUCCESSFULLY
+- **Phase 5:** Full compiler — COMPILES SUCCESSFULLY
+
+Phase 3 (Built-in Functions in isolation) remains BLOCKED by design (tight coupling to main compiler). Full doc: [QB64PE_INCREMENTAL_TESTING.md](QB64PE_INCREMENTAL_TESTING.md).
+
+---
+
 ## Resolved 2026-01-28 (Recent Completions)
 
 ### ✅ Coverage Reporting Restored (2026-01-25)

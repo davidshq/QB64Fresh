@@ -181,7 +181,7 @@ mod tests {
         assert_eq!(levenshtein_distance("foo", "foo"), 0);
         assert_eq!(levenshtein_distance("foo", "bar"), 3);
         assert_eq!(levenshtein_distance("kitten", "sitting"), 3);
-        assert_eq!(levenshtein_distance("count", "counter"), 3);
+        assert_eq!(levenshtein_distance("count", "counter"), 2);
     }
 
     #[test]

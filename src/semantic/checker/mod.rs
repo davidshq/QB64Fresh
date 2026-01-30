@@ -43,6 +43,8 @@ pub(crate) struct LoopContext {
     pub while_depth: usize,
     /// Depth of DO loops.
     pub do_depth: usize,
+    /// Depth of SELECT CASE blocks (for EXIT SELECT).
+    pub select_depth: usize,
 }
 
 /// Bundles FOR loop components for type checking.
@@ -116,7 +118,9 @@ impl<'a> TypeChecker<'a> {
     ///
     /// Returns None if the type or field doesn't exist.
     pub(crate) fn lookup_type_field(&self, type_name: &str, field: &str) -> Option<BasicType> {
-        self.symbols.lookup_type_member(type_name, field)
+        self.symbols
+            .lookup_type_member(type_name, field)
+            .map(|(bt, _)| bt)
     }
 
     /// Collects all label definitions from a procedure body into the current scope.
@@ -328,6 +332,7 @@ mod tests {
                         upper: make_int_expr(10),
                     }],
                     type_spec: Some(crate::ast::TypeSpec::Integer),
+                    is_dynamic_array: false,
                 }],
                 shared: false,
             },
@@ -374,6 +379,7 @@ mod tests {
                         ),
                     }],
                     type_spec: Some(crate::ast::TypeSpec::Integer),
+                    is_dynamic_array: false,
                 }],
                 shared: false,
             },
@@ -410,6 +416,7 @@ mod tests {
                         upper: make_int_expr(10),
                     }],
                     type_spec: Some(crate::ast::TypeSpec::Integer),
+                    is_dynamic_array: false,
                 }],
                 shared: false,
             },
@@ -459,6 +466,7 @@ mod tests {
                         upper: make_ident_expr("size"),
                     }],
                     type_spec: Some(crate::ast::TypeSpec::Integer),
+                    is_dynamic_array: false,
                 }],
                 shared: false,
             },
@@ -904,6 +912,7 @@ mod tests {
                         upper: make_int_expr(100),
                     }],
                     type_spec: None,
+                    is_dynamic_array: false,
                 }],
             },
             Span::new(0, 15, 1),
@@ -936,6 +945,7 @@ mod tests {
                         upper: make_int_expr(50),
                     }],
                     type_spec: None,
+                    is_dynamic_array: false,
                 }],
             },
             Span::new(0, 25, 1),

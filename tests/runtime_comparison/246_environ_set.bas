@@ -1,0 +1,10 @@
+$CONSOLE:ONLY
+' Runtime comparison: ENVIRON set then ENVIRON$ read (QB64pe compile_tests/environ style)
+ENVIRON "RT246_FOO=BAR"
+PRINT ENVIRON$("RT246_FOO")
+ENVIRON "RT246_X=ZZZ"
+PRINT ENVIRON$("RT246_X")
+PRINT "[";
+PRINT ENVIRON$("RT246_NOSUCH");
+PRINT "]"
+END

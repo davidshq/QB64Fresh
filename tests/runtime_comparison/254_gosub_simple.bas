@@ -1,0 +1,9 @@
+$CONSOLE:ONLY
+' GOSUB / RETURN
+PRINT "main"
+GOSUB sub1
+PRINT "back"
+END
+sub1:
+PRINT "sub1"
+RETURN

@@ -3,11 +3,24 @@
 **Date:** 2026-01-28  
 **Purpose:** Archive of completed architectural improvements and resolved issues
 
-This document contains items that were identified in the architectural review and have since been completed. For active recommendations and pending issues, see [ARCHITECTURAL_REVIEW.md](ARCHITECTURAL_REVIEW.md).
+This document contains items that were identified in the architectural review and have since been completed. For active recommendations and pending issues, see [ARCHITECTURAL_REVIEW.md](../ThingsToDo/ARCHITECTURAL_REVIEW.md).
 
 ---
 
-## Recent Updates (2026-01-28)
+## Recent Updates (2026-01-30)
+
+### 5. Runtime Architecture Improvements (Item 5) Phase 1 ✅ **COMPLETE** (2026-01-28)
+
+**Source:** [ARCHITECTURAL_REVIEW_ITEM5_IMPLEMENTATION.md](ARCHITECTURAL_REVIEW_ITEM5_IMPLEMENTATION.md) (this archive).
+
+**Status:** Phase 1 (forward declarations, emission order, RuntimeMode enum) is complete. Phase 2 (dependency tracking) and Phase 3 (trait-based architecture) are deferred.
+
+**Completed:**
+- Forward declarations: `emit_forward_declarations()` in codegen runtime; emission order in `emit_runtime_declarations()` (io before system, etc.).
+- QB64pe compilation issues addressed; manual ordering is working.
+- RuntimeMode enum in `src/codegen/c_backend/mod.rs`; used in expr, stmt, file_io, runtime.
+
+Phase 2/3 are documented in [ARCHITECTURAL_REVIEW_ITEM5_IMPLEMENTATION.md](ARCHITECTURAL_REVIEW_ITEM5_IMPLEMENTATION.md) for future reference.
 
 ### 4. Error Message Quality ✅ **COMPLETE** (2026-01-28)
 

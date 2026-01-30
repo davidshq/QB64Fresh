@@ -222,7 +222,9 @@ pub struct UserTypeDefinition {
 pub struct UserTypeMember {
     /// Member name.
     pub name: String,
-    /// Member type.
+    /// Array dimensions (empty if scalar). e.g. `arr(1 TO 3) AS LONG` has one dimension.
+    pub dimensions: Vec<crate::semantic::typed_ir::TypedArrayDimension>,
+    /// Member type (element type for array members).
     pub basic_type: BasicType,
 }
 
@@ -1160,14 +1162,21 @@ impl SymbolTable {
 
     /// Looks up a field in a user-defined TYPE.
     ///
-    /// Returns the member's type if found, None otherwise.
-    pub fn lookup_type_member(&self, type_name: &str, field_name: &str) -> Option<BasicType> {
+    /// Returns the member's element type and array dimensions (empty if scalar) if found.
+    pub fn lookup_type_member(
+        &self,
+        type_name: &str,
+        field_name: &str,
+    ) -> Option<(
+        BasicType,
+        Vec<crate::semantic::typed_ir::TypedArrayDimension>,
+    )> {
         let type_def = self.user_types.get(&type_name.to_uppercase())?;
         let field_upper = field_name.to_uppercase();
 
         for member in &type_def.members {
             if member.name.to_uppercase() == field_upper {
-                return Some(member.basic_type.clone());
+                return Some((member.basic_type.clone(), member.dimensions.clone()));
             }
         }
         None

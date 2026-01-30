@@ -1,0 +1,6 @@
+$CONSOLE:ONLY
+' Runtime comparison: _NEGATE
+PRINT _NEGATE(5)
+PRINT _NEGATE(-3)
+PRINT _NEGATE(0)
+END

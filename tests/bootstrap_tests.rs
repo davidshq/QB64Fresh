@@ -51,7 +51,7 @@ fn compile_qb64pe() -> Result<CompilationResult, String> {
 
     // Lexer
     let lex_start = Instant::now();
-    let tokens = lex(&source);
+    let tokens = lex(&source.source);
     let lex_time = lex_start.elapsed();
 
     // Parser
@@ -79,7 +79,7 @@ fn compile_qb64pe() -> Result<CompilationResult, String> {
     let codegen_time = codegen_start.elapsed();
 
     Ok(CompilationResult {
-        source_bytes: source.len(),
+        source_bytes: source.source.len(),
         token_count: tokens.len(),
         statement_count: program.statements.len(),
         c_code_bytes: output.code.len(),
@@ -220,7 +220,7 @@ fn qb64pe_parses_successfully() {
 
     let source = preprocess_file(&path).expect("Preprocessor should succeed");
 
-    let tokens = lex(&source);
+    let tokens = lex(&source.source);
     let mut parser = Parser::new(&tokens);
 
     match parser.parse() {
@@ -234,7 +234,7 @@ fn qb64pe_parses_successfully() {
         }
         Err(errors) => {
             // Debug: show problematic lines
-            let lines: Vec<&str> = source.lines().collect();
+            let lines: Vec<&str> = source.source.lines().collect();
             println!("\n=== DEBUG: Source context around errors ===");
             for err in errors.iter().take(5) {
                 // Extract line number from error span
@@ -245,7 +245,7 @@ fn qb64pe_parses_successfully() {
                     _ => continue,
                 };
                 // Find line number from byte offset
-                let mut line_num = 0;
+                let mut line_num: usize = 0;
                 let mut byte_count = 0;
                 for (i, line) in lines.iter().enumerate() {
                     if byte_count + line.len() + 1 > span_start {
@@ -255,7 +255,9 @@ fn qb64pe_parses_successfully() {
                     byte_count += line.len() + 1; // +1 for newline
                 }
                 println!("\nError near line {} (byte {}):", line_num + 1, span_start);
-                for i in line_num.saturating_sub(3)..=(line_num + 3).min(lines.len() - 1) {
+                for i in
+                    line_num.saturating_sub(3)..=(line_num + 3).min(lines.len().saturating_sub(1))
+                {
                     let marker = if i == line_num { ">>>" } else { "   " };
                     println!("{} {:5}: {}", marker, i + 1, lines[i]);
                 }
@@ -310,13 +312,13 @@ fn qb64pe_codegen_golden() {
             );
             return; // Skip test if QB64pe not available
         }
-        let source = match preprocess_file(&file_path) {
-            Ok(s) => s,
+        let result = match preprocess_file(&file_path) {
+            Ok(r) => r,
             Err(e) => {
                 panic!("Failed to preprocess {}: {}", file_path.display(), e);
             }
         };
-        combined_source.push_str(&source);
+        combined_source.push_str(&result.source);
         combined_source.push('\n');
     }
 

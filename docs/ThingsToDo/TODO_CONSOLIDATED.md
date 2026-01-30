@@ -58,6 +58,6 @@
 ## Related Documentation
 
 **Planning:** [ARCHITECTURAL_REVIEW.md](docs/ARCHITECTURAL_REVIEW.md), [TODO-completed.md](docs/archive/TODO-completed.md)  
-**Status:** [PARTIAL_IMPLEMENTATIONS.md](docs/ThingsToDo/PARTIAL_IMPLEMENTATIONS.md), [BOOTSTRAP_VALIDATION.md](docs/ThingsToDo/BOOTSTRAP_VALIDATION.md)
+**Status:** [PARTIAL_IMPLEMENTATIONS.md](PARTIAL_IMPLEMENTATIONS.md), [BOOTSTRAP_VALIDATION.md](../archive/BOOTSTRAP_VALIDATION.md)
 
 *This file consolidates content from TODO.md, TODO_ITEMS.md, and various planning documents.*

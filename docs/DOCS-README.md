@@ -82,8 +82,8 @@ See [adrs/README.md](adrs/README.md) for the complete index. Key decisions:
 | [SECURITY_MODEL.md](SECURITY_MODEL.md) | Security considerations: SHELL, file operations, no sandbox execution |
 | [MEMORY_LIMITS.md](MEMORY_LIMITS.md) | Memory usage limits: preventing system crashes when compiling large programs |
 | [QB64pe/QB64PE_DEBUGGING.md](QB64pe/QB64PE_DEBUGGING.md) | QB64PE debugging features (reference) |
-| [QB64pe/QB64PE_TO_QB64Fresh_BEHAVIORAL_DIFFERENCES.md](QB64pe/QB64PE_TO_QB64Fresh_BEHAVIORAL_DIFFERENCES.md) | Semantic differences between QB64Fresh and QB64PE |
-| [INTENTIONAL_DIFFERENCES_FROM_QB64PE.md](INTENTIONAL_DIFFERENCES_FROM_QB64PE.md) | **Intentional** design differences from QB64pe (stricter, excluded, or different-by-choice) |
+| [QB64pe/QB64Fresh_VS_QB64pe_DIFFERENCES.md](QB64pe/QB64Fresh_VS_QB64pe_DIFFERENCES.md) | **QB64Fresh vs QB64pe (all differences):** intentional design choices and behavioral/architectural differences (single doc) |
+| [INTENTIONAL_DIFFERENCES_FROM_QB64PE.md](INTENTIONAL_DIFFERENCES_FROM_QB64PE.md) | *(Redirect → QB64pe/QB64Fresh_VS_QB64pe_DIFFERENCES.md)* |
 
 ---
 
@@ -154,7 +154,8 @@ docs/
 │   ├── QB64PE_ARCHITECTURE.md
 │   ├── QB64PE_LANGUAGE_SPECIFICATION.md
 │   ├── QB64PE_TO_QB64Fresh_MIGRATION_GUIDE.md
-│   ├── QB64PE_TO_QB64Fresh_BEHAVIORAL_DIFFERENCES.md
+│   ├── QB64Fresh_VS_QB64pe_DIFFERENCES.md   # Single doc: intentional + behavioral differences
+│   ├── QB64PE_TO_QB64Fresh_BEHAVIORAL_DIFFERENCES.md  # (Redirect → above)
 │   └── QB64PE_DEBUGGING.md
 │
 ├── QuickBasic/                 # QuickBASIC 4.5 reference

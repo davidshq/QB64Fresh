@@ -58,9 +58,11 @@ pub(super) fn emit_error_handling(output: &mut String) -> Result<(), CodeGenErro
     )?;
     writeln_code!(output)?;
 
-    // qb_error - Simulate an error
+    // qb_error - Simulate an error (ERROR statement)
+    // Set _qb_err and _qb_erl so ERR/ERL are correct in the handler. Jump is emitted by codegen after this call.
     writeln_code!(output, "void qb_error(int32_t code) {{")?;
     writeln_code!(output, "    _qb_err = code;")?;
+    writeln_code!(output, "    _qb_erl = 0;")?;
     writeln_code!(output, "    if (_qb_error_handler) {{")?;
     writeln_code!(
         output,

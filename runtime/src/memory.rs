@@ -43,15 +43,20 @@ impl Default for QbMem {
 #[no_mangle]
 pub extern "C" fn qb_memnew(size: isize) -> QbMem {
     if size <= 0 {
+        crate::qb_set_error(5, 0); // Illegal function call (invalid size)
         return QbMem::default();
     }
     let size_usize = size as usize;
     let layout = match Layout::from_size_align(size_usize, 1) {
         Ok(l) => l,
-        Err(_) => return QbMem::default(),
+        Err(_) => {
+            crate::qb_set_error(5, 0); // Illegal function call
+            return QbMem::default();
+        }
     };
     let ptr = unsafe { alloc(layout) };
     if ptr.is_null() {
+        crate::qb_set_error(7, 0); // Out of memory (Option B Step 1.2)
         return QbMem::default();
     }
     unsafe { ptr::write_bytes(ptr, 0, size_usize) };

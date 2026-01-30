@@ -669,9 +669,9 @@ pub(super) fn emit_legacy_functions(output: &mut String) -> Result<(), CodeGenEr
     writeln_code!(output, "/* QB4.5 Memory Functions (stubs) */")?;
     writeln_code!(output)?;
 
-    // FRE(n) - returns free memory
+    // FRE(n) - returns free memory (Long in BASIC; int64_t in C)
     // Modern systems have essentially unlimited memory compared to DOS
-    writeln_code!(output, "int32_t qb_fre(int64_t n) {{")?;
+    writeln_code!(output, "int64_t qb_fre(int64_t n) {{")?;
     writeln_code!(output, "    (void)n;")?;
     writeln_code!(
         output,
@@ -683,7 +683,7 @@ pub(super) fn emit_legacy_functions(output: &mut String) -> Result<(), CodeGenEr
     )?;
     writeln_code!(
         output,
-        "    return 64 * 1024 * 1024; // 64 MB (arbitrary large value)"
+        "    return (int64_t)(64 * 1024 * 1024);  /* 64 MB (arbitrary large value) */"
     )?;
     writeln_code!(output, "}}")?;
     writeln_code!(output)?;

@@ -141,6 +141,12 @@ impl super::StmtEmitter {
         let test_code = self.emit_expr(test_expr)?;
         let c_ty = c_type(&test_expr.basic_type);
 
+        let break_label = self.next_label("select_end");
+        self.loop_stack.push(LoopContext {
+            break_label: break_label.clone(),
+            loop_type: ExitType::Select,
+        });
+
         writeln_code!(output, "{}{} {} = {};", indent, c_ty, test_var, test_code)?;
 
         if is_everycase {
@@ -209,6 +215,9 @@ impl super::StmtEmitter {
                 writeln_code!(output, "{}}}", indent)?;
             }
         }
+
+        writeln_code!(output, "{}{}:;", indent, break_label)?;
+        self.loop_stack.pop();
         Ok(())
     }
 

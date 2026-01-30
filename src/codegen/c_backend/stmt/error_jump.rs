@@ -18,6 +18,37 @@ use crate::semantic::typed_ir::TypedExpr;
 use crate::writeln_code;
 
 impl super::StmtEmitter {
+    /// Emits an error-pending check after a call that can fail (file I/O, etc.).
+    ///
+    /// When using the external runtime, emits:
+    /// `if (qb_error_pending()) { if (_qb_error_handler) { qb_commit_error(); goto *_qb_error_handler; } }`
+    /// so that ON ERROR GOTO handlers are invoked when the runtime sets an error (e.g. after failed OPEN).
+    /// When using the inline runtime, this is a no-op (inline runtime does not provide
+    /// `qb_error_pending` / `qb_commit_error`).
+    ///
+    /// Call this after any statement that can set the runtime error state (OPEN, CLOSE,
+    /// GET, PUT, INPUT #, PRINT #, SEEK, and optionally system/memory ops).
+    ///
+    /// # Arguments
+    ///
+    /// * `indent` - Current indentation string
+    /// * `output` - Output buffer for generated C code
+    pub fn emit_error_pending_goto_handler(
+        &self,
+        indent: &str,
+        output: &mut String,
+    ) -> Result<(), CodeGenError> {
+        if !self.config.runtime_mode.is_external() {
+            return Ok(());
+        }
+        writeln_code!(
+            output,
+            "{}if (qb_error_pending()) {{ if (_qb_error_handler) {{ qb_commit_error(); goto *_qb_error_handler; }} }}",
+            indent
+        )?;
+        Ok(())
+    }
+
     /// Emits ON ERROR GOTO.
     ///
     /// Handles several cases:
@@ -109,7 +140,7 @@ impl super::StmtEmitter {
     /// Handles three variants:
     /// - `RESUME` - Retry the statement that caused the error
     /// - `RESUME NEXT` - Continue at the statement after the error
-    /// - `RESUME label` - Jump to a specific label
+    /// - `RESUME label` - Jump to a specific label (label `0` is special: same as retry)
     ///
     /// # Arguments
     ///
@@ -125,6 +156,8 @@ impl super::StmtEmitter {
         match target {
             None => {
                 // RESUME - retry the statement (complex, use goto)
+                // Note: For external runtime, _qb_error_line is never set (Phase 1.3 would set it
+                // when committing error), so RESUME (retry) may no-op until that is implemented.
                 writeln_code!(
                     output,
                     "{}if (_qb_error_line) goto *_qb_error_line;",
@@ -132,14 +165,32 @@ impl super::StmtEmitter {
                 )?;
             }
             Some(crate::ast::ResumeTarget::Next) => {
-                // RESUME NEXT - continue at next statement
-                writeln_code!(output, "{}_qb_err = 0;", indent)?;
+                // RESUME NEXT - clear error state and continue at next statement
+                if self.config.runtime_mode.is_external() {
+                    writeln_code!(output, "{}qb_clear_error();", indent)?;
+                } else {
+                    writeln_code!(output, "{}_qb_err = 0;", indent)?;
+                }
                 writeln_code!(output, "{}/* RESUME NEXT - continue execution */", indent)?;
             }
             Some(crate::ast::ResumeTarget::Label(label)) => {
-                let c_label = self.proc_label(label);
-                writeln_code!(output, "{}_qb_err = 0;", indent)?;
-                writeln_code!(output, "{}goto {};", indent, c_label)?;
+                // RESUME 0 means "resume at the line that caused the error" (retry).
+                // C labels cannot be "0" (invalid identifier), so emit goto *_qb_error_line.
+                if label == "0" {
+                    writeln_code!(
+                        output,
+                        "{}if (_qb_error_line) goto *_qb_error_line;",
+                        indent
+                    )?;
+                } else {
+                    let c_label = self.proc_label(label);
+                    if self.config.runtime_mode.is_external() {
+                        writeln_code!(output, "{}qb_clear_error();", indent)?;
+                    } else {
+                        writeln_code!(output, "{}_qb_err = 0;", indent)?;
+                    }
+                    writeln_code!(output, "{}goto {};", indent, c_label)?;
+                }
             }
         }
         Ok(())
@@ -147,8 +198,9 @@ impl super::StmtEmitter {
 
     /// Emits ERROR statement.
     ///
-    /// Triggers a runtime error with the specified error code.
-    /// This is used to simulate or raise errors programmatically.
+    /// Triggers a runtime error with the specified error code, then jumps to the
+    /// ON ERROR GOTO handler if one is set. Without the jump, execution would
+    /// continue to the next statement and ERR/ERL would never be visible in the handler.
     ///
     /// # Arguments
     ///
@@ -163,6 +215,21 @@ impl super::StmtEmitter {
     ) -> Result<(), CodeGenError> {
         let code_expr = self.emit_expr(code)?;
         writeln_code!(output, "{}qb_error({});", indent, code_expr)?;
+        // Jump to handler so ERR/ERL are visible there. Inline: _qb_err already set by qb_error();
+        // external: qb_error() called qb_set_error(), so we check pending and commit before goto.
+        if self.config.runtime_mode.is_external() {
+            writeln_code!(
+                output,
+                "{}if (qb_error_pending()) {{ if (_qb_error_handler) {{ qb_commit_error(); goto *_qb_error_handler; }} }}",
+                indent
+            )?;
+        } else {
+            writeln_code!(
+                output,
+                "{}if (_qb_error_handler) {{ goto *_qb_error_handler; }}",
+                indent
+            )?;
+        }
         Ok(())
     }
 

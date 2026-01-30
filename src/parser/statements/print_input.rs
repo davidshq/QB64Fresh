@@ -128,10 +128,11 @@ impl<'a> Parser<'a> {
     }
 
     /// Checks if current token terminates a PRINT statement.
-    /// This includes newlines, colons, comments, and ELSE (for single-line IF...THEN...ELSE).
+    /// This includes newlines, colons, comments, ELSE, and ELSEIF (for single-line IF...THEN...ELSEIF...ELSE).
     fn is_print_terminator(&self) -> bool {
         self.check(&TokenKind::Newline)
             || self.check(&TokenKind::Colon)
+            || self.check(&TokenKind::ElseIf)
             || self.check(&TokenKind::Else)
             || self.check(&TokenKind::Comment)
     }

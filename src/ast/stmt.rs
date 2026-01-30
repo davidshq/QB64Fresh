@@ -561,6 +561,18 @@ pub enum StatementKind {
         file_nums: Vec<Expr>,
     },
 
+    /// `LOCK [#]filenum` - file locking (stub: no-op in inline runtime).
+    LockFile {
+        /// File number to lock.
+        file_num: Expr,
+    },
+
+    /// `UNLOCK [#]filenum` - file unlocking (stub: no-op in inline runtime).
+    UnlockFile {
+        /// File number to unlock.
+        file_num: Expr,
+    },
+
     /// `PRINT #filenum, [expression [{;|,} expression]...]`
     ///
     /// Writes data to a sequential file.
@@ -2030,15 +2042,18 @@ pub struct ArrayDimension {
     pub upper: Expr,
 }
 
-/// A single variable in a DIM statement.
+/// A single variable in a DIM or REDIM statement.
 #[derive(Debug, Clone)]
 pub struct DimVariable {
     /// Variable name.
     pub name: String,
-    /// Array dimensions (empty if not an array).
+    /// Array dimensions (empty if not an array, or dynamic array `DIM a()`).
     pub dimensions: Vec<ArrayDimension>,
     /// Type specification (if AS clause present).
     pub type_spec: Option<TypeSpec>,
+    /// True when parentheses were present but empty (`DIM a() AS LONG` = dynamic array).
+    /// Distinguishes dynamic array from scalar when `dimensions` is empty.
+    pub is_dynamic_array: bool,
 }
 
 /// Type specification for DIM statements.
@@ -2165,6 +2180,8 @@ pub enum ExitType {
     Sub,
     /// `EXIT FUNCTION`
     Function,
+    /// `EXIT SELECT`
+    Select,
 }
 
 /// Continue statement type (QB64 _CONTINUE).
@@ -2255,6 +2272,8 @@ pub struct DeclareParam {
 pub struct TypeMember {
     /// Member name (field name).
     pub name: String,
+    /// Array dimensions (empty if scalar field). e.g. `arr(1 TO 3) AS LONG` has one dimension.
+    pub dimensions: Vec<ArrayDimension>,
     /// Member type specification.
     pub type_spec: TypeSpec,
 }

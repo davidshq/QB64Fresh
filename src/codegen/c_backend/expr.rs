@@ -1886,6 +1886,23 @@ fn emit_binary_expr(
             // Use pow() from math.h for exponentiation
             return Ok(format!("pow({}, {})", left_code, right_code));
         }
+        BinaryOp::Modulo => {
+            // C's % is integer-only. BASIC MOD with floats truncates toward zero then mod.
+            // Cast when either operand is float or Unknown (Unknown may resolve to float at runtime).
+            let needs_cast = left.basic_type.is_float()
+                || right.basic_type.is_float()
+                || matches!(left.basic_type, BasicType::Unknown)
+                || matches!(right.basic_type, BasicType::Unknown);
+            let (l, r) = if needs_cast {
+                (
+                    format!("(int64_t)({})", left_code),
+                    format!("(int64_t)({})", right_code),
+                )
+            } else {
+                (left_code, right_code)
+            };
+            return Ok(format!("({} % {})", l, r));
+        }
         BinaryOp::Eqv => {
             // EQV (equivalence) = bitwise XNOR = ~(a ^ b)
             return Ok(format!("(~({} ^ {}))", left_code, right_code));
@@ -1942,6 +1959,28 @@ fn emit_array_access(
 ) -> Result<String, CodeGenError> {
     let mut c_name = c_identifier(name);
 
+    // UDT field array: "w.arr" -> emit w.arr[i-lower], not w_arr[i]
+    let base_prefix = if name.contains('.') {
+        let parts: Vec<&str> = name.splitn(2, '.').collect();
+        if parts.len() == 2 {
+            let base = parts[0];
+            let field = parts[1];
+            let base_c = c_identifier(base);
+            let base_c = variable_renames.get(&base_c).cloned().unwrap_or(base_c);
+            // Nested fields: "player.arr" -> "player.arr" in C (each part sanitized)
+            let field_c: String = field
+                .split('.')
+                .map(c_identifier)
+                .collect::<Vec<_>>()
+                .join(".");
+            format!("{}.{}", base_c, field_c)
+        } else {
+            c_name.clone()
+        }
+    } else {
+        c_name.clone()
+    };
+
     // Check if this array was renamed due to parameter shadowing.
     // When a local array shadows a function parameter (e.g., DIM args(5) AS ParseNum
     // when args is a parameter), the array is renamed (e.g., args -> args_local)
@@ -1953,15 +1992,18 @@ fn emit_array_access(
     // (i.e., renames ending with "_scalar"). These are for scalar/array dual namespace
     // and should only be applied to scalar variable references, not array accesses.
     // Only apply renames for parameter shadowing (e.g., args -> args_local).
-    if let Some(renamed) = variable_renames.get(&c_name) {
-        // Only apply the rename if it's NOT a scalar rename (doesn't end with "_scalar")
-        // Scalar renames are for scalar/array dual namespace and should not affect array accesses
-        if !renamed.ends_with("_scalar") {
-            c_name = renamed.clone();
-        }
-        // If the rename ends with "_scalar", ignore it - we're accessing an array,
-        // not a scalar, so we should use the original array name
+    if !name.contains('.')
+        && let Some(renamed) = variable_renames.get(&c_name)
+        && !renamed.ends_with("_scalar")
+    {
+        c_name = renamed.clone();
     }
+    // Use base_prefix for UDT field arrays (w.arr), renamed c_name for global/local arrays
+    let final_prefix = if name.contains('.') {
+        base_prefix
+    } else {
+        c_name
+    };
 
     // Collect index codes, casting to int64_t to ensure integer subscripts
     // (C requires integer array subscripts, but BASIC allows any numeric type)
@@ -1991,34 +2033,42 @@ fn emit_array_access(
     if dimensions.is_empty() || indices_code.len() == 1 {
         // 1D array - simple index (subtracting lower bound)
         if let Some(dim) = dimensions.first() {
-            Ok(format!("{}[{} - {}]", c_name, indices_code[0], dim.lower))
+            Ok(format!(
+                "{}[{} - {}]",
+                final_prefix, indices_code[0], dim.lower
+            ))
         } else {
             // No dimension info, use index as-is (shouldn't happen)
-            Ok(format!("{}[{}]", c_name, indices_code[0]))
+            Ok(format!("{}[{}]", final_prefix, indices_code[0]))
         }
+    } else if name.contains('.') {
+        // Multi-dimensional UDT field: C has type arr[s0][s1], emit base.field[i0-l0][i1-l1]
+        let brackets: String = dimensions
+            .iter()
+            .zip(indices_code.iter())
+            .map(|(dim, idx)| format!("[{} - {}]", idx, dim.lower))
+            .collect();
+        Ok(format!("{}{}", final_prefix, brackets))
     } else {
-        // Multi-dimensional array - calculate linear index
+        // Multi-dimensional global array - calculate linear index
         // For 2D: arr(i, j) -> arr[(i - lower1) * size2 + (j - lower2)]
-        // General formula: sum of (adjusted_index * stride)
         let mut linear_parts = Vec::new();
 
         for (i, (idx, dim)) in indices_code.iter().zip(dimensions.iter()).enumerate() {
             let adjusted = format!("({} - {})", idx, dim.lower);
 
             if i < dimensions.len() - 1 {
-                // Calculate stride: product of all remaining dimension sizes
                 let stride: i64 = dimensions[i + 1..]
                     .iter()
                     .map(|d| d.upper - d.lower + 1)
                     .product();
                 linear_parts.push(format!("{} * {}", adjusted, stride));
             } else {
-                // Last dimension, no stride multiplication
                 linear_parts.push(adjusted);
             }
         }
 
-        Ok(format!("{}[{}]", c_name, linear_parts.join(" + ")))
+        Ok(format!("{}[{}]", final_prefix, linear_parts.join(" + ")))
     }
 }
 

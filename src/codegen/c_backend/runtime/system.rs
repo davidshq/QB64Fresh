@@ -3,7 +3,7 @@
 //! This module emits C code for system-related stub functions including:
 //! - Filesystem operations (file/directory existence, paths, mkdir, rmdir, chdir, kill, rename)
 //!   On non-Windows, KILL, NAME, MKDIR, RMDIR, CHDIR, and qb_file_rename normalize `\`→`/` in paths.
-//! - Shell and console functions (SHELL, ECHO, CONSOLE)
+//! - Shell and console functions (SHELL, ECHO, CONSOLE); CHAIN and LPRINT stubs
 //! - String manipulation helpers (ASC assignment, INSTRREV)
 //! - Font functions (_FONT, _FREEFONT, _LOADFONT stubs; _MAPUNICODE functional)
 //! - Window functions (stubs for _TITLE, _SCREENMOVE, _SCREENSHOW, _ICON)
@@ -279,6 +279,12 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
         output,
         "void qb_controlchr(int32_t state) {{ (void)state; }}"
     )?;
+    // CHAIN: run another program; inline stub is no-op (does not transfer control)
+    writeln_code!(output, "void qb_chain(QbString* path) {{ (void)path; }}")?;
+    // LPRINT: print to printer (LPT1); inline stub is no-op
+    writeln_code!(output, "void qb_lprint(QbString* s) {{ (void)s; }}")?;
+    writeln_code!(output, "void qb_lprint_tab(void) {{ }}")?;
+    writeln_code!(output, "void qb_lprint_newline(void) {{ }}")?;
     writeln_code!(output)?;
 
     // String functions

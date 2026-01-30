@@ -71,30 +71,30 @@ When adding a new test file:
 3. Add a header comment explaining purpose and expected compilation time
 4. Update this README
 
+## Tools
+
+- **Test runner:** `scripts/test-qb64pe-incremental.sh` — run all phases or specific phases (e.g. `./scripts/test-qb64pe-incremental.sh all`).
+- **Section extractor:** `scripts/extract-qb64pe-section.sh` — extract line ranges from qb64pe.bas into `sections/` (e.g. idstruct_type, clearid_sub, regid_sub). See [INCREMENTAL_TESTING.md](INCREMENTAL_TESTING.md#extracting-sections).
+
+**Impact:** Isolated component tests run in **0.1–0.7 s** vs 5+ minutes for full QB64pe → **300–3000× faster iteration**.
+
 ## Quick Reference
 
 See `QUICK_REFERENCE.md` for a one-page cheat sheet.
 
-## Incremental Testing Strategy
+## Documentation
 
-**⭐ See `INCREMENTAL_TESTING_STRATEGY.md` for the complete guide on:**
-- How to test portions of QB64pe without building the whole app
-- Fast iteration workflow (find → extract → fix → test → repeat)
-- Speed comparisons (300-3000x faster!)
-- When to use full compile vs incremental tests
-
-## Workflow Examples
-
-See `WORKFLOW_EXAMPLE.md` for practical examples of using this infrastructure.
+- **Full guide:** [INCREMENTAL_TESTING.md](INCREMENTAL_TESTING.md) — strategy, workflow, extraction, full test plan, execution, results, progress output, and testing notes.
+- **Cheat sheet:** [QUICK_REFERENCE.md](QUICK_REFERENCE.md) — one-page reference.
+- **Getting started:** [QUICK_START.md](QUICK_START.md).
 
 ## Notes
 
 - All paths are relative from test file location to `QB64pe/source/` (use `../../../QB64pe/source/`)
 - IDE component (`ide_methods.bas`) is 21K lines and optional
-- Test files should have minimal code - just enough to exercise includes
-- Use `--emit-c` flag for faster testing (no C compilation step)
-- **Include order matters:** `.bi` header files must come before `.bas` implementation files
-- See `TESTING_NOTES.md` for test results and findings
+- Test files should have minimal code — just enough to exercise includes
+- Use `--emit-c` for faster iteration (no C compilation step)
+- **Include order:** `.bi` header files must come before `.bas` implementation files
 
 ## Current Status
 

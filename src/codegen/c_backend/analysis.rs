@@ -156,9 +156,27 @@ pub(super) fn collect_type_definitions(
                         let c_member_name = c_identifier(&member.name);
                         if let BasicType::FixedString(len) = &member.basic_type {
                             writeln_code!(&mut def, "    char {}[{}];", c_member_name, len + 1)?;
-                        } else {
+                        } else if member.dimensions.is_empty() {
                             let c_member_type = c_type(&member.basic_type);
                             writeln_code!(&mut def, "    {} {};", c_member_type, c_member_name)?;
+                        } else {
+                            // Array field: emit type name[size0][size1]... (size = upper - lower + 1)
+                            // Clamp size to at least 1 to avoid invalid C when lower > upper
+                            let c_member_type = c_type(&member.basic_type);
+                            let sizes: Vec<i64> = member
+                                .dimensions
+                                .iter()
+                                .map(|d| (d.upper - d.lower + 1).max(1))
+                                .collect();
+                            let bracket_sizes: String =
+                                sizes.iter().map(|s| format!("[{}]", s)).collect();
+                            writeln_code!(
+                                &mut def,
+                                "    {} {}{};",
+                                c_member_type,
+                                c_member_name,
+                                bracket_sizes
+                            )?;
                         }
                     }
 
@@ -275,7 +293,7 @@ pub(super) fn collect_globals(
                 shared: _,
             } => {
                 for var in variables {
-                    if var.dimensions.is_empty() {
+                    if var.dimensions.is_empty() && !var.is_dynamic_array {
                         // Simple global variables (non-array)
                         declare_scalar_var(
                             &var.name,
@@ -284,6 +302,17 @@ pub(super) fn collect_globals(
                             &mut globals,
                             None,
                             None, // No array_names for global analysis
+                        );
+                    } else if var.dimensions.is_empty() && var.is_dynamic_array {
+                        // DIM a() AS type = global dynamic array
+                        declare_array_var(
+                            &var.name,
+                            &var.basic_type,
+                            &mut declared_vars,
+                            &mut globals,
+                            true,  // is_global
+                            false, // is_static (dynamic array)
+                            &[],
                         );
                     } else {
                         // Global arrays (static or dynamic based on $STATIC/$DYNAMIC directive)

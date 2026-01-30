@@ -142,6 +142,33 @@ impl super::StmtEmitter {
     ) -> Result<(), CodeGenError> {
         let mut c_name = c_identifier(name);
 
+        // UDT field array: "w.arr" -> emit w.arr[i-lower], not w_arr[i]
+        let base_prefix = if name.contains('.') {
+            let parts: Vec<&str> = name.splitn(2, '.').collect();
+            if parts.len() == 2 {
+                let base = parts[0];
+                let field = parts[1];
+                let base_c = c_identifier(base);
+                let base_c = self
+                    .procedure
+                    .variable_renames
+                    .get(&base_c)
+                    .cloned()
+                    .unwrap_or(base_c);
+                // Nested fields: "player.arr" -> "player.arr" in C (each part sanitized)
+                let field_c: String = field
+                    .split('.')
+                    .map(c_identifier)
+                    .collect::<Vec<_>>()
+                    .join(".");
+                format!("{}.{}", base_c, field_c)
+            } else {
+                c_name.clone()
+            }
+        } else {
+            c_name.clone()
+        };
+
         // Array assignment always refers to the local array variable, not a parameter.
         // If the variable was renamed to avoid shadowing, use the renamed version.
         //
@@ -149,14 +176,11 @@ impl super::StmtEmitter {
         // (i.e., renames ending with "_scalar"). These are for scalar/array dual namespace
         // and should only be applied to scalar variable references, not array assignments.
         // Only apply renames for parameter shadowing (e.g., args -> args_local).
-        if let Some(renamed) = self.procedure.variable_renames.get(&c_name) {
-            // Only apply the rename if it's NOT a scalar rename (doesn't end with "_scalar")
-            // Scalar renames are for scalar/array dual namespace and should not affect array assignments
-            if !renamed.ends_with("_scalar") {
-                c_name = renamed.clone();
-            }
-            // If the rename ends with "_scalar", ignore it - we're assigning to an array,
-            // not a scalar, so we should use the original array name
+        if !name.contains('.')
+            && let Some(renamed) = self.procedure.variable_renames.get(&c_name)
+            && !renamed.ends_with("_scalar")
+        {
+            c_name = renamed.clone();
         }
         let value_code = self.emit_expr(value)?;
 
@@ -194,60 +218,54 @@ impl super::StmtEmitter {
             linear_parts.join(" + ")
         };
 
+        let target = if name.contains('.') {
+            &base_prefix
+        } else {
+            &c_name
+        };
+
+        // Multi-D UDT field: C has type arr[s0][s1], emit base.field[i0-l0][i1-l1] = value
+        let lhs: String = if name.contains('.') && dimensions.len() > 1 {
+            let brackets: String = dimensions
+                .iter()
+                .zip(indices_code.iter())
+                .map(|(d, i)| format!("[{} - {}]", i, d.lower))
+                .collect();
+            format!("{}{}", target, brackets)
+        } else {
+            format!("{}[{}]", target, index_expr)
+        };
+
         // Handle fixed-length string array elements specially
         if let BasicType::FixedString(len) = element_type {
             // For fixed-length strings, we need to copy the string content
-            // The value is a QbString*, we need to copy its data into the char array
-            // Note: Don't free _tmp here - it will be cleaned up by qbs_cleanup at statement end
             let data_access = self.config.runtime_mode.string_data_access("_tmp");
             writeln_code!(
                 output,
-                "{}{{ QbString* _tmp = {}; strncpy({}[{}], _tmp ? {} : \"\", {}); {}[{}][{}] = '\\0'; }}",
+                "{}{{ QbString* _tmp = {}; strncpy({}, _tmp ? {} : \"\", {}); {}[{}] = '\\0'; }}",
                 indent,
                 value_code,
-                c_name,
-                index_expr,
+                lhs,
                 data_access,
                 len,
-                c_name,
-                index_expr,
+                lhs,
                 len
             )?;
         } else if *element_type == BasicType::String {
-            // For dynamic string arrays: release old, retain new
-            // This ensures proper refcount management for temp string cleanup
             writeln_code!(
                 output,
-                "{}{{ QbString* _new = {}; if ({}[{}] != _new) {{ qb_string_release({}[{}]); {}[{}] = qb_string_retain(_new); }} }}",
+                "{}{{ QbString* _new = {}; if ({} != _new) {{ qb_string_release({}); {} = qb_string_retain(_new); }} }}",
                 indent,
                 value_code,
-                c_name,
-                index_expr,
-                c_name,
-                index_expr,
-                c_name,
-                index_expr
+                lhs,
+                lhs,
+                lhs
             )?;
         } else if value.basic_type != *element_type {
             let c_ty = c_type(element_type);
-            writeln_code!(
-                output,
-                "{}{}[{}] = ({})({});",
-                indent,
-                c_name,
-                index_expr,
-                c_ty,
-                value_code
-            )?;
+            writeln_code!(output, "{}{} = ({})({});", indent, lhs, c_ty, value_code)?;
         } else {
-            writeln_code!(
-                output,
-                "{}{}[{}] = {};",
-                indent,
-                c_name,
-                index_expr,
-                value_code
-            )?;
+            writeln_code!(output, "{}{} = {};", indent, lhs, value_code)?;
         }
         Ok(())
     }

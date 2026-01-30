@@ -234,11 +234,15 @@ impl<'a> Parser<'a> {
                 self.advance();
                 ExitType::Function
             }
+            TokenKind::Select => {
+                self.advance();
+                ExitType::Select
+            }
             _ => {
                 let span: Span = token.span;
                 self.errors.push(ParseError::syntax(
                     format!(
-                        "expected FOR, WHILE, DO, SUB, or FUNCTION after EXIT, found {:?}",
+                        "expected FOR, WHILE, DO, SUB, FUNCTION, or SELECT after EXIT, found {:?}",
                         token.kind
                     ),
                     span,

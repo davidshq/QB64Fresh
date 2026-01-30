@@ -115,6 +115,36 @@ impl<'a> TypeChecker<'a> {
         )
     }
 
+    /// Type checks LOCK # statement (stub: no-op in inline runtime).
+    pub(in crate::semantic::checker) fn check_lock_file(
+        &mut self,
+        file_num: &Expr,
+        span: Span,
+    ) -> TypedStatement {
+        let typed_file_num = self.check_expr(file_num);
+        TypedStatement::new(
+            TypedStatementKind::LockFile {
+                file_num: typed_file_num,
+            },
+            span,
+        )
+    }
+
+    /// Type checks UNLOCK # statement (stub: no-op in inline runtime).
+    pub(in crate::semantic::checker) fn check_unlock_file(
+        &mut self,
+        file_num: &Expr,
+        span: Span,
+    ) -> TypedStatement {
+        let typed_file_num = self.check_expr(file_num);
+        TypedStatement::new(
+            TypedStatementKind::UnlockFile {
+                file_num: typed_file_num,
+            },
+            span,
+        )
+    }
+
     /// Type checks PRINT # statement.
     pub(in crate::semantic::checker) fn check_file_print(
         &mut self,
@@ -662,6 +692,10 @@ pub(super) fn check_io_stmt(
         }
         crate::ast::StatementKind::CloseFile { file_nums } => {
             checker.check_close_file(file_nums, span)
+        }
+        crate::ast::StatementKind::LockFile { file_num } => checker.check_lock_file(file_num, span),
+        crate::ast::StatementKind::UnlockFile { file_num } => {
+            checker.check_unlock_file(file_num, span)
         }
         crate::ast::StatementKind::FilePrint {
             file_num,

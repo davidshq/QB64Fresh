@@ -810,6 +810,18 @@ pub enum TypedStatementKind {
         file_nums: Vec<TypedExpr>,
     },
 
+    /// LOCK #filenum (stub: no-op in inline runtime).
+    LockFile {
+        /// File number to lock.
+        file_num: TypedExpr,
+    },
+
+    /// UNLOCK #filenum (stub: no-op in inline runtime).
+    UnlockFile {
+        /// File number to unlock.
+        file_num: TypedExpr,
+    },
+
     /// PRINT # statement (file output).
     FilePrint {
         /// The file number.
@@ -1889,7 +1901,9 @@ pub struct TypedCommonVariable {
 pub struct TypedMember {
     /// Member name.
     pub name: String,
-    /// Member type.
+    /// Array dimensions (empty if scalar). e.g. `arr(1 TO 3) AS LONG` has one dimension.
+    pub dimensions: Vec<TypedArrayDimension>,
+    /// Member type (element type for array members).
     pub basic_type: BasicType,
 }
 
@@ -2088,12 +2102,15 @@ pub struct TypedDimVariable {
     pub name: String,
     /// Basic type of the variable.
     pub basic_type: BasicType,
-    /// Array dimensions (empty if scalar).
+    /// Array dimensions (empty if scalar, or dynamic array `DIM a()`).
     pub dimensions: Vec<TypedArrayDimension>,
     /// Whether this array should be statically allocated (from $STATIC directive).
     /// Only meaningful for arrays (non-empty dimensions).
     /// Scalar variables are always allocated normally regardless of this flag.
     pub is_static: bool,
+    /// True when `DIM a() AS type` (empty parens = dynamic array).
+    /// Distinguishes dynamic array from scalar when `dimensions` is empty.
+    pub is_dynamic_array: bool,
 }
 
 /// A typed array dimension for REDIM (with runtime expressions).

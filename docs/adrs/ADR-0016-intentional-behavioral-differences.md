@@ -20,7 +20,7 @@ Key considerations:
 
 ### Policy
 
-1. **Document**: All deliberate deviations (stricter rules, excluded features, or different-by-design behavior) are listed in [INTENTIONAL_DIFFERENCES_FROM_QB64PE.md](../INTENTIONAL_DIFFERENCES_FROM_QB64PE.md).
+1. **Document**: All deliberate deviations (stricter rules, excluded features, or different-by-design behavior) are listed in [QB64pe/QB64Fresh_VS_QB64pe_DIFFERENCES.md](../QB64pe/QB64Fresh_VS_QB64pe_DIFFERENCES.md) (section “Intentional differences”).
 2. **Do not emulate permissive bugs**: We do not replicate QB64pe behavior that hides programmer errors (e.g., creating a new label in the current procedure when GOTO targets a label that exists only in another procedure).
 3. **Improve where justified**: We may choose better behavior (e.g., collecting and reporting multiple errors per run instead of stopping at the first).
 4. **Accept implementation consequences**: Some differences follow from our design (C backend, different runtime) and are documented rather than “fixed” for parity.
@@ -51,11 +51,10 @@ Key considerations:
 ### Negative
 
 - Code that relies on QB64pe’s permissive behavior will need changes
-- Users must check INTENTIONAL_DIFFERENCES when porting
+- Users must check QB64Fresh vs QB64pe differences doc when porting (see References)
 
 ## References
 
-- [INTENTIONAL_DIFFERENCES_FROM_QB64PE.md](../INTENTIONAL_DIFFERENCES_FROM_QB64PE.md) – Canonical list of intentional differences
+- [QB64pe/QB64Fresh_VS_QB64pe_DIFFERENCES.md](../QB64pe/QB64Fresh_VS_QB64pe_DIFFERENCES.md) – Canonical list: intentional and behavioral/architectural differences (single doc)
 - [ADR-0011](ADR-0011-error-handling.md) – Error handling (multiple errors)
 - [ADR-0014](ADR-0014-scope-and-excluded-features.md) – Scope and excluded features
-- [QB64pe/QB64PE_TO_QB64Fresh_BEHAVIORAL_DIFFERENCES.md](../QB64pe/QB64PE_TO_QB64Fresh_BEHAVIORAL_DIFFERENCES.md) – Broader behavioral differences (architectural and intentional)

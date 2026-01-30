@@ -1,0 +1,6 @@
+$CONSOLE:ONLY
+' Runtime comparison: &H with large value
+PRINT &H7FFFFFFF
+PRINT &H80000000
+PRINT &HFFFFFFFF&
+END

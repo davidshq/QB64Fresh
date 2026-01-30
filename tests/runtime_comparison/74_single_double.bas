@@ -1,0 +1,9 @@
+$CONSOLE:ONLY
+' Runtime comparison: SINGLE vs DOUBLE
+DIM s AS SINGLE
+DIM d AS DOUBLE
+s = 1.234567
+d = 1.23456789012345
+PRINT "single:"; s
+PRINT "double:"; d
+END

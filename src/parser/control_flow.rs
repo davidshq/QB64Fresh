@@ -70,8 +70,9 @@ impl<'a> Parser<'a> {
                 while self.check(&TokenKind::Colon) {
                     self.advance();
                 }
-                // Check if we've hit end of line or ELSE
+                // Check if we've hit end of line, ELSEIF, or ELSE
                 if self.check(&TokenKind::Newline)
+                    || self.check(&TokenKind::ElseIf)
                     || self.check(&TokenKind::Else)
                     || self.check(&TokenKind::Comment)
                     || self.is_at_end()
@@ -79,14 +80,17 @@ impl<'a> Parser<'a> {
                     break;
                 }
                 then_branch.push(self.parse_single_line_if_statement()?);
-                // Check if next is colon (more statements) or ELSE/end of line
+                // Check if next is colon (more statements) or ELSEIF/ELSE/end of line
                 if self.check(&TokenKind::Colon) {
                     // Peek ahead to see what follows the colon
                     if let Some(next) = self.peek_ahead(1) {
-                        // Stop if ELSE, Newline, or end of statement follows
+                        // Stop if ELSEIF, ELSE, Newline, or end of statement follows
                         if matches!(
                             next.kind,
-                            TokenKind::Else | TokenKind::Newline | TokenKind::Comment
+                            TokenKind::ElseIf
+                                | TokenKind::Else
+                                | TokenKind::Newline
+                                | TokenKind::Comment
                         ) {
                             self.advance(); // consume the trailing colon
                             break;
@@ -100,6 +104,49 @@ impl<'a> Parser<'a> {
                 } else {
                     break; // No more statements
                 }
+            }
+
+            // Parse ELSEIF branches if present: ELSEIF cond THEN stmt ...
+            let mut elseif_branches = Vec::new();
+            while self.match_token(&TokenKind::ElseIf) {
+                let elseif_condition = self.parse_expression()?;
+                self.expect(&TokenKind::Then, "THEN after ELSEIF condition")?;
+                let mut elseif_stmts = Vec::new();
+                loop {
+                    while self.check(&TokenKind::Colon) {
+                        self.advance();
+                    }
+                    if self.check(&TokenKind::Newline)
+                        || self.check(&TokenKind::ElseIf)
+                        || self.check(&TokenKind::Else)
+                        || self.check(&TokenKind::Comment)
+                        || self.is_at_end()
+                    {
+                        break;
+                    }
+                    elseif_stmts.push(self.parse_single_line_if_statement()?);
+                    if self.check(&TokenKind::Colon) {
+                        if let Some(next) = self.peek_ahead(1) {
+                            if matches!(
+                                next.kind,
+                                TokenKind::ElseIf
+                                    | TokenKind::Else
+                                    | TokenKind::Newline
+                                    | TokenKind::Comment
+                            ) {
+                                self.advance();
+                                break;
+                            }
+                        } else {
+                            self.advance();
+                            break;
+                        }
+                        self.advance();
+                    } else {
+                        break;
+                    }
+                }
+                elseif_branches.push((elseif_condition, elseif_stmts));
             }
 
             // Parse ELSE branch if present
@@ -144,7 +191,7 @@ impl<'a> Parser<'a> {
                 StatementKind::If {
                     condition,
                     then_branch,
-                    elseif_branches: Vec::new(),
+                    elseif_branches,
                     else_branch,
                 },
                 span,

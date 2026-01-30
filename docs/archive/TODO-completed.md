@@ -1115,7 +1115,7 @@ Debugger fully implemented with 50+ tests passing. See [ADR-0013](../adrs/ADR-00
 
 **Test:** `cargo test --test bootstrap_tests qb64pe_compiles_successfully`
 
-**Files:** `tests/bootstrap_tests.rs`, `docs/ThingsToDo/BOOTSTRAP_VALIDATION.md`
+**Files:** `tests/bootstrap_tests.rs`, `docs/archive/BOOTSTRAP_VALIDATION.md`
 
 **Note:** Full execution testing (compiling BASIC programs with bootstrapped QB64pe) is pending but code generation is fully validated.
 
@@ -1216,3 +1216,37 @@ Debugger fully implemented with 50+ tests passing. See [ADR-0013](../adrs/ADR-00
 - [x] **By-ref parameter codegen (parameters as pointers not dereferenced)**
   - Already implemented: pointer alias in `definitions.rs` (`int32_t* n = n_ref`), dereference in expr/assignments/control_flow via `current_func_byref_scalar_names`
   - Verified: `integration_tests::byref_scalar_sub_compiles_and_emits_write_through` and `execution_tests::byref_scalar_sub_modifies_caller_variable` both pass
+
+---
+
+## Option B Implementation Plan (2026-01-29)
+
+*Completed items from [OPTION_B_IMPLEMENTATION_PLAN.md](../OPTION_B_IMPLEMENTATION_PLAN.md).*
+
+### Prerequisites
+- [x] Generated C compiles and links with runtime (e.g. `qb64pe_fresh.c` + `libqb64fresh_rt`).
+- [x] Baseline test: run a trivial BASIC program (PRINT, no errors) with external runtime.
+
+### Success criteria (minimum Option B)
+- [x] Runtime builds and links with generated C (`--runtime external`).
+- [x] `qb_error_pending()` exists and reflects runtime-set errors; ON ERROR GOTO and RESUME work.
+- [x] `qb_evnt(line, incline, file)` exists (no-op or hook); ready for codegen to call.
+- [x] String temp pool and cleanup work (inline or in runtime); no string leaks in normal use.
+
+### Steps completed
+- [x] **Step 1.1** — Runtime: Error state and `is_error_pending` (qb_error_pending, qb_set_error, qb_clear_error, qb_commit_error).
+- [x] **Step 1.2** — Runtime: Set error from runtime code (file I/O, memory, error messages).
+- [x] **Step 1.3** — Codegen: Emit `qb_error_pending()` checks after file I/O and system ops when `--runtime external` (emit_error_pending_goto_handler; OPEN, CLOSE, PRINT #, WRITE #, INPUT #, LINE INPUT #, GET, PUT, SEEK; KILL, RENAME, MKDIR, RMDIR, CHDIR, SHELL).
+- [x] **Step 4.1** — Runtime: RESUME support (codegen emits qb_clear_error for RESUME NEXT / RESUME label when external).
+- [x] **Step 4.2** — Runtime: ERL / ERR / _ERRORLINE / _ERRORMESSAGE$ (qb_err_code, qb_err_line, qb_errorline, qb_errormessage, qb_inclerrorline, qb_inclerrorfile).
+- [x] **Step 7.1** — Audit and fill gaps: string-related symbols in qb64pe_fresh.c; all from runtime or inline in codegen; link succeeds; no undefined symbols.
+
+---
+
+## ThingsToDo Docs Moved to Archive (2026-01-30)
+
+Completed or reference-only docs from `docs/ThingsToDo/` were moved to `docs/archive/`:
+
+- [x] **BOOTSTRAP_VALIDATION.md** → `docs/archive/BOOTSTRAP_VALIDATION.md` — Bootstrap compilation fully validated; runtime features and regression tests complete. Optional next steps (QB4.5 compatibility test, self-compilation) remain in the archived doc.
+- [x] **QB64PE_INCREMENTAL_TESTING.md** → `docs/archive/QB64PE_INCREMENTAL_TESTING.md` — Full QB64pe compilation succeeds; Phases 1, 2, 4 complete. Summary in [TESTING-COMPLETED.md](TESTING-COMPLETED.md).
+- [x] **ARCHITECTURAL_REVIEW_ITEM5_IMPLEMENTATION.md** → `docs/archive/ARCHITECTURAL_REVIEW_ITEM5_IMPLEMENTATION.md` — Item 5 Phase 1 (Runtime Architecture) complete; Phase 2–3 deferred. Summary in [ARCHITECTURAL_REVIEW_COMPLETED.md](ARCHITECTURAL_REVIEW_COMPLETED.md).

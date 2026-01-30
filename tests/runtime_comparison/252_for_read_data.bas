@@ -1,0 +1,9 @@
+$CONSOLE:ONLY
+' FOR with READ/DATA
+FOR k = 1 TO 3
+  READ v
+  PRINT v;
+NEXT k
+PRINT
+END
+DATA 10, 20, 30

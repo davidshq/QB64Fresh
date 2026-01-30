@@ -648,7 +648,7 @@ These extensions are important for compatibility:
 | **Testing** | Large test suite | Unit + integration + golden tests |
 | **Memory Safety** | Manual management | Rust ownership system |
 
-For intentional behavioral differences and migration from QB64pe, see `docs/INTENTIONAL_DIFFERENCES_FROM_QB64PE.md` and `docs/QB64pe/QB64PE_TO_QB64Fresh_MIGRATION_GUIDE.md`.
+For intentional behavioral differences and migration from QB64pe, see [QB64Fresh_VS_QB64pe_DIFFERENCES.md](QB64Fresh_VS_QB64pe_DIFFERENCES.md) and [QB64PE_TO_QB64Fresh_MIGRATION_GUIDE.md](QB64PE_TO_QB64Fresh_MIGRATION_GUIDE.md).
 
 ---
 
@@ -749,7 +749,7 @@ Each phase should be:
 - **QB64pe Wiki:** https://qb64phoenix.com/qb64wiki
 - **QB64pe Forum:** https://qb64phoenix.com/forum
 - **QB64Fresh Architecture:** See `docs/ARCHITECTURE.md`
-- **QB64Fresh intentional differences:** See `docs/INTENTIONAL_DIFFERENCES_FROM_QB64PE.md` and `docs/adrs/ADR-0016-intentional-behavioral-differences.md`
+- **QB64Fresh intentional differences:** See [QB64Fresh_VS_QB64pe_DIFFERENCES.md](QB64Fresh_VS_QB64pe_DIFFERENCES.md) and [ADR-0016-intentional-behavioral-differences.md](../adrs/ADR-0016-intentional-behavioral-differences.md)
 - **Migrating from QB64pe:** See `docs/QB64pe/QB64PE_TO_QB64Fresh_MIGRATION_GUIDE.md`
 
 ---

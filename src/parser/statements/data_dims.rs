@@ -39,19 +39,20 @@ impl<'a> Parser<'a> {
                 let name_token = self.expect(&TokenKind::Identifier, "variable name")?;
                 let name = name_token.text.to_string();
 
-                // Optional array dimensions
-                let dimensions = if self.match_token(&TokenKind::LeftParen) {
+                // Optional array dimensions; empty parens () = dynamic array
+                let (dimensions, is_dynamic_array) = if self.match_token(&TokenKind::LeftParen) {
                     let dims = self.parse_array_dimensions()?;
                     self.expect(&TokenKind::RightParen, ")")?;
-                    dims
+                    (dims.clone(), dims.is_empty())
                 } else {
-                    Vec::new()
+                    (Vec::new(), false)
                 };
 
                 variables.push(DimVariable {
                     name,
                     dimensions,
                     type_spec: Some(common_type.clone()),
+                    is_dynamic_array,
                 });
 
                 if !self.match_token(&TokenKind::Comma) {
@@ -64,13 +65,13 @@ impl<'a> Parser<'a> {
                 let name_token = self.expect(&TokenKind::Identifier, "variable name")?;
                 let name = name_token.text.to_string();
 
-                // Optional array dimensions
-                let dimensions = if self.match_token(&TokenKind::LeftParen) {
+                // Optional array dimensions; empty parens () = dynamic array
+                let (dimensions, is_dynamic_array) = if self.match_token(&TokenKind::LeftParen) {
                     let dims = self.parse_array_dimensions()?;
                     self.expect(&TokenKind::RightParen, ")")?;
-                    dims
+                    (dims.clone(), dims.is_empty())
                 } else {
-                    Vec::new()
+                    (Vec::new(), false)
                 };
 
                 // Optional type specification
@@ -84,6 +85,7 @@ impl<'a> Parser<'a> {
                     name,
                     dimensions,
                     type_spec,
+                    is_dynamic_array,
                 });
 
                 if !self.match_token(&TokenKind::Comma) {
@@ -112,7 +114,15 @@ impl<'a> Parser<'a> {
         loop {
             let first_expr = self.parse_expression()?;
 
-            if self.match_token(&TokenKind::To) {
+            // Accept TO keyword or identifier "TO" (match by kind or token text).
+            let has_to = self
+                .peek()
+                .map(|t| matches!(t.kind, TokenKind::To) || t.text.eq_ignore_ascii_case("to"))
+                .unwrap_or(false);
+            if has_to {
+                self.advance();
+            }
+            if has_to {
                 // lower TO upper
                 let upper_expr = self.parse_expression()?;
                 dims.push(ArrayDimension {
@@ -146,9 +156,19 @@ impl<'a> Parser<'a> {
     pub(in crate::parser) fn parse_redim(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("REDIM keyword").span.start;
 
-        // SHARED and _PRESERVE can appear in either order
+        // SHARED and _PRESERVE/PRESERVE can appear in either order.
+        // Accept both _PRESERVE (QB64) and PRESERVE (identifier) for compatibility.
         let mut shared = self.match_token(&TokenKind::Shared);
-        let preserve = self.match_token(&TokenKind::Preserve);
+        let mut preserve = self.match_token(&TokenKind::Preserve);
+        if !preserve
+            && self
+                .peek()
+                .map(|t| t.text.eq_ignore_ascii_case("preserve"))
+                .unwrap_or(false)
+        {
+            self.advance();
+            preserve = true;
+        }
         // Check for SHARED after _PRESERVE too (both orderings are valid)
         if !shared {
             shared = self.match_token(&TokenKind::Shared);
@@ -166,19 +186,20 @@ impl<'a> Parser<'a> {
                 let name_token = self.expect(&TokenKind::Identifier, "array name")?;
                 let name = name_token.text.to_string();
 
-                // Array dimensions are optional (scalar variables allowed)
-                let dimensions = if self.match_token(&TokenKind::LeftParen) {
+                // Array dimensions are optional (scalar variables allowed); empty () = dynamic
+                let (dimensions, is_dynamic_array) = if self.match_token(&TokenKind::LeftParen) {
                     let dims = self.parse_array_dimensions()?;
                     self.expect(&TokenKind::RightParen, ")")?;
-                    dims
+                    (dims.clone(), dims.is_empty())
                 } else {
-                    Vec::new()
+                    (Vec::new(), false)
                 };
 
                 variables.push(DimVariable {
                     name,
                     dimensions,
                     type_spec: Some(common_type.clone()),
+                    is_dynamic_array,
                 });
 
                 if !self.match_token(&TokenKind::Comma) {
@@ -193,12 +214,12 @@ impl<'a> Parser<'a> {
                 let name = name_token.text.to_string();
 
                 // Array dimensions are optional (scalar variables allowed in REDIM)
-                let dimensions = if self.match_token(&TokenKind::LeftParen) {
+                let (dimensions, is_dynamic_array) = if self.match_token(&TokenKind::LeftParen) {
                     let dims = self.parse_array_dimensions()?;
                     self.expect(&TokenKind::RightParen, ")")?;
-                    dims
+                    (dims.clone(), dims.is_empty())
                 } else {
-                    Vec::new()
+                    (Vec::new(), false)
                 };
 
                 let type_spec = if self.match_token(&TokenKind::As) {
@@ -211,6 +232,7 @@ impl<'a> Parser<'a> {
                     name,
                     dimensions,
                     type_spec,
+                    is_dynamic_array,
                 });
 
                 if !self.match_token(&TokenKind::Comma) {
@@ -251,19 +273,20 @@ impl<'a> Parser<'a> {
                 let name_token = self.expect(&TokenKind::Identifier, "variable name")?;
                 let name = name_token.text.to_string();
 
-                // Optional array dimensions
-                let dimensions = if self.match_token(&TokenKind::LeftParen) {
+                // Optional array dimensions; empty () = dynamic array
+                let (dimensions, is_dynamic_array) = if self.match_token(&TokenKind::LeftParen) {
                     let dims = self.parse_array_dimensions()?;
                     self.expect(&TokenKind::RightParen, ")")?;
-                    dims
+                    (dims.clone(), dims.is_empty())
                 } else {
-                    Vec::new()
+                    (Vec::new(), false)
                 };
 
                 variables.push(DimVariable {
                     name,
                     dimensions,
                     type_spec: Some(common_type.clone()),
+                    is_dynamic_array,
                 });
 
                 if !self.match_token(&TokenKind::Comma) {
@@ -277,12 +300,12 @@ impl<'a> Parser<'a> {
                 let name = name_token.text.to_string();
 
                 // Optional array dimensions
-                let dimensions = if self.match_token(&TokenKind::LeftParen) {
+                let (dimensions, is_dynamic_array) = if self.match_token(&TokenKind::LeftParen) {
                     let dims = self.parse_array_dimensions()?;
                     self.expect(&TokenKind::RightParen, ")")?;
-                    dims
+                    (dims.clone(), dims.is_empty())
                 } else {
-                    Vec::new()
+                    (Vec::new(), false)
                 };
 
                 // Optional type specification
@@ -296,6 +319,7 @@ impl<'a> Parser<'a> {
                     name,
                     dimensions,
                     type_spec,
+                    is_dynamic_array,
                 });
 
                 if !self.match_token(&TokenKind::Comma) {

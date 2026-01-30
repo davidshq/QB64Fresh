@@ -1,0 +1,7 @@
+$CONSOLE:ONLY
+' Runtime comparison: _SHL, _SHR
+PRINT _SHL(1, 3)
+PRINT _SHR(8, 2)
+PRINT _SHL(2, 0)
+PRINT _SHR(16, 3)
+END

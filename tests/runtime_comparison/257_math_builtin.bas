@@ -1,0 +1,5 @@
+$CONSOLE:ONLY
+' Math built-ins: SQR, INT, SGN, ABS
+PRINT SQR(4); INT(3.7); SGN(-5); ABS(-10)
+PRINT SIN(0); COS(0); ATN(1)
+END

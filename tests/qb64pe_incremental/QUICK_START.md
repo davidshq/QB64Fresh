@@ -77,7 +77,7 @@ See `EXTRACTION_GUIDE.md` for details.
 - `tests/qb64pe_incremental/` - All test files
 - `scripts/test-qb64pe-incremental.sh` - Test runner
 - `scripts/extract-qb64pe-section.sh` - Section extractor
-- `docs/QB64PE_INCREMENTAL_TESTING.md` - Full strategy guide
+- `docs/archive/QB64PE_INCREMENTAL_TESTING.md` - Full strategy guide
 
 ## Tips
 

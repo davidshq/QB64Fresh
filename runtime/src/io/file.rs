@@ -229,9 +229,11 @@ pub unsafe extern "C" fn qb_file_open(
 ) {
     let _ = access; // Used by codegen for fopen mode; we derive mode from mode_str
     if fnum < 1 || fnum >= QB_MAX_FILES as i32 {
+        crate::qb_set_error(52, 0); // Bad file number
         return;
     }
     if filename.is_null() || mode.is_null() {
+        crate::qb_set_error(52, 0); // Bad file number
         return;
     }
 
@@ -239,17 +241,26 @@ pub unsafe extern "C" fn qb_file_open(
 
     let filename_str = match std::ffi::CStr::from_ptr(filename).to_str() {
         Ok(s) => s,
-        Err(_) => return,
+        Err(_) => {
+            crate::qb_set_error(64, 0); // Bad file name (invalid encoding)
+            return;
+        }
     };
     let mode_str = match std::ffi::CStr::from_ptr(mode).to_str() {
         Ok(s) => s,
-        Err(_) => return,
+        Err(_) => {
+            crate::qb_set_error(5, 0); // Illegal function call (invalid mode encoding)
+            return;
+        }
     };
     if filename_str.is_empty() {
-        eprintln!(
-            "Warning: Failed to open file '': empty filename (mode: {})",
-            mode_str
-        );
+        // IDE init sometimes opens with empty filename (e.g. config "r+b");
+        // treat as optional file: succeed without opening, no error, no warning.
+        let mode_trimmed = mode_str.trim();
+        if mode_trimmed == "r+b" || mode_trimmed == "rb+" {
+            return;
+        }
+        crate::qb_set_error(64, 0); // Bad file name
         return;
     }
 
@@ -341,13 +352,16 @@ pub unsafe extern "C" fn qb_file_open(
                 map.insert(fnum, handle);
             }
             Err(e) => {
-                // File open failed - log error but don't panic
-                // In QB64, failed OPEN typically sets ERR but continues execution
-                eprintln!(
-                    "Warning: Failed to open file '{}': {}",
-                    resolved_path.display(),
-                    e
-                );
+                // File open failed - set pending error (Option B: ON ERROR GOTO can handle)
+                // QB error 53 = "File not found" (classic QB)
+                crate::qb_set_error(53, 0);
+                if std::env::var("QB64FRESH_DEBUG_FILE").is_ok() {
+                    eprintln!(
+                        "QB64Fresh: Failed to open file '{}': {}",
+                        resolved_path.display(),
+                        e
+                    );
+                }
             }
         }
     }
@@ -369,6 +383,7 @@ pub unsafe extern "C" fn qb_file_open_str(
     lock: i32,
 ) {
     if filename.is_null() {
+        crate::qb_set_error(52, 0); // Bad file number (null filename)
         return;
     }
     let filename_data = qb_string_data(filename);
@@ -438,6 +453,7 @@ pub extern "C" fn qb_file_close_all() {
 #[no_mangle]
 pub extern "C" fn qb_file_print_int(fnum: i32, val: i64) {
     if fnum < 1 || fnum >= QB_MAX_FILES as i32 {
+        crate::qb_set_error(52, 0); // Bad file number
         return;
     }
     init_file_handles();
@@ -447,8 +463,14 @@ pub extern "C" fn qb_file_print_int(fnum: i32, val: i64) {
             if let Some(ref mut writer) = handle.writer {
                 let _ = write!(writer.get_mut(), "{}", val);
                 let _ = writer.flush();
+            } else {
+                crate::qb_set_error(54, 0); // Bad file mode (no write access)
             }
+        } else {
+            crate::qb_set_error(52, 0); // File not open
         }
+    } else {
+        crate::qb_set_error(52, 0); // File not open
     }
 }
 
@@ -456,6 +478,7 @@ pub extern "C" fn qb_file_print_int(fnum: i32, val: i64) {
 #[no_mangle]
 pub extern "C" fn qb_file_print_float(fnum: i32, val: f64) {
     if fnum < 1 || fnum >= QB_MAX_FILES as i32 {
+        crate::qb_set_error(52, 0); // Bad file number
         return;
     }
     init_file_handles();
@@ -465,8 +488,14 @@ pub extern "C" fn qb_file_print_float(fnum: i32, val: f64) {
             if let Some(ref mut writer) = handle.writer {
                 let _ = write!(writer.get_mut(), "{}", val);
                 let _ = writer.flush();
+            } else {
+                crate::qb_set_error(54, 0); // Bad file mode
             }
+        } else {
+            crate::qb_set_error(52, 0); // File not open
         }
+    } else {
+        crate::qb_set_error(52, 0); // File not open
     }
 }
 
@@ -476,7 +505,11 @@ pub extern "C" fn qb_file_print_float(fnum: i32, val: f64) {
 /// - `s` must be a valid QbString pointer or null
 #[no_mangle]
 pub unsafe extern "C" fn qb_file_print_string(fnum: i32, s: *const QbString) {
-    if fnum < 1 || fnum >= QB_MAX_FILES as i32 || s.is_null() {
+    if fnum < 1 || fnum >= QB_MAX_FILES as i32 {
+        crate::qb_set_error(52, 0); // Bad file number
+        return;
+    }
+    if s.is_null() {
         return;
     }
     init_file_handles();
@@ -489,8 +522,14 @@ pub unsafe extern "C" fn qb_file_print_string(fnum: i32, s: *const QbString) {
                 let slice = std::slice::from_raw_parts(data as *const u8, len);
                 let _ = writer.write_all(slice);
                 let _ = writer.flush();
+            } else {
+                crate::qb_set_error(54, 0); // Bad file mode (no write access)
             }
+        } else {
+            crate::qb_set_error(52, 0); // File not open
         }
+    } else {
+        crate::qb_set_error(52, 0); // File not open
     }
 }
 
@@ -498,6 +537,7 @@ pub unsafe extern "C" fn qb_file_print_string(fnum: i32, s: *const QbString) {
 #[no_mangle]
 pub extern "C" fn qb_file_print_newline(fnum: i32) {
     if fnum < 1 || fnum >= QB_MAX_FILES as i32 {
+        crate::qb_set_error(52, 0); // Bad file number
         return;
     }
     init_file_handles();
@@ -507,8 +547,14 @@ pub extern "C" fn qb_file_print_newline(fnum: i32) {
             if let Some(ref mut writer) = handle.writer {
                 let _ = writer.write_all(b"\n");
                 let _ = writer.flush();
+            } else {
+                crate::qb_set_error(54, 0); // Bad file mode (no write access)
             }
+        } else {
+            crate::qb_set_error(52, 0); // File not open
         }
+    } else {
+        crate::qb_set_error(52, 0); // File not open
     }
 }
 
@@ -516,6 +562,7 @@ pub extern "C" fn qb_file_print_newline(fnum: i32) {
 #[no_mangle]
 pub extern "C" fn qb_file_print_tab(fnum: i32) {
     if fnum < 1 || fnum >= QB_MAX_FILES as i32 {
+        crate::qb_set_error(52, 0); // Bad file number
         return;
     }
     init_file_handles();
@@ -525,8 +572,14 @@ pub extern "C" fn qb_file_print_tab(fnum: i32) {
             if let Some(ref mut writer) = handle.writer {
                 let _ = writer.write_all(b"\t");
                 let _ = writer.flush();
+            } else {
+                crate::qb_set_error(54, 0); // Bad file mode (no write access)
             }
+        } else {
+            crate::qb_set_error(52, 0); // File not open
         }
+    } else {
+        crate::qb_set_error(52, 0); // File not open
     }
 }
 
@@ -537,6 +590,9 @@ pub extern "C" fn qb_file_print_tab(fnum: i32) {
 #[no_mangle]
 pub unsafe extern "C" fn qb_file_write_string(fnum: i32, s: *const QbString) {
     if fnum < 1 || fnum >= QB_MAX_FILES as i32 || s.is_null() {
+        if fnum < 1 || fnum >= QB_MAX_FILES as i32 {
+            crate::qb_set_error(52, 0); // Bad file number
+        }
         return;
     }
     init_file_handles();
@@ -551,7 +607,11 @@ pub unsafe extern "C" fn qb_file_write_string(fnum: i32, s: *const QbString) {
                 let _ = writer.write_all(slice);
                 let _ = writer.write_all(b"\"");
                 let _ = writer.flush();
+            } else {
+                crate::qb_set_error(54, 0); // Bad file mode (no write access)
             }
+        } else {
+            crate::qb_set_error(52, 0); // File not open
         }
     }
 }
@@ -560,6 +620,7 @@ pub unsafe extern "C" fn qb_file_write_string(fnum: i32, s: *const QbString) {
 #[no_mangle]
 pub extern "C" fn qb_file_write_number(fnum: i32, val: f64) {
     if fnum < 1 || fnum >= QB_MAX_FILES as i32 {
+        crate::qb_set_error(52, 0); // Bad file number
         return;
     }
     init_file_handles();
@@ -569,7 +630,11 @@ pub extern "C" fn qb_file_write_number(fnum: i32, val: f64) {
             if let Some(ref mut writer) = handle.writer {
                 let _ = write!(writer.get_mut(), "{}", val);
                 let _ = writer.flush();
+            } else {
+                crate::qb_set_error(54, 0); // Bad file mode (no write access)
             }
+        } else {
+            crate::qb_set_error(52, 0); // File not open
         }
     }
 }
@@ -578,6 +643,7 @@ pub extern "C" fn qb_file_write_number(fnum: i32, val: f64) {
 #[no_mangle]
 pub extern "C" fn qb_file_write_char(fnum: i32, c: u8) {
     if fnum < 1 || fnum >= QB_MAX_FILES as i32 {
+        crate::qb_set_error(52, 0); // Bad file number
         return;
     }
     init_file_handles();
@@ -587,7 +653,11 @@ pub extern "C" fn qb_file_write_char(fnum: i32, c: u8) {
             if let Some(ref mut writer) = handle.writer {
                 let _ = writer.write_all(&[c]);
                 let _ = writer.flush();
+            } else {
+                crate::qb_set_error(54, 0); // Bad file mode (no write access)
             }
+        } else {
+            crate::qb_set_error(52, 0); // File not open
         }
     }
 }
@@ -598,7 +668,11 @@ pub extern "C" fn qb_file_write_char(fnum: i32, c: u8) {
 /// - `s` must be a valid pointer to a QbString* (will be modified)
 #[no_mangle]
 pub unsafe extern "C" fn qb_file_input_string(fnum: i32, s: *mut *mut QbString) {
-    if fnum < 1 || fnum >= QB_MAX_FILES as i32 || s.is_null() {
+    if fnum < 1 || fnum >= QB_MAX_FILES as i32 {
+        crate::qb_set_error(52, 0); // Bad file number
+        return;
+    }
+    if s.is_null() {
         return;
     }
     init_file_handles();
@@ -625,8 +699,14 @@ pub unsafe extern "C" fn qb_file_input_string(fnum: i32, s: *mut *mut QbString) 
                     }
                 }
                 *s = qb_string_from_bytes(buf.as_ptr(), buf.len());
+            } else {
+                crate::qb_set_error(54, 0); // Bad file mode (no read access)
             }
+        } else {
+            crate::qb_set_error(52, 0); // File not open
         }
+    } else {
+        crate::qb_set_error(52, 0); // File not open
     }
 }
 
@@ -636,7 +716,11 @@ pub unsafe extern "C" fn qb_file_input_string(fnum: i32, s: *mut *mut QbString) 
 /// - `val` must be a valid pointer to i32
 #[no_mangle]
 pub unsafe extern "C" fn qb_file_input_int(fnum: i32, val: *mut i32) {
-    if fnum < 1 || fnum >= QB_MAX_FILES as i32 || val.is_null() {
+    if fnum < 1 || fnum >= QB_MAX_FILES as i32 {
+        crate::qb_set_error(52, 0); // Bad file number
+        return;
+    }
+    if val.is_null() {
         return;
     }
     init_file_handles();
@@ -665,8 +749,14 @@ pub unsafe extern "C" fn qb_file_input_int(fnum: i32, val: *mut i32) {
                 if let Ok(n) = buf.parse::<i32>() {
                     *val = n;
                 }
+            } else {
+                crate::qb_set_error(54, 0); // Bad file mode (no read access)
             }
+        } else {
+            crate::qb_set_error(52, 0); // File not open
         }
+    } else {
+        crate::qb_set_error(52, 0); // File not open
     }
 }
 
@@ -676,7 +766,11 @@ pub unsafe extern "C" fn qb_file_input_int(fnum: i32, val: *mut i32) {
 /// - `val` must be a valid pointer to f64
 #[no_mangle]
 pub unsafe extern "C" fn qb_file_input_float(fnum: i32, val: *mut f64) {
-    if fnum < 1 || fnum >= QB_MAX_FILES as i32 || val.is_null() {
+    if fnum < 1 || fnum >= QB_MAX_FILES as i32 {
+        crate::qb_set_error(52, 0); // Bad file number
+        return;
+    }
+    if val.is_null() {
         return;
     }
     init_file_handles();
@@ -705,8 +799,14 @@ pub unsafe extern "C" fn qb_file_input_float(fnum: i32, val: *mut f64) {
                 if let Ok(n) = buf.parse::<f64>() {
                     *val = n;
                 }
+            } else {
+                crate::qb_set_error(54, 0); // Bad file mode (no read access)
             }
+        } else {
+            crate::qb_set_error(52, 0); // File not open
         }
+    } else {
+        crate::qb_set_error(52, 0); // File not open
     }
 }
 
@@ -725,7 +825,11 @@ pub unsafe extern "C" fn qb_file_input_float(fnum: i32, val: *mut f64) {
 /// - If file is not open or invalid, function returns without modifying `*s`
 #[no_mangle]
 pub unsafe extern "C" fn qb_file_line_input(fnum: i32, s: *mut *mut QbString) {
-    if fnum < 1 || fnum >= QB_MAX_FILES as i32 || s.is_null() {
+    if fnum < 1 || fnum >= QB_MAX_FILES as i32 {
+        crate::qb_set_error(52, 0); // Bad file number
+        return;
+    }
+    if s.is_null() {
         return;
     }
     init_file_handles();
@@ -771,8 +875,14 @@ pub unsafe extern "C" fn qb_file_line_input(fnum: i32, s: *mut *mut QbString) {
                     buf.pop();
                 }
                 *s = qb_string_from_bytes(buf.as_ptr(), buf.len());
+            } else {
+                crate::qb_set_error(54, 0); // Bad file mode (no read access)
             }
+        } else {
+            crate::qb_set_error(52, 0); // File not open
         }
+    } else {
+        crate::qb_set_error(52, 0); // File not open
     }
 }
 
@@ -780,6 +890,7 @@ pub unsafe extern "C" fn qb_file_line_input(fnum: i32, s: *mut *mut QbString) {
 #[no_mangle]
 pub extern "C" fn qb_file_seek(fnum: i32, pos: i64) {
     if fnum < 1 || fnum >= QB_MAX_FILES as i32 {
+        crate::qb_set_error(52, 0); // Bad file number
         return;
     }
     init_file_handles();
@@ -791,11 +902,8 @@ pub extern "C" fn qb_file_seek(fnum: i32, pos: i64) {
             }
             // Reset EOF state when seeking
             handle.eof_reached = false;
-            // Recreate reader to reset its position
-            if let Some(ref mut reader) = handle.reader {
-                // We need to recreate the reader to reset position
-                // This is handled by reopening the file if needed
-            }
+        } else {
+            crate::qb_set_error(52, 0); // File not open
         }
     }
 }
@@ -804,6 +912,7 @@ pub extern "C" fn qb_file_seek(fnum: i32, pos: i64) {
 #[no_mangle]
 pub extern "C" fn qb_file_seek_record(fnum: i32, rec: i64) {
     if fnum < 1 || fnum >= QB_MAX_FILES as i32 {
+        crate::qb_set_error(52, 0); // Bad file number
         return;
     }
     init_file_handles();
@@ -816,6 +925,8 @@ pub extern "C" fn qb_file_seek_record(fnum: i32, rec: i64) {
             }
             // Reset EOF state when seeking
             handle.eof_reached = false;
+        } else {
+            crate::qb_set_error(52, 0); // File not open
         }
     }
 }
@@ -827,6 +938,9 @@ pub extern "C" fn qb_file_seek_record(fnum: i32, rec: i64) {
 #[no_mangle]
 pub unsafe extern "C" fn qb_file_get(fnum: i32, data: *mut u8, size: usize) {
     if fnum < 1 || fnum >= QB_MAX_FILES as i32 || data.is_null() || size == 0 {
+        if fnum < 1 || fnum >= QB_MAX_FILES as i32 {
+            crate::qb_set_error(52, 0); // Bad file number
+        }
         return;
     }
     init_file_handles();
@@ -836,7 +950,11 @@ pub unsafe extern "C" fn qb_file_get(fnum: i32, data: *mut u8, size: usize) {
             if let Some(ref mut reader) = handle.reader {
                 let slice = std::slice::from_raw_parts_mut(data, size);
                 let _ = Read::read_exact(reader, slice);
+            } else {
+                crate::qb_set_error(54, 0); // Bad file mode (no read access)
             }
+        } else {
+            crate::qb_set_error(52, 0); // File not open
         }
     }
 }
@@ -866,6 +984,7 @@ pub unsafe extern "C" fn qb_file_get_string(fnum: i32, s: *mut QbString) {
     let data_ptr = s as *mut c_char as *mut u8;
 
     if fnum < 1 || fnum >= QB_MAX_FILES as i32 {
+        crate::qb_set_error(52, 0); // Bad file number
         return;
     }
 
@@ -876,7 +995,11 @@ pub unsafe extern "C" fn qb_file_get_string(fnum: i32, s: *mut QbString) {
             if let Some(ref mut reader) = handle.reader {
                 let slice = std::slice::from_raw_parts_mut(data_ptr, len);
                 let _ = Read::read_exact(reader, slice);
+            } else {
+                crate::qb_set_error(54, 0); // Bad file mode (no read access)
             }
+        } else {
+            crate::qb_set_error(52, 0); // File not open
         }
     }
 }
@@ -888,6 +1011,9 @@ pub unsafe extern "C" fn qb_file_get_string(fnum: i32, s: *mut QbString) {
 #[no_mangle]
 pub unsafe extern "C" fn qb_file_put(fnum: i32, data: *const u8, size: usize) {
     if fnum < 1 || fnum >= QB_MAX_FILES as i32 || data.is_null() || size == 0 {
+        if fnum < 1 || fnum >= QB_MAX_FILES as i32 {
+            crate::qb_set_error(52, 0); // Bad file number
+        }
         return;
     }
     init_file_handles();
@@ -898,7 +1024,11 @@ pub unsafe extern "C" fn qb_file_put(fnum: i32, data: *const u8, size: usize) {
                 let slice = std::slice::from_raw_parts(data, size);
                 let _ = writer.write_all(slice);
                 let _ = writer.flush();
+            } else {
+                crate::qb_set_error(54, 0); // Bad file mode (no write access)
             }
+        } else {
+            crate::qb_set_error(52, 0); // File not open
         }
     }
 }
@@ -926,6 +1056,7 @@ pub unsafe extern "C" fn qb_file_put_string(fnum: i32, s: *const QbString) {
     let data_ptr = s as *const c_char as *const u8;
 
     if fnum < 1 || fnum >= QB_MAX_FILES as i32 {
+        crate::qb_set_error(52, 0); // Bad file number
         return;
     }
 
@@ -937,7 +1068,11 @@ pub unsafe extern "C" fn qb_file_put_string(fnum: i32, s: *const QbString) {
                 let slice = std::slice::from_raw_parts(data_ptr, len);
                 let _ = writer.write_all(slice);
                 let _ = writer.flush();
+            } else {
+                crate::qb_set_error(54, 0); // Bad file mode (no write access)
             }
+        } else {
+            crate::qb_set_error(52, 0); // File not open
         }
     }
 }
@@ -950,6 +1085,7 @@ pub unsafe extern "C" fn qb_file_put_string(fnum: i32, s: *const QbString) {
 #[no_mangle]
 pub extern "C" fn qb_eof(fnum: i32) -> i32 {
     if fnum < 1 || fnum >= QB_MAX_FILES as i32 {
+        crate::qb_set_error(52, 0); // Bad file number
         return -1; // EOF for invalid handle
     }
     init_file_handles();
@@ -965,6 +1101,7 @@ pub extern "C" fn qb_eof(fnum: i32) -> i32 {
             return 0; // Not at EOF
         }
     }
+    crate::qb_set_error(52, 0); // File not open
     -1 // Invalid handle = EOF
 }
 
@@ -972,6 +1109,7 @@ pub extern "C" fn qb_eof(fnum: i32) -> i32 {
 #[no_mangle]
 pub extern "C" fn qb_lof(fnum: i32) -> i64 {
     if fnum < 1 || fnum >= QB_MAX_FILES as i32 {
+        crate::qb_set_error(52, 0); // Bad file number
         return 0;
     }
     init_file_handles();
@@ -985,13 +1123,15 @@ pub extern "C" fn qb_lof(fnum: i32) -> i64 {
             return 0;
         }
     }
+    crate::qb_set_error(52, 0); // File not open
     0
 }
 
-/// LOC - Current file position.
+/// LOC - Current file position (1-based byte position).
 #[no_mangle]
 pub extern "C" fn qb_loc(fnum: i32) -> i64 {
     if fnum < 1 || fnum >= QB_MAX_FILES as i32 {
+        crate::qb_set_error(52, 0); // Bad file number
         return 0;
     }
     init_file_handles();
@@ -1005,7 +1145,14 @@ pub extern "C" fn qb_loc(fnum: i32) -> i64 {
             }
         }
     }
+    crate::qb_set_error(52, 0); // File not open
     0
+}
+
+/// SEEK(filenum) - Returns current file position (1-based), same semantics as LOC.
+#[no_mangle]
+pub extern "C" fn qb_seek(fnum: i32) -> i64 {
+    qb_loc(fnum)
 }
 
 /// FREEFILE - Get next available file number.
@@ -1023,6 +1170,22 @@ pub extern "C" fn qb_freefile() -> i32 {
     0 // No free file number
 }
 
+/// FRE(n) - Approximate free memory (QB4.5 compatibility).
+///
+/// Returns an approximate value for compatibility. Classic BASIC: n=0 far heap,
+/// n=-1 string space, n=-2 stack. We return a large dummy value so programs that
+/// check FRE do not think memory is exhausted.
+///
+/// # Arguments
+/// * `n` - Memory type selector (ignored; we return a fixed approximation)
+///
+/// # Returns
+/// Approximate free memory in bytes (64 MiB placeholder).
+#[no_mangle]
+pub extern "C" fn qb_fre(_n: i64) -> i64 {
+    64 * 1024 * 1024 // 64 MiB - arbitrary large value for compatibility
+}
+
 /// FIELD - Start field definition.
 ///
 /// Allocates a field buffer for the specified file number based on the file's
@@ -1034,6 +1197,7 @@ pub extern "C" fn qb_freefile() -> i32 {
 #[no_mangle]
 pub extern "C" fn qb_field_start(fnum: i32) {
     if fnum < 1 || fnum >= QB_MAX_FILES as i32 {
+        crate::qb_set_error(52, 0); // Bad file number
         return;
     }
 
@@ -1048,9 +1212,11 @@ pub extern "C" fn qb_field_start(fnum: i32) {
             if let Some(ref handle) = map.get(&fnum) {
                 handle.record_len
             } else {
-                return; // File not open
+                crate::qb_set_error(52, 0); // Bad file number - file not open
+                return;
             }
         } else {
+            crate::qb_set_error(52, 0); // Bad file number (handles not initialized)
             return;
         }
     };

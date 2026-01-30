@@ -30,7 +30,7 @@
 //! "#;
 //!
 //! match preprocess(source, base_path, None) {
-//!     Ok(processed) => println!("Processed source:\n{}", processed),
+//!     Ok(processed) => println!("Processed source:\n{}", processed.source),
 //!     Err(e) => eprintln!("Preprocessor error: {}", e),
 //! }
 //! ```
@@ -448,12 +448,16 @@ fn is_line_continuation(line: &str) -> bool {
 /// use qb64fresh::preprocessor::preprocess;
 ///
 /// // With known source file (e.g. from CLI):
-/// let result = preprocess("$INCLUDE: 'header.bi'", Path::new("."), Some(Path::new("myapp.bas")))?;
-/// println!("Preprocessed: {}", result.source);
-/// println!("Embedded files: {}", result.embedded_files.len());
+/// match preprocess("$INCLUDE: 'header.bi'", Path::new("."), Some(Path::new("myapp.bas"))) {
+///     Ok(result) => {
+///         println!("Preprocessed: {}", result.source);
+///         println!("Embedded files: {}", result.embedded_files.len());
+///     }
+///     Err(e) => eprintln!("Preprocessor error: {}", e),
+/// }
 ///
 /// // Without source path (backward compatible):
-/// let result = preprocess("$INCLUDE: 'header.bi'", Path::new("."), None)?;
+/// let _ = preprocess("$INCLUDE: 'header.bi'", Path::new("."), None);
 /// ```
 pub fn preprocess(
     source: &str,
