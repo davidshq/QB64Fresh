@@ -32,6 +32,8 @@ bash -c 'ulimit -v 4194304 && ./qb64pe_fresh -x input.bas -o output'
 
 **Note:** With 4GB limit, compiling very large files (e.g. full QB64pe) may still grow until OOM; the limit caps damage. See [docs/MEMORY_LIMITS.md](docs/MEMORY_LIMITS.md) for details.
 
+**Built-in source size limits:** QB64Fresh now enforces configurable limits (default 100MB) on preprocessed source and raw input file sizes. If exceeded, the compiler exits with a clear error instead of OOM. Override via `QB64FRESH_MAX_SOURCE_BYTES` and `QB64FRESH_MAX_INPUT_BYTES` environment variables. This provides an additional safety guardrail when `ulimit` is not set.
+
 ## Logging System (IMPORTANT)
 
 **THE INFORMATION IN THIS SECTION IS QUINTESSENTIAL, MAKE SURE YOU ALWAYS FOLLOW IT. WE CAN FIX OTHER THINGS, BUT WE NEED TO KNOW WHAT HAPPENED!**

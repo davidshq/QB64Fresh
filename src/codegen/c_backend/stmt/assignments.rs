@@ -32,9 +32,13 @@ impl super::StmtEmitter {
     ) -> Result<(), CodeGenError> {
         let mut c_name = c_identifier(name);
 
-        // Apply variable rename if this variable was renamed to avoid shadowing
-        // Scalar variables can shadow array variables, so check renames
-        if let Some(renamed) = self.procedure.variable_renames.get(&c_name) {
+        // Apply variable rename if this variable was renamed to avoid shadowing.
+        // Scalar variables can shadow array variables, so check renames.
+        // Exception: BYREF string parameters get a local (e.g. a_str) from emit_byref_copies;
+        // we must use that name, not the global scalar name (e.g. a_str_scalar).
+        if !self.procedure.current_func_byref_strings.contains(&c_name)
+            && let Some(renamed) = self.procedure.variable_renames.get(&c_name)
+        {
             c_name = renamed.clone();
         }
 

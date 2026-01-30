@@ -407,7 +407,7 @@ void qb_stop(void);
 void qb_run(QbString* path);
 
 /* Initialization functions called at program start */
-void qb_init_args(int argc, char** argv);
+/* qb_init_args is defined in generated C to set _qb_argc/_qb_argv for COMMAND$ */
 void qb_init_startdir(void);
 void _qb_init_palette(void);
 

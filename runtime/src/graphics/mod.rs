@@ -586,6 +586,12 @@ pub trait GraphicsBackend {
         Ok(())
     }
 
+    /// Print byte text at pixel coordinates (QB64 strings are byte-oriented, not UTF-8).
+    fn print_string_bytes(&mut self, x: i32, y: i32, text: &[u8]) -> Result<(), GraphicsError> {
+        let lossy = String::from_utf8_lossy(text);
+        self.print_string(x, y, &lossy)
+    }
+
     /// Set auto-display mode.
     fn set_autodisplay(&mut self, _enabled: bool) -> Result<(), GraphicsError> {
         Ok(())

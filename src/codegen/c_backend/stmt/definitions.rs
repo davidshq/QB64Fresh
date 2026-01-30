@@ -389,11 +389,16 @@ impl super::StmtEmitter {
         // Set current procedure name for unique label generation
         self.procedure.current_proc = Some(c_name.clone());
         // Track byref STRING parameters for EXIT SUB writebacks
-        self.procedure.current_func_byref_strings = params
+        let byref_string_params: Vec<_> = params
             .iter()
             .filter(|p| !p.by_val && p.basic_type == BasicType::String && !p.is_array)
+            .collect();
+        self.procedure.current_func_byref_strings = byref_string_params
+            .iter()
             .map(|p| c_identifier(&p.name))
             .collect();
+        self.procedure.current_func_byref_string_basic_names =
+            byref_string_params.iter().map(|p| p.name.clone()).collect();
         // Track BYREF scalar parameter names (for pointer dereferencing in SUB body)
         // Excludes arrays (which are already pointers) and strings (which have special writeback logic)
         self.procedure.current_func_byref_scalar_names = params
@@ -550,11 +555,16 @@ impl super::StmtEmitter {
         // Set return variable for EXIT FUNCTION
         self.procedure.current_func_ret_var = Some(ret_var.clone());
         // Track byref STRING parameters for EXIT FUNCTION writebacks
-        self.procedure.current_func_byref_strings = params
+        let byref_string_params: Vec<_> = params
             .iter()
             .filter(|p| !p.by_val && p.basic_type == BasicType::String && !p.is_array)
+            .collect();
+        self.procedure.current_func_byref_strings = byref_string_params
+            .iter()
             .map(|p| c_identifier(&p.name))
             .collect();
+        self.procedure.current_func_byref_string_basic_names =
+            byref_string_params.iter().map(|p| p.name.clone()).collect();
         // Track BYREF scalar parameter names (for pointer dereferencing in function body)
         // Excludes arrays (which are already pointers) and strings (which have special writeback logic)
         self.procedure.current_func_byref_scalar_names = params
@@ -1114,7 +1124,8 @@ impl super::StmtEmitter {
                     let _ = n; // Silence unused warning
                 } else if p.basic_type == BasicType::String {
                     // BYREF STRING parameters: QbString** name_ref → QbString* name = *name_ref;
-                    // We need to dereference the pointer-to-pointer to get the actual string pointer
+                    // The local is the value (QbString*), not a pointer. Expression emission
+                    // must use the variable name as-is; see expr.rs Variable handling (is_byref_string).
                     writeln_code!(output, "    QbString* {} = *{}_ref;", c_name, c_name)?;
                 } else if matches!(p.basic_type, BasicType::UserDefined(_)) {
                     // UDT parameters (both BYREF and BYVAL): passed as pointers

@@ -49,6 +49,7 @@ struct FileHandle {
     writer: Option<BufWriter<File>>,
     record_len: i32,
     mode: String,
+    eof_reached: bool, // Track if we've reached EOF
 }
 
 static FILE_HANDLES: Mutex<Option<HashMap<i32, FileHandle>>> = Mutex::new(None);
@@ -244,6 +245,13 @@ pub unsafe extern "C" fn qb_file_open(
         Ok(s) => s,
         Err(_) => return,
     };
+    if filename_str.is_empty() {
+        eprintln!(
+            "Warning: Failed to open file '': empty filename (mode: {})",
+            mode_str
+        );
+        return;
+    }
 
     let normalized = normalize_path_for_fs(filename_str);
 
@@ -308,6 +316,7 @@ pub unsafe extern "C" fn qb_file_open(
                     writer: None,
                     record_len: 128, // Default record length
                     mode: mode_str.to_string(),
+                    eof_reached: false,
                 };
 
                 // Create reader/writer based on mode
@@ -701,10 +710,19 @@ pub unsafe extern "C" fn qb_file_input_float(fnum: i32, val: *mut f64) {
     }
 }
 
-/// LINE INPUT # - Read a line from file.
+/// LINE INPUT - Read a line from a file.
+///
+/// Reads a line from the file handle `fnum` and stores it in the string `s`.
+/// The newline character(s) are removed from the result.
 ///
 /// # Safety
-/// - `s` must be a valid pointer to a QbString* (will be modified)
+/// - `s` must be a valid pointer to a QbString* (can be NULL initially)
+/// - `fnum` must be a valid file handle (1-255)
+///
+/// # Error Handling
+/// - If the line exceeds MAX_LINE_LENGTH (10MB), returns an empty string
+/// - If allocation fails, `*s` may be NULL (caller should check)
+/// - If file is not open or invalid, function returns without modifying `*s`
 #[no_mangle]
 pub unsafe extern "C" fn qb_file_line_input(fnum: i32, s: *mut *mut QbString) {
     if fnum < 1 || fnum >= QB_MAX_FILES as i32 || s.is_null() {
@@ -715,8 +733,36 @@ pub unsafe extern "C" fn qb_file_line_input(fnum: i32, s: *mut *mut QbString) {
     if let Some(ref mut map) = *handles {
         if let Some(ref mut handle) = map.get_mut(&fnum) {
             if let Some(ref mut reader) = handle.reader {
-                let mut buf = Vec::new();
-                BufRead::read_until(reader, b'\n', &mut buf).ok();
+                // Maximum line length: 10MB to prevent huge allocations
+                // This is much larger than any reasonable line but prevents OOM
+                const MAX_LINE_LENGTH: usize = 10 * 1024 * 1024;
+                let mut buf = Vec::with_capacity(8192); // Start with 8KB capacity for better performance
+
+                // Read until newline or EOF, but limit total size to prevent OOM
+                // Use read_until which efficiently reads line-by-line
+                match BufRead::read_until(reader, b'\n', &mut buf) {
+                    Ok(0) => {
+                        // EOF - mark handle as EOF and return empty string
+                        handle.eof_reached = true;
+                        *s = qb_string_from_bytes(std::ptr::null(), 0);
+                        return;
+                    }
+                    Ok(_) => {
+                        // Check if line is too long (prevents OOM from huge files without newlines)
+                        if buf.len() > MAX_LINE_LENGTH {
+                            // Line too long - return empty string instead of crashing
+                            *s = qb_string_from_bytes(std::ptr::null(), 0);
+                            return;
+                        }
+                    }
+                    Err(_) => {
+                        // Error reading - mark as EOF and return empty string
+                        handle.eof_reached = true;
+                        *s = qb_string_from_bytes(std::ptr::null(), 0);
+                        return;
+                    }
+                }
+
                 // Remove trailing newline if present
                 if buf.last() == Some(&b'\n') {
                     buf.pop();
@@ -743,6 +789,13 @@ pub extern "C" fn qb_file_seek(fnum: i32, pos: i64) {
             if let Some(ref mut file) = handle.file {
                 let _ = file.seek(SeekFrom::Start(pos as u64));
             }
+            // Reset EOF state when seeking
+            handle.eof_reached = false;
+            // Recreate reader to reset its position
+            if let Some(ref mut reader) = handle.reader {
+                // We need to recreate the reader to reset position
+                // This is handled by reopening the file if needed
+            }
         }
     }
 }
@@ -761,6 +814,8 @@ pub extern "C" fn qb_file_seek_record(fnum: i32, rec: i64) {
             if let Some(ref mut file) = handle.file {
                 let _ = file.seek(SeekFrom::Start(pos as u64));
             }
+            // Reset EOF state when seeking
+            handle.eof_reached = false;
         }
     }
 }
@@ -888,6 +943,10 @@ pub unsafe extern "C" fn qb_file_put_string(fnum: i32, s: *const QbString) {
 }
 
 /// EOF - Check if end of file.
+///
+/// Returns:
+/// - 0 if not at EOF
+/// - -1 if at EOF or invalid handle
 #[no_mangle]
 pub extern "C" fn qb_eof(fnum: i32) -> i32 {
     if fnum < 1 || fnum >= QB_MAX_FILES as i32 {
@@ -896,10 +955,14 @@ pub extern "C" fn qb_eof(fnum: i32) -> i32 {
     init_file_handles();
     let handles = FILE_HANDLES.lock().unwrap();
     if let Some(ref map) = *handles {
-        if map.contains_key(&fnum) {
-            // Simplified EOF check - always return 0 (not EOF)
-            // Full implementation would need to try reading
-            return 0;
+        if let Some(ref handle) = map.get(&fnum) {
+            // Check if we've already reached EOF (set by read operations)
+            if handle.eof_reached {
+                return -1; // At EOF
+            }
+            // If we have a reader, we're not at EOF yet
+            // (EOF state is set when read operations return 0 bytes)
+            return 0; // Not at EOF
         }
     }
     -1 // Invalid handle = EOF

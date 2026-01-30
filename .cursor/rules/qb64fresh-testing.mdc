@@ -1,9 +1,6 @@
 ---
-description: How to run and test QB64Fresh (compiler stages, QB45, $ in shell)
-globs: "**/*.rs, tests/**"
 alwaysApply: false
 ---
-
 # Testing
 
 **Stages:**

@@ -129,42 +129,51 @@ pub extern "C" fn qb_gfx_screen(
     active_page: i32,
     visual_page: i32,
 ) -> c_int {
-    // Map SCREEN mode to dimensions
-    let (width, height) = match mode {
-        0 => {
-            // Text mode - use 640x400 for 80x25 character display
-            (640, 400)
-        }
-        1 => (320, 200),  // CGA 4-color
-        2 => (640, 200),  // CGA 2-color
-        7 => (320, 200),  // EGA 16-color
-        8 => (640, 200),  // EGA 16-color
-        9 => (640, 350),  // EGA 16-color
-        10 => (640, 350), // EGA 2-color mono
-        11 => (640, 480), // VGA 2-color
-        12 => (640, 480), // VGA 16-color
-        13 => (320, 200), // VGA 256-color (popular for retro games)
-        // QB64 extended modes (custom resolutions)
-        // Negative modes in QB64 represent custom dimensions, but we don't support that here
-        // For now, default to 640x480 for unknown modes
-        _ => {
-            if mode > 13 {
-                // Treat large positive numbers as width hints
-                // QB64 uses SCREEN _NEWIMAGE(w, h, 32) for custom sizes
-                (640, 480)
-            } else {
-                // Invalid mode
-                return log_validation_error!(
-                    "qb_gfx_screen",
-                    format!("invalid SCREEN mode: {}", mode)
-                );
+    // Mode -1 means "keep current mode, just set pages"
+    if mode == -1 {
+        // Ensure graphics is initialized (default to text mode if not)
+        unsafe {
+            if crate::graphics::GRAPHICS_BACKEND.is_none() {
+                // Initialize with default text mode dimensions
+                if let Err(e) = crate::graphics::init_graphics(640, 400) {
+                    return log_ffi_error!("qb_gfx_screen (init for mode -1)", e);
+                }
             }
         }
-    };
+    } else {
+        // Map SCREEN mode to dimensions
+        let (width, height) = match mode {
+            0 => {
+                // Text mode - use 640x400 for 80x25 character display
+                (640, 400)
+            }
+            1 => (320, 200),  // CGA 4-color
+            2 => (640, 200),  // CGA 2-color
+            7 => (320, 200),  // EGA 16-color
+            8 => (640, 200),  // EGA 16-color
+            9 => (640, 350),  // EGA 16-color
+            10 => (640, 350), // EGA 2-color mono
+            11 => (640, 480), // VGA 2-color
+            12 => (640, 480), // VGA 16-color
+            13 => (320, 200), // VGA 256-color (popular for retro games)
+            // QB64 extended modes (custom resolutions)
+            // For now, default to 640x480 for unknown modes
+            _ => {
+                if mode > 13 {
+                    // Treat large positive numbers as width hints
+                    // QB64 uses SCREEN _NEWIMAGE(w, h, 32) for custom sizes
+                    (640, 480)
+                } else {
+                    // Unknown negative modes - treat as text mode
+                    (640, 400)
+                }
+            }
+        };
 
-    // Initialize graphics with the mode dimensions
-    if let Err(e) = crate::graphics::init_graphics(width, height) {
-        return log_ffi_error!("qb_gfx_screen", e);
+        // Initialize graphics with the mode dimensions
+        if let Err(e) = crate::graphics::init_graphics(width, height) {
+            return log_ffi_error!("qb_gfx_screen", e);
+        }
     }
 
     // Set active and visual pages if specified (>= 0 means use that page)
@@ -220,7 +229,23 @@ pub extern "C" fn qb_gfx_cls() -> c_int {
 pub extern "C" fn qb_gfx_color(foreground: u32, background: u32) -> c_int {
     unsafe {
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
-            match backend.set_color(foreground, background) {
+            let fg = if foreground == u32::MAX {
+                backend.get_foreground_color()
+            } else if foreground <= 255 {
+                backend.get_palette(foreground as i32)
+            } else {
+                foreground
+            };
+
+            let bg = if background == u32::MAX {
+                backend.get_background_color()
+            } else if background <= 255 {
+                backend.get_palette(background as i32)
+            } else {
+                background
+            };
+
+            match backend.set_color(fg, bg) {
                 Ok(()) => 0,
                 Err(e) => log_ffi_error!("qb_gfx_color", e),
             }
@@ -1367,18 +1392,10 @@ pub unsafe extern "C" fn qb_gfx_printstring(x: i32, y: i32, text: *const c_char)
         return log_validation_error!("qb_gfx_printstring", "null pointer for text parameter");
     }
 
-    let txt = match CStr::from_ptr(text).to_str() {
-        Ok(s) => s,
-        Err(e) => {
-            return log_validation_error!(
-                "qb_gfx_printstring",
-                format!("invalid UTF-8 in text: {}", e)
-            );
-        }
-    };
+    let bytes = CStr::from_ptr(text).to_bytes();
 
     if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
-        match backend.print_string(x, y, txt) {
+        match backend.print_string_bytes(x, y, bytes) {
             Ok(()) => 0,
             Err(e) => log_ffi_error!("qb_gfx_printstring", e),
         }
@@ -1911,17 +1928,44 @@ pub extern "C" fn qb_fullscreen_get() -> i32 {
 #[no_mangle]
 pub extern "C" fn qb_screenmove(x: i32, y: i32) {
     unsafe {
+        // Auto-initialize graphics if not already (IDE calls _SCREENMOVE before showing)
+        if crate::graphics::GRAPHICS_BACKEND.is_none() {
+            let _ = crate::graphics::init_graphics(640, 400);
+        }
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
             backend.screen_move(x, y);
         }
     }
 }
 
+fn screen_trace_enabled() -> bool {
+    std::env::var("QB64FRESH_SCREEN_TRACE").is_ok()
+}
+
+fn screenhide_disabled() -> bool {
+    std::env::var("QB64FRESH_DISABLE_SCREENHIDE").is_ok()
+}
+
 /// _SCREENSHOW - Show the window (make visible).
+///
+/// If graphics haven't been initialized yet, initializes with default dimensions (640x400).
 #[no_mangle]
 pub extern "C" fn qb_screenshow() {
     unsafe {
+        // Auto-initialize graphics if not already initialized
+        if crate::graphics::GRAPHICS_BACKEND.is_none() {
+            // Initialize with default dimensions for IDE/text mode
+            if let Err(e) = crate::graphics::init_graphics(640, 400) {
+                eprintln!("QB64Fresh: _SCREENSHOW failed to init graphics: {:?}", e);
+                let _ = std::io::Write::flush(&mut std::io::stderr());
+                return;
+            }
+        }
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            if screen_trace_enabled() {
+                eprintln!("QB64Fresh: _SCREENSHOW");
+                let _ = std::io::Write::flush(&mut std::io::stderr());
+            }
             backend.screen_show();
         }
     }
@@ -1931,7 +1975,18 @@ pub extern "C" fn qb_screenshow() {
 #[no_mangle]
 pub extern "C" fn qb_screenhide() {
     unsafe {
+        if screenhide_disabled() {
+            if screen_trace_enabled() {
+                eprintln!("QB64Fresh: _SCREENHIDE suppressed");
+                let _ = std::io::Write::flush(&mut std::io::stderr());
+            }
+            return;
+        }
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            if screen_trace_enabled() {
+                eprintln!("QB64Fresh: _SCREENHIDE");
+                let _ = std::io::Write::flush(&mut std::io::stderr());
+            }
             backend.screen_hide();
         }
     }
