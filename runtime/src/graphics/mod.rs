@@ -581,6 +581,17 @@ pub trait GraphicsBackend {
         -1 // Default: not supported
     }
 
+    /// Save an image to a file (_SAVEIMAGE).
+    ///
+    /// Saves the image identified by `handle` (0 = current screen/visual page) to `path`.
+    /// Format is inferred from extension (e.g. .png). Returns error if not supported or I/O fails.
+    fn save_image(&mut self, _path: &str, _handle: i32) -> Result<(), GraphicsError> {
+        Err(GraphicsError::new(
+            GraphicsErrorKind::Unsupported,
+            "save_image not supported",
+        ))
+    }
+
     /// Print text at pixel coordinates.
     fn print_string(&mut self, _x: i32, _y: i32, _text: &str) -> Result<(), GraphicsError> {
         Ok(())

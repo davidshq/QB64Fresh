@@ -27,6 +27,9 @@
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int};
 
+#[cfg(feature = "opengl")]
+use std::sync::atomic::{AtomicI32, Ordering};
+
 /// Helper macro to log FFI errors and return error code.
 ///
 /// This macro provides consistent error logging across all FFI functions.
@@ -908,13 +911,20 @@ pub extern "C" fn qb_gfx_pmap(coord: f64, func_code: i32) -> f64 {
 /// - `1` if window should remain open
 /// - `0` if window should close (user clicked X or pressed Escape)
 /// - `-1` on error
+///
+/// When the user closes the window (Quit event), this sets the global
+/// `stop_program` flag so QB64pe-generated code's `if (stop_program) end();`
+/// will run and the process exits cleanly.
 #[no_mangle]
 pub extern "C" fn qb_gfx_poll_events() -> c_int {
     unsafe {
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
             match backend.poll_events() {
                 Ok(true) => 1,
-                Ok(false) => 0,
+                Ok(false) => {
+                    crate::stop_program = 1;
+                    0
+                }
                 Err(e) => {
                     log_ffi_error!("qb_gfx_poll_events", e);
                     -1
@@ -995,6 +1005,100 @@ pub extern "C" fn qb_rgb32(r: u32, g: u32, b: u32) -> u32 {
 #[no_mangle]
 pub extern "C" fn qb_rgba32(r: u32, g: u32, b: u32, a: u32) -> u32 {
     qb_rgba(r, g, b, a)
+}
+
+// ============================================================================
+// HSB color functions (_HSB32, _HSBA32, _HUE32, _SATURATION32, _BRIGHTNESS32)
+// Hue 0-360, Saturation/Brightness 0-100; color format &HAARRGGBB
+// ============================================================================
+
+/// _HSB32 - Convert hue, saturation, brightness to ARGB color.
+///
+/// Hue 0-360, saturation and brightness 0-100. Returns opaque color (alpha 255).
+#[no_mangle]
+pub extern "C" fn qb_hsb32(hue: f32, sat: f32, bri: f32) -> u32 {
+    let h = hue.clamp(0.0, 360.0);
+    let s = (sat.clamp(0.0, 100.0) / 100.0) as f32;
+    let v = (bri.clamp(0.0, 100.0) / 100.0) as f32;
+    let c = v * s;
+    let p = v - c;
+    let hi = (h / 60.0) as i32 % 6;
+    let f = (h / 60.0) - (h / 60.0).floor();
+    let q = v - c * f;
+    let t = v - c * (1.0 - f);
+    let (r, g, b) = match hi {
+        0 => (v, t, p),
+        1 => (q, v, p),
+        2 => (p, v, t),
+        3 => (p, q, v),
+        4 => (t, p, v),
+        _ => (v, p, q),
+    };
+    let ir = (r * 255.0).round() as u32;
+    let ig = (g * 255.0).round() as u32;
+    let ib = (b * 255.0).round() as u32;
+    0xFF00_0000 | ((ir.min(255) << 16) | (ig.min(255) << 8) | ib.min(255))
+}
+
+/// _HSBA32 - Convert hue, saturation, brightness, alpha to ARGB color.
+#[no_mangle]
+pub extern "C" fn qb_hsba32(hue: f32, sat: f32, bri: f32, alpha: f32) -> u32 {
+    let rgb = qb_hsb32(hue, sat, bri);
+    let a = (alpha.clamp(0.0, 255.0) as u32).min(255);
+    (a << 24) | (rgb & 0x00FF_FFFF)
+}
+
+/// _HUE32 - Extract hue (0-360) from ARGB color.
+#[no_mangle]
+pub extern "C" fn qb_hue32(color: u32) -> f32 {
+    let r = ((color >> 16) & 0xFF) as f32 / 255.0;
+    let g = ((color >> 8) & 0xFF) as f32 / 255.0;
+    let b = (color & 0xFF) as f32 / 255.0;
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let d = max - min;
+    if d <= 0.0 {
+        return 0.0;
+    }
+    let h = if max == r {
+        60.0 * (g - b) / d + if g < b { 360.0 } else { 0.0 }
+    } else if max == g {
+        60.0 * (b - r) / d + 120.0
+    } else {
+        60.0 * (r - g) / d + 240.0
+    };
+    if h < 0.0 {
+        h + 360.0
+    } else if h >= 360.0 {
+        0.0
+    } else {
+        h
+    }
+}
+
+/// _SATURATION32 - Extract saturation (0-100) from ARGB color.
+#[no_mangle]
+pub extern "C" fn qb_saturation32(color: u32) -> f32 {
+    let r = ((color >> 16) & 0xFF) as f32 / 255.0;
+    let g = ((color >> 8) & 0xFF) as f32 / 255.0;
+    let b = (color & 0xFF) as f32 / 255.0;
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    if max <= 0.0 {
+        0.0
+    } else {
+        (max - min) / max * 100.0
+    }
+}
+
+/// _BRIGHTNESS32 - Extract brightness (0-100) from ARGB color.
+#[no_mangle]
+pub extern "C" fn qb_brightness32(color: u32) -> f32 {
+    let r = (color >> 16) & 0xFF;
+    let g = (color >> 8) & 0xFF;
+    let b = color & 0xFF;
+    let max = r.max(g).max(b);
+    (max as f32) * 100.0 / 255.0
 }
 
 // ============================================================================
@@ -1295,6 +1399,41 @@ pub extern "C" fn qb_gfx_freeimage(handle: i32) -> c_int {
             1
         }
     }
+}
+
+/// _SAVEIMAGE filename$, handle - save image to file.
+///
+/// Saves the image identified by `handle` (0 = current screen) to the path given by `path`.
+/// Format is inferred from extension (e.g. .png). On error, logs and returns without raising.
+///
+/// # Safety
+/// - `path` must be a valid pointer to a QbString or null.
+#[no_mangle]
+pub unsafe extern "C" fn qb_saveimage(path: *const crate::string::QbString, handle: i32) {
+    if path.is_null() {
+        return;
+    }
+    let path_ptr = crate::string::qb_string_data(path);
+    if path_ptr.is_null() {
+        return;
+    }
+    let path_str = match CStr::from_ptr(path_ptr).to_str() {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+    unsafe {
+        if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
+            if let Err(e) = backend.save_image(path_str, handle) {
+                log_ffi_error!("qb_saveimage", e);
+            }
+        }
+    }
+}
+
+/// _DEPTHBUFFER mode - enable/disable depth buffer for 3D (stub: no-op).
+#[no_mangle]
+pub extern "C" fn qb_depthbuffer(_mode: i32) {
+    // Stub: no-op until 3D/depth buffer support is implemented
 }
 
 /// Simple put_image without source coordinates.
@@ -1717,6 +1856,22 @@ pub unsafe extern "C" fn qb_clipboard_set(text: *const std::os::raw::c_char) {
     if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
         backend.set_clipboard(text_str);
     }
+}
+
+/// _CLIPBOARDIMAGE (get) - Get image handle from clipboard.
+///
+/// Returns 0 if no image in clipboard or not supported (stub).
+#[no_mangle]
+pub extern "C" fn qb_clipboardimage() -> i32 {
+    0
+}
+
+/// _CLIPBOARDIMAGE = handle - Set clipboard image from image handle.
+///
+/// Stub: no-op when image clipboard is not implemented.
+#[no_mangle]
+pub extern "C" fn qb_clipboardimage_set(handle: i32) {
+    let _ = handle;
 }
 
 // ============================================================================
@@ -2694,15 +2849,70 @@ pub extern "C" fn qb_maptriangle_ex(
     }
 }
 
-/// _GLRENDER mode - OpenGL render mode. No-op stub; raw _GL* excluded per ADR-0014.
+/// _BEHIND - OpenGL render mode constant (draw behind 2D). Returns 0.
 #[no_mangle]
-pub extern "C" fn qb_glrender(_mode: i32) {
-    // No-op; OpenGL not supported
+pub extern "C" fn qb_behind() -> i32 {
+    0
 }
 
-/// _GLCOMPAT - OpenGL compatibility mode. No-op stub; returns 0.
+/// _ONTOP - OpenGL render mode constant (draw on top of 2D). Returns 1.
+#[no_mangle]
+pub extern "C" fn qb_ontop() -> i32 {
+    1
+}
+
+/// _ONLY - OpenGL render mode constant (OpenGL only, no 2D). Returns 2.
+#[no_mangle]
+pub extern "C" fn qb_only() -> i32 {
+    2
+}
+
+/// _ONLYBACKGROUND - Background-only mode constant. Returns 3.
+#[no_mangle]
+pub extern "C" fn qb_onlybackground() -> i32 {
+    3
+}
+
+/// Stored _GLRENDER mode when `opengl` feature is enabled.
+/// -1 = off, 0 = _BEHIND, 1 = _ONTOP, 2 = _ONLY, 3 = _ONLYBACKGROUND.
+/// Used by the graphics backend to decide when to create a GL context and call SUB _GL each frame (follow-up work).
+#[cfg(feature = "opengl")]
+static GL_RENDER_MODE: AtomicI32 = AtomicI32::new(-1);
+
+/// _GLRENDER mode - OpenGL render mode.
+///
+/// Valid modes: -1 (off), 0 (_BEHIND), 1 (_ONTOP), 2 (_ONLY), 3 (_ONLYBACKGROUND).
+/// Values outside -1..=3 are clamped to -1 (off).
+///
+/// Without `opengl` feature: no-op. With `opengl`: stores the mode for the main loop.
+/// The graphics backend uses [`gl_render_mode()`] to decide when to create a GL context
+/// and invoke SUB _GL each frame.
+#[no_mangle]
+pub extern "C" fn qb_glrender(mode: i32) {
+    #[cfg(feature = "opengl")]
+    {
+        let stored = if (-1..=3).contains(&mode) { mode } else { -1 };
+        GL_RENDER_MODE.store(stored, Ordering::Relaxed);
+    }
+    #[cfg(not(feature = "opengl"))]
+    let _ = mode;
+}
+
+/// Returns the current _GLRENDER mode when `opengl` is enabled (-1 = off).
+/// Used by the graphics backend to know whether to create a GL context and invoke SUB _GL each frame.
+#[cfg(feature = "opengl")]
+pub fn gl_render_mode() -> i32 {
+    GL_RENDER_MODE.load(Ordering::Relaxed)
+}
+
+/// _GLCOMPAT - OpenGL compatibility. Returns 1 when OpenGL is available (opengl feature), else 0.
 #[no_mangle]
 pub extern "C" fn qb_glcompat() -> i32 {
+    #[cfg(feature = "opengl")]
+    {
+        return 1;
+    }
+    #[cfg(not(feature = "opengl"))]
     0
 }
 
@@ -2777,5 +2987,40 @@ mod tests {
         if result == 0 {
             let _ = qb_gfx_shutdown();
         }
+    }
+
+    /// _GLRENDER: no-op when opengl feature is disabled; does not panic.
+    #[test]
+    fn test_glrender_noop_without_opengl() {
+        #[cfg(not(feature = "opengl"))]
+        {
+            qb_glrender(-1);
+            qb_glrender(0);
+            qb_glrender(1);
+            qb_glrender(99);
+        }
+    }
+
+    /// _GLRENDER: with opengl, stores valid mode; invalid mode clamped to -1.
+    #[cfg(feature = "opengl")]
+    #[test]
+    fn test_glrender_stores_mode() {
+        // Store valid modes
+        qb_glrender(0);
+        assert_eq!(gl_render_mode(), 0, "_BEHIND");
+        qb_glrender(1);
+        assert_eq!(gl_render_mode(), 1, "_ONTOP");
+        qb_glrender(2);
+        assert_eq!(gl_render_mode(), 2, "_ONLY");
+        qb_glrender(3);
+        assert_eq!(gl_render_mode(), 3, "_ONLYBACKGROUND");
+        qb_glrender(-1);
+        assert_eq!(gl_render_mode(), -1, "off");
+
+        // Invalid mode clamped to -1
+        qb_glrender(99);
+        assert_eq!(gl_render_mode(), -1, "invalid mode clamped to off");
+        qb_glrender(-2);
+        assert_eq!(gl_render_mode(), -1, "negative invalid clamped to off");
     }
 }

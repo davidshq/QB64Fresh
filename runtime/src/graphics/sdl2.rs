@@ -5,7 +5,8 @@
 
 use super::font::{get_char_bitmap, is_pixel_set, FONT_HEIGHT, FONT_WIDTH};
 use super::{GraphicsBackend, GraphicsError, GraphicsErrorKind};
-use sdl2::event::Event;
+use sdl2::event::{Event, WindowEvent};
+use sdl2::joystick::Joystick;
 use sdl2::keyboard::Scancode;
 use sdl2::mouse::MouseButton;
 use sdl2::pixels::Color;
@@ -13,8 +14,11 @@ use sdl2::pixels::PixelFormatEnum;
 use sdl2::rect::{Point, Rect};
 use sdl2::render::{Canvas, Texture, TextureCreator};
 use sdl2::surface::Surface;
+#[cfg(feature = "opengl")]
+use sdl2::video::GLContext;
 use sdl2::video::{FullscreenType, Window};
 use sdl2::EventPump;
+use sdl2::JoystickSubsystem;
 use sdl2::Sdl;
 use std::collections::HashMap;
 
@@ -286,6 +290,16 @@ pub struct SDL2Backend {
     // Icon state
     /// Current window icon handle (0 = no icon set)
     current_icon_handle: i32,
+    // Joystick state (SDL2 enumeration and event routing)
+    /// Joystick subsystem; kept alive so open joysticks remain valid.
+    joystick_subsystem: Option<JoystickSubsystem>,
+    /// Open joystick handles (up to 4); order matches our joy_idx 0..n.
+    open_joysticks: Vec<Joystick>,
+    /// Map SDL joystick instance ID (event "which") to our joy_idx (0..4).
+    joy_instance_to_idx: HashMap<u32, usize>,
+    #[cfg(feature = "opengl")]
+    /// OpenGL context (created lazily when _GLRENDER is first used)
+    gl_context: Option<GLContext>,
 }
 
 impl std::fmt::Debug for SDL2Backend {
@@ -379,6 +393,12 @@ impl SDL2Backend {
             keyboard_state: HashMap::new(),
             // Icon state
             current_icon_handle: 0, // No icon set initially
+            // Joystick state
+            joystick_subsystem: None,
+            open_joysticks: Vec::new(),
+            joy_instance_to_idx: HashMap::new(),
+            #[cfg(feature = "opengl")]
+            gl_context: None,
         }
     }
 
@@ -1907,6 +1927,33 @@ impl SDL2Backend {
             }
         }
     }
+
+    #[cfg(feature = "opengl")]
+    /// Renders one frame using OpenGL: make context current, invoke SUB _GL, swap buffers.
+    fn display_gl(&mut self, _mode: i32) -> Result<(), GraphicsError> {
+        let canvas = self
+            .canvas
+            .as_mut()
+            .ok_or_else(GraphicsError::not_initialized)?;
+        let window = canvas.window_mut();
+
+        // Create OpenGL context lazily on first _GLRENDER use
+        if self.gl_context.is_none() {
+            let ctx = window
+                .gl_create_context()
+                .map_err(|e| GraphicsError::new(GraphicsErrorKind::BackendError, e))?;
+            self.gl_context = Some(ctx);
+        }
+        let gl_ctx = self.gl_context.as_ref().unwrap();
+
+        window
+            .gl_make_current(gl_ctx)
+            .map_err(|e| GraphicsError::new(GraphicsErrorKind::BackendError, e))?;
+
+        crate::gl_ffi::invoke_sub_gl();
+        window.gl_swap_window();
+        Ok(())
+    }
 }
 
 impl GraphicsBackend for SDL2Backend {
@@ -1929,16 +1976,18 @@ impl GraphicsBackend for SDL2Backend {
             )
         })?;
 
-        let window = video_subsystem
-            .window("QB64Fresh", width, height)
-            .position_centered()
-            .build()
-            .map_err(|e| {
-                GraphicsError::new(
-                    GraphicsErrorKind::BackendError,
-                    format!("SDL2 window creation failed: {}", e),
-                )
-            })?;
+        let mut win_builder = video_subsystem.window("QB64Fresh", width, height);
+        let mut builder = win_builder.position_centered();
+        #[cfg(feature = "opengl")]
+        {
+            builder = builder.opengl();
+        }
+        let window = builder.build().map_err(|e| {
+            GraphicsError::new(
+                GraphicsErrorKind::BackendError,
+                format!("SDL2 window creation failed: {}", e),
+            )
+        })?;
 
         let canvas = window.into_canvas().build().map_err(|e| {
             GraphicsError::new(
@@ -1971,6 +2020,26 @@ impl GraphicsBackend for SDL2Backend {
             )
         })?;
 
+        // Initialize joystick subsystem and open up to 4 joysticks for STICK/STRIG and _DEVICES
+        let joystick_subsystem = sdl_context.joystick().map_err(|e| {
+            GraphicsError::new(
+                GraphicsErrorKind::BackendError,
+                format!("SDL2 joystick subsystem init failed: {}", e),
+            )
+        })?;
+        let num_joysticks = joystick_subsystem.num_joysticks().unwrap_or(0);
+        let mut open_joysticks: Vec<Joystick> = Vec::new();
+        let mut joy_instance_to_idx: HashMap<u32, usize> = HashMap::new();
+        for i in 0..num_joysticks.min(4) {
+            if let Ok(joy) = joystick_subsystem.open(i) {
+                let instance_id = joy.instance_id();
+                let idx = open_joysticks.len();
+                open_joysticks.push(joy);
+                joy_instance_to_idx.insert(instance_id, idx);
+            }
+        }
+        crate::joystick::set_joystick_count(open_joysticks.len() as i32);
+
         // Initialize page buffers (4 pages for classic modes)
         // Each page is a full-screen pixel buffer
         let page_size = (width * height) as usize;
@@ -1993,6 +2062,9 @@ impl GraphicsBackend for SDL2Backend {
         self.sdl_context = Some(sdl_context);
         self.canvas = Some(canvas);
         self.event_pump = Some(event_pump);
+        self.joystick_subsystem = Some(joystick_subsystem);
+        self.open_joysticks = open_joysticks;
+        self.joy_instance_to_idx = joy_instance_to_idx;
         self.texture_creator = Some(texture_creator);
         self.page_textures = page_textures;
         self.page_dirty = page_dirty;
@@ -2033,10 +2105,20 @@ impl GraphicsBackend for SDL2Backend {
         }
 
         self.event_pump = None;
+        // Clear joystick state and notify joystick module
+        self.open_joysticks.clear();
+        self.joy_instance_to_idx.clear();
+        self.joystick_subsystem = None;
+        crate::joystick::set_joystick_count(0);
         // Clear textures before texture_creator (textures depend on it)
         self.page_textures.clear();
         self.page_dirty.clear();
         self.texture_creator = None;
+        // Destroy OpenGL context before window (SDL2 requirement)
+        #[cfg(feature = "opengl")]
+        {
+            self.gl_context = None;
+        }
         self.canvas = None;
         self.sdl_context = None;
         self.page_buffers.clear();
@@ -2404,6 +2486,17 @@ impl GraphicsBackend for SDL2Backend {
             return Err(GraphicsError::not_initialized());
         }
 
+        // When _GLRENDER is active (mode >= 0): create GL context on first use,
+        // make it current, invoke SUB _GL (invoke_sub_gl), swap buffers.
+        // _ONLY (2) = GL-only; _BEHIND (0) / _ONTOP (1) 2D+GL composition deferred.
+        #[cfg(feature = "opengl")]
+        {
+            let mode = crate::graphics_ffi::gl_render_mode();
+            if mode >= 0 {
+                return self.display_gl(mode);
+            }
+        }
+
         let vp = self.visual_page;
         let width = self.width as usize;
         let height = self.height as usize;
@@ -2634,6 +2727,12 @@ impl GraphicsBackend for SDL2Backend {
             for event in event_pump.poll_iter() {
                 match event {
                     Event::Quit { .. } => return Ok(false),
+                    // GNOME/Wayland and many WMs send WindowEvent::Close when user clicks the X button
+                    // (not always Event::Quit). Handle both so the window closes cleanly.
+                    Event::Window {
+                        win_event: WindowEvent::Close,
+                        ..
+                    } => return Ok(false),
                     Event::KeyDown {
                         keycode: Some(sdl2::keyboard::Keycode::Escape),
                         ..
@@ -2709,6 +2808,38 @@ impl GraphicsBackend for SDL2Backend {
                     Event::MouseWheel { y, .. } => {
                         self.mouse_wheel += y;
                         self.mouse_input_available = true;
+                    }
+                    Event::JoyAxisMotion {
+                        which,
+                        axis_idx,
+                        value,
+                        ..
+                    } => {
+                        if let Some(&joy_idx) = self.joy_instance_to_idx.get(&which) {
+                            crate::joystick::update_joystick_axis(joy_idx as u32, axis_idx, value);
+                        }
+                    }
+                    Event::JoyButtonDown {
+                        which, button_idx, ..
+                    } => {
+                        if let Some(&joy_idx) = self.joy_instance_to_idx.get(&which) {
+                            crate::joystick::update_joystick_button(
+                                joy_idx as u32,
+                                button_idx,
+                                true,
+                            );
+                        }
+                    }
+                    Event::JoyButtonUp {
+                        which, button_idx, ..
+                    } => {
+                        if let Some(&joy_idx) = self.joy_instance_to_idx.get(&which) {
+                            crate::joystick::update_joystick_button(
+                                joy_idx as u32,
+                                button_idx,
+                                false,
+                            );
+                        }
                     }
                     _ => {}
                 }
@@ -3001,6 +3132,57 @@ impl GraphicsBackend for SDL2Backend {
         }
         self.images.remove(&handle);
         Ok(())
+    }
+
+    fn save_image(&mut self, path: &str, handle: i32) -> Result<(), GraphicsError> {
+        let (width, height, pixels): (u32, u32, Vec<u32>) = if handle == 0 {
+            let page_pixels = self
+                .page_buffers
+                .get(self.visual_page)
+                .cloned()
+                .unwrap_or_default();
+            (self.width, self.height, page_pixels)
+        } else if let Some(img) = self.images.get(&handle) {
+            (img.width, img.height, img.pixels.clone())
+        } else {
+            return Err(GraphicsError::new(
+                GraphicsErrorKind::InvalidArgument,
+                "Invalid image handle for save",
+            ));
+        };
+
+        if pixels.is_empty() || width == 0 || height == 0 {
+            return Err(GraphicsError::new(
+                GraphicsErrorKind::InvalidArgument,
+                "Empty image cannot be saved",
+            ));
+        }
+
+        // Convert ARGB u32 to RGBA u8 (image crate expects row-major R,G,B,A)
+        let mut rgba = Vec::with_capacity((width * height * 4) as usize);
+        for &argb in &pixels {
+            rgba.push((argb >> 16) as u8); // R
+            rgba.push((argb >> 8) as u8); // G
+            rgba.push(argb as u8); // B
+            rgba.push((argb >> 24) as u8); // A
+        }
+
+        let img_buf = image::ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_raw(width, height, rgba)
+            .ok_or_else(|| {
+                GraphicsError::new(
+                    GraphicsErrorKind::InvalidArgument,
+                    "Image dimensions do not match pixel count",
+                )
+            })?;
+
+        image::DynamicImage::ImageRgba8(img_buf)
+            .save(path)
+            .map_err(|e| {
+                GraphicsError::new(
+                    GraphicsErrorKind::BackendError,
+                    format!("Failed to save image: {}", e),
+                )
+            })
     }
 
     fn put_image(

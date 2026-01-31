@@ -320,6 +320,106 @@ pub unsafe extern "C" fn qb_messagebox_ex(
     }
 }
 
+/// Show a system notification (toast / action center).
+///
+/// All parameters may be NULL for default/empty. `icon_type` should be
+/// "info", "warning", or "error" (case-insensitive).
+///
+/// # Safety
+/// String parameters must be valid C strings or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn qb_notifypopup(
+    title: *const c_char,
+    message: *const c_char,
+    icon_type: *const c_char,
+) {
+    #[cfg(feature = "dialogs")]
+    {
+        use rfd::MessageDialog;
+
+        let title_str = if !title.is_null() {
+            CStr::from_ptr(title).to_str().unwrap_or("")
+        } else {
+            ""
+        };
+        let message_str = if !message.is_null() {
+            CStr::from_ptr(message).to_str().unwrap_or("")
+        } else {
+            ""
+        };
+        let _icon = if !icon_type.is_null() {
+            CStr::from_ptr(icon_type).to_str().unwrap_or("info")
+        } else {
+            "info"
+        };
+        // rfd has no native "notification" — show as simple message dialog
+        MessageDialog::new()
+            .set_title(if title_str.is_empty() {
+                "Notification"
+            } else {
+                title_str
+            })
+            .set_description(message_str)
+            .show();
+    }
+    #[cfg(not(feature = "dialogs"))]
+    {
+        let _ = (title, message, icon_type);
+    }
+}
+
+/// Show an input box; returns user text or empty string if cancelled.
+///
+/// `title`, `message`, `default_input` may be NULL. NULL `default_input`
+/// can be used for password-style (no echo); rfd has no native input dialog,
+/// so we return default_input or empty.
+///
+/// # Safety
+/// String parameters must be valid C strings or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn qb_inputbox(
+    title: *const c_char,
+    message: *const c_char,
+    default_input: *const c_char,
+) -> *mut QbString {
+    #[cfg(feature = "dialogs")]
+    {
+        // rfd does not provide a native input/prompt dialog; return default or empty
+        if !default_input.is_null() {
+            if let Ok(s) = CStr::from_ptr(default_input).to_str() {
+                return qb_string_from_bytes(s.as_ptr(), s.len());
+            }
+        }
+        qb_string_empty()
+    }
+    #[cfg(not(feature = "dialogs"))]
+    {
+        let _ = (title, message, default_input);
+        qb_string_empty()
+    }
+}
+
+/// Show color chooser dialog; returns selected color as 0xAARRGGBB or 0 if cancelled.
+///
+/// rfd does not provide a color picker; returns `default_rgb` as no-op or 0.
+///
+/// # Safety
+/// `title` must be a valid C string or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn qb_colorchooserdialog(title: *const c_char, default_rgb: u32) -> u32 {
+    #[cfg(feature = "dialogs")]
+    {
+        let _ = title;
+        // No native color picker in rfd; return default (caller can treat as "no dialog" or use default)
+        default_rgb
+    }
+    #[cfg(not(feature = "dialogs"))]
+    {
+        let _ = (title, default_rgb);
+        0u32
+    }
+}
+
 #[cfg(test)]
 mod tests {
     // Note: Dialog tests are difficult to automate as they require user interaction

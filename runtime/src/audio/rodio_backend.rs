@@ -8,7 +8,8 @@
 //! - BEEP: Plays a short beep tone
 //! - SOUND: Plays tones at specified frequencies
 //! - PLAY: Parses and plays MML (Music Macro Language) strings
-//! - _SNDOPEN/_SNDPLAY/etc: Loads and plays audio files
+//! - _SNDOPEN/_SNDPLAY/etc: Loads and plays audio files (WAV, OGG, etc., and .mid via soundfont)
+//! - MIDI: When opening a `.mid` file and `_MIDISOUNDBANK` is set, synthesizes MIDI to PCM with rustysynth
 
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -23,10 +24,21 @@ use rodio::{Decoder, OutputStream, OutputStreamBuilder, Sink, Source};
 use super::error::{AudioError, AudioErrorKind};
 use super::AudioBackend;
 
+#[cfg(feature = "audio-midi")]
+use super::midi;
+
+/// Source data for a sound: either encoded bytes (WAV/OGG/etc.) or pre-rendered PCM (e.g. MIDI).
+enum SoundSource {
+    /// Encoded audio file bytes (decoded by rodio on play).
+    Encoded(Vec<u8>),
+    /// Pre-rendered stereo float PCM (e.g. from MIDI synthesis). Interleaved L,R,L,R...
+    Pcm { samples: Vec<f32>, sample_rate: u32 },
+}
+
 /// Sound handle information
 struct SoundHandle {
     sink: Sink,
-    source_data: Option<Vec<u8>>,
+    source: Option<SoundSource>,
     volume: f32,
     balance: f32,
     length_secs: f64,
@@ -57,6 +69,8 @@ pub struct RodioBackend {
     raw_sink: Option<Sink>,
     /// Whether raw audio is active
     raw_active: bool,
+    /// MIDI sound bank (soundfont) path for _MIDISOUNDBANK; used when playing .mid files
+    midi_sound_bank_path: Option<String>,
 }
 
 impl RodioBackend {
@@ -70,6 +84,7 @@ impl RodioBackend {
             raw_samples: Arc::new(Mutex::new(VecDeque::new())),
             raw_sink: None,
             raw_active: false,
+            midi_sound_bank_path: None,
         }
     }
 
@@ -317,19 +332,62 @@ impl AudioBackend for RodioBackend {
     fn snd_open(&mut self, filename: &str) -> i32 {
         let handle_id = self.next_handle.fetch_add(1, Ordering::SeqCst);
 
-        // Try to open and decode the file
+        let stream = match self.get_stream() {
+            Ok(s) => s,
+            Err(_) => return -3,
+        };
+        let sink = Sink::connect_new(stream.mixer());
+        sink.pause();
+
+        // MIDI: if file is .mid and we have a soundfont, synthesize to PCM
+        #[cfg(feature = "audio-midi")]
+        if filename.len() >= 4 && filename[filename.len() - 4..].eq_ignore_ascii_case(".mid") {
+            if let Some(ref sf_path) = self.midi_sound_bank_path {
+                match midi::render_midi_to_pcm(filename, sf_path) {
+                    Ok((samples, sample_rate)) => {
+                        let length_secs = (samples.len() as f64) / (sample_rate as f64 * 2.0); // stereo
+                        self.sounds.insert(
+                            handle_id,
+                            SoundHandle {
+                                sink,
+                                source: Some(SoundSource::Pcm {
+                                    samples,
+                                    sample_rate,
+                                }),
+                                volume: 1.0,
+                                balance: 0.0,
+                                length_secs,
+                                is_looping: false,
+                                play_start_time: None,
+                                play_start_position: 0.0,
+                                sample_rate,
+                                channels: 2,
+                            },
+                        );
+                        return handle_id;
+                    }
+                    Err(_) => {
+                        // Fall through to try as regular file (e.g. misnamed or soundfont error)
+                    }
+                }
+            }
+            // No soundfont set: .mid requires _MIDISOUNDBANK
+            if self.midi_sound_bank_path.is_none() {
+                return -7; // Distinct code: MIDI file but no soundfont
+            }
+        }
+
+        // Regular encoded audio file
         let file = match File::open(filename) {
             Ok(f) => f,
             Err(_) => return -1,
         };
-
         let reader = BufReader::new(file);
         let decoder = match Decoder::new(reader) {
             Ok(d) => d,
             Err(_) => return -2,
         };
 
-        // Get audio properties
         let sample_rate = decoder.sample_rate();
         let channels = decoder.channels();
         let length_secs = decoder
@@ -337,15 +395,6 @@ impl AudioBackend for RodioBackend {
             .map(|d| d.as_secs_f64())
             .unwrap_or(0.0);
 
-        // Create a sink for this sound
-        let stream = match self.get_stream() {
-            Ok(s) => s,
-            Err(_) => return -3,
-        };
-
-        let sink = Sink::connect_new(stream.mixer());
-
-        // Read the entire file into memory for potential looping and seeking
         let file2 = match File::open(filename) {
             Ok(f) => f,
             Err(_) => return -5,
@@ -355,13 +404,11 @@ impl AudioBackend for RodioBackend {
             return -6;
         }
 
-        sink.pause(); // Start paused
-
         self.sounds.insert(
             handle_id,
             SoundHandle {
                 sink,
-                source_data: Some(source_data),
+                source: Some(SoundSource::Encoded(source_data)),
                 volume: 1.0,
                 balance: 0.0,
                 length_secs,
@@ -385,26 +432,38 @@ impl AudioBackend for RodioBackend {
 
     fn snd_play(&mut self, handle: i32) -> Result<(), AudioError> {
         if let Some(sound) = self.sounds.get_mut(&handle) {
-            if let Some(ref data) = sound.source_data {
-                // Decode from memory
-                let cursor = std::io::Cursor::new(data.clone());
-                if let Ok(decoder) = Decoder::new(cursor) {
-                    sound.sink.clear();
-                    // Apply balance if not centered
-                    if sound.balance.abs() > 0.01 {
-                        let balanced = BalancedSource::new(decoder, sound.balance);
-                        sound.sink.append(balanced);
-                    } else {
-                        sound.sink.append(decoder);
+            sound.sink.clear();
+            match &sound.source {
+                Some(SoundSource::Encoded(data)) => {
+                    let cursor = std::io::Cursor::new(data.clone());
+                    if let Ok(decoder) = Decoder::new(cursor) {
+                        if sound.balance.abs() > 0.01 {
+                            sound
+                                .sink
+                                .append(BalancedSource::new(decoder, sound.balance));
+                        } else {
+                            sound.sink.append(decoder);
+                        }
                     }
-                    sound.sink.set_volume(sound.volume);
-                    sound.sink.play();
-                    // Track when playback started
-                    sound.play_start_time = Some(Instant::now());
-                    sound.play_start_position = 0.0;
-                    sound.is_looping = false;
                 }
+                Some(SoundSource::Pcm {
+                    samples,
+                    sample_rate,
+                }) => {
+                    let src = PcmBufferSource::new(samples.clone(), *sample_rate, 0);
+                    if sound.balance.abs() > 0.01 {
+                        sound.sink.append(BalancedSource::new(src, sound.balance));
+                    } else {
+                        sound.sink.append(src);
+                    }
+                }
+                None => {}
             }
+            sound.sink.set_volume(sound.volume);
+            sound.sink.play();
+            sound.play_start_time = Some(Instant::now());
+            sound.play_start_position = 0.0;
+            sound.is_looping = false;
             Ok(())
         } else {
             Err(AudioError::new(
@@ -460,25 +519,39 @@ impl AudioBackend for RodioBackend {
 
     fn snd_loop(&mut self, handle: i32) -> Result<(), AudioError> {
         if let Some(sound) = self.sounds.get_mut(&handle) {
+            sound.sink.clear();
             sound.is_looping = true;
-            if let Some(ref data) = sound.source_data {
-                let cursor = std::io::Cursor::new(data.clone());
-                if let Ok(decoder) = Decoder::new(cursor) {
-                    sound.sink.clear();
-                    // Apply balance if not centered
-                    if sound.balance.abs() > 0.01 {
-                        let balanced = BalancedSource::new(decoder, sound.balance);
-                        sound.sink.append(balanced.repeat_infinite());
-                    } else {
-                        sound.sink.append(decoder.repeat_infinite());
+            match &sound.source {
+                Some(SoundSource::Encoded(data)) => {
+                    let cursor = std::io::Cursor::new(data.clone());
+                    if let Ok(decoder) = Decoder::new(cursor) {
+                        if sound.balance.abs() > 0.01 {
+                            sound.sink.append(
+                                BalancedSource::new(decoder, sound.balance).repeat_infinite(),
+                            );
+                        } else {
+                            sound.sink.append(decoder.repeat_infinite());
+                        }
                     }
-                    sound.sink.set_volume(sound.volume);
-                    sound.sink.play();
-                    // Track when playback started
-                    sound.play_start_time = Some(Instant::now());
-                    sound.play_start_position = 0.0;
                 }
+                Some(SoundSource::Pcm {
+                    samples,
+                    sample_rate,
+                }) => {
+                    let src =
+                        PcmBufferSource::new(samples.clone(), *sample_rate, 0).repeat_infinite();
+                    if sound.balance.abs() > 0.01 {
+                        sound.sink.append(BalancedSource::new(src, sound.balance));
+                    } else {
+                        sound.sink.append(src);
+                    }
+                }
+                None => {}
             }
+            sound.sink.set_volume(sound.volume);
+            sound.sink.play();
+            sound.play_start_time = Some(Instant::now());
+            sound.play_start_position = 0.0;
             Ok(())
         } else {
             Err(AudioError::new(
@@ -545,45 +618,56 @@ impl AudioBackend for RodioBackend {
     fn snd_setpos(&mut self, handle: i32, position: f64) -> Result<(), AudioError> {
         if let Some(sound) = self.sounds.get_mut(&handle) {
             let position = position.clamp(0.0, sound.length_secs);
+            sound.sink.clear();
 
-            if let Some(ref data) = sound.source_data {
-                // Calculate how many samples to skip
-                let samples_to_skip =
-                    (position * sound.sample_rate as f64 * sound.channels as f64) as usize;
-
-                // Decode from memory
-                let cursor = std::io::Cursor::new(data.clone());
-                if let Ok(decoder) = Decoder::new(cursor) {
-                    sound.sink.clear();
-
-                    // Skip the appropriate number of samples
-                    let skipped = decoder.skip_duration(Duration::from_secs_f64(position));
-
-                    // Apply balance if needed
-                    if sound.balance.abs() > 0.01 {
-                        let balanced = BalancedSource::new(skipped, sound.balance);
-                        if sound.is_looping {
-                            sound.sink.append(balanced.repeat_infinite());
+            match &sound.source {
+                Some(SoundSource::Encoded(data)) => {
+                    let cursor = std::io::Cursor::new(data.clone());
+                    if let Ok(decoder) = Decoder::new(cursor) {
+                        let skipped = decoder.skip_duration(Duration::from_secs_f64(position));
+                        if sound.balance.abs() > 0.01 {
+                            let balanced = BalancedSource::new(skipped, sound.balance);
+                            if sound.is_looping {
+                                sound.sink.append(balanced.repeat_infinite());
+                            } else {
+                                sound.sink.append(balanced);
+                            }
+                        } else if sound.is_looping {
+                            sound.sink.append(skipped.repeat_infinite());
                         } else {
-                            sound.sink.append(balanced);
+                            sound.sink.append(skipped);
                         }
-                    } else if sound.is_looping {
-                        sound.sink.append(skipped.repeat_infinite());
-                    } else {
-                        sound.sink.append(skipped);
-                    }
-
-                    sound.sink.set_volume(sound.volume);
-
-                    // Update position tracking
-                    sound.play_start_position = position;
-                    sound.play_start_time = Some(Instant::now());
-
-                    // Resume if it was playing
-                    if !sound.sink.is_paused() {
-                        sound.sink.play();
                     }
                 }
+                Some(SoundSource::Pcm {
+                    samples,
+                    sample_rate,
+                }) => {
+                    let start_sample =
+                        ((position * *sample_rate as f64 * 2.0) as usize).min(samples.len());
+                    let src = PcmBufferSource::new(samples.clone(), *sample_rate, start_sample);
+                    if sound.balance.abs() > 0.01 {
+                        if sound.is_looping {
+                            sound
+                                .sink
+                                .append(BalancedSource::new(src.repeat_infinite(), sound.balance));
+                        } else {
+                            sound.sink.append(BalancedSource::new(src, sound.balance));
+                        }
+                    } else if sound.is_looping {
+                        sound.sink.append(src.repeat_infinite());
+                    } else {
+                        sound.sink.append(src);
+                    }
+                }
+                None => {}
+            }
+
+            sound.sink.set_volume(sound.volume);
+            sound.play_start_position = position;
+            sound.play_start_time = Some(Instant::now());
+            if !sound.sink.is_paused() {
+                sound.sink.play();
             }
             Ok(())
         } else {
@@ -614,22 +698,30 @@ impl AudioBackend for RodioBackend {
 
     fn snd_copy(&mut self, handle: i32) -> i32 {
         if let Some(sound) = self.sounds.get(&handle) {
-            if let Some(ref data) = sound.source_data {
+            let source = match &sound.source {
+                Some(SoundSource::Encoded(data)) => Some(SoundSource::Encoded(data.clone())),
+                Some(SoundSource::Pcm {
+                    samples,
+                    sample_rate,
+                }) => Some(SoundSource::Pcm {
+                    samples: samples.clone(),
+                    sample_rate: *sample_rate,
+                }),
+                None => None,
+            };
+            if let Some(source) = source {
                 let new_handle = self.next_handle.fetch_add(1, Ordering::SeqCst);
-
-                // Create a new sink
                 let stream = match self.get_stream() {
                     Ok(s) => s,
                     Err(_) => return -1,
                 };
                 let sink = Sink::connect_new(stream.mixer());
                 sink.pause();
-
                 self.sounds.insert(
                     new_handle,
                     SoundHandle {
                         sink,
-                        source_data: Some(data.clone()),
+                        source: Some(source),
                         volume: sound.volume,
                         balance: sound.balance,
                         length_secs: sound.length_secs,
@@ -640,7 +732,6 @@ impl AudioBackend for RodioBackend {
                         channels: sound.channels,
                     },
                 );
-
                 new_handle
             } else {
                 -1
@@ -651,7 +742,6 @@ impl AudioBackend for RodioBackend {
     }
 
     fn snd_playfile(&mut self, filename: &str, sync: bool) -> Result<(), AudioError> {
-        // Open, play, and optionally wait
         let handle = self.snd_open(filename);
         if handle < 0 {
             return Err(AudioError::new(
@@ -659,49 +749,48 @@ impl AudioBackend for RodioBackend {
                 "Failed to open file",
             ));
         }
-
         self.snd_play(handle)?;
-
         if sync {
-            // Wait for playback to complete
             if let Some(sound) = self.sounds.get(&handle) {
                 sound.sink.sleep_until_end();
             }
             self.snd_close(handle)?;
         }
-        // If not sync, the handle stays open and will play in background
-
         Ok(())
     }
 
     fn snd_playcopy(&mut self, handle: i32) -> Result<(), AudioError> {
         if let Some(sound) = self.sounds.get(&handle) {
-            if let Some(ref data) = sound.source_data {
-                // Create a temporary sink for the copy
-                let stream = self.get_stream()?;
-                let sink = Sink::connect_new(stream.mixer());
-
-                // Decode and play
-                let cursor = std::io::Cursor::new(data.clone());
-                if let Ok(decoder) = Decoder::new(cursor) {
-                    if sound.balance.abs() > 0.01 {
-                        let balanced = BalancedSource::new(decoder, sound.balance);
-                        sink.append(balanced);
-                    } else {
-                        sink.append(decoder);
+            let stream = self.get_stream()?;
+            let sink = Sink::connect_new(stream.mixer());
+            match &sound.source {
+                Some(SoundSource::Encoded(data)) => {
+                    let cursor = std::io::Cursor::new(data.clone());
+                    if let Ok(decoder) = Decoder::new(cursor) {
+                        if sound.balance.abs() > 0.01 {
+                            sink.append(BalancedSource::new(decoder, sound.balance));
+                        } else {
+                            sink.append(decoder);
+                        }
                     }
-                    sink.set_volume(sound.volume);
-                    sink.play();
-                    // Detach - will play until complete then clean up
-                    sink.detach();
                 }
-                Ok(())
-            } else {
-                Err(AudioError::new(
-                    AudioErrorKind::InvalidHandle,
-                    "No source data",
-                ))
+                Some(SoundSource::Pcm {
+                    samples,
+                    sample_rate,
+                }) => {
+                    let src = PcmBufferSource::new(samples.clone(), *sample_rate, 0);
+                    if sound.balance.abs() > 0.01 {
+                        sink.append(BalancedSource::new(src, sound.balance));
+                    } else {
+                        sink.append(src);
+                    }
+                }
+                None => {}
             }
+            sink.set_volume(sound.volume);
+            sink.play();
+            sink.detach();
+            Ok(())
         } else {
             Err(AudioError::new(
                 AudioErrorKind::InvalidHandle,
@@ -772,6 +861,10 @@ impl AudioBackend for RodioBackend {
         } else {
             0.0
         }
+    }
+
+    fn set_midi_sound_bank_path(&mut self, path: Option<&str>) {
+        self.midi_sound_bank_path = path.map(String::from);
     }
 }
 
@@ -976,5 +1069,73 @@ impl Source for RawAudioSource {
 
     fn total_duration(&self) -> Option<Duration> {
         None // Infinite
+    }
+}
+
+/// A rodio `Source` that plays pre-rendered stereo float PCM (e.g. from MIDI synthesis).
+///
+/// Samples are interleaved L, R, L, R, ... `start_index` allows seeking by skipping
+/// that many samples at the start.
+struct PcmBufferSource {
+    samples: Vec<f32>,
+    sample_rate: u32,
+    index: usize,
+}
+
+impl PcmBufferSource {
+    /// Creates a source from stereo-interleaved samples.
+    ///
+    /// * `samples` - Interleaved L,R,L,R... (length must be even)
+    /// * `sample_rate` - Sample rate in Hz
+    /// * `start_index` - First sample index to play (for seeking); use 0 for start
+    fn new(samples: Vec<f32>, sample_rate: u32, start_index: usize) -> Self {
+        let cap = (samples.len() / 2) * 2; // align to stereo frame
+        Self {
+            samples,
+            sample_rate,
+            index: start_index.min(cap),
+        }
+    }
+}
+
+impl Iterator for PcmBufferSource {
+    type Item = f32;
+
+    fn next(&mut self) -> Option<f32> {
+        if self.index < self.samples.len() {
+            let s = self.samples[self.index];
+            self.index += 1;
+            Some(s)
+        } else {
+            None
+        }
+    }
+}
+
+impl Source for PcmBufferSource {
+    fn current_span_len(&self) -> Option<usize> {
+        let remaining = self.samples.len().saturating_sub(self.index);
+        if remaining > 0 {
+            Some(remaining)
+        } else {
+            None
+        }
+    }
+
+    fn channels(&self) -> u16 {
+        2
+    }
+
+    fn sample_rate(&self) -> u32 {
+        self.sample_rate
+    }
+
+    fn total_duration(&self) -> Option<Duration> {
+        let remaining = self.samples.len().saturating_sub(self.index);
+        if remaining == 0 {
+            return None;
+        }
+        let secs = remaining as f64 / (self.sample_rate as f64 * 2.0);
+        Some(Duration::from_secs_f64(secs))
     }
 }

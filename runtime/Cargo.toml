@@ -24,6 +24,9 @@ image = { version = "0.25", optional = true, default-features = false, features 
 # For audio support (pure Rust audio library)
 rodio = { version = "0.21", optional = true }
 
+# For MIDI playback (SoundFont + MidiFileSequencer → PCM)
+rustysynth = { version = "1.3", optional = true }
+
 # For native file dialogs (_OPENFILEDIALOG$, _SAVEFILEDIALOG$, etc.)
 rfd = { version = "0.17", optional = true }
 
@@ -33,16 +36,40 @@ freetype-rs = { version = "0.35", optional = true }
 # For global lazy initialization (FontManager singleton)
 lazy_static = { version = "1.5", optional = true }
 
+# Base64 encoding/decoding (_BASE64ENCODE$, _BASE64DECODE$)
+base64 = "0.22"
+
+# Hashing (_ADLER32, _CRC32, _MD5$)
+adler = "1.0"
+crc32fast = "1.4"
+md5 = "0.7"
+
+# Compression (_DEFLATE$, _INFLATE$)
+miniz_oxide = "0.7"
+
+# HTTP client (libqb_http_* — OPEN for URL, GET, etc.)
+reqwest = { version = "0.12", optional = true, default-features = false, features = ["blocking", "rustls-tls"] }
+
+# Windows file locking (LockFile/UnlockFile) for LOCK/UNLOCK and OPEN lock mode
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["fileapi", "handleapi", "minwindef", "errhandlingapi", "winerror"] }
+
 [features]
-default = ["graphics-sdl2", "audio-rodio", "dialogs"]
+default = ["graphics-sdl2", "audio-rodio", "audio-midi", "dialogs", "http"]
+http = ["reqwest"]  # HTTP client (libqb_http_*)
+opengl = []  # OpenGL _GL* support: call_gl* wrappers, sub_gl_called, qb_glcompat=1 when GL available (not default)
 graphics-sdl2 = ["sdl2", "image"]
 graphics-sdl2-ttf = ["sdl2/ttf"]  # Requires SDL2_ttf library
 graphics-sdl2-freetype = ["graphics-sdl2", "freetype"]  # FreeType-based font rendering
 graphics-mock = []  # For testing without display
 freetype = ["freetype-rs", "lazy_static"]  # FreeType font library support
 audio-rodio = ["rodio"]
+audio-midi = ["rustysynth"]  # MIDI .mid + soundfont → PCM (requires audio-rodio in practice)
 audio-mock = []  # For testing without audio
 dialogs = ["rfd"]  # Native file dialogs
+
+[build-dependencies]
+cc = "1.0"
 
 [dev-dependencies]
 # For testing

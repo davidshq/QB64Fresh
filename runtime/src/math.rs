@@ -69,6 +69,174 @@ pub extern "C" fn qb_clng(n: f64) -> i32 {
 }
 
 // ============================================================================
+// rounding.h — Type Conversion and Rounding (libqb compatibility)
+// ============================================================================
+
+/// Round to int64 (qbr). Uses round-half-away-from-zero semantics.
+/// Values outside i64 range are clamped; NaN/Inf return 0.
+#[no_mangle]
+pub extern "C" fn qb_qbr(n: f64) -> i64 {
+    if n.is_nan() || n.is_infinite() {
+        return 0;
+    }
+    const MAX_I64: f64 = 9223372036854775807.0;
+    const MIN_I64: f64 = -9223372036854775808.0;
+    let r = n.round();
+    if r > MAX_I64 {
+        i64::MAX
+    } else if r < MIN_I64 {
+        i64::MIN
+    } else {
+        r as i64
+    }
+}
+
+/// CSNG from float (C passes double): check single range, set error 6 on overflow.
+#[no_mangle]
+pub extern "C" fn qb_csng_float(n: f64) -> f32 {
+    const MAX_SINGLE: f64 = 3.402823466e38;
+    if n.is_nan() || n.is_infinite() {
+        return n as f32;
+    }
+    if n.abs() > MAX_SINGLE {
+        crate::qb_set_error(6, 0); // Overflow
+        return 0.0;
+    }
+    n as f32
+}
+
+/// CSNG from double: check single range, set error 6 on overflow.
+#[no_mangle]
+pub extern "C" fn qb_csng_double(n: f64) -> f32 {
+    const MAX_SINGLE: f64 = 3.402823466e38;
+    if n.is_nan() || n.is_infinite() {
+        return n as f32;
+    }
+    if n.abs() > MAX_SINGLE {
+        crate::qb_set_error(6, 0); // Overflow
+        return 0.0;
+    }
+    n as f32
+}
+
+/// CDBL from float (C passes double): convert to double (always in range).
+#[no_mangle]
+pub extern "C" fn qb_cdbl_float(n: f64) -> f64 {
+    n
+}
+
+/// _ROUND: round to int64 (no overflow check, like libqb func_round_*).
+#[no_mangle]
+pub extern "C" fn qb_round_double(n: f64) -> i64 {
+    qb_qbr(n)
+}
+
+/// _ROUND from float (C passes double): round to int64.
+#[no_mangle]
+pub extern "C" fn qb_round_float(n: f64) -> i64 {
+    qb_qbr(n)
+}
+
+/// Reset FPU rounding mode (libqb fpu_reinit).
+///
+/// Stub for linking; real implementation would use cfenv to restore default rounding.
+#[no_mangle]
+pub extern "C" fn qb_fpu_reinit() {}
+
+// ============================================================================
+// Extended Math — Power-of-2 (libqb extended_math.h compatibility)
+// ============================================================================
+// C API uses fixed-width types; for other integral types callers cast.
+
+/// Returns 1 if `n` is a power of 2 (or 0), 0 otherwise (Math_IsPowerOf2).
+#[no_mangle]
+pub extern "C" fn qb_math_is_power_of_2_u32(n: u32) -> std::ffi::c_int {
+    if n == 0 {
+        return 0;
+    }
+    if n & (n - 1) == 0 {
+        1
+    } else {
+        0
+    }
+}
+
+/// Returns 1 if `n` is a power of 2 (or 0), 0 otherwise (Math_IsPowerOf2).
+#[no_mangle]
+pub extern "C" fn qb_math_is_power_of_2_u64(n: u64) -> std::ffi::c_int {
+    if n == 0 {
+        return 0;
+    }
+    if n & (n - 1) == 0 {
+        1
+    } else {
+        0
+    }
+}
+
+/// Rounds `n` up to the next power of 2 (Math_RoundUpToPowerOf2). 0 rounds to 1.
+#[no_mangle]
+pub extern "C" fn qb_math_round_up_to_power_of_2_u32(n: u32) -> u32 {
+    if n == 0 {
+        return 1;
+    }
+    let mut u = n - 1;
+    u |= u >> 1;
+    u |= u >> 2;
+    u |= u >> 4;
+    u |= u >> 8;
+    u |= u >> 16;
+    u + 1
+}
+
+/// Rounds `n` up to the next power of 2 (Math_RoundUpToPowerOf2). 0 rounds to 1.
+#[no_mangle]
+pub extern "C" fn qb_math_round_up_to_power_of_2_u64(n: u64) -> u64 {
+    if n == 0 {
+        return 1;
+    }
+    let mut u = n - 1;
+    u |= u >> 1;
+    u |= u >> 2;
+    u |= u >> 4;
+    u |= u >> 8;
+    u |= u >> 16;
+    u |= u >> 32;
+    u + 1
+}
+
+/// Rounds `n` down to the previous power of 2 (Math_RoundDownToPowerOf2). 0 stays 0.
+#[no_mangle]
+pub extern "C" fn qb_math_round_down_to_power_of_2_u32(n: u32) -> u32 {
+    if n == 0 {
+        return 0;
+    }
+    let mut u = n;
+    u |= u >> 1;
+    u |= u >> 2;
+    u |= u >> 4;
+    u |= u >> 8;
+    u |= u >> 16;
+    u - (u >> 1)
+}
+
+/// Rounds `n` down to the previous power of 2 (Math_RoundDownToPowerOf2). 0 stays 0.
+#[no_mangle]
+pub extern "C" fn qb_math_round_down_to_power_of_2_u64(n: u64) -> u64 {
+    if n == 0 {
+        return 0;
+    }
+    let mut u = n;
+    u |= u >> 1;
+    u |= u >> 2;
+    u |= u >> 4;
+    u |= u >> 8;
+    u |= u >> 16;
+    u |= u >> 32;
+    u - (u >> 1)
+}
+
+// ============================================================================
 // Trigonometric Functions
 // ============================================================================
 
@@ -124,6 +292,104 @@ pub extern "C" fn qb_cosh(n: f64) -> f64 {
 #[no_mangle]
 pub extern "C" fn qb_tanh(n: f64) -> f64 {
     n.tanh()
+}
+
+// ============================================================================
+// Reciprocal Trig and Hyperbolic (extended_math — Used by QB64pe)
+// ============================================================================
+
+/// Secant: 1/cos (_SEC in QB64).
+#[no_mangle]
+pub extern "C" fn qb_sec(n: f64) -> f64 {
+    1.0 / n.cos()
+}
+
+/// Cosecant: 1/sin (_CSC in QB64).
+#[no_mangle]
+pub extern "C" fn qb_csc(n: f64) -> f64 {
+    1.0 / n.sin()
+}
+
+/// Cotangent: 1/tan (_COT in QB64).
+#[no_mangle]
+pub extern "C" fn qb_cot(n: f64) -> f64 {
+    1.0 / n.tan()
+}
+
+/// Hyperbolic secant: 1/cosh (_SECH in QB64).
+#[no_mangle]
+pub extern "C" fn qb_sech(n: f64) -> f64 {
+    1.0 / n.cosh()
+}
+
+/// Hyperbolic cosecant: 1/sinh (_CSCH in QB64).
+#[no_mangle]
+pub extern "C" fn qb_csch(n: f64) -> f64 {
+    1.0 / n.sinh()
+}
+
+/// Hyperbolic cotangent: 1/tanh (_COTH in QB64).
+#[no_mangle]
+pub extern "C" fn qb_coth(n: f64) -> f64 {
+    1.0 / n.tanh()
+}
+
+/// Arcsecant: acos(1/n) (_ARCSEC in QB64).
+#[no_mangle]
+pub extern "C" fn qb_arcsec(n: f64) -> f64 {
+    (1.0 / n).acos()
+}
+
+/// Arccosecant: asin(1/n) (_ARCCSC in QB64).
+#[no_mangle]
+pub extern "C" fn qb_arccsc(n: f64) -> f64 {
+    (1.0 / n).asin()
+}
+
+/// Arccotangent: atan(1/n) with quadrant handling (_ARCCOT in QB64).
+/// Standard definition: returns value in (0, π) such that cot(result) = n.
+#[no_mangle]
+pub extern "C" fn qb_arccot(n: f64) -> f64 {
+    // arccot(x) = atan(1/x) for x>0; π + atan(1/x) for x<0; π/2 for x=0
+    if n == 0.0 {
+        PI / 2.0
+    } else if n > 0.0 {
+        (1.0 / n).atan()
+    } else {
+        PI + (1.0 / n).atan()
+    }
+}
+
+/// Inverse hyperbolic secant (_ARCSECH in QB64).
+#[no_mangle]
+pub extern "C" fn qb_arcsech(n: f64) -> f64 {
+    let x = 1.0 / n;
+    (x + (x * x - 1.0).sqrt()).ln()
+}
+
+/// Inverse hyperbolic cosecant (_ARCCSCH in QB64).
+#[no_mangle]
+pub extern "C" fn qb_arccsch(n: f64) -> f64 {
+    let x = 1.0 / n;
+    (x + (x * x + 1.0).sqrt()).ln()
+}
+
+/// Inverse hyperbolic cotangent (_ARCCOTH in QB64).
+#[no_mangle]
+pub extern "C" fn qb_arccoth(n: f64) -> f64 {
+    0.5 * ((n + 1.0) / (n - 1.0)).ln()
+}
+
+/// Clamp value to [min, max] (_CLAMP in QB64).
+#[no_mangle]
+pub extern "C" fn qb_clamp(x: f64, min_val: f64, max_val: f64) -> f64 {
+    if x < min_val {
+        min_val
+    } else if x > max_val {
+        max_val
+    } else {
+        x
+    }
 }
 
 // ============================================================================
@@ -239,6 +505,30 @@ pub extern "C" fn qb_d2r(degrees: f64) -> f64 {
 #[no_mangle]
 pub extern "C" fn qb_r2d(radians: f64) -> f64 {
     radians * 180.0 / PI
+}
+
+/// Convert degrees to gradians (_D2G in QB64). 400 grad = 360 deg.
+#[no_mangle]
+pub extern "C" fn qb_d2g(degrees: f64) -> f64 {
+    degrees * 10.0 / 9.0
+}
+
+/// Convert gradians to degrees (_G2D in QB64).
+#[no_mangle]
+pub extern "C" fn qb_g2d(gradians: f64) -> f64 {
+    gradians * 9.0 / 10.0
+}
+
+/// Convert gradians to radians (_G2R in QB64).
+#[no_mangle]
+pub extern "C" fn qb_g2r(gradians: f64) -> f64 {
+    gradians * PI / 200.0
+}
+
+/// Convert radians to gradians (_R2G in QB64).
+#[no_mangle]
+pub extern "C" fn qb_r2g(radians: f64) -> f64 {
+    radians * 200.0 / PI
 }
 
 // ============================================================================

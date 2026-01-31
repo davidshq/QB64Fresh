@@ -370,6 +370,251 @@ pub extern "C" fn qb_printwidth(text: *const QbString) -> i64 {
 }
 
 // ============================================================================
+// font.h — Font (FreeType) libqb-compatible API
+// ============================================================================
+
+/// CP437 to UTF-16 BMP (libqb codepage437_to_unicode16[]).
+///
+/// Defined in cp437.rs; re-exported here for C linkage.
+pub use crate::cp437::codepage437_to_unicode16;
+
+/// Load a font file into memory (libqb FontLoadFileToMemory).
+///
+/// Tries the given path, then standard font directories. Caller must free()
+/// the returned buffer.
+///
+/// # Returns
+/// Pointer to font file bytes, or NULL on failure. `*out_bytes` set to size.
+#[no_mangle]
+#[cfg(feature = "freetype")]
+pub extern "C" fn FontLoadFileToMemory(
+    file_path_name: *const c_char,
+    out_bytes: *mut i32,
+) -> *mut u8 {
+    if file_path_name.is_null() || out_bytes.is_null() {
+        return std::ptr::null_mut();
+    }
+
+    let path_str = match unsafe { CStr::from_ptr(file_path_name).to_str() } {
+        Ok(s) => s,
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    let data = try_font_paths(path_str);
+    let data = match data {
+        Some(d) => d,
+        None => return std::ptr::null_mut(),
+    };
+
+    let len = data.len();
+    let ptr = unsafe { libc::malloc(len) } as *mut u8;
+    if ptr.is_null() {
+        return std::ptr::null_mut();
+    }
+    unsafe {
+        std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, len);
+        *out_bytes = len as i32;
+    }
+    ptr
+}
+
+#[no_mangle]
+#[cfg(not(feature = "freetype"))]
+pub extern "C" fn FontLoadFileToMemory(
+    _file_path_name: *const c_char,
+    out_bytes: *mut i32,
+) -> *mut u8 {
+    if !out_bytes.is_null() {
+        unsafe { *out_bytes = 0 };
+    }
+    std::ptr::null_mut()
+}
+
+#[cfg(feature = "freetype")]
+fn try_font_paths(file_path_name: &str) -> Option<Vec<u8>> {
+    if let Ok(data) = std::fs::read(file_path_name) {
+        return Some(data);
+    }
+    let filename = std::path::Path::new(file_path_name)
+        .file_name()
+        .and_then(|s| s.to_str())?;
+    let search_paths: Vec<String> = {
+        let home = std::env::var_os("HOME").and_then(|s| s.into_string().ok());
+        let mut paths = Vec::new();
+        if let Some(ref h) = home {
+            paths.push(format!("{}/.fonts/{}", h, filename));
+            paths.push(format!("{}/.local/share/fonts/{}", h, filename));
+        }
+        paths.push(format!("/usr/local/share/fonts/{}", filename));
+        paths.push(format!("/usr/share/fonts/{}", filename));
+        paths.push(format!("/usr/share/fonts/truetype/{}", filename));
+        paths.push(format!("/usr/share/fonts/opentype/{}", filename));
+        paths
+    };
+    for p in &search_paths {
+        if let Ok(data) = std::fs::read(p) {
+            return Some(data);
+        }
+    }
+    None
+}
+
+/// Render UTF-32 codepoints to an alpha buffer (libqb FontRenderTextUTF32).
+///
+/// *out_data is malloc'd; caller must free(). Output is 8-bit alpha (0/255).
+///
+/// # Returns
+/// 1 on success, 0 on failure.
+#[no_mangle]
+#[cfg(feature = "freetype")]
+pub extern "C" fn FontRenderTextUTF32(
+    fh: i32,
+    codepoint: *const u32,
+    codepoints: i32,
+    options: i32,
+    out_data: *mut *mut u8,
+    out_x: *mut i32,
+    out_y: *mut i32,
+) -> i32 {
+    if codepoint.is_null() || out_data.is_null() || out_x.is_null() || out_y.is_null() {
+        return 0;
+    }
+    unsafe {
+        *out_data = std::ptr::null_mut();
+        *out_x = 0;
+        *out_y = 0;
+    }
+    if codepoints <= 0 {
+        return if codepoints == 0 { 1 } else { 0 };
+    }
+
+    let codepoints = codepoints as usize;
+    let mut chars: Vec<char> = Vec::with_capacity(codepoints);
+    for i in 0..codepoints {
+        let u = unsafe { *codepoint.add(i) };
+        if let Some(c) = char::from_u32(u) {
+            chars.push(c);
+        }
+    }
+
+    use crate::font_manager::FONT_MANAGER;
+    let mut fm = FONT_MANAGER.lock().unwrap();
+    let result = fm.render_text_to_buffer(fh as i64, &chars, options as u32);
+
+    match result {
+        Some((buf, w, h)) => {
+            let len = buf.len();
+            let ptr = unsafe { libc::malloc(len) } as *mut u8;
+            if ptr.is_null() {
+                return 0;
+            }
+            unsafe {
+                std::ptr::copy_nonoverlapping(buf.as_ptr(), ptr, len);
+                *out_data = ptr;
+                *out_x = w;
+                *out_y = h;
+            }
+            1
+        }
+        None => 0,
+    }
+}
+
+#[no_mangle]
+#[cfg(not(feature = "freetype"))]
+pub extern "C" fn FontRenderTextUTF32(
+    _fh: i32,
+    _codepoint: *const u32,
+    _codepoints: i32,
+    _options: i32,
+    out_data: *mut *mut u8,
+    out_x: *mut i32,
+    out_y: *mut i32,
+) -> i32 {
+    if !out_data.is_null() {
+        unsafe { *out_data = std::ptr::null_mut() };
+    }
+    if !out_x.is_null() {
+        unsafe { *out_x = 0 };
+    }
+    if !out_y.is_null() {
+        unsafe { *out_y = 0 };
+    }
+    0
+}
+
+/// Render ASCII/CP437 bytes to an alpha buffer (libqb FontRenderTextASCII).
+///
+/// Converts bytes to UTF-32 via CP437 then calls FontRenderTextUTF32.
+///
+/// # Returns
+/// 1 on success, 0 on failure.
+#[no_mangle]
+#[cfg(feature = "freetype")]
+pub extern "C" fn FontRenderTextASCII(
+    fh: i32,
+    codepoint: *const u8,
+    codepoints: i32,
+    options: i32,
+    out_data: *mut *mut u8,
+    out_x: *mut i32,
+    out_y: *mut i32,
+) -> i32 {
+    if codepoint.is_null() || out_data.is_null() || out_x.is_null() || out_y.is_null() {
+        return 0;
+    }
+    if codepoints <= 0 {
+        unsafe {
+            *out_data = std::ptr::null_mut();
+            *out_x = 0;
+            *out_y = 0;
+        }
+        return if codepoints == 0 { 1 } else { 0 };
+    }
+
+    let codepoints = codepoints as usize;
+    let mut utf32: Vec<u32> = Vec::with_capacity(codepoints);
+    for i in 0..codepoints {
+        let b = unsafe { *codepoint.add(i) };
+        let ch = crate::cp437::cp437_to_unicode(b);
+        utf32.push(ch as u32);
+    }
+
+    FontRenderTextUTF32(
+        fh,
+        utf32.as_ptr(),
+        utf32.len() as i32,
+        options,
+        out_data,
+        out_x,
+        out_y,
+    )
+}
+
+#[no_mangle]
+#[cfg(not(feature = "freetype"))]
+pub extern "C" fn FontRenderTextASCII(
+    _fh: i32,
+    _codepoint: *const u8,
+    _codepoints: i32,
+    _options: i32,
+    out_data: *mut *mut u8,
+    out_x: *mut i32,
+    out_y: *mut i32,
+) -> i32 {
+    if !out_data.is_null() {
+        unsafe { *out_data = std::ptr::null_mut() };
+    }
+    if !out_x.is_null() {
+        unsafe { *out_x = 0 };
+    }
+    if !out_y.is_null() {
+        unsafe { *out_y = 0 };
+    }
+    0
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 

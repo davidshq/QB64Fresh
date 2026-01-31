@@ -2,18 +2,24 @@
 //!
 //! This module provides PRINT, INPUT, and file I/O operations.
 
+use crate::qbs_compat::Qbs;
 use crate::string::{
     qb_string_data, qb_string_from_bytes, qb_string_len, qb_string_retain, QbString,
 };
 use std::collections::HashMap;
 use std::fs::File;
+use std::io::ErrorKind;
 use std::io::{BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::os::raw::c_char;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::sync::Once;
 
 #[cfg(unix)]
 use std::os::unix::io::AsRawFd;
+
+#[cfg(windows)]
+use std::os::windows::io::AsRawHandle;
 
 // Import normalize_path_for_fs from input module
 // This function normalizes Windows path separators on non-Windows systems
@@ -60,6 +66,9 @@ static FIELD_BUFFERS: Mutex<Option<HashMap<i32, Vec<u8>>>> = Mutex::new(None);
 static FIELD_OFFSETS: Mutex<Option<HashMap<i32, i32>>> = Mutex::new(None);
 // Track which file number is currently being set up (for qb_field_add calls)
 static CURRENT_FIELD_FILE: Mutex<Option<i32>> = Mutex::new(None);
+
+/// Last number of bytes read by qb_file_get / qb_file_get_string (libqb gfs_read_bytes).
+static LAST_READ_BYTES: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
 
 fn init_file_handles() {
     let mut handles = FILE_HANDLES.lock().unwrap();
@@ -205,16 +214,36 @@ fn apply_flock(file: &File, lock: i32) {
     }
 }
 
+/// Applies file locking on Windows using LockFile (entire file).
+/// SHARED/DEFAULT: no lock. LOCK_* / ONLY: exclusive lock on whole file (parity with Unix flock).
 #[cfg(windows)]
-#[allow(clippy::unnecessary_wraps)]
-fn apply_flock(_file: &File, _lock: i32) {
-    // TODO: LockFileEx when needed for Windows file locking
+fn apply_flock(file: &File, lock: i32) {
+    let use_exclusive = matches!(
+        lock,
+        QB_FILE_LOCK_READ | QB_FILE_LOCK_WRITE | QB_FILE_LOCK_READ_WRITE | QB_FILE_LOCK_ONLY
+    );
+    if !use_exclusive {
+        return;
+    }
+    use winapi::um::errhandlingapi::GetLastError;
+    use winapi::um::fileapi::LockFile;
+    use winapi::um::handleapi::INVALID_HANDLE_VALUE;
+    let handle = file.as_raw_handle();
+    if handle == INVALID_HANDLE_VALUE {
+        return;
+    }
+    // Lock entire file: start 0, length 0xFFFFFFFF_FFFFFFFF (to end of file)
+    let ok = unsafe { LockFile(handle as *mut _, 0, 0, 0xFFFF_FFFF, 0xFFFF_FFFF) };
+    if ok == 0 {
+        let _e = unsafe { GetLastError() };
+        // Don't set QB error here; OPEN still succeeds, lock is best-effort (match Unix flock behavior)
+    }
 }
 
 /// OPEN - Open a file.
 ///
 /// Access and lock use QB_FILE_ACCESS_* and QB_FILE_LOCK_* constants (0 = default).
-/// On Unix, lock modes apply flock(); on Windows locking is not yet implemented.
+/// On Unix, lock modes apply flock(); on Windows, LockFile (entire file) is used for OPEN.
 ///
 /// # Safety
 /// - `filename` must be a valid null-terminated C string
@@ -352,6 +381,62 @@ pub unsafe extern "C" fn qb_file_open(
                 map.insert(fnum, handle);
             }
             Err(e) => {
+                // QB64pe IDE builds the File menu by opening "settings/recent.bin" (relative to
+                // CWD). If the file doesn't exist (first run or different CWD), OPEN fails with
+                // Error 53. Auto-create the file and retry so the IDE works regardless of how
+                // it was started (script, double-click, or from another directory).
+                let is_recent_bin = resolved_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|n| n.eq_ignore_ascii_case("recent.bin"))
+                    .unwrap_or(false);
+                if e.kind() == ErrorKind::NotFound && is_recent_bin {
+                    if let Some(parent) = resolved_path.parent() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+                    if std::fs::File::create(&resolved_path).is_ok() {
+                        // Retry open with same mode
+                        let retry_result = match mode_str {
+                            "r" | "rb" => std::fs::File::open(&resolved_path),
+                            "r+" | "r+b" | "rb+" => std::fs::OpenOptions::new()
+                                .read(true)
+                                .write(true)
+                                .open(&resolved_path),
+                            _ => std::fs::File::open(&resolved_path),
+                        };
+                        if let Ok(file) = retry_result {
+                            apply_flock(&file, lock);
+                            let mut handle = FileHandle {
+                                file: Some(file),
+                                reader: None,
+                                writer: None,
+                                record_len: 128,
+                                mode: mode_str.to_string(),
+                                eof_reached: false,
+                            };
+                            if mode_str.contains('r') || mode_str.contains('+') {
+                                if let Ok(fr) = std::fs::File::open(&resolved_path) {
+                                    handle.reader = Some(BufReader::new(fr));
+                                }
+                            }
+                            if mode_str.contains('w')
+                                || mode_str.contains('a')
+                                || mode_str.contains('+')
+                            {
+                                if let Ok(fw) = std::fs::OpenOptions::new()
+                                    .write(true)
+                                    .append(mode_str.contains('a'))
+                                    .create(true)
+                                    .open(&resolved_path)
+                                {
+                                    handle.writer = Some(BufWriter::new(fw));
+                                }
+                            }
+                            map.insert(fnum, handle);
+                            return;
+                        }
+                    }
+                }
                 // File open failed - set pending error (Option B: ON ERROR GOTO can handle)
                 // QB error 53 = "File not found" (classic QB)
                 crate::qb_set_error(53, 0);
@@ -933,10 +1018,13 @@ pub extern "C" fn qb_file_seek_record(fnum: i32, rec: i64) {
 
 /// GET - Read binary data from file.
 ///
+/// Sets last-read byte count for qb_gfs_read_bytes() (libqb gfs_read_bytes).
+///
 /// # Safety
 /// - `data` must be a valid pointer to a buffer of at least `size` bytes
 #[no_mangle]
 pub unsafe extern "C" fn qb_file_get(fnum: i32, data: *mut u8, size: usize) {
+    LAST_READ_BYTES.store(0, std::sync::atomic::Ordering::SeqCst);
     if fnum < 1 || fnum >= QB_MAX_FILES as i32 || data.is_null() || size == 0 {
         if fnum < 1 || fnum >= QB_MAX_FILES as i32 {
             crate::qb_set_error(52, 0); // Bad file number
@@ -949,7 +1037,14 @@ pub unsafe extern "C" fn qb_file_get(fnum: i32, data: *mut u8, size: usize) {
         if let Some(ref mut handle) = map.get_mut(&fnum) {
             if let Some(ref mut reader) = handle.reader {
                 let slice = std::slice::from_raw_parts_mut(data, size);
-                let _ = Read::read_exact(reader, slice);
+                match reader.read(slice) {
+                    Ok(n) => {
+                        LAST_READ_BYTES.store(n as i64, std::sync::atomic::Ordering::SeqCst);
+                    }
+                    Err(_) => {
+                        crate::qb_set_error(62, 0); // Input past end of file
+                    }
+                }
             } else {
                 crate::qb_set_error(54, 0); // Bad file mode (no read access)
             }
@@ -961,8 +1056,8 @@ pub unsafe extern "C" fn qb_file_get(fnum: i32, data: *mut u8, size: usize) {
 
 /// GET # - Read binary data from file into a string buffer.
 ///
-/// Reads exactly `s->len` bytes from the file into the string's data buffer.
-/// This is used for binary file I/O with string variables.
+/// Reads up to `s->len` bytes from the file into the string's data buffer.
+/// Sets last-read byte count for qb_gfs_read_bytes().
 ///
 /// # Safety
 /// - `s` must be a valid QbString pointer with a non-zero length
@@ -970,6 +1065,7 @@ pub unsafe extern "C" fn qb_file_get(fnum: i32, data: *mut u8, size: usize) {
 /// - Modifies the string in place (does not handle reference counting)
 #[no_mangle]
 pub unsafe extern "C" fn qb_file_get_string(fnum: i32, s: *mut QbString) {
+    LAST_READ_BYTES.store(0, std::sync::atomic::Ordering::SeqCst);
     if s.is_null() {
         return;
     }
@@ -994,7 +1090,14 @@ pub unsafe extern "C" fn qb_file_get_string(fnum: i32, s: *mut QbString) {
         if let Some(ref mut handle) = map.get_mut(&fnum) {
             if let Some(ref mut reader) = handle.reader {
                 let slice = std::slice::from_raw_parts_mut(data_ptr, len);
-                let _ = Read::read_exact(reader, slice);
+                match reader.read(slice) {
+                    Ok(n) => {
+                        LAST_READ_BYTES.store(n as i64, std::sync::atomic::Ordering::SeqCst);
+                    }
+                    Err(_) => {
+                        crate::qb_set_error(62, 0); // Input past end of file
+                    }
+                }
             } else {
                 crate::qb_set_error(54, 0); // Bad file mode (no read access)
             }
@@ -1170,6 +1273,207 @@ pub extern "C" fn qb_freefile() -> i32 {
     0 // No free file number
 }
 
+/// LOCK #filenum [, start] [, end] - Lock a file or byte range.
+///
+/// start=-1, end=-1 means lock entire file. Returns: 0=success, -2=invalid handle,
+/// -4=illegal function call, -7=permission denied, -9=access error (Windows).
+#[no_mangle]
+pub extern "C" fn qb_file_lock(fnum: i32, start: i64, end: i64) -> i32 {
+    if fnum < 1 || fnum >= QB_MAX_FILES as i32 {
+        return -2;
+    }
+    let mut start = start;
+    if start == -1 {
+        start = 0;
+    }
+    if start < 0 || end < -1 {
+        return -4;
+    }
+    if end != -1 && end < start {
+        return -4;
+    }
+    if end != -1 {
+        if let Some(len) = end.checked_sub(start).and_then(|d| d.checked_add(1)) {
+            if len <= 0 {
+                return -4;
+            }
+        } else {
+            return -4;
+        }
+    }
+    init_file_handles();
+    let handles = FILE_HANDLES.lock().unwrap();
+    let Some(ref map) = *handles else { return -2 };
+    let Some(ref handle) = map.get(&fnum) else {
+        return -2;
+    };
+    let Some(ref file) = handle.file else {
+        return -2;
+    };
+
+    #[cfg(unix)]
+    {
+        use libc::{fcntl, flock, off_t, F_SETLK, F_WRLCK, SEEK_SET};
+        let fd = file.as_raw_fd();
+        if fd < 0 {
+            return -2;
+        }
+        if end == -1 {
+            if unsafe { flock(fd, libc::LOCK_EX) } != 0 {
+                return -7;
+            }
+        } else {
+            let len = (end - start + 1) as off_t;
+            if len <= 0 {
+                return -4;
+            }
+            let mut lock_info: libc::flock = unsafe { std::mem::zeroed() };
+            lock_info.l_type = F_WRLCK as i16;
+            lock_info.l_whence = SEEK_SET as i16;
+            lock_info.l_start = start as off_t;
+            lock_info.l_len = len;
+            lock_info.l_pid = 0;
+            if unsafe { fcntl(fd, F_SETLK, &lock_info) } != 0 {
+                return -7;
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        use winapi::um::errhandlingapi::GetLastError;
+        use winapi::um::fileapi::LockFile;
+        use winapi::um::handleapi::INVALID_HANDLE_VALUE;
+        let handle_raw = file.as_raw_handle();
+        if handle_raw == INVALID_HANDLE_VALUE {
+            return -2;
+        }
+        let (n_low, n_high) = if end == -1 {
+            (0xFFFF_FFFFu32, 0xFFFF_FFFFu32)
+        } else {
+            let n = match end.checked_sub(start).and_then(|d| d.checked_add(1)) {
+                Some(l) if l > 0 => l as u64,
+                _ => return -4,
+            };
+            ((n & 0xFFFF_FFFF) as u32, ((n >> 32) & 0xFFFF_FFFF) as u32)
+        };
+        let start_low = (start as u64 & 0xFFFF_FFFF) as u32;
+        let start_high = ((start as u64 >> 32) & 0xFFFF_FFFF) as u32;
+        let ok = unsafe { LockFile(handle_raw as *mut _, start_low, start_high, n_low, n_high) };
+        if ok == 0 {
+            let e = unsafe { GetLastError() };
+            if e == winapi::um::winerror::ERROR_ACCESS_DENIED
+                || e == winapi::um::winerror::ERROR_LOCK_VIOLATION
+            {
+                return -7;
+            }
+            return -9;
+        }
+    }
+
+    0
+}
+
+/// UNLOCK #filenum [, start] [, end] - Unlock a file or byte range.
+///
+/// start=-1, end=-1 means unlock entire file. Return values same as qb_file_lock.
+#[no_mangle]
+pub extern "C" fn qb_file_unlock(fnum: i32, start: i64, end: i64) -> i32 {
+    if fnum < 1 || fnum >= QB_MAX_FILES as i32 {
+        return -2;
+    }
+    let mut start = start;
+    if start == -1 {
+        start = 0;
+    }
+    if start < 0 || end < -1 {
+        return -4;
+    }
+    if end != -1 && end < start {
+        return -4;
+    }
+    if end != -1 {
+        if let Some(len) = end.checked_sub(start).and_then(|d| d.checked_add(1)) {
+            if len <= 0 {
+                return -4;
+            }
+        } else {
+            return -4;
+        }
+    }
+    init_file_handles();
+    let handles = FILE_HANDLES.lock().unwrap();
+    let Some(ref map) = *handles else { return -2 };
+    let Some(ref handle) = map.get(&fnum) else {
+        return -2;
+    };
+    let Some(ref file) = handle.file else {
+        return -2;
+    };
+
+    #[cfg(unix)]
+    {
+        use libc::{fcntl, flock, off_t, F_SETLK, F_UNLCK, SEEK_SET};
+        let fd = file.as_raw_fd();
+        if fd < 0 {
+            return -2;
+        }
+        if end == -1 {
+            if unsafe { flock(fd, libc::LOCK_UN) } != 0 {
+                return -7;
+            }
+        } else {
+            let len = (end - start + 1) as off_t;
+            if len <= 0 {
+                return -4;
+            }
+            let mut lock_info: libc::flock = unsafe { std::mem::zeroed() };
+            lock_info.l_type = F_UNLCK as i16;
+            lock_info.l_whence = SEEK_SET as i16;
+            lock_info.l_start = start as off_t;
+            lock_info.l_len = len;
+            lock_info.l_pid = 0;
+            if unsafe { fcntl(fd, F_SETLK, &lock_info) } != 0 {
+                return -7;
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        use winapi::um::errhandlingapi::GetLastError;
+        use winapi::um::fileapi::UnlockFile;
+        use winapi::um::handleapi::INVALID_HANDLE_VALUE;
+        let handle_raw = file.as_raw_handle();
+        if handle_raw == INVALID_HANDLE_VALUE {
+            return -2;
+        }
+        let (n_low, n_high) = if end == -1 {
+            (0xFFFF_FFFFu32, 0xFFFF_FFFFu32)
+        } else {
+            let n = match end.checked_sub(start).and_then(|d| d.checked_add(1)) {
+                Some(l) if l > 0 => l as u64,
+                _ => return -4,
+            };
+            ((n & 0xFFFF_FFFF) as u32, ((n >> 32) & 0xFFFF_FFFF) as u32)
+        };
+        let start_low = (start as u64 & 0xFFFF_FFFF) as u32;
+        let start_high = ((start as u64 >> 32) & 0xFFFF_FFFF) as u32;
+        let ok = unsafe { UnlockFile(handle_raw as *mut _, start_low, start_high, n_low, n_high) };
+        if ok == 0 {
+            let e = unsafe { GetLastError() };
+            if e == winapi::um::winerror::ERROR_ACCESS_DENIED
+                || e == winapi::um::winerror::ERROR_LOCK_VIOLATION
+            {
+                return -7;
+            }
+            return -9;
+        }
+    }
+
+    0
+}
+
 /// FRE(n) - Approximate free memory (QB4.5 compatibility).
 ///
 /// Returns an approximate value for compatibility. Classic BASIC: n=0 far heap,
@@ -1325,6 +1629,160 @@ pub unsafe extern "C" fn qb_field_add(width: i32, var: *mut *mut QbString) {
     }
 }
 
+/// GFS - Last read byte count (libqb gfs_read_bytes).
+#[no_mangle]
+pub extern "C" fn qb_gfs_read_bytes() -> i64 {
+    LAST_READ_BYTES.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// GFS - Get internal file index for fileno (libqb gfs_get_fileno).
+/// QB64Fresh uses fileno as handle directly; returns file_number.
+#[no_mangle]
+pub extern "C" fn qb_gfs_get_fileno(file_number: i32) -> i32 {
+    file_number
+}
+
+/// libqb gfs.h compatibility: same fileno semantics.
+#[no_mangle]
+pub extern "C" fn gfs_get_fileno(file_number: i32) -> i32 {
+    file_number
+}
+
+/// C-compatible gfs_file_struct layout (QB64pe libqb/include/gfs.h).
+#[repr(C)]
+pub struct GfsFileStruct {
+    pub id: i64,
+    pub open: u8,
+    pub read: u8,
+    pub write: u8,
+    pub lock_read: u8,
+    pub lock_write: u8,
+    pub pos: i64,
+    pub eof_reached: u8,
+    pub eof_passed: u8,
+    pub fileno: i32,
+    pub type_: u8,
+    pub record_length: i64,
+    pub field_buffer: *mut u8,
+    pub field_strings: *mut *mut Qbs,
+    pub field_strings_n: i32,
+    pub column: i64,
+    pub file_handle: *mut std::ffi::c_void,
+    pub file_handle_o: *mut std::ffi::c_void,
+    pub win_handle: *mut std::ffi::c_void,
+    pub com_port: u8,
+    pub com_baud_rate: i32,
+    pub com_parity: i8,
+    pub com_data_bits_per_byte: i8,
+    pub com_stop_bits: i8,
+    pub com_bin_asc: i8,
+    pub com_asc_lf: i8,
+    pub com_rs: i8,
+    pub com_cd_x: i32,
+    pub com_cs_x: i32,
+    pub com_ds_x: i32,
+    pub com_op_x: i32,
+    pub scrn: u8,
+}
+
+/// Slots for gfs_get_file_struct; filled on demand. Index 0 = fileno 1.
+static mut GFS_SLOTS: Option<[GfsFileStruct; 256]> = None;
+static GFS_INIT: Once = Once::new();
+
+/// GFS - Get file struct by fileno (libqb gfs_get_file_struct).
+/// Fills and returns a pointer to the struct for that fileno (NULL if invalid/closed).
+#[no_mangle]
+pub unsafe extern "C" fn gfs_get_file_struct(fileno: i32) -> *mut GfsFileStruct {
+    if fileno < 1 || fileno > 256 {
+        return std::ptr::null_mut();
+    }
+    init_file_handles();
+    GFS_INIT.call_once(|| {
+        GFS_SLOTS = Some(std::mem::zeroed());
+    });
+    let slots = match GFS_SLOTS.as_mut() {
+        Some(s) => s,
+        None => return std::ptr::null_mut(),
+    };
+    let idx = (fileno - 1) as usize;
+    let pos = qb_loc(fileno);
+    let mut g = GfsFileStruct {
+        id: fileno as i64,
+        open: 0,
+        read: 0,
+        write: 0,
+        lock_read: 0,
+        lock_write: 0,
+        pos: -1,
+        eof_reached: 0,
+        eof_passed: 0,
+        fileno,
+        type_: 0,
+        record_length: 0,
+        field_buffer: std::ptr::null_mut(),
+        field_strings: std::ptr::null_mut(),
+        field_strings_n: 0,
+        column: 0,
+        file_handle: std::ptr::null_mut(),
+        file_handle_o: std::ptr::null_mut(),
+        win_handle: std::ptr::null_mut(),
+        com_port: 0,
+        com_baud_rate: 0,
+        com_parity: 0,
+        com_data_bits_per_byte: 0,
+        com_stop_bits: 0,
+        com_bin_asc: 0,
+        com_asc_lf: 0,
+        com_rs: 0,
+        com_cd_x: 0,
+        com_cs_x: 1000,
+        com_ds_x: 1000,
+        com_op_x: 0,
+        scrn: 0,
+    };
+    let handles = FILE_HANDLES.lock().unwrap();
+    if let Some(ref map) = *handles {
+        if let Some(ref handle) = map.get(&fileno) {
+            g.open = 1;
+            g.pos = pos;
+            g.eof_reached = if handle.eof_reached { 1 } else { 0 };
+            g.record_length = handle.record_len as i64;
+            let mode = handle.mode.as_bytes();
+            if mode.contains(&b'r') {
+                g.read = 1;
+            }
+            if mode.contains(&b'w') || mode.contains(&b'a') {
+                g.write = 1;
+            }
+            if mode.contains(&b'b') {
+                g.type_ = 2; // BINARY
+            } else if mode.contains(&b'r') && g.write == 0 {
+                g.type_ = 3; // INPUT
+            } else if mode.contains(&b'w') || mode.contains(&b'a') {
+                g.type_ = 4; // OUTPUT
+            } else {
+                g.type_ = 1; // RANDOM
+            }
+            drop(handles);
+            let field_buffers = FIELD_BUFFERS.lock().unwrap();
+            if let Some(ref buf_map) = *field_buffers {
+                if let Some(ref buf) = buf_map.get(&fileno) {
+                    g.field_buffer = buf.as_ptr() as *mut u8;
+                }
+            }
+            slots[idx] = g;
+            return &mut slots[idx] as *mut GfsFileStruct;
+        }
+    }
+    std::ptr::null_mut()
+}
+
+/// Legacy alias: get file struct by fileno (returns same as gfs_get_file_struct).
+#[no_mangle]
+pub unsafe extern "C" fn qb_gfs_get_file_struct(fileno: i32) -> *mut GfsFileStruct {
+    gfs_get_file_struct(fileno)
+}
+
 /// LSET - Left-align string in field.
 ///
 /// Left-aligns the value string in the target variable, padding with spaces on the right.
@@ -1438,6 +1896,47 @@ pub unsafe extern "C" fn qb_rset(var: *mut *mut QbString, value: *const QbString
     // Release old string and assign new one
     crate::string::qb_string_release(*var);
     *var = qb_string_from_bytes(field_data.as_ptr(), var_len);
+}
+
+/// Free field buffer for a string (libqb file-fields.h field_free).
+///
+/// In libqb this frees the per-string field descriptor and sets str->field = NULL.
+/// Our runtime does not track per-string field attachment; this is a no-op so
+/// the symbol exists for linking. Full behavior can be added when we track
+/// field variables per file.
+///
+/// # Arguments
+///
+/// * `s` - The string (QbString*) that was used as a field variable; may be null.
+#[no_mangle]
+pub extern "C" fn field_free(_s: *mut crate::string::QbString) {
+    // No-op: we do not attach field metadata to QbString.
+}
+
+/// Sync field buffer to file (libqb file-fields.h field_update).
+///
+/// In libqb this copies from the file's field buffer into each attached qbs.
+/// Our runtime does not yet track which strings are attached to which file's
+/// field buffer; this is a no-op so the symbol exists for linking.
+///
+/// # Arguments
+///
+/// * `fileno` - File number (ignored in stub).
+#[no_mangle]
+pub extern "C" fn field_update(_fileno: i32) {
+    // No-op: full implementation requires per-file list of field variables.
+}
+
+/// libqb field_free (qb_ prefix for header).
+#[no_mangle]
+pub unsafe extern "C" fn qb_field_free(s: *mut QbString) {
+    field_free(s);
+}
+
+/// libqb field_update (qb_ prefix for header).
+#[no_mangle]
+pub extern "C" fn qb_field_update(fileno: i32) {
+    field_update(fileno);
 }
 
 #[cfg(test)]

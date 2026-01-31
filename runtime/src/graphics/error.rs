@@ -24,6 +24,8 @@ pub enum GraphicsErrorKind {
     OutOfMemory,
     /// Backend-specific error
     BackendError,
+    /// Operation not supported by this backend
+    Unsupported,
     /// Other errors
     Other,
 }
