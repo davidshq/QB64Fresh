@@ -2,7 +2,7 @@
 
 A comprehensive guide to using QB64Fresh. For a step-by-step **tutorial and getting started** (install, first program, compile, run), see [GETTING_STARTED.md](GETTING_STARTED.md). This handbook covers language basics, graphics, audio, file I/O, C library integration, and advanced topics.
 
-**Last Updated:** 2026-01-26
+**Last Updated:** 2026-01-31
 
 ---
 
@@ -12,7 +12,7 @@ A comprehensive guide to using QB64Fresh. For a step-by-step **tutorial and gett
 2. [Getting Started](#getting-started)
 3. [Language Basics](#language-basics)
 4. [C Library Integration](#c-library-integration)
-5. [Graphics Programming](#graphics-programming)
+5. [Graphics Programming](#graphics-programming) (incl. [OpenGL](#opengl-optional))
 6. [Audio Programming](#audio-programming)
 7. [File I/O](#file-io)
 8. [Error Handling](#error-handling)
@@ -49,7 +49,7 @@ cargo run --release -- hello.bas --emit-c   # writes hello.c
 gcc hello.c -o hello -lm
 ./hello
 ```
-Use a memory limit when running the compiler; see [GETTING_STARTED.md](GETTING_STARTED.md).
+Use a memory limit when running the compiler (e.g. `ulimit -v 4194304` or `./run_limited.sh`); see [GETTING_STARTED.md](GETTING_STARTED.md) and [MEMORY_LIMITS.md](MEMORY_LIMITS.md).
 
 ---
 
@@ -76,18 +76,19 @@ Use a memory limit when running the compiler; see [GETTING_STARTED.md](GETTING_S
 See [GETTING_STARTED.md](GETTING_STARTED.md) for the full walkthrough, including memory limits and the C link step.
 
 ```bash
-# Compile BASIC to C (use memory limit: ulimit -v 16777216, or ./run_limited.sh)
+# Compile BASIC to C (use memory limit: ulimit -v 4194304, or ./run_limited.sh)
 cargo run --release -- myprogram.bas --emit-c   # writes myprogram.c
 
-# Build the executable (inline runtime, default)
+# Build the executable (inline runtime, default — graphics are stubs)
 gcc myprogram.c -o myprogram -lm
 ./myprogram
 
+# For full graphics/audio: use --runtime external and link libqb64fresh_rt (see GRAPHICS.md)
 # Inspect pipeline stages
 cargo run -- myprogram.bas --tokens     # Tokenization
 cargo run -- myprogram.bas --ast        # Parse tree
 cargo run -- myprogram.bas --typed-ir   # Typed IR
-cargo run -- myprogram.bas --emit-c      # C code
+cargo run -- myprogram.bas --emit-c     # C code
 ```
 
 ---
@@ -371,7 +372,7 @@ C types are automatically mapped to QB64 types:
 
 ## Graphics Programming
 
-QB64Fresh supports classic QBasic graphics plus modern QB64 extensions.
+QB64Fresh supports classic QBasic graphics plus modern QB64 extensions. With the **inline** runtime (default), graphics calls are stubs (no-ops with frame limiting); for real windows and drawing, use the **external** runtime and link against `libqb64fresh_rt`. See [GRAPHICS.md](GRAPHICS.md) for architecture and build steps.
 
 ### Screen Modes
 
@@ -431,6 +432,10 @@ DO
     _LIMIT 60 ' Cap at 60 FPS
 LOOP UNTIL _KEYHIT = 27  ' ESC to exit
 ```
+
+### OpenGL (Optional)
+
+QB64Fresh supports QB64pe-style OpenGL (`_GL*`, `_GLU*`, `SUB _GL`) as an optional feature. Use `SUB _GL` and `_GL*` commands; the compiler enables OpenGL by use. The runtime must be built with the `opengl` feature for GL rendering. See [OPENGL.md](OPENGL.md) for enabling and building.
 
 ---
 
@@ -630,8 +635,10 @@ cargo run -- myprogram.bas --verbose
 
 ### Getting Help
 
-- Check the [QB64 Wiki](https://qb64phoenix.com/qb64wiki/) for language reference
-- See `docs/QB64Fresh_LANGUAGE_REFERENCE.md` for supported features
+- [DOCS-README.md](DOCS-README.md) — Documentation index and quick navigation
+- [QB64Fresh_LANGUAGE_REFERENCE.md](QB64Fresh_LANGUAGE_REFERENCE.md) — Supported statements and functions
+- [QB64pe/QB64Fresh_VS_QB64pe_DIFFERENCES.md](QB64pe/QB64Fresh_VS_QB64pe_DIFFERENCES.md) — Differences from QB64pe
+- [QB64 Wiki](https://qb64phoenix.com/qb64wiki/) — Language reference
 - Report issues at the project repository
 
 ---
@@ -643,10 +650,13 @@ QB64Fresh uses Cargo feature flags to enable optional functionality:
 | Feature | Description | Default |
 |---------|-------------|---------|
 | `header-parsing` | C header file parsing for DECLARE LIBRARY | Off |
-| `graphics-sdl2` | SDL2 graphics backend | On |
+| `graphics-sdl2` | SDL2 graphics backend (runtime) | On |
+| `opengl` | OpenGL support in runtime (`_GL*`, `SUB _GL`) | Off |
 
-Enable features when building:
+Enable features when building the **compiler** or **runtime** as needed:
 ```bash
 cargo build --features header-parsing
 cargo test --features header-parsing
+# Runtime with full graphics + OpenGL:
+cd runtime && cargo build --release --features "graphics-sdl2,opengl"
 ```

@@ -8,7 +8,7 @@
 
 ## 1. What QB64Fresh Is
 
-QB64Fresh is a **ground-up rewrite** of QB64: a BASIC compiler that targets QBasic/QuickBASIC 4.5 compatibility and QB64 extensions, producing **native executables** via C code generation. It is implemented in Rust (~60K lines across compiler, runtime, and tooling) and is *not* a fork—it is a clean reimplementation informed by the original.
+QB64Fresh is a **ground-up rewrite** of QB64: a BASIC compiler that targets QBasic/QuickBASIC 4.5 compatibility and QB64 extensions, producing **native executables** via C code generation. It is implemented in Rust (~60K lines across compiler, runtime, and tooling) and is *not* a fork—it is a clean reimplementation aiming for full QB64pe parity.
 
 **Lineage:**
 - **QB4.5 (1988)** — Interpreted BASIC for MS-DOS

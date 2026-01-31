@@ -415,7 +415,7 @@ Legend: ☑ = Implemented | ☐ = Not implemented | 🔶 = Partial/Different app
 | Real-time error detection | ☑ | LSP Server (lexer/parser/semantic errors) |
 | Line-by-line compilation progress | ☐ | Not yet implemented |
 | Progress percentage display | ☐ | Not yet implemented |
-| C++ compilation (MinGW/GCC/Clang) | ☑ | Compiler (C backend + external CC) |
+| C compilation (GCC/Clang, etc.) | ☑ | Compiler (C backend + external CC) |
 | EXE output to QB64pe folder | ☐ | Not yet configurable |
 | EXE output to source folder | ☑ | Compiler default behavior |
 | Console output capture | ☑ | VSCode Extension (terminal output) |
@@ -738,4 +738,4 @@ QB64Fresh uses a modern Rust-based architecture instead of the monolithic BASIC 
 
 ---
 
-*Document updated to track QB64Fresh implementation status*
+*Document updated to track QB64Fresh implementation status. Last updated: 2026-01-31.*

@@ -9,9 +9,7 @@ These documents are preserved for historical context and may still contain usefu
 | File | Description | Status |
 |------|-------------|--------|
 | `ARCHITECTURAL_REVIEW_COMPLETED.md` | Completed architectural review items (LSP, error quality, Item 5 Phase 1) | Active tracking |
-| `ARCHITECTURAL_REVIEW_ITEM5_IMPLEMENTATION.md` | Runtime architecture phased plan; Phase 1 complete, Phase 2–3 deferred | Historical reference |
 | `BOOTSTRAP_PLAN_FULL.md` | Full bootstrap plan history | Historical reference |
-| `BOOTSTRAP_VALIDATION.md` | Bootstrap compilation validation; status complete (moved from ThingsToDo 2026-01-30) | Historical reference |
 | `IDE-FUNCTIONALITY-COMPLETED.md` | Completed IDE functionality items moved from the active TODO checklist | Active tracking |
 | `QB64PE_ARCHITECTURE_ANALYSIS.md` | Analysis of the original QB64PE codebase, used to inform QB64Fresh design | Historical reference |
 | `QB64PE_IDE_FUNCTIONALITY_CHECKLIST.md` | Original QB64PE IDE functionality checklist (historical reference) | Historical reference |

@@ -16,14 +16,15 @@ We need an explicit scope for what we support, stub, or exclude so that users an
 
 ### 1. Raw OpenGL (`_GL*`)
 
-QB64pe provides hundreds of `_GL*` commands (e.g. `_GLBEGIN`, `_GLEND`, `_GLVERTEX3F`). These are **intentionally excluded**.
+QB64pe provides hundreds of `_GL*` commands (e.g. `_GLBEGIN`, `_GLEND`, `_GLVERTEX3F`). These are **optional** in QB64Fresh: excluded by default, included only when the program uses `_GL*` or `SUB _GL` (or `--opengl` is set) and the runtime is built with the `opengl` feature.
 
-| Reason | Explanation |
-|--------|--------------|
-| Graphics stack | We use SDL2/winit, not raw OpenGL. `_GL*` would tie us to an OpenGL-specific backend. |
-| Portability | WebGL, Vulkan, or other future backends would not map to `_GL*`. |
-| 3D needs | `_MAPTRIANGLE` and similar higher-level primitives cover many 3D use cases without exposing GL. |
-| Interop | Users can call OpenGL via `DECLARE LIBRARY` if they need raw GL. |
+| When enabled | Behavior |
+|---------------|----------|
+| Compiler | Registers OpenGL built-ins; enforces “_GL* only in SUB _GL” (error 270); emits `call_gl*` under `#ifdef QB64FRESH_OPENGL`. |
+| Runtime | Feature `opengl`: builds vendored `gl_wrappers.c`, exposes `sub_gl_called`; `_GLCOMPAT` returns 1; `_GLRENDER` stores mode (main-loop SUB _GL invocation is follow-up). |
+| Default | No OpenGL built-ins or link dependency; `_GLRENDER`/`_GLCOMPAT` remain no-op stubs. |
+
+**Escape hatch:** Users can still call OpenGL via `DECLARE LIBRARY` for custom setups. See [OPENGL_GLUT_DESIGN.md](../ThingsToDo/OPENGL_GLUT_DESIGN.md) for the full design.
 
 ### 2. Legacy Hardware and DOS-Only Features
 
@@ -77,7 +78,7 @@ We aim to **match** QB64, not exceed it in backwards compatibility. The followin
 
 ## References
 
-- [FUTURE.md](../ThingsToDo/FUTURE.md) – Remaining features, DECLARE LIBRARY; parity exclusions (hardware accel, touch, _THREAD, optimizations) are in this ADR. GOSUB/compiler: ADR-0002.
+- [ThingsToDo](../ThingsToDo/) (e.g. TODO_CONSOLIDATED.md, OPTION_B_*) – Remaining features, DECLARE LIBRARY; parity exclusions (hardware accel, touch, _THREAD, optimizations) are in this ADR. GOSUB/compiler: ADR-0002.
 - [QB64pe/QB64Fresh_VS_QB64pe_DIFFERENCES.md](../QB64pe/QB64Fresh_VS_QB64pe_DIFFERENCES.md) – Documented intentional behavioral differences (stricter GOTO, multiple errors, RND, etc.)
 - [ADR-0006](ADR-0006-graphics-system.md) – Graphics architecture (SDL2, trait-based)
 - [ADR-0008](ADR-0008-c-interoperability.md) – DECLARE LIBRARY for raw GL or low-level access
