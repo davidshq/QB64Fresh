@@ -22,7 +22,7 @@ impl<'a> TypeChecker<'a> {
     pub(in crate::semantic::checker) fn check_open_file(
         &mut self,
         filename: &Expr,
-        mode: FileMode,
+        mode: Option<FileMode>,
         access: Option<FileAccess>,
         lock: Option<FileLock>,
         file_num: &Expr,
@@ -259,6 +259,7 @@ impl<'a> TypeChecker<'a> {
                 let dimensions = if let Some(symbol) = self.symbols.lookup_symbol(name) {
                     if let SymbolKind::ArrayVariable {
                         dimensions: dim_info,
+                        ..
                     } = &symbol.kind
                     {
                         dim_info
@@ -290,6 +291,7 @@ impl<'a> TypeChecker<'a> {
                 let dimensions = if let Some(symbol) = self.symbols.lookup_symbol(name) {
                     if let SymbolKind::ArrayVariable {
                         dimensions: dim_info,
+                        ..
                     } = &symbol.kind
                     {
                         dim_info
@@ -442,6 +444,7 @@ impl<'a> TypeChecker<'a> {
                     if let Some(symbol) = self.symbols.lookup_symbol(name) {
                         if let SymbolKind::ArrayVariable {
                             dimensions: dim_info,
+                            ..
                         } = &symbol.kind
                         {
                             let typed_dims: Vec<TypedArrayDimension> = dim_info
@@ -485,6 +488,7 @@ impl<'a> TypeChecker<'a> {
                     if let Some(symbol) = self.symbols.lookup_symbol(name) {
                         if let SymbolKind::ArrayVariable {
                             dimensions: dim_info,
+                            ..
                         } = &symbol.kind
                         {
                             let typed_dims: Vec<TypedArrayDimension> = dim_info
@@ -584,6 +588,7 @@ impl<'a> TypeChecker<'a> {
                     if let Some(symbol) = self.symbols.lookup_array(name) {
                         let dims = if let SymbolKind::ArrayVariable {
                             dimensions: dim_info,
+                            ..
                         } = &symbol.kind
                         {
                             dim_info
@@ -619,6 +624,7 @@ impl<'a> TypeChecker<'a> {
                     if let Some(symbol) = self.symbols.lookup_array(name) {
                         let dims = if let SymbolKind::ArrayVariable {
                             dimensions: dim_info,
+                            ..
                         } = &symbol.kind
                         {
                             dim_info

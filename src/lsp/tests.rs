@@ -511,7 +511,11 @@ fn test_completions_include_keywords() {
     // implementation details of get_completions
     let expected_keywords = ["IF", "FOR", "WHILE", "SUB", "FUNCTION", "DIM"];
     for keyword in expected_keywords {
-        assert!(keyword.len() > 0, "Keyword {} should be non-empty", keyword);
+        assert!(
+            !keyword.is_empty(),
+            "Keyword {} should be non-empty",
+            keyword
+        );
     }
 }
 
@@ -523,7 +527,7 @@ fn test_completions_include_builtins() {
     ];
     for builtin in expected_builtins {
         assert!(
-            builtin.len() > 0,
+            !builtin.is_empty(),
             "Built-in {} should be non-empty",
             builtin
         );

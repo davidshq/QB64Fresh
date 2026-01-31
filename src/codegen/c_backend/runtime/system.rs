@@ -55,6 +55,17 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
     writeln_code!(output, "/* Stub function implementations */")?;
     writeln_code!(output)?;
 
+    // Window/control state (libqb window_exists, no_control_characters2)
+    writeln_code!(
+        output,
+        "int32_t window_exists = 1;   /* 1 = window exists */"
+    )?;
+    writeln_code!(
+        output,
+        "int32_t no_control_characters2 = 0;  /* 0 = normal control chars */"
+    )?;
+    writeln_code!(output)?;
+
     // File system functions - actual implementations
     writeln_code!(output, "#include <sys/stat.h>")?;
     writeln_code!(output, "#ifdef _WIN32")?;
@@ -62,6 +73,7 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
     writeln_code!(output, "#define mkdir(path, mode) _mkdir(path)")?;
     writeln_code!(output, "#else")?;
     writeln_code!(output, "#include <unistd.h>")?;
+    writeln_code!(output, "#include <dirent.h>")?;
     writeln_code!(output, "#endif")?;
     writeln_code!(output)?;
 
@@ -155,10 +167,118 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
     )?;
     writeln_code!(output, "}}")?;
 
+    // qb_dir / _FILES$ / DIR$ - directory listing (one entry per call)
+    writeln_code!(output, "#ifndef _WIN32")?;
+    writeln_code!(output, "static DIR* _qb_dir_handle = NULL;")?;
+    writeln_code!(output, "static int _qb_dir_has_spec = 0;")?;
+    writeln_code!(output, "static char _qb_dir_pattern[256] = {{0}};")?;
+    writeln_code!(
+        output,
+        "static int _qb_dir_match(const char* name, const char* pattern) {{"
+    )?;
+    writeln_code!(
+        output,
+        "    if (!pattern || !*pattern || (pattern[0] == '*' && !pattern[1])) return 1;"
+    )?;
+    writeln_code!(output, "    size_t nlen = strlen(name);")?;
+    writeln_code!(output, "    size_t plen = strlen(pattern);")?;
+    writeln_code!(output, "    if (pattern[0] == '*') {{")?;
+    writeln_code!(output, "        const char* suffix = pattern + 1;")?;
+    writeln_code!(output, "        size_t slen = strlen(suffix);")?;
+    writeln_code!(
+        output,
+        "        if (nlen >= slen && strcmp(name + nlen - slen, suffix) == 0) return 1;"
+    )?;
+    writeln_code!(output, "        return 0;")?;
+    writeln_code!(output, "    }}")?;
+    writeln_code!(output, "    return strcmp(name, pattern) == 0;")?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(output, "QbString* qb_dir(QbString* spec) {{")?;
+    writeln_code!(output, "    char path[1024];")?;
+    writeln_code!(output, "    if (spec && qb_string_len(spec) > 0) {{")?;
+    writeln_code!(
+        output,
+        "        if (_qb_dir_handle) {{ closedir(_qb_dir_handle); _qb_dir_handle = NULL; }}"
+    )?;
+    writeln_code!(output, "        const char* s = qb_string_data(spec);")?;
+    writeln_code!(output, "        const char* last_slash = strrchr(s, '/');")?;
+    writeln_code!(output, "        if (last_slash) {{")?;
+    writeln_code!(
+        output,
+        "            size_t dlen = (size_t)(last_slash - s);"
+    )?;
+    writeln_code!(
+        output,
+        "            if (dlen >= sizeof(path)) dlen = sizeof(path) - 1;"
+    )?;
+    writeln_code!(
+        output,
+        "            memcpy(path, s, dlen); path[dlen] = '\\0';"
+    )?;
+    writeln_code!(
+        output,
+        "            strncpy(_qb_dir_pattern, last_slash + 1, sizeof(_qb_dir_pattern) - 1); _qb_dir_pattern[sizeof(_qb_dir_pattern)-1] = '\\0';"
+    )?;
+    writeln_code!(output, "        }} else {{")?;
+    writeln_code!(output, "            strcpy(path, \".\");")?;
+    writeln_code!(
+        output,
+        "            strncpy(_qb_dir_pattern, s, sizeof(_qb_dir_pattern) - 1); _qb_dir_pattern[sizeof(_qb_dir_pattern)-1] = '\\0';"
+    )?;
+    writeln_code!(output, "        }}")?;
+    writeln_code!(output, "        _qb_dir_handle = opendir(path);")?;
+    writeln_code!(output, "        _qb_dir_has_spec = 1;")?;
+    writeln_code!(output, "    }}")?;
+    writeln_code!(
+        output,
+        "    if (!_qb_dir_handle) return qb_string_new(\"\");"
+    )?;
+    writeln_code!(output, "    struct dirent* ent;")?;
+    writeln_code!(
+        output,
+        "    while ((ent = readdir(_qb_dir_handle)) != NULL) {{"
+    )?;
+    writeln_code!(
+        output,
+        "        if (ent->d_name[0] == '.' && (ent->d_name[1] == '\\0' || (ent->d_name[1] == '.' && ent->d_name[2] == '\\0'))) continue;"
+    )?;
+    writeln_code!(
+        output,
+        "        if (!_qb_dir_has_spec || _qb_dir_match(ent->d_name, _qb_dir_pattern)) {{"
+    )?;
+    writeln_code!(output, "            _qb_dir_has_spec = 0;")?;
+    writeln_code!(output, "            return qb_string_new(ent->d_name);")?;
+    writeln_code!(output, "        }}")?;
+    writeln_code!(output, "    }}")?;
+    writeln_code!(output, "    closedir(_qb_dir_handle);")?;
+    writeln_code!(output, "    _qb_dir_handle = NULL;")?;
+    writeln_code!(output, "    return qb_string_new(\"\");")?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(output, "#else")?;
     writeln_code!(
         output,
         "QbString* qb_dir(QbString* spec) {{ (void)spec; return qb_string_new(\"\"); }}"
     )?;
+    writeln_code!(output, "#endif")?;
+    writeln_code!(output)?;
+    writeln_code!(
+        output,
+        "QbString* qb_files_str(QbString* spec) {{ return qb_dir(spec); }}"
+    )?;
+    writeln_code!(output)?;
+    writeln_code!(output, "void qb_files(QbString* spec) {{")?;
+    writeln_code!(output, "    QbString* empty = qb_string_new(\"\");")?;
+    writeln_code!(output, "    QbString* s = qb_dir(spec ? spec : empty);")?;
+    writeln_code!(output, "    while (s && qb_string_len(s) > 0) {{")?;
+    writeln_code!(output, "        qb_print_string(s);")?;
+    writeln_code!(output, "        qb_print_newline();")?;
+    writeln_code!(output, "        qb_string_release(s);")?;
+    writeln_code!(output, "        s = qb_dir(empty);")?;
+    writeln_code!(output, "    }}")?;
+    writeln_code!(output, "    if (s) qb_string_release(s);")?;
+    writeln_code!(output, "    qb_string_release(empty);")?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(output)?;
 
     writeln_code!(output, "int32_t qb_chdir(const char* path) {{")?;
     writeln_code!(output, "    if (!path) return -1;")?;
@@ -279,6 +399,8 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
         output,
         "void qb_controlchr(int32_t state) {{ (void)state; }}"
     )?;
+    // FPU rounding reset (libqb fpu_reinit) — stub for linking
+    writeln_code!(output, "void qb_fpu_reinit(void) {{ }}")?;
     // CHAIN: run another program; inline stub is no-op (does not transfer control)
     writeln_code!(output, "void qb_chain(QbString* path) {{ (void)path; }}")?;
     // LPRINT: print to printer (LPT1); inline stub is no-op
@@ -579,6 +701,17 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
     )?;
     writeln_code!(output)?;
 
+    // Logging (Used by QB64pe) - no-op stubs
+    writeln_code!(output, "void qb_logtrace(QbString* msg) {{ (void)msg; }}")?;
+    writeln_code!(output, "void qb_loginfo(QbString* msg) {{ (void)msg; }}")?;
+    writeln_code!(output, "void qb_logwarn(QbString* msg) {{ (void)msg; }}")?;
+    writeln_code!(output, "void qb_logerror(QbString* msg) {{ (void)msg; }}")?;
+    writeln_code!(
+        output,
+        "void qb_logminlevel(int64_t level) {{ (void)level; }}"
+    )?;
+    writeln_code!(output)?;
+
     // Network functions (stubs - no actual network support)
     // QB64pe calls this with a string argument (host:port format)
     writeln_code!(
@@ -693,11 +826,17 @@ pub(super) fn emit_stub_declarations(output: &mut String) -> Result<(), CodeGenE
     )?;
     writeln_code!(output)?;
 
-    // Compression functions (stubs - no actual compression)
+    // Compression (stubs unless QB64FRESH_COMPRESSION_EXTERNAL + link runtime/c_src/compression.c -lz)
+    writeln_code!(output, "#ifndef QB64FRESH_COMPRESSION_EXTERNAL")?;
     writeln_code!(
         output,
         "QbString* qb_deflate(QbString* data) {{ (void)data; return qb_string_new(\"\"); }}"
     )?;
+    writeln_code!(
+        output,
+        "QbString* qb_inflate(QbString* data) {{ (void)data; return qb_string_new(\"\"); }}"
+    )?;
+    writeln_code!(output, "#endif")?;
     writeln_code!(
         output,
         "QbString* qb_md5(QbString* data) {{ (void)data; return qb_string_new(\"00000000000000000000000000000000\"); }}"

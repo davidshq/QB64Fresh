@@ -54,6 +54,32 @@ pub(super) fn emit_print_functions(output: &mut String) -> Result<(), CodeGenErr
     // Track cursor column for TAB and POS
     writeln_code!(output, "static int qb_cursor_col = 1;")?;
     writeln_code!(output, "static int qb_cursor_row = 1;")?;
+    writeln_code!(
+        output,
+        "static int qb_console_width = 80;  /* default text width for makefit */"
+    )?;
+    writeln_code!(output)?;
+
+    // makefit - fit text to width (libqb makefit): if current line + text would exceed width, newline
+    writeln_code!(output, "void makefit(qb_string* text) {{")?;
+    writeln_code!(output, "    if (!text) return;")?;
+    writeln_code!(output, "    size_t len = qb_string_len(text);")?;
+    writeln_code!(
+        output,
+        "    if (qb_cursor_col != 1 && (qb_cursor_col + (int)len - 1) > qb_console_width) {{"
+    )?;
+    writeln_code!(output, "        printf(\"\\n\");")?;
+    writeln_code!(output, "        qb_cursor_row++;")?;
+    writeln_code!(output, "        qb_cursor_col = 1;")?;
+    writeln_code!(output, "    }}")?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(output)?;
+
+    // lprint_makefit - LPRINT width fit (libqb lprint_makefit); stub, no-op
+    writeln_code!(
+        output,
+        "void lprint_makefit(qb_string* text) {{ (void)text; }}"
+    )?;
     writeln_code!(output)?;
 
     // TAB(n) - returns string of spaces to move to column n
@@ -393,6 +419,36 @@ pub(super) fn emit_utility_functions(output: &mut String) -> Result<(), CodeGenE
     writeln_code!(output, "    uint64_t v = (uint64_t)n;")?;
     writeln_code!(output, "    char* p = buf + 64;")?;
     writeln_code!(output, "    *p = '\\0';")?;
+    writeln_code!(output, "    if (v == 0) {{ *--p = '0'; }}")?;
+    writeln_code!(
+        output,
+        "    else {{ while (v) {{ *--p = '0' + (v & 1); v >>= 1; }} }}"
+    )?;
+    writeln_code!(output, "    return qb_string_new(p);")?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(output)?;
+
+    // HEX$/OCT$/_BIN$ (float) - bit pattern of double as hex/oct/bin string
+    writeln_code!(output, "qb_string* qb_hex_float(double n) {{")?;
+    writeln_code!(output, "    char buf[24];")?;
+    writeln_code!(
+        output,
+        "    uint64_t u; memcpy(&u, &n, 8); snprintf(buf, sizeof(buf), \"%llX\", (unsigned long long)u);"
+    )?;
+    writeln_code!(output, "    return qb_string_new(buf);")?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(output, "qb_string* qb_oct_float(double n) {{")?;
+    writeln_code!(output, "    char buf[28];")?;
+    writeln_code!(
+        output,
+        "    uint64_t u; memcpy(&u, &n, 8); snprintf(buf, sizeof(buf), \"%llo\", (unsigned long long)u);"
+    )?;
+    writeln_code!(output, "    return qb_string_new(buf);")?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(output, "qb_string* qb_bin_float(double n) {{")?;
+    writeln_code!(output, "    char buf[65];")?;
+    writeln_code!(output, "    uint64_t v; memcpy(&v, &n, 8);")?;
+    writeln_code!(output, "    char* p = buf + 64; *p = '\\0';")?;
     writeln_code!(output, "    if (v == 0) {{ *--p = '0'; }}")?;
     writeln_code!(
         output,

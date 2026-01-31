@@ -20,31 +20,39 @@ use crate::writeln_code;
 impl super::StmtEmitter {
     /// Emits an error-pending check after a call that can fail (file I/O, etc.).
     ///
-    /// When using the external runtime, emits:
-    /// `if (qb_error_pending()) { if (_qb_error_handler) { qb_commit_error(); goto *_qb_error_handler; } }`
-    /// so that ON ERROR GOTO handlers are invoked when the runtime sets an error (e.g. after failed OPEN).
+    /// When using the external runtime, emits a check that commits the error and jumps
+    /// to the ON ERROR GOTO handler. If `retry_label` is provided, sets `_qb_error_line`
+    /// to that label so that `RESUME` (retry) can jump back to retry the failing statement.
+    ///
     /// When using the inline runtime, this is a no-op (inline runtime does not provide
     /// `qb_error_pending` / `qb_commit_error`).
     ///
     /// Call this after any statement that can set the runtime error state (OPEN, CLOSE,
-    /// GET, PUT, INPUT #, PRINT #, SEEK, and optionally system/memory ops).
+    /// GET, PUT, INPUT #, PRINT #, SEEK, and optionally system/memory ops). The caller
+    /// should emit a label immediately before the failing call and pass it as `retry_label`.
     ///
     /// # Arguments
     ///
     /// * `indent` - Current indentation string
+    /// * `retry_label` - Optional label to set as `_qb_error_line` for RESUME (retry)
     /// * `output` - Output buffer for generated C code
     pub fn emit_error_pending_goto_handler(
         &self,
         indent: &str,
+        retry_label: Option<&str>,
         output: &mut String,
     ) -> Result<(), CodeGenError> {
         if !self.config.runtime_mode.is_external() {
             return Ok(());
         }
+        let set_retry = retry_label
+            .map(|l| format!("_qb_error_line = &&{}; ", l))
+            .unwrap_or_default();
         writeln_code!(
             output,
-            "{}if (qb_error_pending()) {{ if (_qb_error_handler) {{ qb_commit_error(); goto *_qb_error_handler; }} }}",
-            indent
+            "{}if (qb_error_pending()) {{ if (_qb_error_handler) {{ {}qb_commit_error(); goto *_qb_error_handler; }} }}",
+            indent,
+            set_retry
         )?;
         Ok(())
     }
@@ -155,23 +163,25 @@ impl super::StmtEmitter {
     ) -> Result<(), CodeGenError> {
         match target {
             None => {
-                // RESUME - retry the statement (complex, use goto)
-                // Note: For external runtime, _qb_error_line is never set (Phase 1.3 would set it
-                // when committing error), so RESUME (retry) may no-op until that is implemented.
+                // RESUME - retry the statement that caused the error.
+                // _qb_error_line is set when we jump to the handler (external runtime)
+                // or left from ERROR path (inline); goto that label to retry.
                 writeln_code!(
                     output,
-                    "{}if (_qb_error_line) goto *_qb_error_line;",
+                    "{}if (_qb_error_line) {{ void* _r = _qb_error_line; _qb_error_line = NULL; goto *_r; }}",
                     indent
                 )?;
             }
             Some(crate::ast::ResumeTarget::Next) => {
-                // RESUME NEXT - clear error state and continue at next statement
+                // RESUME NEXT - clear pending only; ERR/ERL keep last error (QB64 behavior).
                 if self.config.runtime_mode.is_external() {
                     writeln_code!(output, "{}qb_clear_error();", indent)?;
-                } else {
-                    writeln_code!(output, "{}_qb_err = 0;", indent)?;
                 }
-                writeln_code!(output, "{}/* RESUME NEXT - continue execution */", indent)?;
+                writeln_code!(
+                    output,
+                    "{}/* RESUME NEXT - continue at next statement */",
+                    indent
+                )?;
             }
             Some(crate::ast::ResumeTarget::Label(label)) => {
                 // RESUME 0 means "resume at the line that caused the error" (retry).
@@ -179,15 +189,13 @@ impl super::StmtEmitter {
                 if label == "0" {
                     writeln_code!(
                         output,
-                        "{}if (_qb_error_line) goto *_qb_error_line;",
+                        "{}if (_qb_error_line) {{ void* _r = _qb_error_line; _qb_error_line = NULL; goto *_r; }}",
                         indent
                     )?;
                 } else {
                     let c_label = self.proc_label(label);
                     if self.config.runtime_mode.is_external() {
                         writeln_code!(output, "{}qb_clear_error();", indent)?;
-                    } else {
-                        writeln_code!(output, "{}_qb_err = 0;", indent)?;
                     }
                     writeln_code!(output, "{}goto {};", indent, c_label)?;
                 }
@@ -199,8 +207,8 @@ impl super::StmtEmitter {
     /// Emits ERROR statement.
     ///
     /// Triggers a runtime error with the specified error code, then jumps to the
-    /// ON ERROR GOTO handler if one is set. Without the jump, execution would
-    /// continue to the next statement and ERR/ERL would never be visible in the handler.
+    /// ON ERROR GOTO handler if one is set. Sets `_qb_error_line` so RESUME (retry)
+    /// can retry the ERROR statement.
     ///
     /// # Arguments
     ///
@@ -208,26 +216,29 @@ impl super::StmtEmitter {
     /// * `code` - Expression evaluating to the error code
     /// * `output` - Output buffer for generated C code
     pub fn emit_error_stmt(
-        &self,
+        &mut self,
         indent: &str,
         code: &TypedExpr,
         output: &mut String,
     ) -> Result<(), CodeGenError> {
+        let retry_label = self.next_label("err_retry");
+        writeln_code!(output, "{}{}:", indent, retry_label)?;
         let code_expr = self.emit_expr(code)?;
         writeln_code!(output, "{}qb_error({});", indent, code_expr)?;
-        // Jump to handler so ERR/ERL are visible there. Inline: _qb_err already set by qb_error();
-        // external: qb_error() called qb_set_error(), so we check pending and commit before goto.
+        // Jump to handler so ERR/ERL are visible; set _qb_error_line for RESUME (retry).
         if self.config.runtime_mode.is_external() {
             writeln_code!(
                 output,
-                "{}if (qb_error_pending()) {{ if (_qb_error_handler) {{ qb_commit_error(); goto *_qb_error_handler; }} }}",
-                indent
+                "{}if (qb_error_pending()) {{ if (_qb_error_handler) {{ _qb_error_line = &&{}; qb_commit_error(); goto *_qb_error_handler; }} }}",
+                indent,
+                retry_label
             )?;
         } else {
             writeln_code!(
                 output,
-                "{}if (_qb_error_handler) {{ goto *_qb_error_handler; }}",
-                indent
+                "{}if (_qb_error_handler) {{ _qb_error_line = &&{}; goto *_qb_error_handler; }}",
+                indent,
+                retry_label
             )?;
         }
         Ok(())

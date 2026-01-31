@@ -274,10 +274,10 @@ impl SemanticAnalyzer {
             BasicType::Long,
         );
 
-        // Type conversion
-        self.register_builtin_function("HEX$", &[("n", BasicType::Long)], BasicType::String);
-        self.register_builtin_function("OCT$", &[("n", BasicType::Long)], BasicType::String);
-        self.register_builtin_function("_BIN$", &[("n", BasicType::Long)], BasicType::String);
+        // Type conversion (HEX$/OCT$/_BIN$ accept Long or Double; float = bit pattern)
+        self.register_builtin_function("HEX$", &[("n", BasicType::Unknown)], BasicType::String);
+        self.register_builtin_function("OCT$", &[("n", BasicType::Unknown)], BasicType::String);
+        self.register_builtin_function("_BIN$", &[("n", BasicType::Unknown)], BasicType::String);
         self.register_builtin_function("_TOSTR$", &[("n", BasicType::Double)], BasicType::String);
 
         // Inline conditional
@@ -379,6 +379,7 @@ impl SemanticAnalyzer {
         self.register_builtin_function("_KEYDOWN", &[("code", BasicType::Long)], BasicType::Long);
         self.register_builtin_function("_CINP", &[], BasicType::Long);
         // _KEYCLEAR is a statement, not a function - handled separately
+        // _KEYUP is a statement (simulate key up) - registered in register_builtin_subs
 
         // Lock key state functions
         self.register_builtin_function("_CAPSLOCK", &[], BasicType::Long);
@@ -397,9 +398,10 @@ impl SemanticAnalyzer {
         self.register_builtin_function("_ENVIRONCOUNT", &[], BasicType::Long);
 
         // Environment functions
+        // ENVIRON$(name$) - get by name; ENVIRON$(n) - get nth (1-based), same as QB64
         self.register_builtin_function(
             "ENVIRON$",
-            &[("var", BasicType::String)],
+            &[("var_or_index", BasicType::Unknown)], // String => by name, Long => by index
             BasicType::String,
         );
         // COMMAND$ can be called with 0 or 1 argument:
@@ -735,9 +737,14 @@ impl SemanticAnalyzer {
             ],
             BasicType::Long,
         );
-        self.register_builtin_function(
+        // _INPUTBOX$ (QB64pe _InputBox): optional title, message, defaultInput
+        self.register_builtin_function_with_optionals(
             "_INPUTBOX$",
-            &[("prompt", BasicType::String), ("title", BasicType::String)],
+            &[
+                ("title", BasicType::String, true),
+                ("message", BasicType::String, true),
+                ("defaultInput", BasicType::String, true),
+            ],
             BasicType::String,
         );
         // _OPENFILEDIALOG$ can take 2-5 arguments
@@ -1353,12 +1360,12 @@ impl SemanticAnalyzer {
         self.register_builtin_function("_SCALEDWIDTH", &[], BasicType::Long);
         self.register_builtin_function("_SCALEDHEIGHT", &[], BasicType::Long);
 
-        // Dialog functions
+        // _COLORCHOOSERDIALOG (QB64pe _ColorChooserDialog): optional title, defaultRGB
         self.register_builtin_function_with_optionals(
             "_COLORCHOOSERDIALOG",
             &[
-                ("initial_color", BasicType::Long, true),
                 ("title", BasicType::String, true),
+                ("defaultRGB", BasicType::Long, true),
             ],
             BasicType::Long,
         );
@@ -1529,6 +1536,9 @@ impl SemanticAnalyzer {
 
         // Register built-in subs
         self.register_builtin_subs();
+
+        // OpenGL _GL* and GL_* (optional layer; _GL* only valid inside SUB _GL)
+        self.register_builtins_opengl();
     }
 
     /// Registers built-in SUBs (statements with no return value).
@@ -1550,6 +1560,10 @@ impl SemanticAnalyzer {
             &[("font", BasicType::String), ("size", BasicType::Long)],
         );
         self.register_builtin_sub("_CONTROLCHR", &[("mode", BasicType::Integer)]);
+
+        // Key simulation (keyhandler stubs; no-op at runtime without platform key injection)
+        self.register_builtin_sub("_KEYUP", &[("code", BasicType::Long)]);
+        // _KEYDOWN(code) as statement (simulate key down) uses same name as function; codegen maps Call _KEYDOWN → qb_keydown_vk
 
         // Graphics alpha/blending
         self.register_builtin_sub(
@@ -1630,6 +1644,15 @@ impl SemanticAnalyzer {
             ],
         );
 
+        // _NOTIFYPOPUP (QB64pe _NotifyPopup): optional title, message, iconType ("info"|"warning"|"error")
+        self.register_builtin_sub_with_optionals(
+            "_NOTIFYPOPUP",
+            &[
+                ("title", BasicType::String, true),
+                ("message", BasicType::String, true),
+                ("iconType", BasicType::String, true),
+            ],
+        );
         // Console statements
         self.register_builtin_sub("_ECHO", &[("text", BasicType::String)]);
         self.register_builtin_sub("_CONSOLETITLE", &[("title", BasicType::String)]);
@@ -1711,7 +1734,7 @@ impl SemanticAnalyzer {
     }
 
     /// Registers a single built-in function.
-    fn register_builtin_function(
+    pub(crate) fn register_builtin_function(
         &mut self,
         name: &str,
         params: &[(&str, BasicType)],
@@ -1739,7 +1762,7 @@ impl SemanticAnalyzer {
 
     /// Registers a built-in function with optional parameters.
     /// Parameters are specified as (name, type, is_optional).
-    fn register_builtin_function_with_optionals(
+    pub(crate) fn register_builtin_function_with_optionals(
         &mut self,
         name: &str,
         params: &[(&str, BasicType, bool)],
@@ -1766,7 +1789,7 @@ impl SemanticAnalyzer {
     }
 
     /// Registers a built-in SUB (procedure with no return value).
-    fn register_builtin_sub(&mut self, name: &str, params: &[(&str, BasicType)]) {
+    pub(crate) fn register_builtin_sub(&mut self, name: &str, params: &[(&str, BasicType)]) {
         let entry = ProcedureEntry {
             name: name.to_string(),
             kind: ProcedureKind::BuiltIn,
@@ -1788,7 +1811,7 @@ impl SemanticAnalyzer {
     }
 
     /// Registers a built-in SUB with optional parameters.
-    fn register_builtin_sub_with_optionals(
+    pub(crate) fn register_builtin_sub_with_optionals(
         &mut self,
         name: &str,
         params: &[(&str, BasicType, bool)],
@@ -1811,6 +1834,22 @@ impl SemanticAnalyzer {
             is_static: false,
         };
         let _ = self.symbols.define_procedure(entry);
+    }
+
+    /// Registers a single built-in constant (Long integer).
+    ///
+    /// Used by builtins_opengl for GL_* constants.
+    pub(crate) fn register_builtin_constant(&mut self, name: &str, value: i64) {
+        let symbol = Symbol {
+            name: name.to_string(),
+            kind: SymbolKind::Constant {
+                value: ConstValue::Integer(value),
+            },
+            basic_type: BasicType::Long,
+            span: crate::ast::Span::new(0, 0, 1),
+            is_mutable: false,
+        };
+        let _ = self.symbols.define_symbol(symbol);
     }
 
     /// Registers built-in constants (_TRUE, _FALSE, etc.).

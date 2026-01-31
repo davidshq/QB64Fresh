@@ -43,23 +43,30 @@ impl StmtEmitter {
     // ==================== File I/O Helper Methods ====================
 
     /// Emits an OPEN statement.
+    ///
+    /// When `mode` is `None` (COM-style: `OPEN "COM1:9600,N,8,1" AS #n`), uses Binary
+    /// so the runtime can detect COM from the path and open the serial port.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn emit_open_file(
-        &self,
+        &mut self,
         indent: &str,
         filename: &TypedExpr,
-        mode: FileMode,
+        mode: Option<FileMode>,
         access: Option<FileAccess>,
         lock: Option<FileLock>,
         file_num: &TypedExpr,
         record_len: Option<&TypedExpr>,
         output: &mut String,
     ) -> Result<(), CodeGenError> {
+        let retry_label = self.next_label("err_retry");
+        writeln_code!(output, "{}{}:", indent, retry_label)?;
         let filename_code = self.emit_expr(filename)?;
         let file_num_code = self.emit_expr(file_num)?;
 
+        // When FOR omitted (e.g. COM port), use Binary; runtime detects COM from path
+        let effective_mode = mode.unwrap_or(FileMode::Binary);
         // Determine C fopen mode string
-        let c_mode = match mode {
+        let c_mode = match effective_mode {
             FileMode::Input => "\"r\"",
             FileMode::Output => "\"w\"",
             FileMode::Append => "\"a\"",
@@ -119,13 +126,13 @@ impl StmtEmitter {
             )?;
         }
 
-        self.emit_error_pending_goto_handler(indent, output)?;
+        self.emit_error_pending_goto_handler(indent, Some(&retry_label), output)?;
         Ok(())
     }
 
     /// Emits an OPEN statement using legacy syntax: OPEN mode$, [#]filenum, filename[, reclen]
     pub(super) fn emit_open_file_legacy(
-        &self,
+        &mut self,
         indent: &str,
         mode_expr: &TypedExpr,
         file_num: &TypedExpr,
@@ -133,6 +140,8 @@ impl StmtEmitter {
         record_len: Option<&TypedExpr>,
         output: &mut String,
     ) -> Result<(), CodeGenError> {
+        let retry_label = self.next_label("err_retry");
+        writeln_code!(output, "{}{}:", indent, retry_label)?;
         let mode_code = self.emit_expr(mode_expr)?;
         let file_num_code = self.emit_expr(file_num)?;
         let filename_code = self.emit_expr(filename)?;
@@ -164,17 +173,19 @@ impl StmtEmitter {
             )?;
         }
 
-        self.emit_error_pending_goto_handler(indent, output)?;
+        self.emit_error_pending_goto_handler(indent, Some(&retry_label), output)?;
         Ok(())
     }
 
     /// Emits a CLOSE statement.
     pub(super) fn emit_close_file(
-        &self,
+        &mut self,
         indent: &str,
         file_nums: &[TypedExpr],
         output: &mut String,
     ) -> Result<(), CodeGenError> {
+        let retry_label = self.next_label("err_retry");
+        writeln_code!(output, "{}{}:", indent, retry_label)?;
         if file_nums.is_empty() {
             // Close all files
             writeln_code!(output, "{}qb_file_close_all();", indent)?;
@@ -184,39 +195,64 @@ impl StmtEmitter {
                 writeln_code!(output, "{}qb_file_close({});", indent, file_num_code)?;
             }
         }
-        self.emit_error_pending_goto_handler(indent, output)?;
+        self.emit_error_pending_goto_handler(indent, Some(&retry_label), output)?;
         Ok(())
     }
 
-    /// Emits a LOCK # statement (stub: no-op in inline runtime).
+    /// Emits a LOCK # statement.
+    ///
+    /// Syntax: `LOCK #filenum` (locks entire file)
+    /// Future: `LOCK #filenum, start TO end` (locks record range)
     pub(super) fn emit_lock_file(
-        &self,
-        _indent: &str,
-        _file_num: &TypedExpr,
-        _output: &mut String,
+        &mut self,
+        indent: &str,
+        file_num: &TypedExpr,
+        output: &mut String,
     ) -> Result<(), CodeGenError> {
+        let retry_label = self.next_label("err_retry");
+        writeln_code!(output, "{}{}:", indent, retry_label)?;
+        let file_num_code = self.emit_expr(file_num)?;
+        // Lock entire file: start=-1, end=-1 means lock all
+        writeln_code!(output, "{}qb_file_lock({}, -1, -1);", indent, file_num_code)?;
+        self.emit_error_pending_goto_handler(indent, Some(&retry_label), output)?;
         Ok(())
     }
 
-    /// Emits an UNLOCK # statement (stub: no-op in inline runtime).
+    /// Emits an UNLOCK # statement.
+    ///
+    /// Syntax: `UNLOCK #filenum` (unlocks entire file)
+    /// Future: `UNLOCK #filenum, start TO end` (unlocks record range)
     pub(super) fn emit_unlock_file(
-        &self,
-        _indent: &str,
-        _file_num: &TypedExpr,
-        _output: &mut String,
+        &mut self,
+        indent: &str,
+        file_num: &TypedExpr,
+        output: &mut String,
     ) -> Result<(), CodeGenError> {
+        let retry_label = self.next_label("err_retry");
+        writeln_code!(output, "{}{}:", indent, retry_label)?;
+        let file_num_code = self.emit_expr(file_num)?;
+        // Unlock entire file: start=-1, end=-1 means unlock all
+        writeln_code!(
+            output,
+            "{}qb_file_unlock({}, -1, -1);",
+            indent,
+            file_num_code
+        )?;
+        self.emit_error_pending_goto_handler(indent, Some(&retry_label), output)?;
         Ok(())
     }
 
     /// Emits a PRINT # statement.
     pub(super) fn emit_file_print(
-        &self,
+        &mut self,
         indent: &str,
         file_num: &TypedExpr,
         items: &[TypedPrintItem],
         newline: bool,
         output: &mut String,
     ) -> Result<(), CodeGenError> {
+        let retry_label = self.next_label("err_retry");
+        writeln_code!(output, "{}{}:", indent, retry_label)?;
         let file_num_code = self.emit_expr(file_num)?;
 
         for item in items {
@@ -289,18 +325,20 @@ impl StmtEmitter {
             )?;
         }
 
-        self.emit_error_pending_goto_handler(indent, output)?;
+        self.emit_error_pending_goto_handler(indent, Some(&retry_label), output)?;
         Ok(())
     }
 
     /// Emits a WRITE # statement.
     pub(super) fn emit_file_write(
-        &self,
+        &mut self,
         indent: &str,
         file_num: &TypedExpr,
         values: &[TypedExpr],
         output: &mut String,
     ) -> Result<(), CodeGenError> {
+        let retry_label = self.next_label("err_retry");
+        writeln_code!(output, "{}{}:", indent, retry_label)?;
         let file_num_code = self.emit_expr(file_num)?;
 
         for (i, value) in values.iter().enumerate() {
@@ -344,19 +382,21 @@ impl StmtEmitter {
             file_num_code
         )?;
 
-        self.emit_error_pending_goto_handler(indent, output)?;
+        self.emit_error_pending_goto_handler(indent, Some(&retry_label), output)?;
         Ok(())
     }
 
     /// Emits an INPUT # statement.
     pub(super) fn emit_file_input(
-        &self,
+        &mut self,
         indent: &str,
         file_num: &TypedExpr,
         targets: &[TypedInputTarget],
         output: &mut String,
     ) -> Result<(), CodeGenError> {
         use TypedInputTarget::*;
+        let retry_label = self.next_label("err_retry");
+        writeln_code!(output, "{}{}:", indent, retry_label)?;
         let file_num_code = self.emit_expr(file_num)?;
 
         for target in targets {
@@ -467,13 +507,13 @@ impl StmtEmitter {
             }
         }
 
-        self.emit_error_pending_goto_handler(indent, output)?;
+        self.emit_error_pending_goto_handler(indent, Some(&retry_label), output)?;
         Ok(())
     }
 
     /// Emits a LINE INPUT # statement.
     pub(super) fn emit_file_line_input(
-        &self,
+        &mut self,
         indent: &str,
         file_num: &TypedExpr,
         target: &TypedInputTarget,
@@ -481,6 +521,8 @@ impl StmtEmitter {
     ) -> Result<(), CodeGenError> {
         use TypedInputTarget::*;
 
+        let retry_label = self.next_label("err_retry");
+        writeln_code!(output, "{}{}:", indent, retry_label)?;
         let file_num_code = self.emit_expr(file_num)?;
 
         let target_code = match target {
@@ -555,13 +597,13 @@ impl StmtEmitter {
             target_code
         )?;
 
-        self.emit_error_pending_goto_handler(indent, output)?;
+        self.emit_error_pending_goto_handler(indent, Some(&retry_label), output)?;
         Ok(())
     }
 
     /// Emits a GET statement.
     pub(super) fn emit_file_get(
-        &self,
+        &mut self,
         indent: &str,
         file_num: &TypedExpr,
         position: Option<&TypedExpr>,
@@ -570,6 +612,8 @@ impl StmtEmitter {
     ) -> Result<(), CodeGenError> {
         use crate::semantic::typed_ir::TypedInputTarget::*;
 
+        let retry_label = self.next_label("err_retry");
+        writeln_code!(output, "{}{}:", indent, retry_label)?;
         let file_num_code = self.emit_expr(file_num)?;
 
         // Seek to position if specified
@@ -682,13 +726,13 @@ impl StmtEmitter {
             )?;
         }
 
-        self.emit_error_pending_goto_handler(indent, output)?;
+        self.emit_error_pending_goto_handler(indent, Some(&retry_label), output)?;
         Ok(())
     }
 
     /// Emits a PUT statement.
     pub(super) fn emit_file_put(
-        &self,
+        &mut self,
         indent: &str,
         file_num: &TypedExpr,
         position: Option<&TypedExpr>,
@@ -697,6 +741,8 @@ impl StmtEmitter {
     ) -> Result<(), CodeGenError> {
         use crate::semantic::typed_ir::TypedInputTarget::*;
 
+        let retry_label = self.next_label("err_retry");
+        writeln_code!(output, "{}{}:", indent, retry_label)?;
         let file_num_code = self.emit_expr(file_num)?;
 
         // Seek to position if specified
@@ -799,18 +845,20 @@ impl StmtEmitter {
             )?;
         }
 
-        self.emit_error_pending_goto_handler(indent, output)?;
+        self.emit_error_pending_goto_handler(indent, Some(&retry_label), output)?;
         Ok(())
     }
 
     /// Emits a SEEK statement.
     pub(super) fn emit_file_seek(
-        &self,
+        &mut self,
         indent: &str,
         file_num: &TypedExpr,
         position: &TypedExpr,
         output: &mut String,
     ) -> Result<(), CodeGenError> {
+        let retry_label = self.next_label("err_retry");
+        writeln_code!(output, "{}{}:", indent, retry_label)?;
         let file_num_code = self.emit_expr(file_num)?;
         let pos_code = self.emit_expr(position)?;
 
@@ -822,7 +870,7 @@ impl StmtEmitter {
             pos_code
         )?;
 
-        self.emit_error_pending_goto_handler(indent, output)?;
+        self.emit_error_pending_goto_handler(indent, Some(&retry_label), output)?;
         Ok(())
     }
 }

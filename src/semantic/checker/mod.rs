@@ -11,13 +11,13 @@
 //!
 //! # Module Structure
 //!
-//! The type checker is split into focused modules:
-//! - [`expressions`] - Expression type checking (literals, binary/unary ops, calls)
-//! - [`statements`] - Statement dispatcher
-//! - [`assignments`] - Assignment and I/O statement checking
-//! - [`control_flow`] - Loop and branch checking (IF, FOR, WHILE, SELECT CASE)
-//! - [`definitions`] - SUB/FUNCTION/DIM/CONST definitions
-//! - [`const_eval`] - Compile-time constant expression evaluation
+//! The type checker is split into focused modules (internal implementation details):
+//! - `expressions` - Expression type checking (literals, binary/unary ops, calls)
+//! - `statements` - Statement dispatcher
+//! - `assignments` - Assignment and I/O statement checking
+//! - `control_flow` - Loop and branch checking (IF, FOR, WHILE, SELECT CASE)
+//! - `definitions` - SUB/FUNCTION/DIM/CONST definitions
+//! - `const_eval` - Compile-time constant expression evaluation
 //!
 //! # Error Recovery
 //!
@@ -80,6 +80,8 @@ pub struct TypeChecker<'a> {
     pub(crate) in_function: bool,
     /// Whether we're inside a SUB (for EXIT SUB).
     pub(crate) in_sub: bool,
+    /// Whether we're inside SUB _GL (for _GL* command scope; only _GL* allowed there).
+    pub(crate) in_sub_gl: bool,
     /// Current function name (for assigning return value).
     pub(crate) current_function_name: Option<String>,
     /// Current array allocation mode (true = static, false = dynamic).
@@ -96,6 +98,7 @@ impl<'a> TypeChecker<'a> {
             loop_context: LoopContext::default(),
             in_function: false,
             in_sub: false,
+            in_sub_gl: false,
             current_function_name: None,
             array_mode_static: false, // Default to dynamic arrays (QB64pe default)
         }
@@ -701,7 +704,7 @@ mod tests {
         let stmt = Statement::new(
             StatementKind::OpenFile {
                 filename: make_str_expr("test.txt"),
-                mode: FileMode::Input,
+                mode: Some(FileMode::Input),
                 access: None,
                 lock: None,
                 file_num: make_int_expr(1),

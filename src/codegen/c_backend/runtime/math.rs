@@ -168,9 +168,12 @@ pub(super) fn emit_math_functions(output: &mut String) -> Result<(), CodeGenErro
     writeln_code!(output, "}}")?;
     writeln_code!(output)?;
 
-    // _SHR - shift right (arithmetic)
+    // _SHR - shift right (logical; cast to uint64_t to match libqb unsigned semantics)
     writeln_code!(output, "int64_t qb_shr(int64_t value, int64_t bits) {{")?;
-    writeln_code!(output, "    return value >> (bits & 63);")?;
+    writeln_code!(
+        output,
+        "    return (int64_t)((uint64_t)value >> (bits & 63));"
+    )?;
     writeln_code!(output, "}}")?;
     writeln_code!(output)?;
 
@@ -317,6 +320,49 @@ pub(super) fn emit_math_functions(output: &mut String) -> Result<(), CodeGenErro
     writeln_code!(output, "double qb_negate(double n) {{")?;
     writeln_code!(output, "    return -n;")?;
     writeln_code!(output, "}}")?;
+    writeln_code!(output)?;
+
+    // rounding.h — qbr, CSNG, CDBL, _ROUND (libqb compatibility)
+    writeln_code!(output, "extern void qb_set_error(uint32_t, int32_t);")?;
+    writeln_code!(output, "int64_t qb_qbr(double n) {{")?;
+    writeln_code!(
+        output,
+        "    if (n != n || n > 9.223372036854775807e18 || n < -9.223372036854775808e18)"
+    )?;
+    writeln_code!(
+        output,
+        "        return (n > 0) ? 9223372036854775807LL : -9223372036854775807LL - 1;"
+    )?;
+    writeln_code!(output, "    return (int64_t)round(n);")?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(output)?;
+    writeln_code!(output, "float qb_csng_float(double n) {{")?;
+    writeln_code!(
+        output,
+        "    if (n > 3.402823466e38 || n < -3.402823466e38) {{ qb_set_error(6, 0); return 0.0f; }}"
+    )?;
+    writeln_code!(output, "    return (float)n;")?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(output)?;
+    writeln_code!(output, "float qb_csng_double(double n) {{")?;
+    writeln_code!(
+        output,
+        "    if (n > 3.402823466e38 || n < -3.402823466e38) {{ qb_set_error(6, 0); return 0.0f; }}"
+    )?;
+    writeln_code!(output, "    return (float)n;")?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(output)?;
+    writeln_code!(output, "double qb_cdbl_float(double n) {{ return n; }}")?;
+    writeln_code!(output)?;
+    writeln_code!(
+        output,
+        "int64_t qb_round_double(double n) {{ return qb_qbr(n); }}"
+    )?;
+    writeln_code!(output)?;
+    writeln_code!(
+        output,
+        "int64_t qb_round_float(double n) {{ return qb_qbr(n); }}"
+    )?;
     writeln_code!(output)?;
 
     // String comparison functions

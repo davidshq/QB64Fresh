@@ -124,6 +124,24 @@ fn emit_debug_state(output: &mut String) -> Result<(), CodeGenError> {
     )?;
     writeln_code!(output)?;
 
+    // QB64pe-style evnt: statement boundary hook for IDE/debugger (optional break/step)
+    // Types match runtime/include/qb64fresh_rt.h (uint32_t) for ABI consistency.
+    writeln_code!(
+        output,
+        "/* evnt: 0 = no debug; non-zero = call qb_evnt at statement boundaries */"
+    )?;
+    writeln_code!(output, "static uint32_t qbevent = 0;")?;
+    writeln_code!(
+        output,
+        "static void qb_evnt(uint32_t line, uint32_t incline, const char* incfile) {{"
+    )?;
+    writeln_code!(
+        output,
+        "    (void)line; (void)incline; (void)incfile; /* no-op; hook for IDE */"
+    )?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(output)?;
+
     // IPC handle
     writeln_code!(output, "/* Debug IPC */")?;
     writeln_code!(output, "#ifdef _WIN32")?;

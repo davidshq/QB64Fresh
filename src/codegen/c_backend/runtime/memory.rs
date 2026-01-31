@@ -33,9 +33,15 @@ pub(super) fn emit_memory_functions(output: &mut String) -> Result<(), CodeGenEr
     writeln_code!(output, "#define QB_CMEM_SIZE 1114099")?;
     writeln_code!(output, "#define QB_DBLOCK_OFFSET 1280")?;
     writeln_code!(output, "static uint8_t qb_cmem[QB_CMEM_SIZE];")?;
+    writeln_code!(output, "#define cmem qb_cmem")?;
     writeln_code!(
         output,
         "static uint8_t *qb_defseg = &qb_cmem[QB_DBLOCK_OFFSET];"
+    )?;
+    // dblock: base address of DBLOCK region; required for Play() and libqb cmem API
+    writeln_code!(
+        output,
+        "static intptr_t dblock = (intptr_t)(&qb_cmem[QB_DBLOCK_OFFSET]);"
     )?;
     writeln_code!(output, "static int32_t qb_current_segment = -1;")?;
     writeln_code!(output)?;

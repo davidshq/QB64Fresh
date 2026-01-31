@@ -1,8 +1,10 @@
 //! Meta directive statement code generation.
 //!
 //! This module handles the emission of C code for meta directives ($IF, $LET, $CHECKING, etc.).
-//! Most meta directives generate comments in the output C code.
+//! Most meta directives generate comments in the output C code; some (e.g. `$MIDISOUNDFONT`)
+//! emit runtime calls.
 
+use crate::codegen::c_backend::expr::escape_string;
 use crate::codegen::error::CodeGenError;
 use crate::semantic::typed_ir::TypedStatementKind;
 use crate::writeln_code;
@@ -128,8 +130,15 @@ pub(super) fn emit_meta_stmt(
         }
 
         TypedStatementKind::MetaMidiSoundFont { filename } => {
-            // $MIDISOUNDFONT sets the MIDI soundfont file for playback
+            // $MIDISOUNDFONT sets the MIDI soundfont file for playback (same as _MIDISOUNDBANK at runtime)
+            let escaped = escape_string(filename);
             writeln_code!(output, "{}/* $MIDISOUNDFONT:'{}' */", indent, filename)?;
+            writeln_code!(
+                output,
+                "{} {{ QbString* _sf = qb_string_new(\"{}\"); qb_midisoundbank(_sf); qb_string_release(_sf); }}",
+                indent,
+                escaped
+            )?;
         }
 
         TypedStatementKind::MetaUnstable { feature } => {

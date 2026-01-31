@@ -52,7 +52,7 @@ use crate::semantic::typed_ir::{
 use crate::semantic::types::BasicType;
 use crate::writeln_code;
 
-use super::expr::{escape_string, unwrap_qb_str_from_c};
+use super::expr::{c_function_name, escape_string, unwrap_qb_str_from_c};
 use super::types::{c_identifier, c_type, default_init};
 
 /// Context for the current loop (for EXIT statement handling).
@@ -95,6 +95,20 @@ impl CodeGenState {
     /// Returns the current indentation string.
     pub fn indent_str(&self) -> String {
         "    ".repeat(self.indent)
+    }
+}
+
+/// Drop guard: decrements `CodeGenState::indent` when dropped.
+/// Used so evnt wrapper indent is restored even when statement emission returns `Err`.
+struct EvntIndentGuard(*mut usize);
+
+impl Drop for EvntIndentGuard {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            unsafe {
+                *self.0 = (*self.0).saturating_sub(1);
+            }
+        }
     }
 }
 
@@ -288,6 +302,8 @@ pub(super) struct StmtEmitter {
     pub dynamic_external_c_names: HashSet<String>,
     /// Whether $SCREENHIDE directive was present in the program.
     pub screen_hide_requested: bool,
+    /// Whether the program uses OpenGL (SUB _GL or _GL*); when true, emit _GL* calls under #ifdef QB64FRESH_OPENGL.
+    pub uses_opengl: bool,
 }
 
 impl StmtEmitter {
@@ -310,6 +326,7 @@ impl StmtEmitter {
             debug: DebugContext::new(),
             config: Config::with_runtime_mode(runtime_mode),
             dynamic_external_c_names: HashSet::new(),
+            uses_opengl: false,
         }
     }
 
@@ -402,6 +419,20 @@ impl StmtEmitter {
         )
     }
 
+    /// Returns the C expression for the current source file (for qb_dbg_line and qb_evnt).
+    fn debug_file_expr(&self) -> String {
+        let file = self
+            .debug
+            .source_file
+            .as_deref()
+            .unwrap_or("_qb_dbg_source_file");
+        if file == "_qb_dbg_source_file" {
+            file.to_string()
+        } else {
+            format!("\"{}\"", file.replace('\\', "\\\\").replace('"', "\\\""))
+        }
+    }
+
     /// Emits a debug line hook if debug mode is enabled.
     ///
     /// This calls `qb_dbg_line(line, file)` before executing the actual statement,
@@ -415,41 +446,44 @@ impl StmtEmitter {
             return Ok(());
         }
 
-        // Extract line number from span
         let line = stmt.span.line;
-        let file = self
-            .debug
-            .source_file
-            .as_deref()
-            .unwrap_or("_qb_dbg_source_file");
-
+        let file = self.debug_file_expr();
         let indent = self.indent_str();
 
-        writeln_code!(
-            output,
-            "{}qb_dbg_line({}, {});",
-            indent,
-            line,
-            if file == "_qb_dbg_source_file" {
-                file.to_string()
-            } else {
-                format!("\"{}\"", file.replace('\\', "\\\\").replace('"', "\\\""))
-            }
-        )?;
+        writeln_code!(output, "{}qb_dbg_line({}, {});", indent, line, file)?;
         Ok(())
     }
 
     /// Emits a statement.
+    ///
+    /// When debug is enabled, executable statements are wrapped in
+    /// `do { ...; if (!qbevent) break; qb_evnt(line, incline, file); } while(0);`
+    /// so the IDE/debugger can intercept at statement boundaries (QB64pe-style evnt).
     pub fn emit_stmt(
         &mut self,
         stmt: &TypedStatement,
         output: &mut String,
     ) -> Result<(), CodeGenError> {
         let indent = self.indent_str();
+        let is_exec = Self::is_executable_statement(&stmt.kind);
+        let evnt_opened = self.debug.enabled && is_exec;
+
+        // Optional evnt wrapper: do { ... } while(0). Guard restores indent on error path.
+        let evnt_indent_ptr = if evnt_opened {
+            writeln_code!(output, "{}do {{", indent)?;
+            self.codegen.indent += 1;
+            &mut self.codegen.indent as *mut usize
+        } else {
+            std::ptr::null_mut()
+        };
+        let mut _evnt_guard = if evnt_opened {
+            Some(EvntIndentGuard(evnt_indent_ptr))
+        } else {
+            None
+        };
 
         // Emit debug line hook for executable statements
-        // (skip labels, data, declarations that don't execute)
-        if self.debug.enabled && Self::is_executable_statement(&stmt.kind) {
+        if self.debug.enabled && is_exec {
             self.emit_debug_line(stmt, output)?;
         }
 
@@ -1125,6 +1159,10 @@ impl StmtEmitter {
                     "_TOGGLE" => "qb_toggle".to_string(),
                     "_MAPTRIANGLE" => "qb_maptriangle".to_string(),
                     "_GLRENDER" => "qb_glrender".to_string(),
+                    // OpenGL _GL* / _GLU* (except _GLRENDER) map to call_gl* / call_glu*
+                    _ if (upper_name.starts_with("_GL") || upper_name.starts_with("_GLU")) => {
+                        c_function_name(name)
+                    }
                     // Session 034+ SUBs (only non-duplicates)
                     "_ECHO" => "qb_echo".to_string(),
                     "_CONSOLETITLE" => "qb_consoletitle".to_string(),
@@ -1144,11 +1182,63 @@ impl StmtEmitter {
                     "_MEMCOPY" => "qb_memcopy".to_string(),
                     "_MEMFREE" => "qb_memfree".to_string(),
                     "_SCREENICON" => "qb_screenicon".to_string(),
+                    // _KEYDOWN(code) / _KEYUP(code) as statement — simulate key (stub; qb_keydown_vk/qb_keyup_vk)
+                    "_KEYDOWN" => {
+                        if args.len() == 1 {
+                            writeln_code!(
+                                output,
+                                "{}qb_keydown_vk((uint32_t){});",
+                                indent,
+                                args_codes.first().cloned().unwrap_or_default()
+                            )?;
+                            return Ok(());
+                        }
+                        "qb_keydown_vk".to_string()
+                    }
+                    "_KEYUP" => {
+                        if args.len() == 1 {
+                            writeln_code!(
+                                output,
+                                "{}qb_keyup_vk((uint32_t){});",
+                                indent,
+                                args_codes.first().cloned().unwrap_or_default()
+                            )?;
+                            return Ok(());
+                        }
+                        "qb_keyup_vk".to_string()
+                    }
+                    // _NOTIFYPOPUP(title, message, iconType) — 3 optional strings → qb_notifypopup(const char*, const char*, const char*)
+                    "_NOTIFYPOPUP" => {
+                        let a0 = if args.is_empty() {
+                            "NULL".to_string()
+                        } else {
+                            let c = self.emit_expr(&args[0])?;
+                            format!("qb_string_data({})", c)
+                        };
+                        let a1 = if args.len() < 2 {
+                            "NULL".to_string()
+                        } else {
+                            let c = self.emit_expr(&args[1])?;
+                            format!("qb_string_data({})", c)
+                        };
+                        let a2 = if args.len() < 3 {
+                            "NULL".to_string()
+                        } else {
+                            let c = self.emit_expr(&args[2])?;
+                            format!("qb_string_data({})", c)
+                        };
+                        writeln_code!(output, "{}qb_notifypopup({}, {}, {});", indent, a0, a1, a2)?;
+                        return Ok(());
+                    }
                     // Default: user-defined SUBs use qb_sub_ prefix
                     _ => format!("qb_sub_{}", c_identifier(name).to_lowercase()),
                 };
 
                 // If we have temp declarations, wrap in a block
+                let is_opengl_call = c_name.starts_with("call_gl") && self.uses_opengl;
+                if is_opengl_call {
+                    writeln_code!(output, "#ifdef QB64FRESH_OPENGL")?;
+                }
                 if temp_decls.is_empty() {
                     writeln_code!(output, "{}{}({});", indent, c_name, args_str)?;
                 } else {
@@ -1158,6 +1248,9 @@ impl StmtEmitter {
                     }
                     writeln_code!(output, "{}    {}({});", indent, c_name, args_str)?;
                     writeln_code!(output, "{}}}", indent)?;
+                }
+                if is_opengl_call {
+                    writeln_code!(output, "#endif")?;
                 }
             }
 
@@ -2244,6 +2337,22 @@ impl StmtEmitter {
             | TypedStatementKind::MetaUseLibrary { .. }) => {
                 meta::emit_meta_stmt(self, k, &indent, output)?;
             }
+        }
+
+        // Emit evnt closing line (guard already decremented indent on drop when we reach here).
+        if evnt_opened {
+            drop(_evnt_guard.take());
+            let close_indent = self.indent_str();
+            let evnt_line = stmt.span.line;
+            let evnt_file = self.debug_file_expr();
+            writeln_code!(
+                output,
+                "{}if (!qbevent) break; qb_evnt({}, {}, {}); }} while(0);",
+                close_indent,
+                evnt_line,
+                evnt_line,
+                evnt_file
+            )?;
         }
 
         Ok(())

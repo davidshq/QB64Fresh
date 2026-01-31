@@ -6,7 +6,7 @@ use clap::Parser as ClapParser;
 use std::fs;
 use std::path::PathBuf;
 
-use qb64fresh::codegen::{CBackend, CodeGenerator, RuntimeMode};
+use qb64fresh::codegen::{CBackend, CodeGenerator, RuntimeMode, program_uses_opengl};
 use qb64fresh::error_formatting::{format_parse_errors, format_semantic_errors};
 use qb64fresh::lexer::{TokenKind, lex, lex_with_progress};
 use qb64fresh::parser::Parser;
@@ -112,6 +112,14 @@ struct Args {
     /// Disable SHELL and _SHELLHIDE when using --emit-c (compile error if used). No effect with --ast, --tokens, --typed-ir.
     #[arg(long)]
     no_shell: bool,
+
+    /// Enable OpenGL code emission (#define QB64FRESH_OPENGL; link OpenGL when program uses SUB _GL or _GL*).
+    #[arg(long)]
+    opengl: bool,
+
+    /// Disable OpenGL even if program uses SUB _GL or _GL* (no QB64FRESH_OPENGL).
+    #[arg(long)]
+    no_opengl: bool,
 
     /// Verbose output
     #[arg(short, long)]
@@ -358,6 +366,14 @@ fn main() {
         if args.no_shell {
             backend = backend.with_no_shell(true);
         }
+        let uses_opengl = if args.no_opengl {
+            false
+        } else if args.opengl {
+            true
+        } else {
+            program_uses_opengl(&typed_program)
+        };
+        backend = backend.with_opengl(uses_opengl);
         let output = match backend.generate(&typed_program) {
             Ok(o) => o,
             Err(errors) => {
@@ -440,4 +456,8 @@ fn main() {
     println!(
         "  --no-shell      Disable SHELL/_SHELLHIDE when using --emit-c (compile error if used)"
     );
+    println!(
+        "  --opengl        Enable OpenGL (#define QB64FRESH_OPENGL; link OpenGL when program uses SUB _GL or _GL*)"
+    );
+    println!("  --no-opengl     Disable OpenGL even if program uses SUB _GL or _GL*");
 }

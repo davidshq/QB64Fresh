@@ -315,6 +315,16 @@ pub(super) fn emit_graphics_stubs(output: &mut String) -> Result<(), CodeGenErro
         output,
         "int32_t qb_gfx_image_height(int32_t h) {{ (void)h; return 0; }}"
     )?;
+    // _SAVEIMAGE filename$, handle - save image to file (stub: no-op in inline runtime)
+    writeln_code!(
+        output,
+        "void qb_saveimage(QbString* path, int32_t handle) {{ (void)path; (void)handle; }}"
+    )?;
+    // _DEPTHBUFFER mode - depth buffer for 3D (stub: no-op)
+    writeln_code!(
+        output,
+        "void qb_depthbuffer(int32_t mode) {{ (void)mode; }}"
+    )?;
     writeln_code!(output)?;
 
     // Color creation functions (QB64)
@@ -378,6 +388,126 @@ pub(super) fn emit_graphics_stubs(output: &mut String) -> Result<(), CodeGenErro
         output,
         "int32_t qb_alpha(uint32_t c, int32_t mode) {{ (void)mode; return (c >> 24) & 0xFF; }}"
     )?;
+    writeln_code!(output)?;
+
+    // HSB color functions (_HSB32, _HSBA32, _HUE32, _SATURATION32, _BRIGHTNESS32)
+    // Hue 0-360, Saturation/Brightness 0-100; color format &HAARRGGBB
+    writeln_code!(output, "/* HSB: hue 0-360, sat/bri 0-100; RGB 0-255 */")?;
+    writeln_code!(
+        output,
+        "uint32_t qb_hsb32(float hue, float sat, float bri) {{"
+    )?;
+    writeln_code!(
+        output,
+        "    float h = (hue < 0) ? 0 : (hue > 360) ? 360 : hue;"
+    )?;
+    writeln_code!(
+        output,
+        "    float s = (sat < 0) ? 0 : (sat > 100) ? 100 : sat; s /= 100.0f;"
+    )?;
+    writeln_code!(
+        output,
+        "    float v = (bri < 0) ? 0 : (bri > 100) ? 100 : bri; v /= 100.0f;"
+    )?;
+    writeln_code!(
+        output,
+        "    float c = v * s, p = v - c, f = (h / 60.0f) - (int)(h / 60);"
+    )?;
+    writeln_code!(output, "    float q = v - c * f, t = v - c * (1.0f - f);")?;
+    writeln_code!(output, "    float r, g, b;")?;
+    writeln_code!(output, "    int i = (int)(h / 60.0f) % 6;")?;
+    writeln_code!(
+        output,
+        "    if (i == 0) {{ r = v; g = t; b = p; }} else if (i == 1) {{ r = q; g = v; b = p; }} else if (i == 2) {{ r = p; g = v; b = t; }}"
+    )?;
+    writeln_code!(
+        output,
+        "    else if (i == 3) {{ r = p; g = q; b = v; }} else if (i == 4) {{ r = t; g = p; b = v; }} else {{ r = v; g = p; b = q; }}"
+    )?;
+    writeln_code!(
+        output,
+        "    int ir = (int)(r * 255); if (ir > 255) ir = 255; if (ir < 0) ir = 0;"
+    )?;
+    writeln_code!(
+        output,
+        "    int ig = (int)(g * 255); if (ig > 255) ig = 255; if (ig < 0) ig = 0;"
+    )?;
+    writeln_code!(
+        output,
+        "    int ib = (int)(b * 255); if (ib > 255) ib = 255; if (ib < 0) ib = 0;"
+    )?;
+    writeln_code!(
+        output,
+        "    return 0xFF000000u | ((ir & 0xFF) << 16) | ((ig & 0xFF) << 8) | (ib & 0xFF);"
+    )?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(
+        output,
+        "uint32_t qb_hsba32(float hue, float sat, float bri, float alpha) {{"
+    )?;
+    writeln_code!(output, "    uint32_t rgb = qb_hsb32(hue, sat, bri);")?;
+    writeln_code!(
+        output,
+        "    int a = (int)alpha; if (a < 0) a = 0; if (a > 255) a = 255;"
+    )?;
+    writeln_code!(
+        output,
+        "    return ((a & 0xFF) << 24) | (rgb & 0x00FFFFFFu);"
+    )?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(output, "float qb_hue32(uint32_t c) {{")?;
+    writeln_code!(
+        output,
+        "    float r = ((c >> 16) & 0xFF) / 255.0f, g = ((c >> 8) & 0xFF) / 255.0f, b = (c & 0xFF) / 255.0f;"
+    )?;
+    writeln_code!(
+        output,
+        "    float mx = (r > g && r > b) ? r : (g > b) ? g : b;"
+    )?;
+    writeln_code!(
+        output,
+        "    float mn = (r < g && r < b) ? r : (g < b) ? g : b;"
+    )?;
+    writeln_code!(output, "    float d = mx - mn; if (d <= 0) return 0;")?;
+    writeln_code!(
+        output,
+        "    float h; if (mx == r) h = 60 * (g - b) / d + (g < b ? 360 : 0);"
+    )?;
+    writeln_code!(
+        output,
+        "    else if (mx == g) h = 60 * (b - r) / d + 120; else h = 60 * (r - g) / d + 240;"
+    )?;
+    writeln_code!(output, "    return (h < 0) ? h + 360 : (h >= 360) ? 0 : h;")?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(output, "float qb_saturation32(uint32_t c) {{")?;
+    writeln_code!(
+        output,
+        "    float r = ((c >> 16) & 0xFF) / 255.0f, g = ((c >> 8) & 0xFF) / 255.0f, b = (c & 0xFF) / 255.0f;"
+    )?;
+    writeln_code!(
+        output,
+        "    float mx = (r > g && r > b) ? r : (g > b) ? g : b;"
+    )?;
+    writeln_code!(
+        output,
+        "    float mn = (r < g && r < b) ? r : (g < b) ? g : b;"
+    )?;
+    writeln_code!(
+        output,
+        "    if (mx <= 0) return 0; return (mx - mn) / mx * 100.0f;"
+    )?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(output, "float qb_brightness32(uint32_t c) {{")?;
+    writeln_code!(
+        output,
+        "    int r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, b = c & 0xFF;"
+    )?;
+    writeln_code!(
+        output,
+        "    int mx = (r > g && r > b) ? r : (g > b) ? g : b;"
+    )?;
+    writeln_code!(output, "    return mx * 100.0f / 255.0f;")?;
+    writeln_code!(output, "}}")?;
     writeln_code!(output)?;
 
     // Legacy file open (for compatibility)
@@ -453,6 +583,30 @@ pub(super) fn emit_graphics_stubs(output: &mut String) -> Result<(), CodeGenErro
         output,
         "void qb_view_print_reset(void) {{ _qb_view_print_top = 1; _qb_view_print_bottom = 25; }}"
     )?;
+    writeln_code!(output)?;
+
+    // _PRINTIMAGE - print image to console/printer (libqb sub__printimage)
+    // Stub: no-op; full implementation would send image to printer or console.
+    writeln_code!(output, "void qb_printimage(int32_t i) {{ (void)i; }}")?;
+    writeln_code!(output)?;
+
+    // validatepage - ensure graphics page exists (libqb validatepage)
+    // Stub: no-op; used by QB64pe before drawing to a page.
+    writeln_code!(output, "void validatepage(int32_t n) {{ (void)n; }}")?;
+    writeln_code!(output)?;
+
+    // qbg_sub_view_print - VIEW PRINT with three args (libqb qbg_sub_view_print)
+    // passed!=0: set view to topline..bottomline; passed==0: reset to full screen.
+    writeln_code!(
+        output,
+        "void qbg_sub_view_print(int32_t topline, int32_t bottomline, int32_t passed) {{"
+    )?;
+    writeln_code!(output, "    if (passed) {{")?;
+    writeln_code!(output, "        qb_view_print(topline, bottomline);")?;
+    writeln_code!(output, "    }} else {{")?;
+    writeln_code!(output, "        qb_view_print_reset();")?;
+    writeln_code!(output, "    }}")?;
+    writeln_code!(output, "}}")?;
     writeln_code!(output)?;
 
     // GET/PUT graphics arrays - action constants
@@ -571,6 +725,61 @@ pub(super) fn emit_graphics_stubs(output: &mut String) -> Result<(), CodeGenErro
     )?;
     writeln_code!(output)?;
 
+    // Image color helpers (BGRA, scale, clamp, distance — libqb image.h compatibility)
+    writeln_code!(
+        output,
+        "static inline uint8_t qb_image_get_bgra_red(uint32_t c) {{ return (uint8_t)((c >> 16) & 0xFFu); }}"
+    )?;
+    writeln_code!(
+        output,
+        "static inline uint8_t qb_image_get_bgra_green(uint32_t c) {{ return (uint8_t)((c >> 8) & 0xFFu); }}"
+    )?;
+    writeln_code!(
+        output,
+        "static inline uint8_t qb_image_get_bgra_blue(uint32_t c) {{ return (uint8_t)(c & 0xFFu); }}"
+    )?;
+    writeln_code!(
+        output,
+        "static inline uint8_t qb_image_get_bgra_alpha(uint32_t c) {{ return (uint8_t)(c >> 24); }}"
+    )?;
+    writeln_code!(
+        output,
+        "static inline uint32_t qb_image_get_bgra_bgr(uint32_t c) {{ return c & 0xFFFFFFu; }}"
+    )?;
+    writeln_code!(
+        output,
+        "static inline uint32_t qb_image_set_bgra_alpha(uint32_t c, uint8_t a) {{ return (c & 0xFFFFFFu) | ((uint32_t)a << 24); }}"
+    )?;
+    writeln_code!(
+        output,
+        "static inline uint32_t qb_image_make_bgra(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {{ return (uint32_t)b | ((uint32_t)g << 8) | ((uint32_t)r << 16) | ((uint32_t)a << 24); }}"
+    )?;
+    writeln_code!(
+        output,
+        "static inline int qb_image_scale_5bits_to_8bits(int v) {{ return (v << 3) | (v >> 2); }}"
+    )?;
+    writeln_code!(
+        output,
+        "static inline int qb_image_scale_6bits_to_8bits(int v) {{ return (v << 2) | (v >> 4); }}"
+    )?;
+    writeln_code!(
+        output,
+        "static inline uint32_t qb_image_swap_red_blue(uint32_t clr) {{ return (clr & 0xFF00FF00u) | ((clr & 0x00FF0000u) >> 16) | ((clr & 0x000000FFu) << 16); }}"
+    )?;
+    writeln_code!(
+        output,
+        "static inline uint8_t qb_image_clamp_color_component(int n) {{ if (n < 0) return 0; if (n > 255) return 255; return (uint8_t)n; }}"
+    )?;
+    writeln_code!(
+        output,
+        "static inline float qb_image_calculate_rgb_distance(uint8_t r1, uint8_t g1, uint8_t b1, uint8_t r2, uint8_t g2, uint8_t b2) {{ float dr=(float)r2-(float)r1,dg=(float)g2-(float)g1,db=(float)b2-(float)b1; return sqrtf(dr*dr+dg*dg+db*db); }}"
+    )?;
+    writeln_code!(
+        output,
+        "static inline uint32_t qb_image_get_color_delta(uint8_t r1, uint8_t g1, uint8_t b1, uint8_t r2, uint8_t g2, uint8_t b2) {{ return (uint32_t)(abs((long)r1-(long)r2)+abs((long)g1-(long)g2)+abs((long)b1-(long)b2)); }}"
+    )?;
+    writeln_code!(output)?;
+
     // Mouse stubs
     writeln_code!(output, "int32_t qb_mouse_x(void) {{ return 0; }}")?;
     writeln_code!(output, "int32_t qb_mouse_y(void) {{ return 0; }}")?;
@@ -598,6 +807,11 @@ pub(super) fn emit_graphics_stubs(output: &mut String) -> Result<(), CodeGenErro
     writeln_code!(
         output,
         "void qb_clipboard_set(const char* text) {{ (void)text; }}"
+    )?;
+    writeln_code!(output, "int32_t qb_clipboardimage(void) {{ return 0; }}")?;
+    writeln_code!(
+        output,
+        "void qb_clipboardimage_set(int32_t handle) {{ (void)handle; }}"
     )?;
     writeln_code!(output)?;
 
@@ -1274,13 +1488,32 @@ pub(super) fn emit_graphics_stubs(output: &mut String) -> Result<(), CodeGenErro
     writeln_code!(output, "#endif")?;
     writeln_code!(output)?;
 
+    // _NOTIFYPOPUP — inline: no-op or printf (no native notification in console)
     writeln_code!(
         output,
-        "qb_string* qb_inputbox(qb_string* prompt, qb_string* title) {{"
+        "void qb_notifypopup(const char* title, const char* message, const char* icon_type) {{"
+    )?;
+    writeln_code!(output, "    (void)icon_type;")?;
+    writeln_code!(
+        output,
+        "    fprintf(stderr, \"[%s] %s\\n\", title ? title : \"\", message ? message : \"\");"
+    )?;
+    writeln_code!(output, "    fflush(stderr);")?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(output)?;
+
+    // _INPUTBOX$ — inline: 3-arg (title, message, default_input); fallback to stdin
+    writeln_code!(
+        output,
+        "qb_string* qb_inputbox(const char* title, const char* message, const char* default_input) {{"
     )?;
     writeln_code!(output, "    (void)title;")?;
     writeln_code!(output, "    char buf[1024];")?;
-    writeln_code!(output, "    printf(\"%s \", prompt ? prompt->data : \"\");")?;
+    writeln_code!(
+        output,
+        "    fprintf(stderr, \"%s \", message ? message : \"\");"
+    )?;
+    writeln_code!(output, "    fflush(stderr);")?;
     writeln_code!(output, "    if (fgets(buf, sizeof(buf), stdin)) {{")?;
     writeln_code!(output, "        size_t len = strlen(buf);")?;
     writeln_code!(
@@ -1289,7 +1522,26 @@ pub(super) fn emit_graphics_stubs(output: &mut String) -> Result<(), CodeGenErro
     )?;
     writeln_code!(output, "        return qb_string_new(buf);")?;
     writeln_code!(output, "    }}")?;
+    writeln_code!(
+        output,
+        "    if (default_input) return qb_string_new(default_input);"
+    )?;
     writeln_code!(output, "    return qb_string_new(\"\");")?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(output)?;
+
+    // _COLORCHOOSERDIALOG — inline: no native color picker; return default_rgb
+    writeln_code!(
+        output,
+        "uint32_t qb_colorchooserdialog(const char* title, uint32_t default_rgb) {{"
+    )?;
+    writeln_code!(output, "    (void)title;")?;
+    writeln_code!(
+        output,
+        "    fprintf(stderr, \"Note: _COLORCHOOSERDIALOG requires external runtime for GUI\\n\");"
+    )?;
+    writeln_code!(output, "    fflush(stderr);")?;
+    writeln_code!(output, "    return default_rgb;")?;
     writeln_code!(output, "}}")?;
     writeln_code!(output)?;
 
@@ -1373,6 +1625,16 @@ pub(super) fn emit_graphics_stubs(output: &mut String) -> Result<(), CodeGenErro
     writeln_code!(output, "}}")?;
     writeln_code!(output)?;
 
+    // _GLRENDER mode constants: _BEHIND, _ONTOP, _ONLY (used as qb_glrender(qb_behind()) etc.)
+    writeln_code!(
+        output,
+        "/* _GLRENDER mode constants (return values for _BEHIND, _ONTOP, _ONLY, _ONLYBACKGROUND) */"
+    )?;
+    writeln_code!(output, "int32_t qb_behind(void) {{ return 0; }}")?;
+    writeln_code!(output, "int32_t qb_ontop(void) {{ return 1; }}")?;
+    writeln_code!(output, "int32_t qb_only(void) {{ return 2; }}")?;
+    writeln_code!(output, "int32_t qb_onlybackground(void) {{ return 3; }}")?;
+    writeln_code!(output)?;
     // _GLRENDER, _GLCOMPAT - OpenGL stubs (no-op; raw _GL* excluded per ADR-0014)
     writeln_code!(output, "/* OpenGL stubs */")?;
     writeln_code!(output, "void qb_glrender(int32_t mode) {{ (void)mode; }}")?;

@@ -973,12 +973,19 @@ impl<'a> TypeChecker<'a> {
                 stmt.span,
             ),
 
-            StatementKind::MetaErrorDirective { message } => TypedStatement::new(
-                TypedStatementKind::MetaErrorDirective {
+            StatementKind::MetaErrorDirective { message } => {
+                // $ERROR halts compilation: push error so analyzer returns Err and driver exits.
+                self.errors.push(SemanticError::CompileTimeError {
                     message: message.clone(),
-                },
-                stmt.span,
-            ),
+                    span: stmt.span,
+                });
+                TypedStatement::new(
+                    TypedStatementKind::MetaErrorDirective {
+                        message: message.clone(),
+                    },
+                    stmt.span,
+                )
+            }
 
             StatementKind::MetaEmbed { filename } => TypedStatement::new(
                 TypedStatementKind::MetaEmbed {

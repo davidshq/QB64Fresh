@@ -234,7 +234,7 @@ impl<'a> TypeChecker<'a> {
         let (resolved_name, element_type, dimensions) = if let Some(symbol) =
             self.symbols.lookup_array(name)
         {
-            let dimensions = if let SymbolKind::ArrayVariable { dimensions } = &symbol.kind {
+            let dimensions = if let SymbolKind::ArrayVariable { dimensions, .. } = &symbol.kind {
                 dimensions.clone()
             } else {
                 vec![]
@@ -373,11 +373,12 @@ impl<'a> TypeChecker<'a> {
                 })
                 .collect();
 
-            // Define the implicit array
+            // Define the implicit array (implicit arrays are always dynamic)
             let implicit_array = Symbol {
                 name: name.to_string(),
                 kind: SymbolKind::ArrayVariable {
                     dimensions: dim_info.clone(),
+                    is_static: false,
                 },
                 basic_type: element_type.clone(),
                 span,
@@ -521,48 +522,49 @@ impl<'a> TypeChecker<'a> {
         span: crate::ast::Span,
     ) -> TypedStatement {
         // Look up the array using array-specific lookup (dual namespace model)
-        let (resolved_name, element_type, dimensions) =
-            if let Some(symbol) = self.symbols.lookup_array(name) {
-                let dimensions = if let SymbolKind::ArrayVariable { dimensions } = &symbol.kind {
-                    dimensions.clone()
-                } else {
-                    vec![]
-                };
-
-                // Verify dimension count - skip if dimensions are unknown (empty, for array params)
-                if !dimensions.is_empty() && indices.len() != dimensions.len() {
-                    self.errors.push(SemanticError::ArrayDimensionMismatch {
-                        name: name.to_string(),
-                        expected: dimensions.len(),
-                        found: indices.len(),
-                        span,
-                    });
-                }
-
-                // For dynamic arrays (empty dimensions), create placeholder dimensions
-                let typed_dims: Vec<TypedArrayDimension> = if dimensions.is_empty() {
-                    indices
-                        .iter()
-                        .map(|_| TypedArrayDimension { lower: 0, upper: 0 })
-                        .collect()
-                } else {
-                    dimensions
-                        .iter()
-                        .map(|d| TypedArrayDimension {
-                            lower: d.lower_bound,
-                            upper: d.upper_bound,
-                        })
-                        .collect()
-                };
-
-                (symbol.name.clone(), symbol.basic_type.clone(), typed_dims)
+        let (resolved_name, element_type, dimensions) = if let Some(symbol) =
+            self.symbols.lookup_array(name)
+        {
+            let dimensions = if let SymbolKind::ArrayVariable { dimensions, .. } = &symbol.kind {
+                dimensions.clone()
             } else {
-                self.errors.push(SemanticError::NotAnArray {
+                vec![]
+            };
+
+            // Verify dimension count - skip if dimensions are unknown (empty, for array params)
+            if !dimensions.is_empty() && indices.len() != dimensions.len() {
+                self.errors.push(SemanticError::ArrayDimensionMismatch {
                     name: name.to_string(),
+                    expected: dimensions.len(),
+                    found: indices.len(),
                     span,
                 });
-                (name.to_string(), BasicType::Unknown, Vec::new())
+            }
+
+            // For dynamic arrays (empty dimensions), create placeholder dimensions
+            let typed_dims: Vec<TypedArrayDimension> = if dimensions.is_empty() {
+                indices
+                    .iter()
+                    .map(|_| TypedArrayDimension { lower: 0, upper: 0 })
+                    .collect()
+            } else {
+                dimensions
+                    .iter()
+                    .map(|d| TypedArrayDimension {
+                        lower: d.lower_bound,
+                        upper: d.upper_bound,
+                    })
+                    .collect()
             };
+
+            (symbol.name.clone(), symbol.basic_type.clone(), typed_dims)
+        } else {
+            self.errors.push(SemanticError::NotAnArray {
+                name: name.to_string(),
+                span,
+            });
+            (name.to_string(), BasicType::Unknown, Vec::new())
+        };
 
         // Check and type the indices
         let mut typed_indices = Vec::new();
@@ -825,6 +827,7 @@ impl<'a> TypeChecker<'a> {
                         if let Some(symbol) = self.symbols.lookup_symbol(name) {
                             let dims = if let SymbolKind::ArrayVariable {
                                 dimensions: dim_info,
+                                ..
                             } = &symbol.kind
                             {
                                 dim_info
@@ -867,6 +870,7 @@ impl<'a> TypeChecker<'a> {
                         if let Some(symbol) = self.symbols.lookup_symbol(name) {
                             let dims = if let SymbolKind::ArrayVariable {
                                 dimensions: dim_info,
+                                ..
                             } = &symbol.kind
                             {
                                 dim_info
@@ -1013,6 +1017,7 @@ impl<'a> TypeChecker<'a> {
                 let dimensions = if let Some(symbol) = self.symbols.lookup_symbol(name) {
                     if let SymbolKind::ArrayVariable {
                         dimensions: dim_info,
+                        ..
                     } = &symbol.kind
                     {
                         dim_info
@@ -1044,6 +1049,7 @@ impl<'a> TypeChecker<'a> {
                 let dimensions = if let Some(symbol) = self.symbols.lookup_symbol(name) {
                     if let SymbolKind::ArrayVariable {
                         dimensions: dim_info,
+                        ..
                     } = &symbol.kind
                     {
                         dim_info

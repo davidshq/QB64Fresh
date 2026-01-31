@@ -42,7 +42,7 @@
 //! - AX=5,6: Button press/release info (returns 0)
 //! - AX=7,8: Set min/max range (no-op)
 //!
-//! ## FINAL IMPLEMENTATIONS (Not TODO Items)
+//! ## FINAL IMPLEMENTATIONS
 //!
 //! The following are **intentionally stub implementations** with no further work planned:
 //!
@@ -758,11 +758,36 @@ pub(super) fn emit_legacy_functions(output: &mut String) -> Result<(), CodeGenEr
     writeln_code!(output, "}}")?;
     writeln_code!(output)?;
 
+    // port60h_event[] / port60h_events - keyboard port 0x60 scancode queue (libqb)
+    // Stub: empty buffer so INP(&H60) returns 0; programs can push scancodes for testing.
+    writeln_code!(output, "uint8_t port60h_event[256];")?;
+    writeln_code!(output, "int32_t port60h_events = 0;")?;
+    writeln_code!(output)?;
+
     // INP(port) - read byte from I/O port
-    // Emulates VGA palette and status registers like QB64pe
+    // Emulates VGA palette and status registers like QB64pe; port 0x60 = keyboard data
     writeln_code!(output, "int qb_inp(int64_t port) {{")?;
     writeln_code!(output, "    int p = (int)(port & 0xFFFF);")?;
     writeln_code!(output, "    int value;")?;
+    writeln_code!(output)?;
+    writeln_code!(
+        output,
+        "    // Port 0x60: Keyboard controller data (libqb port60h_event)"
+    )?;
+    writeln_code!(output, "    if (p == 0x60) {{")?;
+    writeln_code!(output, "        if (port60h_events > 0) {{")?;
+    writeln_code!(output, "            value = port60h_event[0];")?;
+    writeln_code!(output, "            if (port60h_events > 1) {{")?;
+    writeln_code!(
+        output,
+        "                memmove(port60h_event, port60h_event + 1, 255);"
+    )?;
+    writeln_code!(output, "            }}")?;
+    writeln_code!(output, "            port60h_events--;")?;
+    writeln_code!(output, "            return value;")?;
+    writeln_code!(output, "        }}")?;
+    writeln_code!(output, "        return 0;")?;
+    writeln_code!(output, "    }}")?;
     writeln_code!(output)?;
     writeln_code!(output, "    // Port 0x3C9: Read palette RGB values")?;
     writeln_code!(output, "    if (p == 0x3C9) {{")?;

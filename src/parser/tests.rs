@@ -1819,7 +1819,8 @@ mod file_io_tests {
             let program = parse(&source).unwrap();
             if let StatementKind::OpenFile { mode, .. } = &program.statements[0].kind {
                 assert_eq!(
-                    *mode, expected_mode,
+                    *mode,
+                    Some(expected_mode),
                     "Mode {} should parse correctly",
                     mode_str
                 );
@@ -1851,6 +1852,18 @@ mod file_io_tests {
             ),
             "Expected OpenFileLegacy with record_len"
         );
+    }
+
+    #[test]
+    fn test_parse_open_com_as_only() {
+        // QB45 COM-style: OPEN "COM1:9600,N,8,1" AS #1 (FOR omitted)
+        let program = parse(r#"OPEN "COM1:9600,N,8,1" AS #1"#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+        if let StatementKind::OpenFile { mode, .. } = &program.statements[0].kind {
+            assert!(mode.is_none(), "COM-style OPEN should have mode None");
+        } else {
+            panic!("Expected OpenFile statement");
+        }
     }
 
     // ----- CLOSE Statement -----

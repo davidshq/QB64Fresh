@@ -35,6 +35,8 @@
 //! ```
 
 mod builtins;
+mod builtins_opengl;
+mod builtins_opengl_functions;
 mod collect;
 
 pub mod checker;
@@ -406,7 +408,7 @@ fn format_symbol_hover(sym: &Symbol) -> String {
                 modifier, sym.name, type_str
             )
         }
-        symbols::SymbolKind::ArrayVariable { dimensions } => {
+        symbols::SymbolKind::ArrayVariable { dimensions, .. } => {
             let dims: Vec<String> = dimensions
                 .iter()
                 .map(|d| {
@@ -559,7 +561,7 @@ mod tests {
         let check_error_const = |name: &str, expected_value: i64| {
             let sym = analyzer.symbols.lookup_symbol(name);
             assert!(sym.is_some(), "{} should exist as built-in constant", name);
-            let sym = sym.expect(&format!("{} should exist as built-in constant", name));
+            let sym = sym.unwrap_or_else(|| panic!("{} should exist as built-in constant", name));
             assert!(!sym.is_mutable, "{} should be immutable", name);
             assert!(
                 matches!(

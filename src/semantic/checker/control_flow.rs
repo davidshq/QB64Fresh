@@ -532,6 +532,19 @@ impl<'a> TypeChecker<'a> {
         }
 
         if let Some(ref proc) = proc {
+            // _GL* commands (except _GLRENDER and _GLCOMPAT) only valid inside SUB _GL (QB64pe error 270)
+            let upper_name = name.to_uppercase();
+            if (upper_name.starts_with("_GL") || upper_name.starts_with("_GLU"))
+                && upper_name != "_GLRENDER"
+                && upper_name != "_GLCOMPAT"
+                && !self.in_sub_gl
+            {
+                self.errors.push(SemanticError::GlOutsideSubGl {
+                    name: name.to_string(),
+                    span,
+                });
+            }
+
             // Check argument count (considering optional parameters)
             let required_count = proc.required_param_count();
             let max_count = proc.params.len();

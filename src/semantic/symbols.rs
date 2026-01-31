@@ -119,6 +119,9 @@ pub enum SymbolKind {
     ArrayVariable {
         /// Information about each dimension.
         dimensions: Vec<ArrayDimInfo>,
+        /// Whether the array is static (fixed size at compile time, e.g. under `$STATIC`).
+        /// Static arrays cannot be REDIM'd.
+        is_static: bool,
     },
     /// An external function declared via DECLARE LIBRARY.
     ExternalFunction {
@@ -218,7 +221,7 @@ pub struct UserTypeDefinition {
 }
 
 /// A member of a user-defined TYPE.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UserTypeMember {
     /// Member name.
     pub name: String,

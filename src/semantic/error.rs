@@ -443,6 +443,24 @@ pub enum SemanticError {
         span: Span,
     },
 
+    /// OpenGL command used outside SUB _GL (QB64pe error 270).
+    ///
+    /// _GL* commands are only valid inside the specially named SUB _GL, which
+    /// is invoked by the runtime when the display is updated.
+    ///
+    /// # BASIC Example
+    ///
+    /// ```basic
+    /// _GLBEGIN _GL_TRIANGLES   ' Error: GL command outside SUB _GL
+    /// ```
+    #[error("GL command `{name}` outside SUB _GL (error 270)")]
+    GlOutsideSubGl {
+        /// Name of the OpenGL command.
+        name: String,
+        /// Location of the call.
+        span: Span,
+    },
+
     // ========================================================================
     // Control Flow Errors
     // ========================================================================
@@ -580,6 +598,26 @@ pub enum SemanticError {
         span: Span,
     },
 
+    /// REDIM used on a static array (fixed size at compile time).
+    ///
+    /// Under `$STATIC`, arrays with constant bounds cannot be resized. Use
+    /// `$DYNAMIC` or declare the array with dynamic bounds if you need REDIM.
+    ///
+    /// # BASIC Example
+    ///
+    /// ```basic
+    /// $STATIC
+    /// DIM a(10) AS INTEGER
+    /// REDIM a(20)    ' Error: cannot REDIM static array `a`
+    /// ```
+    #[error("cannot REDIM static array `{name}`")]
+    RedimOnStaticArray {
+        /// Name of the array.
+        name: String,
+        /// Location of the REDIM statement.
+        span: Span,
+    },
+
     // ========================================================================
     // Constant Errors
     // ========================================================================
@@ -700,6 +738,21 @@ pub enum SemanticError {
         /// Location of the command.
         span: Span,
     },
+
+    // ========================================================================
+    // Compile-time directive errors
+    // ========================================================================
+    /// $ERROR directive: user-requested compile stop with message.
+    ///
+    /// The $ERROR metacommand halts compilation and reports the given message.
+    /// Used for conditional compilation sanity checks (e.g. $IF wrong_platform THEN $ERROR "Unsupported").
+    #[error("$ERROR: {message}")]
+    CompileTimeError {
+        /// User-provided message from $ERROR "message".
+        message: String,
+        /// Location of the $ERROR directive.
+        span: Span,
+    },
 }
 
 impl SemanticError {
@@ -729,12 +782,15 @@ impl SemanticError {
             SemanticError::NotAnArray { span, .. } => *span,
             SemanticError::ArrayDimensionMismatch { span, .. } => *span,
             SemanticError::NonNumericIndex { span, .. } => *span,
+            SemanticError::RedimOnStaticArray { span, .. } => *span,
             SemanticError::AssignmentToConst { span, .. } => *span,
             SemanticError::NonConstantExpression { span } => *span,
             SemanticError::SharedOutsideProcedure { span } => *span,
             SemanticError::SharedVariableNotFound { span, .. } => *span,
             SemanticError::InvalidOptionBase { span, .. } => *span,
             SemanticError::CommandNotImplemented { span, .. } => *span,
+            SemanticError::GlOutsideSubGl { span, .. } => *span,
+            SemanticError::CompileTimeError { span, .. } => *span,
         }
     }
 

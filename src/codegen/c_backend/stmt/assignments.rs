@@ -50,6 +50,12 @@ impl super::StmtEmitter {
 
         let value_code = self.emit_expr(value)?;
 
+        // _CLIPBOARDIMAGE = handle — call runtime setter instead of variable assignment
+        if name.eq_ignore_ascii_case("_CLIPBOARDIMAGE") {
+            writeln_code!(output, "{}qb_clipboardimage_set({});", indent, value_code)?;
+            return Ok(());
+        }
+
         // Handle fixed-length string assignment specially
         if let BasicType::FixedString(len) = target_type {
             // For fixed-length strings, we need to copy the string content
