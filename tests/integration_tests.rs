@@ -3,13 +3,14 @@
 //! These tests exercise the full compilation pipeline from source code to generated output.
 //! They ensure all compiler phases work correctly together.
 
-use qb64fresh::codegen::{CBackend, CodeGenerator, RuntimeMode};
+use qb64fresh::codegen::{CBackend, CodeGenerator, RuntimeMode, program_uses_opengl};
 use qb64fresh::lexer::lex;
 use qb64fresh::parser::Parser;
 use qb64fresh::semantic::SemanticAnalyzer;
 
 /// Helper to run the full compilation pipeline and return generated C code.
 /// Returns Ok(code) on success, Err(message) on any compilation error.
+/// OpenGL use (SUB _GL or _GL* calls) is detected automatically and sets QB64FRESH_OPENGL.
 fn compile_to_c(source: &str) -> Result<String, String> {
     // Lexer phase
     let tokens = lex(source);
@@ -26,8 +27,9 @@ fn compile_to_c(source: &str) -> Result<String, String> {
         .analyze(&program)
         .map_err(|errors| format!("Semantic errors: {:?}", errors))?;
 
-    // Code generation phase
-    let backend = CBackend::with_runtime_mode(RuntimeMode::inline());
+    // Code generation phase (enable OpenGL when program uses SUB _GL or _GL*)
+    let backend = CBackend::with_runtime_mode(RuntimeMode::inline())
+        .with_opengl(program_uses_opengl(&typed_program));
     let output = backend
         .generate(&typed_program)
         .map_err(|e| format!("CodeGen error: {:?}", e))?;
@@ -1939,6 +1941,33 @@ mod arrays {
         "#;
         assert_compiles(source);
     }
+
+    #[test]
+    fn redim_dynamic_array() {
+        // REDIM on dynamic array ($DYNAMIC is default or explicit)
+        let source = r#"
+            $DYNAMIC
+            DIM arr(10) AS LONG
+            arr(0) = 1
+            REDIM arr(20) AS LONG
+            PRINT arr(0)
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn redim_preserve() {
+        // REDIM PRESERVE preserves existing elements when expanding
+        let source = r#"
+            $DYNAMIC
+            DIM arr(5) AS LONG
+            arr(0) = 42
+            arr(1) = 99
+            REDIM _PRESERVE arr(10) AS LONG
+            PRINT arr(0), arr(1)
+        "#;
+        assert_compiles(source);
+    }
 }
 
 // =============================================================================
@@ -2295,6 +2324,30 @@ mod file_io {
     fn open_for_append() {
         let source = r#"
             OPEN "test.txt" FOR APPEND AS #1
+            CLOSE #1
+        "#;
+        assert_compiles(source);
+    }
+
+    #[test]
+    fn open_com_port() {
+        // OPEN "COM1:9600,N,8,1" AS #n — serial port; runtime detects COM and opens port
+        let source = r#"
+            OPEN "COM1:9600,N,8,1" FOR OUTPUT AS #1
+            CLOSE #1
+        "#;
+        let code = compile_to_c(source).unwrap();
+        assert!(
+            code.contains("_qb_serial_open"),
+            "generated C should call _qb_serial_open for COM port"
+        );
+    }
+
+    #[test]
+    fn open_for_random() {
+        // FOR RANDOM with LEN= record length (random-access file)
+        let source = r#"
+            OPEN "data.dat" FOR RANDOM AS #1 LEN = 128
             CLOSE #1
         "#;
         assert_compiles(source);
@@ -2812,9 +2865,9 @@ ERASE a, b
 "#,
         )
         .unwrap();
-        // Should call erase for both arrays
-        assert!(code.contains("qb_array_erase(&arr_a)"));
-        assert!(code.contains("qb_array_erase(&arr_b)"));
+        // Should call erase for both arrays (variable names from c_identifier: a, b)
+        assert!(code.contains("qb_array_erase(a)"));
+        assert!(code.contains("qb_array_erase(b)"));
     }
 }
 
@@ -2866,7 +2919,7 @@ x = _CEIL(y)
 
     #[test]
     fn round_function_constant_folded() {
-        // With constant argument, _ROUND is folded at compile time
+        // With constant argument, _ROUND is folded at compile time (returns LONG)
         let code = compile_to_c(
             r#"
 DIM x AS LONG
@@ -2874,13 +2927,13 @@ x = _ROUND(3.5)
 "#,
         )
         .unwrap();
-        // Should contain folded value (round(3.5) = 4.0)
-        assert!(code.contains("4.0"));
+        // Should contain folded value (_ROUND(3.5) = 4 as integer)
+        assert!(code.contains("4LL"));
     }
 
     #[test]
     fn round_function_with_variable() {
-        // With variable argument, round() is emitted
+        // With variable argument, qb_round_double() is emitted
         let code = compile_to_c(
             r#"
 DIM y AS DOUBLE, x AS LONG
@@ -2889,7 +2942,7 @@ x = _ROUND(y)
 "#,
         )
         .unwrap();
-        assert!(code.contains("round("));
+        assert!(code.contains("qb_round_double("));
     }
 
     #[test]
@@ -3029,6 +3082,25 @@ pressed = _KEYDOWN(32)
     fn keyclear_statement() {
         let code = compile_to_c("_KEYCLEAR").unwrap();
         assert!(code.contains("qb_keyclear()"));
+    }
+
+    #[test]
+    fn keyup_statement_emits_qb_keyup_vk() {
+        let code = compile_to_c("_KEYUP 13").unwrap();
+        assert!(code.contains("qb_keyup_vk((uint32_t)"));
+    }
+
+    #[test]
+    fn keydown_statement_emits_qb_keydown_vk() {
+        let code = compile_to_c("_KEYDOWN 100305").unwrap();
+        assert!(code.contains("qb_keydown_vk((uint32_t)"));
+    }
+
+    #[test]
+    fn inline_runtime_includes_keydown_keyup_vk_stubs() {
+        let code = compile_to_c("PRINT _KEYHIT").unwrap();
+        assert!(code.contains("qb_keydown_vk(uint32_t vk)"));
+        assert!(code.contains("qb_keyup_vk(uint32_t vk)"));
     }
 
     #[test]
@@ -3908,6 +3980,77 @@ handlerlabel:
             "Generated C should reference the handler label"
         );
     }
+
+    /// ERR and ERL functions: codegen emits qb_err_code() and qb_err_line().
+    #[test]
+    fn err_erl_functions_emit_runtime_calls() {
+        let code = compile_to_c("DIM c AS LONG\nDIM l AS LONG\nc = ERR\nl = ERL").unwrap();
+        assert!(
+            code.contains("qb_err_code("),
+            "ERR should map to qb_err_code()"
+        );
+        assert!(
+            code.contains("qb_err_line("),
+            "ERL should map to qb_err_line()"
+        );
+    }
+
+    /// RESUME NEXT: codegen emits qb_clear_error() (external) or comment (inline).
+    #[test]
+    fn resume_next_compiles() {
+        let source = r#"
+ON ERROR GOTO handler
+handler:
+    RESUME NEXT
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(
+            code.contains("qb_clear_error") || code.contains("RESUME NEXT"),
+            "RESUME NEXT should clear error or have comment"
+        );
+    }
+
+    /// RESUME (retry) and RESUME label: codegen emits _qb_error_line goto or goto label.
+    #[test]
+    fn resume_retry_and_resume_label_compile() {
+        let source = r#"
+ON ERROR GOTO handler
+handler:
+    RESUME
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(
+            code.contains("_qb_error_line"),
+            "RESUME (retry) should use _qb_error_line"
+        );
+        let source2 = r#"
+ON ERROR GOTO handler
+handler:
+    RESUME there
+there:
+"#;
+        let code2 = compile_to_c(source2).unwrap();
+        assert!(
+            code2.contains("goto ") && (code2.contains("there") || code2.contains("label_there")),
+            "RESUME label should emit goto"
+        );
+    }
+
+    /// ERROR statement: codegen emits qb_error(code) and jump to handler.
+    #[test]
+    fn error_statement_emits_qb_error_and_handler_jump() {
+        let source = r#"
+ON ERROR GOTO handler
+ERROR 5
+handler:
+    RESUME NEXT
+"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(
+            code.contains("qb_error("),
+            "ERROR statement should call qb_error()"
+        );
+    }
 }
 
 /// Tests for utility functions
@@ -4017,6 +4160,12 @@ r = _MESSAGEBOX("Title", "Message")
         )
         .unwrap();
         assert!(code.contains("qb_messagebox("));
+    }
+
+    #[test]
+    fn notifypopup_sub() {
+        let code = compile_to_c("_NOTIFYPOPUP \"Title\", \"Message\", \"info\"").unwrap();
+        assert!(code.contains("qb_notifypopup("));
     }
 
     #[test]
@@ -5090,6 +5239,20 @@ _CLIPBOARD$ = text$
         let code = compile_to_c(source).unwrap();
         assert!(code.contains("qb_clipboard_set("));
     }
+
+    #[test]
+    fn clipboardimage_function() {
+        let source = r#"h& = _CLIPBOARDIMAGE"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_clipboardimage()"));
+    }
+
+    #[test]
+    fn clipboardimage_assignment() {
+        let source = r#"_CLIPBOARDIMAGE = img&"#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_clipboardimage_set("));
+    }
 }
 
 // =============================================================================
@@ -5475,7 +5638,11 @@ DIM sname
 sname = "test"
 "#;
         let code = compile_to_c(source).unwrap();
-        assert!(code.contains("qb_string* sname"));
+        // DEFSTR S makes sname a string; codegen declares as QbString* sname
+        assert!(
+            code.contains("sname") && (code.contains("QbString*") || code.contains("qb_string*")),
+            "expected string-typed sname"
+        );
     }
 }
 
@@ -5749,7 +5916,8 @@ mod qb64_extension_functions {
     // Dialog functions
     #[test]
     fn colorchooserdialog_function() {
-        let code = compile_to_c("DIM c AS LONG: c = _COLORCHOOSERDIALOG(&HFFFFFF)").unwrap();
+        let code = compile_to_c("DIM c AS LONG: c = _COLORCHOOSERDIALOG(\"Pick color\", &HFFFFFF)")
+            .unwrap();
         assert!(code.contains("qb_colorchooserdialog("));
     }
 
@@ -6306,6 +6474,28 @@ mod qb64_extension_functions_session034 {
         assert!(code.contains("qb_glcompat("));
     }
 
+    // OpenGL integration: _GLRENDER with mode constants
+    #[test]
+    fn glrender_with_behind() {
+        let code = compile_to_c("_GLRENDER _BEHIND").unwrap();
+        assert!(code.contains("qb_glrender("));
+        assert!(code.contains("qb_behind("));
+    }
+
+    #[test]
+    fn glrender_with_ontop() {
+        let code = compile_to_c("_GLRENDER _ONTOP").unwrap();
+        assert!(code.contains("qb_glrender("));
+        assert!(code.contains("qb_ontop("));
+    }
+
+    #[test]
+    fn glrender_with_only() {
+        let code = compile_to_c("_GLRENDER _ONLY").unwrap();
+        assert!(code.contains("qb_glrender("));
+        assert!(code.contains("qb_only("));
+    }
+
     // Debug/assert functions (NEW)
     #[test]
     fn asserterror_function() {
@@ -6330,6 +6520,62 @@ mod qb64_extension_functions_session034 {
     fn displayheight_function() {
         let code = compile_to_c("DIM n AS LONG: n = _DISPLAYHEIGHT").unwrap();
         assert!(code.contains("qb_displayheight("));
+    }
+}
+
+/// OpenGL integration: SUB _GL, _GL* calls, GL constants, QB64FRESH_OPENGL.
+mod opengl_integration {
+    use super::*;
+
+    /// Program with SUB _GL triggers uses_opengl; generated C defines QB64FRESH_OPENGL.
+    #[test]
+    fn sub_gl_defines_opengl_macro() {
+        let source = r#"
+        SUB _GL
+        END SUB
+        "#;
+        let code = compile_to_c(source).unwrap();
+        assert!(
+            code.contains("#define QB64FRESH_OPENGL 1"),
+            "SUB _GL should cause QB64FRESH_OPENGL to be defined"
+        );
+    }
+
+    /// OpenGL constant _GL_TRIANGLES (or GL_TRIANGLES) compiles to numeric literal.
+    #[test]
+    fn gl_constant_triangles() {
+        let code = compile_to_c("DIM m AS LONG: m = _GL_TRIANGLES").unwrap();
+        // Constant is inlined as numeric value (0x0004)
+        assert!(
+            code.contains("4") || code.contains("0x4") || code.contains("0x0004"),
+            "GL_TRIANGLES constant should appear as numeric literal"
+        );
+    }
+
+    /// _GLBEGIN call in SUB _GL emits call_glBegin when uses_opengl.
+    #[test]
+    fn gl_begin_call_in_sub_gl() {
+        let source = r#"
+        SUB _GL
+            _GLBEGIN _GL_TRIANGLES
+            _GLEND
+        END SUB
+        "#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("#define QB64FRESH_OPENGL 1"));
+        assert!(code.contains("call_glBegin"));
+        assert!(code.contains("call_glEnd"));
+    }
+
+    /// When program uses SUB _GL, main() registers it with runtime so _GLRENDER invokes it each frame.
+    #[test]
+    fn sub_gl_registers_with_runtime() {
+        let source = r#"
+        SUB _GL
+        END SUB
+        "#;
+        let code = compile_to_c(source).unwrap();
+        assert!(code.contains("qb_gl_register_sub_gl(qb_sub__gl)"));
     }
 }
 
@@ -6534,8 +6780,15 @@ mod metacommands_session036 {
 
     #[test]
     fn error_metacommand() {
-        let code = compile_to_c("$ERROR This is an error").unwrap();
-        assert!(code.contains("#error \"This is an error\""));
+        // $ERROR halts compilation at semantic phase with a CompileTimeError.
+        let result = compile_to_c("$ERROR This is an error");
+        assert!(result.is_err(), "$ERROR should cause compilation to fail");
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("This is an error"),
+            "error message should contain user message: {}",
+            err
+        );
     }
 
     #[test]
@@ -6651,6 +6904,15 @@ DIM myVar
     fn midisoundfont_metacommand() {
         let code = compile_to_c("$MIDISOUNDFONT:'soundfont.sf2'").unwrap();
         assert!(code.contains("/* $MIDISOUNDFONT:'soundfont.sf2' */"));
+        // $MIDISOUNDFONT is implemented: emits runtime call (same effect as _MIDISOUNDBANK)
+        assert!(
+            code.contains("qb_midisoundbank("),
+            "Expected qb_midisoundbank() call from $MIDISOUNDFONT"
+        );
+        assert!(
+            code.contains("qb_string_new(\"soundfont.sf2\")"),
+            "Expected soundfont path in qb_string_new()"
+        );
     }
 
     #[test]

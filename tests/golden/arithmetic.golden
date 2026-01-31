@@ -6,6 +6,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -409,6 +410,19 @@ void qb_print_tab(void) {
 
 static int qb_cursor_col = 1;
 static int qb_cursor_row = 1;
+static int qb_console_width = 80;  /* default text width for makefit */
+
+void makefit(qb_string* text) {
+    if (!text) return;
+    size_t len = qb_string_len(text);
+    if (qb_cursor_col != 1 && (qb_cursor_col + (int)len - 1) > qb_console_width) {
+        printf("\n");
+        qb_cursor_row++;
+        qb_cursor_col = 1;
+    }
+}
+
+void lprint_makefit(qb_string* text) { (void)text; }
 
 qb_string* qb_tab(int64_t n) {
     if (n < 1) n = 1;
@@ -560,12 +574,16 @@ void qb_input_float(const char* prompt, double* var, int same_line) {
 
 /* Stub function implementations */
 
+int32_t window_exists = 1;   /* 1 = window exists */
+int32_t no_control_characters2 = 0;  /* 0 = normal control chars */
+
 #include <sys/stat.h>
 #ifdef _WIN32
 #include <direct.h>
 #define mkdir(path, mode) _mkdir(path)
 #else
 #include <unistd.h>
+#include <dirent.h>
 #endif
 
 #ifndef _WIN32
@@ -628,7 +646,72 @@ QbString* qb_fullpath(QbString* path) {
 #endif
     return qb_string_new(path->data ? path->data : "");
 }
+#ifndef _WIN32
+static DIR* _qb_dir_handle = NULL;
+static int _qb_dir_has_spec = 0;
+static char _qb_dir_pattern[256] = {0};
+static int _qb_dir_match(const char* name, const char* pattern) {
+    if (!pattern || !*pattern || (pattern[0] == '*' && !pattern[1])) return 1;
+    size_t nlen = strlen(name);
+    size_t plen = strlen(pattern);
+    if (pattern[0] == '*') {
+        const char* suffix = pattern + 1;
+        size_t slen = strlen(suffix);
+        if (nlen >= slen && strcmp(name + nlen - slen, suffix) == 0) return 1;
+        return 0;
+    }
+    return strcmp(name, pattern) == 0;
+}
+QbString* qb_dir(QbString* spec) {
+    char path[1024];
+    if (spec && qb_string_len(spec) > 0) {
+        if (_qb_dir_handle) { closedir(_qb_dir_handle); _qb_dir_handle = NULL; }
+        const char* s = qb_string_data(spec);
+        const char* last_slash = strrchr(s, '/');
+        if (last_slash) {
+            size_t dlen = (size_t)(last_slash - s);
+            if (dlen >= sizeof(path)) dlen = sizeof(path) - 1;
+            memcpy(path, s, dlen); path[dlen] = '\0';
+            strncpy(_qb_dir_pattern, last_slash + 1, sizeof(_qb_dir_pattern) - 1); _qb_dir_pattern[sizeof(_qb_dir_pattern)-1] = '\0';
+        } else {
+            strcpy(path, ".");
+            strncpy(_qb_dir_pattern, s, sizeof(_qb_dir_pattern) - 1); _qb_dir_pattern[sizeof(_qb_dir_pattern)-1] = '\0';
+        }
+        _qb_dir_handle = opendir(path);
+        _qb_dir_has_spec = 1;
+    }
+    if (!_qb_dir_handle) return qb_string_new("");
+    struct dirent* ent;
+    while ((ent = readdir(_qb_dir_handle)) != NULL) {
+        if (ent->d_name[0] == '.' && (ent->d_name[1] == '\0' || (ent->d_name[1] == '.' && ent->d_name[2] == '\0'))) continue;
+        if (!_qb_dir_has_spec || _qb_dir_match(ent->d_name, _qb_dir_pattern)) {
+            _qb_dir_has_spec = 0;
+            return qb_string_new(ent->d_name);
+        }
+    }
+    closedir(_qb_dir_handle);
+    _qb_dir_handle = NULL;
+    return qb_string_new("");
+}
+#else
 QbString* qb_dir(QbString* spec) { (void)spec; return qb_string_new(""); }
+#endif
+
+QbString* qb_files_str(QbString* spec) { return qb_dir(spec); }
+
+void qb_files(QbString* spec) {
+    QbString* empty = qb_string_new("");
+    QbString* s = qb_dir(spec ? spec : empty);
+    while (s && qb_string_len(s) > 0) {
+        qb_print_string(s);
+        qb_print_newline();
+        qb_string_release(s);
+        s = qb_dir(empty);
+    }
+    if (s) qb_string_release(s);
+    qb_string_release(empty);
+}
+
 int32_t qb_chdir(const char* path) {
     if (!path) return -1;
 #ifdef _WIN32
@@ -715,6 +798,11 @@ void qb_run(QbString* path) {
 }
 void qb_echo(QbString* text) { if (text) { qb_print_string(text); qb_print_newline(); } }
 void qb_controlchr(int32_t state) { (void)state; }
+void qb_fpu_reinit(void) { }
+void qb_chain(QbString* path) { (void)path; }
+void qb_lprint(QbString* s) { (void)s; }
+void qb_lprint_tab(void) { }
+void qb_lprint_newline(void) { }
 
 void qb_asc_assign(QbString** s, int32_t pos, int32_t ch) {
     if (!s || !*s || pos < 1 || pos > (int32_t)qb_string_len(*s)) return;
@@ -820,6 +908,12 @@ QbString* qb_inclerrorfile(void) { return qb_string_new(""); }
 int32_t qb_exit_state(void) { return 0; }
 int32_t qb_statuscode(int32_t handle) { (void)handle; return 0; }
 
+void qb_logtrace(QbString* msg) { (void)msg; }
+void qb_loginfo(QbString* msg) { (void)msg; }
+void qb_logwarn(QbString* msg) { (void)msg; }
+void qb_logerror(QbString* msg) { (void)msg; }
+void qb_logminlevel(int64_t level) { (void)level; }
+
 static int64_t qb_net_openhost(const char* connection_string) { (void)connection_string; return 0; }
 int32_t qb_net_openconnection(int32_t host) { (void)host; return 0; }
 int32_t qb_net_openclient(const char* addr) { (void)addr; return 0; }
@@ -851,7 +945,10 @@ double qb_fix(double x) { return x >= 0 ? floor(x) : ceil(x); }
 QbString* qb_mkq(double val) { char buf[64]; snprintf(buf, sizeof(buf), "%.17g", val); return qb_string_new(buf); }
 double qb_cvq(QbString* s) { if (!s || !s->data || s->len < 8) return 0.0; double d; memcpy(&d, s->data, 8); return d; }
 
+#ifndef QB64FRESH_COMPRESSION_EXTERNAL
 QbString* qb_deflate(QbString* data) { (void)data; return qb_string_new(""); }
+QbString* qb_inflate(QbString* data) { (void)data; return qb_string_new(""); }
+#endif
 QbString* qb_md5(QbString* data) { (void)data; return qb_string_new("00000000000000000000000000000000"); }
 
 int32_t logical_drives(void) { return 0; }
@@ -966,7 +1063,7 @@ int64_t qb_shl(int64_t value, int64_t bits) {
 }
 
 int64_t qb_shr(int64_t value, int64_t bits) {
-    return value >> (bits & 63);
+    return (int64_t)((uint64_t)value >> (bits & 63));
 }
 
 int64_t qb_rol(int64_t value, int64_t bits) {
@@ -1040,6 +1137,29 @@ double qb_r2g(double radians) {
 double qb_negate(double n) {
     return -n;
 }
+
+extern void qb_set_error(uint32_t, int32_t);
+int64_t qb_qbr(double n) {
+    if (n != n || n > 9.223372036854775807e18 || n < -9.223372036854775808e18)
+        return (n > 0) ? 9223372036854775807LL : -9223372036854775807LL - 1;
+    return (int64_t)round(n);
+}
+
+float qb_csng_float(double n) {
+    if (n > 3.402823466e38 || n < -3.402823466e38) { qb_set_error(6, 0); return 0.0f; }
+    return (float)n;
+}
+
+float qb_csng_double(double n) {
+    if (n > 3.402823466e38 || n < -3.402823466e38) { qb_set_error(6, 0); return 0.0f; }
+    return (float)n;
+}
+
+double qb_cdbl_float(double n) { return n; }
+
+int64_t qb_round_double(double n) { return qb_qbr(n); }
+
+int64_t qb_round_float(double n) { return qb_qbr(n); }
 
 int64_t qb_strcmp(qb_string* a, qb_string* b) {
     if (!a && !b) return 0;
@@ -1318,6 +1438,25 @@ qb_string* qb_bin(int64_t n) {
     return qb_string_new(p);
 }
 
+qb_string* qb_hex_float(double n) {
+    char buf[24];
+    uint64_t u; memcpy(&u, &n, 8); snprintf(buf, sizeof(buf), "%llX", (unsigned long long)u);
+    return qb_string_new(buf);
+}
+qb_string* qb_oct_float(double n) {
+    char buf[28];
+    uint64_t u; memcpy(&u, &n, 8); snprintf(buf, sizeof(buf), "%llo", (unsigned long long)u);
+    return qb_string_new(buf);
+}
+qb_string* qb_bin_float(double n) {
+    char buf[65];
+    uint64_t v; memcpy(&v, &n, 8);
+    char* p = buf + 64; *p = '\0';
+    if (v == 0) { *--p = '0'; }
+    else { while (v) { *--p = '0' + (v & 1); v >>= 1; } }
+    return qb_string_new(p);
+}
+
 qb_string* qb_tostr(double n) {
     char buf[64];
     if (floor(n) == n && n >= -9007199254740992.0 && n <= 9007199254740992.0) {
@@ -1340,6 +1479,13 @@ qb_string* qb_iif_str(int64_t cond, qb_string* true_val, qb_string* false_val) {
 
 #ifndef _WIN32
 #include <sys/file.h>  /* flock for OPEN lock modes */
+#include <fcntl.h>  /* fcntl for LOCK/UNLOCK range locking */
+#include <unistd.h>  /* fileno */
+#include <termios.h>  /* serial port config for OPEN COM */
+#else
+#include <windows.h>  /* LockFile, UnlockFile, CreateFile, SetCommState */
+#include <io.h>  /* _get_osfhandle, _open_osfhandle, _fdopen, _close */
+#include <fcntl.h>  /* _O_RDWR, _O_BINARY */
 #endif
 
 #define QB_MAX_FILES 512
@@ -1385,10 +1531,83 @@ static char* _qb_normalize_path(const char* path) {
 #define QB_FILE_LOCK_READ_WRITE 4
 #define QB_FILE_LOCK_ONLY       5
 
+static FILE* _qb_serial_open(int port_num, int baud, char parity_char, int data_bits, int stop_bits) {
+#ifdef _WIN32
+    char port_name[32];
+    if (port_num > 9) sprintf(port_name, "\\\\.\\COM%d", port_num);
+    else sprintf(port_name, "COM%d", port_num);
+    HANDLE h = CreateFileA(port_name, GENERIC_READ|GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+    if (h == INVALID_HANDLE_VALUE) return NULL;
+    DCB dcb = {0}; dcb.DCBlength = sizeof(DCB);
+    if (!GetCommState(h, &dcb)) { CloseHandle(h); return NULL; }
+    dcb.BaudRate = (DWORD)baud;
+    dcb.ByteSize = (BYTE)data_bits;
+    dcb.StopBits = (stop_bits == 2) ? TWOSTOPBITS : ONESTOPBIT;
+    if (parity_char == 'E' || parity_char == 'e') dcb.Parity = EVENPARITY;
+    else if (parity_char == 'O' || parity_char == 'o') dcb.Parity = ODDPARITY;
+    else dcb.Parity = NOPARITY;
+    if (!SetCommState(h, &dcb)) { CloseHandle(h); return NULL; }
+    int fd = _open_osfhandle((intptr_t)h, _O_RDWR|_O_BINARY);
+    if (fd == -1) { CloseHandle(h); return NULL; }
+    FILE* f = _fdopen(fd, "rb+");
+    if (!f) { _close(fd); return NULL; }
+    return f;
+#else
+    char dev[64];
+    sprintf(dev, "/dev/ttyS%d", port_num - 1);
+    int fd = open(dev, O_RDWR | O_NOCTTY);
+    if (fd < 0) return NULL;
+    struct termios t;
+    if (tcgetattr(fd, &t) != 0) { close(fd); return NULL; }
+    speed_t speed = B9600;
+    if (baud >= 115200) speed = B115200;
+    else if (baud >= 57600) speed = B57600;
+    else if (baud >= 38400) speed = B38400;
+    else if (baud >= 19200) speed = B19200;
+    else if (baud >= 9600) speed = B9600;
+    else if (baud >= 4800) speed = B4800;
+    else if (baud >= 2400) speed = B2400;
+    else if (baud >= 1200) speed = B1200;
+    else speed = B300;
+    cfsetispeed(&t, speed); cfsetospeed(&t, speed);
+    t.c_cflag &= ~(CS5|CS6|CS7|CS8);
+    if (data_bits == 5) t.c_cflag |= CS5;
+    else if (data_bits == 6) t.c_cflag |= CS6;
+    else if (data_bits == 7) t.c_cflag |= CS7;
+    else t.c_cflag |= CS8;
+    if (parity_char == 'E' || parity_char == 'e') { t.c_cflag |= PARENB; t.c_cflag &= ~PARODD; }
+    else if (parity_char == 'O' || parity_char == 'o') { t.c_cflag |= PARENB|PARODD; }
+    else t.c_cflag &= ~PARENB;
+    if (stop_bits == 2) t.c_cflag |= CSTOPB; else t.c_cflag &= ~CSTOPB;
+    t.c_lflag &= ~(ICANON|ECHO|ECHOE|ISIG);
+    t.c_iflag &= ~(IXON|IXOFF|IXANY|INLCR|ICRNL);
+    t.c_oflag &= ~OPOST;
+    t.c_cc[VMIN] = 0; t.c_cc[VTIME] = 10;
+    if (tcsetattr(fd, TCSANOW, &t) != 0) { close(fd); return NULL; }
+    FILE* f = fdopen(fd, "r+");
+    if (!f) close(fd);
+    return f;
+#endif
+}
+
 void qb_file_open(int32_t fnum, const char* filename, const char* mode, int32_t access, int32_t lock) {
     (void)access;
     if (fnum < 1 || fnum >= QB_MAX_FILES) return;
     if (_qb_files[fnum]) fclose(_qb_files[fnum]);
+    _qb_files[fnum] = NULL;
+    if (filename && (filename[0]=='C'||filename[0]=='c') && (filename[1]=='O'||filename[1]=='o') && (filename[2]=='M'||filename[2]=='m') && filename[3]>='1'&&filename[3]<='9') {
+        int port_num = 0; const char* p = filename+3;
+        while (*p >= '0' && *p <= '9') { int d = *p - '0'; if (port_num > 25 || (port_num == 25 && d > 6)) break; port_num = port_num*10 + d; p++; }
+        if (port_num > 0 && port_num <= 256 && *p == ':') {
+            int baud = 9600, data_bits = 8, stop_bits = 1;
+            char parity_char = 'N';
+            if (p[1]) sscanf(p+1, "%d,%c,%d,%d", &baud, &parity_char, &data_bits, &stop_bits);
+            if (data_bits < 5) data_bits = 5; if (data_bits > 8) data_bits = 8;
+            if (stop_bits < 1) stop_bits = 1; if (stop_bits > 2) stop_bits = 2;
+            FILE* comf = _qb_serial_open(port_num, baud, parity_char, data_bits, stop_bits);
+            if (comf) { _qb_files[fnum] = comf; _qb_file_reclen[fnum] = 128; return; }
+        }
+    }
 #ifdef _WIN32
     _qb_files[fnum] = fopen(filename, mode);
 #else
@@ -1590,8 +1809,9 @@ int64_t qb_loc(int32_t fnum) {
 }
 
 int64_t qb_seek(int32_t fnum) {
-    if (fnum >= 1 && fnum < QB_MAX_FILES && _qb_files[fnum])
+    if (fnum >= 1 && fnum < QB_MAX_FILES && _qb_files[fnum]) {
         return (int64_t)ftell(_qb_files[fnum]) + 1;
+    }
     return 0;
 }
 
@@ -1599,6 +1819,113 @@ int32_t qb_freefile(void) {
     for (int i = 1; i < QB_MAX_FILES; i++)
         if (!_qb_files[i]) return i;
     return 0;
+}
+
+int32_t qb_file_lock(int32_t fnum, int64_t start, int64_t end) {
+    if (fnum < 1 || fnum >= QB_MAX_FILES || !_qb_files[fnum])
+        return -2; /* invalid handle */
+    if (start == -1) start = 0;
+    if (start < 0) return -4; /* illegal function call */
+    if (end < -1) return -4; /* illegal function call */
+#ifndef _WIN32
+    /* Unix: use flock for file locking */
+    int fd = fileno(_qb_files[fnum]);
+    if (fd < 0) return -2;
+    /* Lock entire file if end == -1, otherwise lock range */
+    if (end == -1) {
+        if (flock(fd, LOCK_EX) != 0) {
+            return -7; /* permission denied */
+        }
+    } else {
+        /* Range locking: use fcntl F_SETLK */
+        struct flock lock_info;
+        lock_info.l_type = F_WRLCK;
+        lock_info.l_whence = SEEK_SET;
+        lock_info.l_start = (off_t)start;
+        lock_info.l_len = (off_t)(end - start + 1);
+        lock_info.l_pid = 0;
+        if (fcntl(fd, F_SETLK, &lock_info) != 0) {
+            return -7; /* permission denied */
+        }
+    }
+    return 0;
+#else
+    /* Windows: use LockFile */
+    HANDLE hFile = (HANDLE)_get_osfhandle(fileno(_qb_files[fnum]));
+    if (hFile == INVALID_HANDLE_VALUE) return -2;
+    DWORD nBytesLow, nBytesHigh;
+    if (end == -1) {
+        /* Lock entire file: 0xFFFFFFFF,0xFFFFFFFF = to end of file */
+        nBytesLow = 0xFFFFFFFF;
+        nBytesHigh = 0xFFFFFFFF;
+    } else {
+        int64_t nBytes = end - start + 1;
+        nBytesLow = (DWORD)(nBytes & 0xFFFFFFFF);
+        nBytesHigh = (DWORD)((nBytes >> 32) & 0xFFFFFFFF);
+    }
+    DWORD dwStartLow = (DWORD)(start & 0xFFFFFFFF);
+    DWORD dwStartHigh = (DWORD)((start >> 32) & 0xFFFFFFFF);
+    if (!LockFile(hFile, dwStartLow, dwStartHigh, nBytesLow, nBytesHigh)) {
+        DWORD e = GetLastError();
+        if (e == ERROR_ACCESS_DENIED || e == ERROR_LOCK_VIOLATION)
+            return -7; /* permission denied */
+        return -9; /* path/file access error */
+    }
+    return 0;
+#endif
+}
+
+int32_t qb_file_unlock(int32_t fnum, int64_t start, int64_t end) {
+    if (fnum < 1 || fnum >= QB_MAX_FILES || !_qb_files[fnum])
+        return -2; /* invalid handle */
+    if (start == -1) start = 0;
+    if (start < 0) return -4; /* illegal function call */
+    if (end < -1) return -4; /* illegal function call */
+#ifndef _WIN32
+    /* Unix: use flock for file unlocking */
+    int fd = fileno(_qb_files[fnum]);
+    if (fd < 0) return -2;
+    if (end == -1) {
+        if (flock(fd, LOCK_UN) != 0) {
+            return -7; /* permission denied */
+        }
+    } else {
+        /* Range unlocking: use fcntl F_SETLK */
+        struct flock lock_info;
+        lock_info.l_type = F_UNLCK;
+        lock_info.l_whence = SEEK_SET;
+        lock_info.l_start = (off_t)start;
+        lock_info.l_len = (off_t)(end - start + 1);
+        lock_info.l_pid = 0;
+        if (fcntl(fd, F_SETLK, &lock_info) != 0) {
+            return -7; /* permission denied */
+        }
+    }
+    return 0;
+#else
+    /* Windows: use UnlockFile */
+    HANDLE hFile = (HANDLE)_get_osfhandle(fileno(_qb_files[fnum]));
+    if (hFile == INVALID_HANDLE_VALUE) return -2;
+    DWORD nBytesLow, nBytesHigh;
+    if (end == -1) {
+        /* Unlock entire file: must match LockFile(0,0,0xFFFFFFFF,0xFFFFFFFF) */
+        nBytesLow = 0xFFFFFFFF;
+        nBytesHigh = 0xFFFFFFFF;
+    } else {
+        int64_t nBytes = end - start + 1;
+        nBytesLow = (DWORD)(nBytes & 0xFFFFFFFF);
+        nBytesHigh = (DWORD)((nBytes >> 32) & 0xFFFFFFFF);
+    }
+    DWORD dwStartLow = (DWORD)(start & 0xFFFFFFFF);
+    DWORD dwStartHigh = (DWORD)((start >> 32) & 0xFFFFFFFF);
+    if (!UnlockFile(hFile, dwStartLow, dwStartHigh, nBytesLow, nBytesHigh)) {
+        DWORD e = GetLastError();
+        if (e == ERROR_ACCESS_DENIED || e == ERROR_LOCK_VIOLATION)
+            return -7; /* permission denied */
+        return -9; /* path/file access error */
+    }
+    return 0;
+#endif
 }
 
 /* FIELD Statement Support */
@@ -1620,7 +1947,7 @@ void qb_field_add(int32_t width, qb_string** var) {
        For now, we create a fixed-length string. */
     if (*var) qb_string_release(*var);
     *var = qb_string_new_len(width);
-    memset(qb_string_data(*var), ' ', width);
+    memset((char*)qb_string_data(*var), ' ', width);
 }
 
 void qb_lset(qb_string** var, qb_string* value) {
@@ -1628,10 +1955,10 @@ void qb_lset(qb_string** var, qb_string* value) {
     int32_t var_len = (int32_t)qb_string_len(*var);
     int32_t val_len = (int32_t)qb_string_len(value);
     /* Fill with spaces first */
-    memset(qb_string_data(*var), ' ', var_len);
+    memset((char*)qb_string_data(*var), ' ', var_len);
     /* Copy value left-justified */
     int32_t copy_len = val_len < var_len ? val_len : var_len;
-    memcpy(qb_string_data(*var), qb_string_data(value), copy_len);
+    memcpy((char*)qb_string_data(*var), qb_string_data(value), copy_len);
 }
 
 void qb_rset(qb_string** var, qb_string* value) {
@@ -1639,14 +1966,111 @@ void qb_rset(qb_string** var, qb_string* value) {
     int32_t var_len = (int32_t)qb_string_len(*var);
     int32_t val_len = (int32_t)qb_string_len(value);
     /* Fill with spaces first */
-    memset(qb_string_data(*var), ' ', var_len);
+    memset((char*)qb_string_data(*var), ' ', var_len);
     /* Copy value right-justified */
     int32_t copy_len = val_len < var_len ? val_len : var_len;
     int32_t offset = var_len - copy_len;
-    memcpy(qb_string_data(*var) + offset, qb_string_data(value), copy_len);
+    memcpy((char*)qb_string_data(*var) + offset, qb_string_data(value), copy_len);
 }
 
 /* Error Handling */
+
+/* QB_ERROR_* constants (libqb error_handle.h compatibility) */
+#define QB_ERROR_NEXT_WITHOUT_FOR 1
+#define QB_ERROR_SYNTAX_ERROR 2
+#define QB_ERROR_RETURN_WITHOUT_GOSUB 3
+#define QB_ERROR_OUT_OF_DATA 4
+#define QB_ERROR_ILLEGAL_FUNCTION_CALL 5
+#define QB_ERROR_OVERFLOW 6
+#define QB_ERROR_OUT_OF_MEMORY 7
+#define QB_ERROR_LABEL_NOT_DEFINED 8
+#define QB_ERROR_SUBSCRIPT_OUT_OF_RANGE 9
+#define QB_ERROR_DUPLICATE_DEFINITION 10
+#define QB_ERROR_DIVISION_BY_ZERO 11
+#define QB_ERROR_ILLEGAL_IN_DIRECT_MODE 12
+#define QB_ERROR_TYPE_MISMATCH 13
+#define QB_ERROR_OUT_OF_STRING_SPACE 14
+#define QB_ERROR_STRING_FORMULA_TOO_COMPLEX 16
+#define QB_ERROR_CANNOT_CONTINUE 17
+#define QB_ERROR_FUNCTION_NOT_DEFINED 18
+#define QB_ERROR_NO_RESUME 19
+#define QB_ERROR_RESUME_WITHOUT_ERROR 20
+#define QB_ERROR_DEVICE_TIMEOUT 24
+#define QB_ERROR_DEVICE_FAULT 25
+#define QB_ERROR_FOR_WITHOUT_NEXT 26
+#define QB_ERROR_OUT_OF_PAPER 27
+#define QB_ERROR_WHILE_WITHOUT_WEND 29
+#define QB_ERROR_WEND_WITHOUT_WHILE 30
+#define QB_ERROR_DUPLICATE_LABEL 33
+#define QB_ERROR_SUBPROGRAM_NOT_DEFINED 35
+#define QB_ERROR_ARGUMENT_COUNT_MISMATCH 37
+#define QB_ERROR_ARRAY_NOT_DEFINED 38
+#define QB_ERROR_VARIABLE_REQUIRED 40
+#define QB_ERROR_FIELD_OVERFLOW 50
+#define QB_ERROR_INTERNAL_ERROR 51
+#define QB_ERROR_BAD_FILE_NAME_OR_NUMBER 52
+#define QB_ERROR_FILE_NOT_FOUND 53
+#define QB_ERROR_BAD_FILE_MODE 54
+#define QB_ERROR_FILE_ALREADY_OPEN 55
+#define QB_ERROR_FIELD_STATEMENT_ACTIVE 56
+#define QB_ERROR_DEVICE_IO_ERROR 57
+#define QB_ERROR_FILE_ALREADY_EXISTS 58
+#define QB_ERROR_BAD_RECORD_LENGTH 59
+#define QB_ERROR_DISK_FULL 61
+#define QB_ERROR_INPUT_PAST_END_OF_FILE 62
+#define QB_ERROR_BAD_RECORD_NUMBER 63
+#define QB_ERROR_BAD_FILE_NAME 64
+#define QB_ERROR_TOO_MANY_FILES 67
+#define QB_ERROR_DEVICE_UNAVAILABLE 68
+#define QB_ERROR_COMMUNICATION_BUFFER_OVERFLOW 69
+#define QB_ERROR_PERMISSION_DENIED 70
+#define QB_ERROR_DISK_NOT_READY 71
+#define QB_ERROR_DISK_MEDIA_ERROR 72
+#define QB_ERROR_FEATURE_UNAVAILABLE 73
+#define QB_ERROR_RENAME_ACROSS_DISKS 74
+#define QB_ERROR_PATH_FILE_ACCESS_ERROR 75
+#define QB_ERROR_PATH_NOT_FOUND 76
+#define QB_ERROR_OUT_OF_STACK_SPACE 256
+#define QB_ERROR_OUT_OF_MEMORY_FATAL 257
+#define QB_ERROR_INVALID_HANDLE 258
+#define QB_ERROR_CANNOT_FIND_DYNAMIC_LIBRARY_FILE 259
+#define QB_ERROR_FUNCTION_NOT_FOUND_IN_DYNAMIC_LIBRARY 260
+#define QB_ERROR_FUNCTION_NOT_FOUND_IN_DYNAMIC_LIBRARY_261 261
+#define QB_ERROR_GL_COMMAND_OUTSIDE_SUB_GL_SCOPE 270
+#define QB_ERROR_END_SYSTEM_IN_SUB_GL_SCOPE 271
+#define QB_ERROR_MEMORY_REGION_OUT_OF_RANGE 300
+#define QB_ERROR_INVALID_SIZE 301
+#define QB_ERROR_SOURCE_MEMORY_REGION_OUT_OF_RANGE 302
+#define QB_ERROR_DESTINATION_MEMORY_REGION_OUT_OF_RANGE 303
+#define QB_ERROR_BOTH_MEMORY_REGIONS_OUT_OF_RANGE 304
+#define QB_ERROR_SOURCE_MEMORY_FREED 305
+#define QB_ERROR_DESTINATION_MEMORY_FREED 306
+#define QB_ERROR_MEMORY_ALREADY_FREED 307
+#define QB_ERROR_MEMORY_HAS_BEEN_FREED 308
+#define QB_ERROR_MEMORY_NOT_INITIALIZED 309
+#define QB_ERROR_SOURCE_MEMORY_NOT_INITIALIZED 310
+#define QB_ERROR_DESTINATION_MEMORY_NOT_INITIALIZED 311
+#define QB_ERROR_BOTH_MEMORY_NOT_INITIALIZED 312
+#define QB_ERROR_BOTH_MEMORY_FREED 313
+#define QB_ERROR_ASSERT_FAILED 314
+#define QB_ERROR_ASSERT_FAILED_WITH_DESCRIPTION 315
+#define QB_ERROR_OUT_OF_MEMORY_FATAL_502 502
+#define QB_ERROR_OUT_OF_MEMORY_FATAL_503 503
+#define QB_ERROR_OUT_OF_MEMORY_FATAL_504 504
+#define QB_ERROR_OUT_OF_MEMORY_FATAL_505 505
+#define QB_ERROR_OUT_OF_MEMORY_FATAL_506 506
+#define QB_ERROR_OUT_OF_MEMORY_FATAL_507 507
+#define QB_ERROR_OUT_OF_MEMORY_FATAL_508 508
+#define QB_ERROR_OUT_OF_MEMORY_FATAL_509 509
+#define QB_ERROR_OUT_OF_MEMORY_FATAL_510 510
+#define QB_ERROR_OUT_OF_MEMORY_FATAL_511 511
+#define QB_ERROR_OUT_OF_MEMORY_FATAL_512 512
+#define QB_ERROR_OUT_OF_MEMORY_FATAL_513 513
+#define QB_ERROR_OUT_OF_MEMORY_FATAL_514 514
+#define QB_ERROR_OUT_OF_MEMORY_FATAL_515 515
+#define QB_ERROR_OUT_OF_MEMORY_FATAL_516 516
+#define QB_ERROR_OUT_OF_MEMORY_FATAL_517 517
+#define QB_ERROR_OUT_OF_MEMORY_FATAL_518 518
 
 static int32_t _qb_err = 0;           /* Current error code */
 static int32_t _qb_erl = 0;           /* Error line number */
@@ -1655,6 +2079,8 @@ static int _qb_error_resume_next = 0;  /* ON ERROR RESUME NEXT flag */
 static void* _qb_error_line = NULL;    /* Line that caused error */
 static int32_t _INCLERRORLINE = 0;     /* Error line in include file */
 static qb_string* _INCLERRORFILE_str = NULL; /* Include file with error */
+
+void qb_set_error(uint32_t code, int32_t line) { _qb_err = (int32_t)code; _qb_erl = line; }
 
 void qb_error(int32_t code) {
     _qb_err = code;
@@ -1717,6 +2143,79 @@ void qb_assert(int condition, const char* message) {
         abort();
     }
 }
+
+/* Scoped Logging (libqb logging.h compatibility) */
+
+/* loglevel: 0=Trace, 1=Information, 2=Warning, 3=Error */
+#define QB_LOGLEVEL_TRACE        0
+#define QB_LOGLEVEL_INFORMATION  1
+#define QB_LOGLEVEL_WARNING      2
+#define QB_LOGLEVEL_ERROR        3
+/* logscope: 0=Runtime, 1=QB64, 2=Libqb, 3=Audio, 4=Image */
+#define QB_LOGSCOPE_RUNTIME      0
+#define QB_LOGSCOPE_QB64         1
+#define QB_LOGSCOPE_LIBQB        2
+#define QB_LOGSCOPE_AUDIO        3
+#define QB_LOGSCOPE_IMAGE        4
+
+static int _qb_log_min_level = 0;
+
+void libqb_log_init(void) {
+    _qb_log_min_level = 0;
+}
+
+static void _qb_log_write(int lvl, int scope, const char* file, const char* func, int line, const char* msg) {
+    if (lvl < _qb_log_min_level) return;
+    static const char* level_names[] = { "TRACE", "INFO", "WARN", "ERROR" };
+    static const char* scope_names[] = { "Runtime", "QB64", "Libqb", "Audio", "Image" };
+    int li = (lvl >= 0 && lvl <= 3) ? lvl : 1;
+    int si = (scope >= 0 && scope <= 4) ? scope : 2;
+    fprintf(stderr, "[%.3f] %s [%s] %s:%d in %s %s\n",
+            0.0, level_names[li], scope_names[si], file ? file : "?",
+            line, func ? func : "?", msg ? msg : "");
+}
+
+void libqb_log(int lvl, int scope, const char* file, const char* func, int line, const char* fmt, ...) {
+    char buf[1024];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt ? fmt : "", ap);
+    va_end(ap);
+    _qb_log_write(lvl, scope, file, func, line, buf);
+}
+
+void libqb_log_qb64(int lvl, int scope, const char* file, const char* func, int line, const char* fmt, ...) {
+    char buf[1024];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt ? fmt : "", ap);
+    va_end(ap);
+    _qb_log_write(lvl, scope, file, func, line, buf);
+}
+
+void libqb_log_qbs(int lvl, int scope, const char* file, const char* func, int line, qb_string* str) {
+    if (!str) return;
+    const char* msg = qb_string_data(str);
+    _qb_log_write(lvl, scope, file, func, line, msg ? msg : "");
+}
+
+#define libqb_log_with_scope_trace(scope, fmt, ...) \
+    libqb_log(QB_LOGLEVEL_TRACE, (scope), __FILE__, __func__, __LINE__, fmt, ## __VA_ARGS__)
+#define libqb_log_with_scope_info(scope, fmt, ...) \
+    libqb_log(QB_LOGLEVEL_INFORMATION, (scope), __FILE__, __func__, __LINE__, fmt, ## __VA_ARGS__)
+#define libqb_log_with_scope_warn(scope, fmt, ...) \
+    libqb_log(QB_LOGLEVEL_WARNING, (scope), __FILE__, __func__, __LINE__, fmt, ## __VA_ARGS__)
+#define libqb_log_with_scope_error(scope, fmt, ...) \
+    libqb_log(QB_LOGLEVEL_ERROR, (scope), __FILE__, __func__, __LINE__, fmt, ## __VA_ARGS__)
+
+#define libqb_log_trace(...) \
+    libqb_log_with_scope_trace(QB_LOGSCOPE_LIBQB, __VA_ARGS__)
+#define libqb_log_info(...) \
+    libqb_log_with_scope_info(QB_LOGSCOPE_LIBQB, __VA_ARGS__)
+#define libqb_log_warn(...) \
+    libqb_log_with_scope_warn(QB_LOGSCOPE_LIBQB, __VA_ARGS__)
+#define libqb_log_error(...) \
+    libqb_log_with_scope_error(QB_LOGSCOPE_LIBQB, __VA_ARGS__)
 
 /* Keyboard Input Functions */
 
@@ -1832,6 +2331,9 @@ void qb_keyclear(void) {
     tcflush(STDIN_FILENO, TCIFLUSH);
 }
 #endif
+
+void qb_keydown_vk(uint32_t vk) { (void)vk; }
+void qb_keyup_vk(uint32_t vk) { (void)vk; }
 
 #ifdef _WIN32
 int64_t qb_cinp(void) {
@@ -2098,7 +2600,9 @@ qb_string* qb_time64(void) {
 #define QB_CMEM_SIZE 1114099
 #define QB_DBLOCK_OFFSET 1280
 static uint8_t qb_cmem[QB_CMEM_SIZE];
+#define cmem qb_cmem
 static uint8_t *qb_defseg = &qb_cmem[QB_DBLOCK_OFFSET];
+static intptr_t dblock = (intptr_t)(&qb_cmem[QB_DBLOCK_OFFSET]);
 static int32_t qb_current_segment = -1;
 
 void qb_def_seg(int32_t segment) {
@@ -2344,6 +2848,32 @@ void qb_memfill_double(qb_mem m, intptr_t offset, intptr_t count, double value) 
     double* ptr = (double*)((char*)m.offset + offset);
     intptr_t n = bytes / sizeof(double);
     for (intptr_t i = 0; i < n; i++) ptr[i] = value;
+}
+
+/* Bit operations (libqb bitops.h) */
+
+uint64_t qb_getubits(uint32_t bsize, uint8_t *base, intptr_t i) {
+    uint64_t bmask = ~((uint64_t)(-(int64_t)((uint64_t)1 << bsize)));
+    i *= (intptr_t)bsize;
+    return ((*(uint64_t *)(base + (i >> 3))) >> (i & 7)) & bmask;
+}
+
+int64_t qb_getbits(uint32_t bsize, uint8_t *base, intptr_t i) {
+    int64_t bmask = ~(-((int64_t)1 << bsize));
+    int64_t bval64;
+    i *= (intptr_t)bsize;
+    bval64 = (int64_t)(((*(uint64_t *)(base + (i >> 3))) >> (i & 7)) & (uint64_t)bmask);
+    if (bval64 & ((int64_t)1 << (bsize - 1)))
+        return bval64 | ~bmask;
+    return bval64;
+}
+
+void qb_setbits(uint32_t bsize, uint8_t *base, intptr_t i, int64_t val) {
+    uint64_t bmask = ((uint64_t)1 << bsize) - 1;
+    uint64_t *bptr64;
+    i *= (intptr_t)bsize;
+    bptr64 = (uint64_t *)(base + (i >> 3));
+    *bptr64 = (*bptr64 & ~((bmask << (i & 7)))) | ((uint64_t)(val & (int64_t)bmask) << (i & 7));
 }
 
 /* Timing Functions */
@@ -2667,6 +3197,21 @@ double qb_sndrawlen(void) {
     return 0.0;
 }
 
+int32_t qb_wave(void) {
+    return 0; /* Waveform constant / device; 0 = default */
+}
+
+int32_t qb_sndnew(int32_t frames, int32_t channels, int32_t bits) {
+    _qb_audio_warn();
+    (void)frames; (void)channels; (void)bits;
+    return -1; /* Invalid handle when inline runtime */
+}
+
+void qb_midisoundbank(qb_string* filename) {
+    _qb_audio_warn();
+    (void)filename;
+}
+
 /* Graphics Stubs (Inline Runtime) */
 /* For full graphics support, use --runtime external and link with libqb64fresh_rt */
 
@@ -2776,6 +3321,8 @@ int qb_gfx_printstring(int32_t x, int32_t y, const char* text) { (void)x; (void)
 int qb_gfx_autodisplay(int enabled) { (void)enabled; return 0; }
 int32_t qb_gfx_image_width(int32_t h) { (void)h; return 0; }
 int32_t qb_gfx_image_height(int32_t h) { (void)h; return 0; }
+void qb_saveimage(QbString* path, int32_t handle) { (void)path; (void)handle; }
+void qb_depthbuffer(int32_t mode) { (void)mode; }
 
 uint32_t qb__rgb32(int32_t r, int32_t g, int32_t b) { return 0xFF000000u | ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF); }
 uint32_t qb__rgb32_4(int32_t r, int32_t g, int32_t b, int32_t a) { return ((a & 0xFF) << 24) | ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF); }
@@ -2791,6 +3338,48 @@ int32_t qb_red(uint32_t c, int32_t mode) { (void)mode; return (c >> 16) & 0xFF; 
 int32_t qb_green(uint32_t c, int32_t mode) { (void)mode; return (c >> 8) & 0xFF; }
 int32_t qb_blue(uint32_t c, int32_t mode) { (void)mode; return c & 0xFF; }
 int32_t qb_alpha(uint32_t c, int32_t mode) { (void)mode; return (c >> 24) & 0xFF; }
+
+/* HSB: hue 0-360, sat/bri 0-100; RGB 0-255 */
+uint32_t qb_hsb32(float hue, float sat, float bri) {
+    float h = (hue < 0) ? 0 : (hue > 360) ? 360 : hue;
+    float s = (sat < 0) ? 0 : (sat > 100) ? 100 : sat; s /= 100.0f;
+    float v = (bri < 0) ? 0 : (bri > 100) ? 100 : bri; v /= 100.0f;
+    float c = v * s, p = v - c, f = (h / 60.0f) - (int)(h / 60);
+    float q = v - c * f, t = v - c * (1.0f - f);
+    float r, g, b;
+    int i = (int)(h / 60.0f) % 6;
+    if (i == 0) { r = v; g = t; b = p; } else if (i == 1) { r = q; g = v; b = p; } else if (i == 2) { r = p; g = v; b = t; }
+    else if (i == 3) { r = p; g = q; b = v; } else if (i == 4) { r = t; g = p; b = v; } else { r = v; g = p; b = q; }
+    int ir = (int)(r * 255); if (ir > 255) ir = 255; if (ir < 0) ir = 0;
+    int ig = (int)(g * 255); if (ig > 255) ig = 255; if (ig < 0) ig = 0;
+    int ib = (int)(b * 255); if (ib > 255) ib = 255; if (ib < 0) ib = 0;
+    return 0xFF000000u | ((ir & 0xFF) << 16) | ((ig & 0xFF) << 8) | (ib & 0xFF);
+}
+uint32_t qb_hsba32(float hue, float sat, float bri, float alpha) {
+    uint32_t rgb = qb_hsb32(hue, sat, bri);
+    int a = (int)alpha; if (a < 0) a = 0; if (a > 255) a = 255;
+    return ((a & 0xFF) << 24) | (rgb & 0x00FFFFFFu);
+}
+float qb_hue32(uint32_t c) {
+    float r = ((c >> 16) & 0xFF) / 255.0f, g = ((c >> 8) & 0xFF) / 255.0f, b = (c & 0xFF) / 255.0f;
+    float mx = (r > g && r > b) ? r : (g > b) ? g : b;
+    float mn = (r < g && r < b) ? r : (g < b) ? g : b;
+    float d = mx - mn; if (d <= 0) return 0;
+    float h; if (mx == r) h = 60 * (g - b) / d + (g < b ? 360 : 0);
+    else if (mx == g) h = 60 * (b - r) / d + 120; else h = 60 * (r - g) / d + 240;
+    return (h < 0) ? h + 360 : (h >= 360) ? 0 : h;
+}
+float qb_saturation32(uint32_t c) {
+    float r = ((c >> 16) & 0xFF) / 255.0f, g = ((c >> 8) & 0xFF) / 255.0f, b = (c & 0xFF) / 255.0f;
+    float mx = (r > g && r > b) ? r : (g > b) ? g : b;
+    float mn = (r < g && r < b) ? r : (g < b) ? g : b;
+    if (mx <= 0) return 0; return (mx - mn) / mx * 100.0f;
+}
+float qb_brightness32(uint32_t c) {
+    int r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, b = c & 0xFF;
+    int mx = (r > g && r > b) ? r : (g > b) ? g : b;
+    return mx * 100.0f / 255.0f;
+}
 
 void qb_file_open_legacy(int32_t fnum, const char* mode_char, const char* fname) {
     const char* fmode = "r";
@@ -2827,6 +3416,18 @@ static int32_t _qb_view_print_top = 1;
 static int32_t _qb_view_print_bottom = 25;
 void qb_view_print(int32_t top, int32_t bottom) { _qb_view_print_top = top; _qb_view_print_bottom = bottom; }
 void qb_view_print_reset(void) { _qb_view_print_top = 1; _qb_view_print_bottom = 25; }
+
+void qb_printimage(int32_t i) { (void)i; }
+
+void validatepage(int32_t n) { (void)n; }
+
+void qbg_sub_view_print(int32_t topline, int32_t bottomline, int32_t passed) {
+    if (passed) {
+        qb_view_print(topline, bottomline);
+    } else {
+        qb_view_print_reset();
+    }
+}
 
 #define QB_PUT_XOR 0
 #define QB_PUT_PSET 1
@@ -2882,6 +3483,20 @@ uint32_t qb_rgba(uint32_t r, uint32_t g, uint32_t b, uint32_t a) { return ((a & 
 uint32_t qb_rgb32(uint32_t r, uint32_t g, uint32_t b) { return qb_rgb(r, g, b); }
 uint32_t qb_rgba32(uint32_t r, uint32_t g, uint32_t b, uint32_t a) { return qb_rgba(r, g, b, a); }
 
+static inline uint8_t qb_image_get_bgra_red(uint32_t c) { return (uint8_t)((c >> 16) & 0xFFu); }
+static inline uint8_t qb_image_get_bgra_green(uint32_t c) { return (uint8_t)((c >> 8) & 0xFFu); }
+static inline uint8_t qb_image_get_bgra_blue(uint32_t c) { return (uint8_t)(c & 0xFFu); }
+static inline uint8_t qb_image_get_bgra_alpha(uint32_t c) { return (uint8_t)(c >> 24); }
+static inline uint32_t qb_image_get_bgra_bgr(uint32_t c) { return c & 0xFFFFFFu; }
+static inline uint32_t qb_image_set_bgra_alpha(uint32_t c, uint8_t a) { return (c & 0xFFFFFFu) | ((uint32_t)a << 24); }
+static inline uint32_t qb_image_make_bgra(uint8_t r, uint8_t g, uint8_t b, uint8_t a) { return (uint32_t)b | ((uint32_t)g << 8) | ((uint32_t)r << 16) | ((uint32_t)a << 24); }
+static inline int qb_image_scale_5bits_to_8bits(int v) { return (v << 3) | (v >> 2); }
+static inline int qb_image_scale_6bits_to_8bits(int v) { return (v << 2) | (v >> 4); }
+static inline uint32_t qb_image_swap_red_blue(uint32_t clr) { return (clr & 0xFF00FF00u) | ((clr & 0x00FF0000u) >> 16) | ((clr & 0x000000FFu) << 16); }
+static inline uint8_t qb_image_clamp_color_component(int n) { if (n < 0) return 0; if (n > 255) return 255; return (uint8_t)n; }
+static inline float qb_image_calculate_rgb_distance(uint8_t r1, uint8_t g1, uint8_t b1, uint8_t r2, uint8_t g2, uint8_t b2) { float dr=(float)r2-(float)r1,dg=(float)g2-(float)g1,db=(float)b2-(float)b1; return sqrtf(dr*dr+dg*dg+db*db); }
+static inline uint32_t qb_image_get_color_delta(uint8_t r1, uint8_t g1, uint8_t b1, uint8_t r2, uint8_t g2, uint8_t b2) { return (uint32_t)(abs((long)r1-(long)r2)+abs((long)g1-(long)g2)+abs((long)b1-(long)b2)); }
+
 int32_t qb_mouse_x(void) { return 0; }
 int32_t qb_mouse_y(void) { return 0; }
 int32_t qb_mouse_button(int32_t b) { (void)b; return 0; }
@@ -2895,6 +3510,8 @@ void qb_mouse_move(int32_t x, int32_t y) { (void)x; (void)y; }
 
 qb_string* qb_clipboard_get(void) { return qb_string_new(""); }
 void qb_clipboard_set(const char* text) { (void)text; }
+int32_t qb_clipboardimage(void) { return 0; }
+void qb_clipboardimage_set(int32_t handle) { (void)handle; }
 
 /* File Content Helpers */
 
@@ -3270,16 +3887,31 @@ int64_t qb_messagebox(qb_string* title, qb_string* msg) {
 }
 #endif
 
-qb_string* qb_inputbox(qb_string* prompt, qb_string* title) {
+void qb_notifypopup(const char* title, const char* message, const char* icon_type) {
+    (void)icon_type;
+    fprintf(stderr, "[%s] %s\n", title ? title : "", message ? message : "");
+    fflush(stderr);
+}
+
+qb_string* qb_inputbox(const char* title, const char* message, const char* default_input) {
     (void)title;
     char buf[1024];
-    printf("%s ", prompt ? prompt->data : "");
+    fprintf(stderr, "%s ", message ? message : "");
+    fflush(stderr);
     if (fgets(buf, sizeof(buf), stdin)) {
         size_t len = strlen(buf);
         if (len > 0 && buf[len-1] == '\n') buf[len-1] = '\0';
         return qb_string_new(buf);
     }
+    if (default_input) return qb_string_new(default_input);
     return qb_string_new("");
+}
+
+uint32_t qb_colorchooserdialog(const char* title, uint32_t default_rgb) {
+    (void)title;
+    fprintf(stderr, "Note: _COLORCHOOSERDIALOG requires external runtime for GUI\n");
+    fflush(stderr);
+    return default_rgb;
 }
 
 qb_string* qb_openfiledialog(qb_string* title, qb_string* filter) {
@@ -3312,6 +3944,12 @@ void qb_maptriangle_ex(double sx1, double sy1, double sx2, double sy2, double sx
     (void)dx1; (void)dy1; (void)dx2; (void)dy2; (void)dx3; (void)dy3;
     (void)src_handle; (void)dest_handle; (void)smooth; (void)seamless;
 }
+
+/* _GLRENDER mode constants (return values for _BEHIND, _ONTOP, _ONLY, _ONLYBACKGROUND) */
+int32_t qb_behind(void) { return 0; }
+int32_t qb_ontop(void) { return 1; }
+int32_t qb_only(void) { return 2; }
+int32_t qb_onlybackground(void) { return 3; }
 
 /* OpenGL stubs */
 void qb_glrender(int32_t mode) { (void)mode; }
@@ -3712,9 +4350,25 @@ static void _qb_init_palette(void) {
     _qb_palette[15] = 0xFFFFFFFF; // White
 }
 
+uint8_t port60h_event[256];
+int32_t port60h_events = 0;
+
 int qb_inp(int64_t port) {
     int p = (int)(port & 0xFFFF);
     int value;
+
+    // Port 0x60: Keyboard controller data (libqb port60h_event)
+    if (p == 0x60) {
+        if (port60h_events > 0) {
+            value = port60h_event[0];
+            if (port60h_events > 1) {
+                memmove(port60h_event, port60h_event + 1, 255);
+            }
+            port60h_events--;
+            return value;
+        }
+        return 0;
+    }
 
     // Port 0x3C9: Read palette RGB values
     if (p == 0x3C9) {

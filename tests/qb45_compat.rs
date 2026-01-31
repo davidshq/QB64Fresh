@@ -90,14 +90,11 @@ fn try_compile(source: &str) -> CompileResult {
         Ok(a) => a,
         Err(errors) => {
             // Format first error with line info
-            if let Some(first_err) = errors.first() {
-                if let Some(span) = first_err.span() {
-                    let (line, col) = get_line_col(source, span.start);
-                    return CompileResult::ParseError(format!(
-                        "line {}:{}: {}",
-                        line, col, first_err
-                    ));
-                }
+            if let Some(first_err) = errors.first()
+                && let Some(span) = first_err.span()
+            {
+                let (line, col) = get_line_col(source, span.start);
+                return CompileResult::ParseError(format!("line {}:{}: {}", line, col, first_err));
             }
             return CompileResult::ParseError(format!("{:?}", errors));
         }
@@ -126,10 +123,10 @@ fn find_bas_files(dir: &Path) -> Vec<PathBuf> {
             let path = entry.path();
             if path.is_dir() {
                 files.extend(find_bas_files(&path));
-            } else if let Some(ext) = path.extension() {
-                if ext.eq_ignore_ascii_case("bas") {
-                    files.push(path);
-                }
+            } else if let Some(ext) = path.extension()
+                && ext.eq_ignore_ascii_case("bas")
+            {
+                files.push(path);
             }
         }
     }

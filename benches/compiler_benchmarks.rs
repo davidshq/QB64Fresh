@@ -219,7 +219,7 @@ fn bench_full_compilation(c: &mut Criterion) {
                 let program = parser.parse().unwrap();
                 let mut analyzer = SemanticAnalyzer::new();
                 let typed_program = analyzer.analyze(&program).unwrap();
-                let backend = CBackend::with_runtime_mode(RuntimeMode::Inline);
+                let backend = CBackend::with_runtime_mode(RuntimeMode::inline());
                 backend.generate(&typed_program)
             })
         });
@@ -253,7 +253,7 @@ fn bench_codegen(c: &mut Criterion) {
             &typed_program,
             |b, prog| {
                 b.iter(|| {
-                    let backend = CBackend::with_runtime_mode(RuntimeMode::Inline);
+                    let backend = CBackend::with_runtime_mode(RuntimeMode::inline());
                     backend.generate(black_box(prog))
                 })
             },
