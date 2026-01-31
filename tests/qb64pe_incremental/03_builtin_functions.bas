@@ -34,6 +34,8 @@ $INCLUDE:'../../../QB64pe/source/utilities/const_eval.bas'
 ' Extracted sections from qb64pe.bas (needed for clearid, regid)
 $INCLUDE:'sections/idstruct_type.bas'
 $INCLUDE:'sections/ids_init.bas'
+' Stubs for compiler-internal symbols (validname, tryRemoveSymbol$, AddQuotes$, subfunc)
+$INCLUDE:'sections/phase3_stubs.bas'
 $INCLUDE:'sections/clearid_sub.bas'
 $INCLUDE:'sections/regid_sub.bas'
 

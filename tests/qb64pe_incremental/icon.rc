@@ -1,0 +1,20 @@
+
+#include "manifest.h"
+
+CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "output.manifest"
+
+1 VERSIONINFO
+FILEVERSION     4,3,0,0
+PRODUCTVERSION  4,3,0,0
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904E4"
+        BEGIN
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+            VALUE "Translation", 0x409, 0x04E4
+    END
+END

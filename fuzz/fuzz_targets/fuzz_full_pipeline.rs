@@ -23,7 +23,7 @@ fuzz_target!(|data: &[u8]| {
             let mut analyzer = SemanticAnalyzer::new();
             if let Ok(typed_program) = analyzer.analyze(&ast) {
                 // Code generation
-                let backend = CBackend::with_runtime_mode(RuntimeMode::Inline);
+                let backend = CBackend::with_runtime_mode(RuntimeMode::inline());
                 let _ = backend.generate(&typed_program);
             }
         }

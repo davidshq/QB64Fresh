@@ -101,9 +101,7 @@ See `QUICK_REFERENCE.md` for a one-page cheat sheet.
 - ✅ Phase 1: Core infrastructure (0.15s) - PASSES
 - ✅ Phase 2: Hash utility (0.7s) - PASSES (requires hash.bi header)
 - ✅ Phase 2: Type utility (0.1s) - PASSES
-- ⚠️ Phase 2: Const eval utility (0.1s) - PARTIAL (3 semantic errors, but full compilation works)
-- ⚠️ Phase 3: Built-in functions - PARTIAL (4 semantic errors, dependencies resolved)
-- ⚠️ Phase 4: Core compiler - PARTIAL (3 semantic errors, dependencies resolved)
-- ✅ Phase 5: Full compiler - SUCCESS (24,757 lines, ~10 seconds)
-
-**Note:** The semantic errors in Phase 2-4 are likely false positives or edge cases, as the full QB64pe compilation succeeds. These isolated test errors don't block functionality.
+- ✅ Phase 2: Const eval utility (0.1s) - PASSES (codegen const QbString* fix; C compiles with runtime header)
+- ✅ Phase 3: Built-in functions - PASSES (stub infrastructure: validname, tryRemoveSymbol$, AddQuotes$, subfunc, subfuncn)
+- ✅ Phase 4: Core compiler - PASSES (Set_ConstFunctions in const_eval.bas, clearid in sections/clearid_sub.bas, regid stubbed in sections/regid_sub.bas; correct STRING/LONG signatures)
+- ✅ Phase 5: Full compiler - SUCCESS (all QB64Fresh phases + C compile 0 errors, ~800ms)

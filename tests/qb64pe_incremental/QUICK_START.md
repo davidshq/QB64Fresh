@@ -25,6 +25,10 @@ cargo run --bin qb64fresh -- tests/qb64pe_incremental/02_utilities_hash.bas --em
 # Type utility
 cargo run --bin qb64fresh -- tests/qb64pe_incremental/02_utilities_type.bas --emit-c
 # Time: ~0.1s
+
+# Const Eval utility
+cargo run --bin qb64fresh -- tests/qb64pe_incremental/02_utilities_const_eval.bas --emit-c
+# Time: ~0.1s
 ```
 
 ## Using the Helper Script
@@ -50,7 +54,7 @@ When you need parts of the main compiler:
 ./scripts/extract-qb64pe-section.sh idstruct_type 596 642
 ```
 
-See `EXTRACTION_GUIDE.md` for details.
+See `INCREMENTAL_TESTING.md` for extraction and workflow details.
 
 ## Current Status
 
@@ -59,10 +63,10 @@ See `EXTRACTION_GUIDE.md` for details.
 | Phase 1: Core Infrastructure | ✅ PASSES | 0.15s |
 | Phase 2: Hash Utility | ✅ PASSES | 0.7s |
 | Phase 2: Type Utility | ✅ PASSES | 0.1s |
-| Phase 2: Const Eval | ⚠️ PARTIAL | 0.1s |
-| Phase 3: Built-in Functions | ❌ BLOCKED | N/A |
-| Phase 4: Core Compiler | ⏳ TODO | ~10s |
-| Phase 5: Full Compiler | ⏳ TODO | ~5min |
+| Phase 2: Const Eval | ✅ PASSES | 0.1s |
+| Phase 3: Built-in Functions | ✅ PASSES | ~5s |
+| Phase 4: Core Compiler | ✅ PASSES | ~800ms (Set_ConstFunctions/clearid/regid defined or stubbed) |
+| Phase 5: Full Compiler | ✅ PASSES | ~800ms (all phases + C compile 0 errors) |
 
 ## Workflow
 

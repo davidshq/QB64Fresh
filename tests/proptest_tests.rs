@@ -174,7 +174,7 @@ proptest! {
     /// Very long identifiers should be handled
     #[test]
     fn handles_long_identifiers(length in 1..256usize) {
-        let ident: String = std::iter::repeat('a').take(length).collect();
+        let ident: String = "a".repeat(length);
         let program = format!("DIM {} AS INTEGER", ident);
         let tokens = qb64fresh::lexer::lex(&program);
         let _ = Parser::new(&tokens).parse();
@@ -217,7 +217,7 @@ mod deterministic_tests {
 
     #[test]
     fn very_long_line_doesnt_panic() {
-        let long_line: String = std::iter::repeat("x + ").take(10000).collect();
+        let long_line: String = "x + ".repeat(10000);
         let program = format!("PRINT {}", long_line);
         let tokens = qb64fresh::lexer::lex(&program);
         let _ = Parser::new(&tokens).parse();
@@ -225,7 +225,7 @@ mod deterministic_tests {
 
     #[test]
     fn many_newlines_doesnt_panic() {
-        let many_newlines: String = std::iter::repeat('\n').take(10000).collect();
+        let many_newlines: String = "\n".repeat(10000);
         let tokens = qb64fresh::lexer::lex(&many_newlines);
         let _ = Parser::new(&tokens).parse();
     }

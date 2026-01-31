@@ -30,14 +30,30 @@ $INCLUDE:'../../../QB64pe/source/utilities/give_error.bi'
 $INCLUDE:'../../../QB64pe/source/utilities/statevars.bi'
 $INCLUDE:'../../../QB64pe/source/utilities/type.bi'
 
+' Give_Error implementation
+$INCLUDE:'../../../QB64pe/source/utilities/give_error.bas'
+
+' Hash table (needed for symbol table / type system)
+$INCLUDE:'../../../QB64pe/source/utilities/hash.bi'
+$INCLUDE:'../../../QB64pe/source/utilities/hash.bas'
+
+' Elements utility (needed for const_eval)
+$INCLUDE:'../../../QB64pe/source/utilities/elements.bas'
+
+' Constant evaluation (needed by subs_functions)
+$INCLUDE:'../../../QB64pe/source/utilities/const_eval.bas'
+
+' Compiler infrastructure: idstruct TYPE, ids array, clearid/regid (same as Phase 3)
+$INCLUDE:'sections/idstruct_type.bas'
+$INCLUDE:'sections/ids_init.bas'
+$INCLUDE:'sections/phase3_stubs.bas'
+$INCLUDE:'sections/clearid_sub.bas'
+$INCLUDE:'sections/regid_sub.bas'
+
 ' NOTE: IDE component is INTENTIONALLY EXCLUDED here
 ' '$INCLUDE:'ide\ide_global.bas'  <-- Commented out in original too
 
-' Now include the main compiler file, but we'll need to extract just the
-' non-IDE parts. For now, this is a placeholder that includes the utilities
-' and built-in functions to test the core infrastructure.
-
-' Built-in functions
+' Built-in functions (uses regid/clearid and id struct)
 $INCLUDE:'../../../QB64pe/source/subs_functions/subs_functions.bas'
 
 ' Minimal test code

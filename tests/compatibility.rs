@@ -26,11 +26,121 @@ use qb64fresh::lexer::lex;
 use qb64fresh::parser::Parser;
 use qb64fresh::semantic::SemanticAnalyzer;
 use std::fs;
+use std::io::Read;
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 
 /// Get the path to the test fixtures directory
 fn fixtures_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
+}
+
+/// Monotonic counter for temp file names so parallel test threads don't collide.
+static COMPAT_TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// Normalize line endings to `\n` so expected (often LF) and actual (e.g. CRLF on Windows) match.
+fn normalize_line_endings(s: &str) -> String {
+    s.replace("\r\n", "\n").replace('\r', "\n")
+}
+
+/// Default timeout for running a compatibility test executable (prevents hung tests).
+const RUN_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Compile generated C code with gcc and run the binary, returning stdout.
+///
+/// Uses inline runtime (no external libs), so only `-lm` is needed.
+/// Requires `gcc` to be available on the system.
+/// Run is limited to [`RUN_TIMEOUT`]; a hanging program is killed and reported as an error.
+///
+/// # Errors
+///
+/// Returns an error if writing the temp file, running gcc, or running the
+/// executable fails, the program exits with a non-zero status, or the run times out.
+fn compile_and_run_c(c_code: &str) -> Result<String, String> {
+    let temp_dir = std::env::temp_dir();
+    let unique_id = std::process::id();
+    let counter = COMPAT_TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let c_file = temp_dir.join(format!("qb64_compat_{}_{}.c", unique_id, counter));
+    let exe_file = temp_dir.join(format!(
+        "qb64_compat_{}_{}{}",
+        unique_id,
+        counter,
+        if cfg!(windows) { ".exe" } else { "" }
+    ));
+
+    let mut file =
+        fs::File::create(&c_file).map_err(|e| format!("Failed to create C file: {}", e))?;
+    file.write_all(c_code.as_bytes())
+        .map_err(|e| format!("Failed to write C file: {}", e))?;
+    drop(file);
+
+    // Use lossy path strings so non-UTF-8 temp paths don't panic
+    let exe_str = exe_file.to_string_lossy();
+    let c_str = c_file.to_string_lossy();
+
+    let compile_result = Command::new("gcc")
+        .args(["-o", exe_str.as_ref(), c_str.as_ref(), "-lm"])
+        .output()
+        .map_err(|e| format!("Failed to run gcc: {}", e))?;
+
+    // Always remove C file (we wrote it); on compile failure exe won't exist
+    let _ = fs::remove_file(&c_file);
+
+    if !compile_result.status.success() {
+        let stderr = String::from_utf8_lossy(&compile_result.stderr);
+        return Err(format!("C compilation failed: {}", stderr));
+    }
+
+    // Run with timeout: spawn, poll try_wait(), kill if over RUN_TIMEOUT
+    let mut child = Command::new(&exe_file)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to run executable: {}", e))?;
+
+    let start = Instant::now();
+    loop {
+        match child
+            .try_wait()
+            .map_err(|e| format!("Failed to wait for process: {}", e))?
+        {
+            Some(status) => {
+                let mut stdout = String::new();
+                if let Some(mut s) = child.stdout.take() {
+                    let _ = s.read_to_string(&mut stdout);
+                }
+                if !status.success() {
+                    let mut stderr = String::new();
+                    if let Some(mut s) = child.stderr.take() {
+                        let _ = s.read_to_string(&mut stderr);
+                    }
+                    let _ = fs::remove_file(&exe_file);
+                    return Err(format!(
+                        "Program execution failed (exit code {:?}): {}",
+                        status.code(),
+                        stderr
+                    ));
+                }
+                let _ = fs::remove_file(&exe_file);
+                return Ok(stdout);
+            }
+            None => {
+                if start.elapsed() >= RUN_TIMEOUT {
+                    let _ = child.kill();
+                    let _ = fs::remove_file(&exe_file);
+                    return Err(format!(
+                        "Program run timed out after {:?} (killed)",
+                        RUN_TIMEOUT
+                    ));
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        }
+    }
 }
 
 /// Result of compiling a BASIC source file
@@ -121,16 +231,26 @@ impl TestCase {
                 // Test expects successful compilation
                 match result {
                     CompileResult::Success(code) => {
-                        // If there's an expected output file, we would need to actually
-                        // compile and run the C code to check it. For now, we just verify
-                        // that compilation succeeds.
-                        if output_path.is_some() {
-                            // TODO: Compile and run the C code, compare output
-                            // For now, just having generated C code is success
-                        }
                         // Verify we got non-empty code
                         if code.is_empty() {
                             return Err("Generated empty C code".to_string());
+                        }
+                        // If there's an expected output file, compile and run the C code
+                        // and compare stdout to the expected output.
+                        if let Some(expected_path) = output_path {
+                            let expected = fs::read_to_string(expected_path)
+                                .map_err(|e| format!("Failed to read expected output: {}", e))?;
+                            let actual = compile_and_run_c(&code)
+                                .map_err(|e| format!("Run failed: {}", e))?;
+                            // Normalize line endings so CRLF vs LF doesn't cause false failures
+                            let expected_trim = normalize_line_endings(expected.trim());
+                            let actual_trim = normalize_line_endings(actual.trim());
+                            if actual_trim != expected_trim {
+                                return Err(format!(
+                                    "Output mismatch.\nExpected:\n{}\n\nActual:\n{}",
+                                    expected_trim, actual_trim
+                                ));
+                            }
                         }
                         Ok(())
                     }

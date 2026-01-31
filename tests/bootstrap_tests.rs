@@ -8,7 +8,9 @@
 //! - Golden tests: Detect changes in generated C code
 //! - (Future) Execution tests: Verify compiled QB64pe can compile BASIC programs
 
+use std::io::Write;
 use std::path::Path;
+use std::process::Command;
 use std::time::Instant;
 
 use qb64fresh::codegen::{CBackend, CodeGenerator, RuntimeMode};
@@ -127,7 +129,7 @@ fn qb64pe_compiles_successfully() {
         .stack_size(16 * 1024 * 1024); // 16MB stack
 
     let handle = builder
-        .spawn(|| compile_qb64pe())
+        .spawn(compile_qb64pe)
         .expect("Failed to spawn thread");
 
     let result = handle.join().expect("Thread panicked");
@@ -171,7 +173,7 @@ fn qb64pe_c_output_sanity_checks() {
         .stack_size(16 * 1024 * 1024);
 
     let handle = builder
-        .spawn(|| compile_qb64pe())
+        .spawn(compile_qb64pe)
         .expect("Failed to spawn thread");
 
     let result = handle
@@ -255,11 +257,12 @@ fn qb64pe_parses_successfully() {
                     byte_count += line.len() + 1; // +1 for newline
                 }
                 println!("\nError near line {} (byte {}):", line_num + 1, span_start);
-                for i in
-                    line_num.saturating_sub(3)..=(line_num + 3).min(lines.len().saturating_sub(1))
-                {
+                let start = line_num.saturating_sub(3);
+                let end = (line_num + 3).min(lines.len().saturating_sub(1));
+                let take_count = (end + 1).saturating_sub(start);
+                for (i, line) in lines.iter().enumerate().skip(start).take(take_count) {
                     let marker = if i == line_num { ">>>" } else { "   " };
-                    println!("{} {:5}: {}", marker, i + 1, lines[i]);
+                    println!("{} {:5}: {}", marker, i + 1, line);
                 }
             }
             panic!("Parse failed with {} errors:\n{:?}", errors.len(), errors);
@@ -376,8 +379,8 @@ fn qb64pe_codegen_golden() {
         let max_lines = actual_lines.len().max(expected_lines.len());
         for i in 0..max_lines.min(50) {
             // Show first 50 lines of diff
-            let actual_line = actual_lines.get(i).map(|s| *s).unwrap_or("");
-            let expected_line = expected_lines.get(i).map(|s| *s).unwrap_or("");
+            let actual_line = actual_lines.get(i).copied().unwrap_or("");
+            let expected_line = expected_lines.get(i).copied().unwrap_or("");
             if actual_line != expected_line {
                 diff_lines.push(format!(
                     "Line {}: expected '{}', got '{}'",
@@ -406,80 +409,183 @@ fn qb64pe_codegen_golden() {
 ///
 /// This test validates the full bootstrap chain:
 /// 1. QB64pe compiles with QB64Fresh (already verified in qb64pe_compiles_successfully)
-/// 2. The generated C code is valid and can be compiled
-/// 3. The bootstrapped QB64pe executable can be built
-/// 4. The bootstrapped QB64pe can compile a simple BASIC program
+/// 2. The generated C code is written to a temp file and compiled with gcc + runtime
+/// 3. The bootstrapped QB64pe executable is run with `-x test.bas -o test` (console compile)
+/// 4. The produced executable is run and output is verified to contain "Hello"
 ///
-/// **Note:** Full execution testing requires:
-/// - Runtime library to be built (`cargo build -p qb64fresh-runtime --release`)
-/// - Generated C code to be compiled with gcc/clang
-/// - Bootstrapped QB64pe executable to be run on a test program
-/// - Output verification
+/// **Prerequisites (skip with clear message if missing):**
+/// - Runtime built with graphics: `cargo build -p qb64fresh-runtime --release --features graphics-sdl2`
+/// - gcc, pkg-config, SDL2 development libraries
+/// - QB64pe tree at `../QB64pe` (for internal/temp and asset resolution)
 ///
-/// For now, this test validates that:
-/// - QB64pe compilation produces valid C code
-/// - A simple Hello World program compiles correctly with QB64Fresh
-/// - The code generation is correct for basic programs
+/// **Note:** QB64pe's `-o` specifies the output *executable* name, not a .c file.
+/// So we use `-x test.bas -o test` and run `./test` to verify output.
 #[test]
-#[ignore = "Full execution test requires runtime library build and executable compilation"]
+#[ignore = "Full execution test requires runtime library build, gcc, and SDL2"]
 fn qb64pe_can_compile_hello_world() {
     use qb64fresh::codegen::{CBackend, CodeGenerator, RuntimeMode};
     use qb64fresh::lexer::lex;
     use qb64fresh::parser::Parser;
     use qb64fresh::semantic::SemanticAnalyzer;
 
-    // Step 1: Verify QB64pe compiles (prerequisite)
-    let qb64pe_result = compile_qb64pe();
-    assert!(
-        qb64pe_result.is_ok(),
-        "QB64pe must compile successfully before testing program compilation"
-    );
+    let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let runtime_include = manifest_dir.join("runtime").join("include");
+    let target_release = manifest_dir.join("target").join("release");
 
-    // Step 2: Create a simple Hello World program
-    let hello_world_source = r#"PRINT "Hello, World!""#;
+    // Step 1: Compile QB64pe (large stack for deep AST)
+    let qb64pe_result = std::thread::Builder::new()
+        .name("qb64pe_hello_exec".into())
+        .stack_size(16 * 1024 * 1024)
+        .spawn(compile_qb64pe)
+        .expect("spawn compile thread")
+        .join()
+        .expect("compile thread panicked");
+    let result = match &qb64pe_result {
+        Ok(r) => r,
+        Err(e) => panic!("QB64pe must compile successfully: {}", e),
+    };
 
-    // Step 3: Compile Hello World with QB64Fresh to verify code generation
-    let tokens = lex(hello_world_source);
+    // Step 2: In-memory check — Hello World with QB64Fresh
+    let hello_source = r#"PRINT "Hello""#;
+    let tokens = lex(hello_source);
     let mut parser = Parser::new(&tokens);
-    let program = parser.parse().expect("Hello World should parse");
-
+    let program = parser.parse().expect("Hello should parse");
     let mut analyzer = SemanticAnalyzer::new();
-    let typed_program = analyzer
-        .analyze(&program)
-        .expect("Hello World should analyze");
-
+    let typed_program = analyzer.analyze(&program).expect("Hello should analyze");
     let backend = CBackend::with_runtime_mode(RuntimeMode::external());
     let output = backend
         .generate(&typed_program)
-        .expect("Hello World should generate C code");
-
-    // Step 4: Verify generated C code is valid
+        .expect("Hello should generate C");
     assert!(
         output.code.contains("qb_print_string"),
-        "Generated code should call qb_print_string"
+        "generated code should call qb_print_string"
     );
     assert!(
-        output.code.contains("Hello, World!"),
-        "Generated code should contain the string literal"
+        output.code.contains("Hello"),
+        "generated code should contain Hello"
     );
     assert!(
         output.code.contains("int main("),
-        "Generated code should have main function"
+        "generated code should have main"
     );
 
-    // Step 5: Document what's needed for full execution test
-    // NOTE: QB64pe requires external runtime with graphics support (it has a GUI)
-    // TODO: Once runtime library is built and QB64pe executable exists:
-    // 1. Build runtime with graphics: `cargo build -p qb64fresh-runtime --release --features graphics-sdl2`
-    // 2. Compile QB64pe C with SDL2: `gcc -I runtime/include qb64pe.c -L target/release -lqb64fresh_rt $(pkg-config --libs sdl2) -lm -lpthread -ldl -o qb64pe_bootstrapped`
-    // 3. Create test program: `echo 'PRINT "Hello"' > test.bas`
-    // 4. Run: `./qb64pe_bootstrapped -x test.bas -o test.c`
-    // 5. Verify: `test.c` exists and contains valid C code
-    // 6. Compile and run: `gcc test.c -o test && ./test` should print "Hello"
+    // Step 3: Temp dir for qb64pe.c, bootstrapped exe, test.bas, and test executable
+    let temp_dir = std::env::temp_dir().join(format!("qb64pe_bootstrap_{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&temp_dir);
+    let qb64pe_c = temp_dir.join("qb64pe.c");
+    let bootstrapped = temp_dir.join("qb64pe_bootstrapped");
+    let test_bas = temp_dir.join("test.bas");
+    let test_exe = temp_dir.join(if cfg!(windows) { "test.exe" } else { "test" });
 
-    println!("✓ Hello World program compiles correctly");
-    println!("✓ Generated C code is valid");
-    println!("⚠ Full execution test requires runtime library build");
+    std::fs::File::create(&qb64pe_c)
+        .and_then(|mut f| f.write_all(result.c_code.as_bytes()))
+        .unwrap_or_else(|e| panic!("write qb64pe.c: {}", e));
+
+    // Step 4: Build runtime with graphics-sdl2
+    let cargo = Command::new("cargo")
+        .args([
+            "build",
+            "-p",
+            "qb64fresh-runtime",
+            "--release",
+            "--features",
+            "graphics-sdl2",
+        ])
+        .current_dir(&manifest_dir)
+        .output()
+        .expect("run cargo");
+    if !cargo.status.success() {
+        let stderr = String::from_utf8_lossy(&cargo.stderr);
+        panic!(
+            "Build runtime with graphics-sdl2 failed. Run: cargo build -p qb64fresh-runtime --release --features graphics-sdl2\nstderr: {}",
+            stderr
+        );
+    }
+
+    // Step 5: pkg-config for SDL2
+    let sdl_libs = Command::new("pkg-config").args(["--libs", "sdl2"]).output();
+    let sdl_libs = match sdl_libs {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).trim().to_string(),
+        _ => {
+            println!("⚠ pkg-config sdl2 not available; skipping full execution");
+            println!("✓ Hello World codegen validated");
+            return;
+        }
+    };
+
+    // Step 6: Compile QB64pe C → qb64pe_bootstrapped
+    let mut gcc_args: Vec<String> = vec![
+        "-I".into(),
+        runtime_include.to_string_lossy().into_owned(),
+        qb64pe_c.to_string_lossy().into_owned(),
+        "-L".into(),
+        target_release.to_string_lossy().into_owned(),
+        "-lqb64fresh_rt".into(),
+        "-lm".into(),
+        "-lpthread".into(),
+        "-ldl".into(),
+    ];
+    gcc_args.extend(sdl_libs.split_whitespace().map(String::from));
+    let gcc_out = Command::new("gcc")
+        .arg("-o")
+        .arg(&bootstrapped)
+        .args(&gcc_args)
+        .output()
+        .expect("run gcc");
+    if !gcc_out.status.success() {
+        let stderr = String::from_utf8_lossy(&gcc_out.stderr);
+        panic!("gcc compile of qb64pe.c failed: {}", stderr);
+    }
+
+    // Step 7: test.bas with PRINT "Hello"
+    std::fs::write(&test_bas, "PRINT \"Hello\"\n").expect("write test.bas");
+
+    // Step 8: Run bootstrapped QB64pe from QB64pe root (-x console compile, -o output executable name)
+    let qb64pe_root = manifest_dir.join("..").join("QB64pe");
+    if !qb64pe_root.exists() {
+        println!("⚠ QB64pe root not found at {:?}; skipping run", qb64pe_root);
+        println!("✓ Bootstrapped executable built at {:?}", bootstrapped);
+        return;
+    }
+    let run_qb64pe = Command::new(&bootstrapped)
+        .args([
+            "-x",
+            test_bas.to_str().unwrap(),
+            "-o",
+            test_exe.to_str().unwrap(),
+        ])
+        .current_dir(&qb64pe_root)
+        .output()
+        .expect("run qb64pe_bootstrapped");
+    if !run_qb64pe.status.success() {
+        let stdout = String::from_utf8_lossy(&run_qb64pe.stdout);
+        let stderr = String::from_utf8_lossy(&run_qb64pe.stderr);
+        panic!(
+            "qb64pe_bootstrapped -x test.bas -o test failed\nstdout: {}\nstderr: {}",
+            stdout, stderr
+        );
+    }
+
+    // Step 9: Verify output executable exists and run it
+    if !test_exe.exists() {
+        panic!(
+            "Bootstrapped QB64pe did not produce output executable at {:?}",
+            test_exe
+        );
+    }
+    let hello_out = Command::new(&test_exe)
+        .current_dir(&temp_dir)
+        .output()
+        .expect("run test executable");
+    let stdout = String::from_utf8_lossy(&hello_out.stdout);
+    assert!(
+        stdout.contains("Hello"),
+        "Expected output to contain 'Hello', got: {}",
+        stdout
+    );
+
+    println!("✓ Bootstrapped QB64pe built and ran successfully");
+    println!("✓ test.bas → executable → output contains 'Hello'");
 }
 
 /// Test that bootstrapped QB64pe can compile QB4.5 compatibility test programs.
@@ -1046,48 +1152,22 @@ mod regression_tests {
 
             // Handle multi-line declarations
             if in_multiline {
-                current_decl.push_str(" ");
+                current_decl.push(' ');
                 current_decl.push_str(line);
                 if line.contains('(') && line.contains(')') {
                     // Complete declaration
                     in_multiline = false;
-                    if let Some(pos) = current_decl.find("qb_") {
-                        if let Some(paren_pos) = current_decl[pos..].find('(') {
-                            let func_part = &current_decl[pos..pos + paren_pos].trim();
-                            // Extract function name
-                            let func_name = if let Some(space_pos) = func_part.rfind(' ') {
-                                &func_part[space_pos + 1..]
-                            } else if func_part.starts_with("qb_") {
-                                func_part
-                            } else {
-                                current_decl.clear();
-                                continue;
-                            };
-
-                            if func_name.starts_with("qb_") {
-                                let name = func_name.strip_prefix("qb_").unwrap_or(func_name);
-                                if name.chars().all(|c| c.is_alphanumeric() || c == '_') {
-                                    declared_functions.insert(name.to_string());
-                                }
-                            }
-                        }
-                    }
-                    current_decl.clear();
-                }
-                continue;
-            }
-
-            // Look for function declarations: qb_xxx(
-            if line.contains("qb_") && line.contains('(') {
-                if let Some(pos) = line.find("qb_") {
-                    if let Some(paren_pos) = line[pos..].find('(') {
-                        let func_part = &line[pos..pos + paren_pos].trim();
+                    if let Some(pos) = current_decl.find("qb_")
+                        && let Some(paren_pos) = current_decl[pos..].find('(')
+                    {
+                        let func_part = &current_decl[pos..pos + paren_pos].trim();
                         // Extract function name
                         let func_name = if let Some(space_pos) = func_part.rfind(' ') {
                             &func_part[space_pos + 1..]
                         } else if func_part.starts_with("qb_") {
                             func_part
                         } else {
+                            current_decl.clear();
                             continue;
                         };
 
@@ -1097,12 +1177,38 @@ mod regression_tests {
                                 declared_functions.insert(name.to_string());
                             }
                         }
-                    } else if line.contains("qb_") && !line.contains(')') {
-                        // Multi-line declaration starting
-                        in_multiline = true;
-                        current_decl = line.to_string();
+                    }
+                    current_decl.clear();
+                }
+                continue;
+            }
+
+            // Look for function declarations: qb_xxx(
+            if line.contains("qb_")
+                && line.contains('(')
+                && let Some(pos) = line.find("qb_")
+                && let Some(paren_pos) = line[pos..].find('(')
+            {
+                let func_part = &line[pos..pos + paren_pos].trim();
+                // Extract function name
+                let func_name = if let Some(space_pos) = func_part.rfind(' ') {
+                    &func_part[space_pos + 1..]
+                } else if func_part.starts_with("qb_") {
+                    func_part
+                } else {
+                    continue;
+                };
+
+                if func_name.starts_with("qb_") {
+                    let name = func_name.strip_prefix("qb_").unwrap_or(func_name);
+                    if name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                        declared_functions.insert(name.to_string());
                     }
                 }
+            } else if line.contains("qb_") && !line.contains(')') {
+                // Multi-line declaration starting
+                in_multiline = true;
+                current_decl = line.to_string();
             }
         }
 

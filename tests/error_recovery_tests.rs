@@ -30,7 +30,8 @@ mod parser_error_recovery {
         }
     }
 
-    /// Helper to assert that parsing produces exactly N errors.
+    /// Helper to assert that parsing produces exactly N errors (reserved for future tests).
+    #[allow(dead_code)]
     fn assert_error_count(source: &str, expected_count: usize) {
         let errors = parse_errors(source);
         assert_eq!(
@@ -377,8 +378,6 @@ mod parser_error_recovery {
             );
         } else {
             // If no errors, duplicate labels might be allowed or handled differently
-            // Just verify the test structure
-            assert!(true, "Test structure verified");
         }
     }
 }
@@ -409,7 +408,8 @@ mod semantic_error_recovery {
         }
     }
 
-    /// Helper to assert that semantic analysis produces exactly N errors.
+    /// Helper to assert that semantic analysis produces exactly N errors (reserved for future tests).
+    #[allow(dead_code)]
     fn assert_error_count(source: &str, expected_count: usize) {
         let errors = semantic_errors(source);
         assert_eq!(
@@ -605,11 +605,7 @@ mod semantic_error_recovery {
                 );
             }
         } else {
-            // If no errors (due to implicit declarations), just verify test structure
-            assert!(
-                true,
-                "Test structure verified - no errors due to implicit declarations"
-            );
+            // If no errors (due to implicit declarations), test structure is valid
         }
     }
 
@@ -828,8 +824,6 @@ mod semantic_error_recovery {
             });
         } else {
             // If no errors, duplicate procedures might be allowed or caught at a different stage
-            // Just verify the test structure
-            assert!(true, "Test structure verified");
         }
     }
 
@@ -865,7 +859,7 @@ mod combined_error_recovery {
     fn all_errors(source: &str) -> (Vec<ParseError>, Vec<SemanticError>) {
         let tokens = lex(source);
         let mut parser = Parser::new(&tokens);
-        let parse_errors = match parser.parse() {
+        match parser.parse() {
             Ok(program) => {
                 // If parsing succeeded, try semantic analysis
                 let mut analyzer = SemanticAnalyzer::new();
@@ -876,8 +870,7 @@ mod combined_error_recovery {
                 (Vec::new(), semantic_errors)
             }
             Err(errors) => (errors, Vec::new()),
-        };
-        parse_errors
+        }
     }
 
     #[test]
