@@ -17,10 +17,16 @@
 use std::sync::Mutex;
 
 #[cfg(feature = "graphics-sdl2")]
+use std::sync::atomic::{AtomicI32, Ordering};
+#[cfg(feature = "graphics-sdl2")]
 use std::sync::OnceLock;
 
 #[cfg(feature = "graphics-sdl2")]
 static JOYSTICK_STATE: OnceLock<Mutex<JoystickState>> = OnceLock::new();
+
+/// Number of SDL2 joysticks currently open (0–4). Set by graphics backend after enumeration.
+#[cfg(feature = "graphics-sdl2")]
+static JOYSTICK_COUNT: AtomicI32 = AtomicI32::new(0);
 
 #[cfg(feature = "graphics-sdl2")]
 fn get_joystick_state() -> &'static Mutex<JoystickState> {
@@ -203,9 +209,20 @@ pub extern "C" fn qb_strig2(button: i32, controller: i32) -> i32 {
     }
 }
 
+/// Set the number of open SDL2 joysticks (0–4).
+///
+/// Called by the graphics backend after initializing SDL2 and opening joysticks.
+/// Device count is then 2 + this value (keyboard + mouse + joysticks).
+#[cfg(feature = "graphics-sdl2")]
+pub fn set_joystick_count(n: i32) {
+    JOYSTICK_COUNT.store(n.clamp(0, 4), Ordering::SeqCst);
+}
+
 /// Get number of input devices (QB64 _DEVICES function).
 ///
-/// Returns the number of available input devices including keyboard and mouse.
+/// Returns the number of available input devices: keyboard (1), mouse (2),
+/// and up to four joysticks (3–6) when SDL2 graphics is enabled and joysticks
+/// have been enumerated.
 ///
 /// # Safety
 /// Safe to call from C.
@@ -213,10 +230,7 @@ pub extern "C" fn qb_strig2(button: i32, controller: i32) -> i32 {
 pub extern "C" fn qb_devices() -> i32 {
     #[cfg(feature = "graphics-sdl2")]
     {
-        // Keyboard (1) + Mouse (1) + joysticks
-        // For now, return 2 (keyboard + mouse)
-        // TODO: Actually enumerate SDL2 joysticks
-        2
+        2 + JOYSTICK_COUNT.load(Ordering::SeqCst)
     }
 
     #[cfg(not(feature = "graphics-sdl2"))]
@@ -317,10 +331,11 @@ pub extern "C" fn qb_button(device: i32, button: i32) -> i32 {
 #[cfg(feature = "graphics-sdl2")]
 pub fn update_joystick_axis(joy_idx: u32, axis_idx: u8, value: i16) {
     if let Ok(mut state) = get_joystick_state().lock() {
-        if (joy_idx as usize) < state.axes.len() && (axis_idx as usize) < state.axes[0].len() {
+        let ju = joy_idx as usize;
+        if ju < state.axes.len() && (axis_idx as usize) < state.axes[ju].len() {
             // Convert SDL2 -32768..32767 to BASIC 0-254 range
             let normalized = ((value as i32 + 32768) * 254 / 65535) as i32;
-            state.axes[joy_idx as usize][axis_idx as usize] = normalized.clamp(0, 254);
+            state.axes[ju][axis_idx as usize] = normalized.clamp(0, 254);
         }
     }
 }
@@ -328,18 +343,16 @@ pub fn update_joystick_axis(joy_idx: u32, axis_idx: u8, value: i16) {
 #[cfg(feature = "graphics-sdl2")]
 pub fn update_joystick_button(joy_idx: u32, button_idx: u8, pressed: bool) {
     if let Ok(mut state) = get_joystick_state().lock() {
-        let was_pressed = if (joy_idx as usize) < state.buttons.len()
-            && (button_idx as usize) < state.buttons[0].len()
-        {
-            state.buttons[joy_idx as usize][button_idx as usize]
-        } else {
-            false
-        };
+        let ju = joy_idx as usize;
+        let was_pressed =
+            if ju < state.buttons.len() && (button_idx as usize) < state.buttons[ju].len() {
+                state.buttons[ju][button_idx as usize]
+            } else {
+                false
+            };
 
-        if (joy_idx as usize) < state.buttons.len()
-            && (button_idx as usize) < state.buttons[0].len()
-        {
-            state.buttons[joy_idx as usize][button_idx as usize] = pressed;
+        if ju < state.buttons.len() && (button_idx as usize) < state.buttons[ju].len() {
+            state.buttons[ju][button_idx as usize] = pressed;
         }
 
         // Trigger event if button was just pressed (transition from false to true)
@@ -354,7 +367,7 @@ pub fn update_joystick_button(joy_idx: u32, button_idx: u8, pressed: bool) {
 // STRIG Event Handler Infrastructure
 // ============================================================================
 
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32};
 use std::sync::Mutex as StdMutex;
 
 /// Handler state for a single STRIG button.

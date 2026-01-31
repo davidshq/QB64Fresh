@@ -45,6 +45,9 @@ pub const FONT_LOAD_MONOSPACE: u32 = 16; // Force monospace width
 pub const FONT_LOAD_UNICODE: u32 = 32; // UTF-8 input mode
 pub const FONT_LOAD_AUTOMONO: u32 = 64; // Auto-detect monospace
 
+/// Font render option flags (libqb font.h)
+pub const FONT_RENDER_MONOCHROME: u32 = 1; // 1-bit style: black 0, white 255
+
 /// Cached glyph bitmap with metrics.
 ///
 /// Contains the rasterized glyph data and positioning information
@@ -403,6 +406,80 @@ impl FontManager {
         }
 
         positions
+    }
+
+    /// Render UTF-32 codepoints to an 8-bit alpha buffer (libqb font.h API).
+    ///
+    /// Returns (alpha buffer, width, height) or `None` if font handle is invalid
+    /// or no codepoints. Buffer is row-major, 8-bit alpha (0 = transparent, 255 = opaque).
+    /// Caller does not own the `Vec`; the FFI layer copies it to malloc'd memory.
+    pub fn render_text_to_buffer(
+        &mut self,
+        handle: i64,
+        codepoints: &[char],
+        options: u32,
+    ) -> Option<(Vec<u8>, i32, i32)> {
+        if codepoints.is_empty() {
+            return None;
+        }
+
+        let font = self.fonts.get_mut(&handle)?;
+        let _is_monochrome = options & FONT_RENDER_MONOCHROME != 0;
+        // Rendering uses font's no_blend (set at load). Monochrome option is for API compatibility.
+
+        let height = font.pixel_height as i32;
+        let baseline = font.baseline;
+
+        // First pass: compute total width
+        let mut total_width: i32 = 0;
+        for &ch in codepoints {
+            total_width += font.get_glyph(ch).map(|g| g.advance_x).unwrap_or(0);
+        }
+
+        if total_width <= 0 {
+            return Some((
+                vec![0u8; (height as usize).saturating_mul(1)],
+                total_width.max(1),
+                height,
+            ));
+        }
+
+        let width = total_width as usize;
+        let h = height as usize;
+        let mut buffer = vec![0u8; width * h];
+
+        let mut pen_x: i32 = 0;
+        for &ch in codepoints {
+            if let Some(glyph) = font.get_glyph(ch) {
+                let base_x = pen_x + glyph.bearing_x;
+                let base_y = baseline - glyph.bearing_y;
+                let gw = glyph.width as usize;
+                let gh = glyph.height as usize;
+                for row in 0..gh {
+                    let dest_y = base_y + row as i32;
+                    if dest_y < 0 || dest_y >= height {
+                        continue;
+                    }
+                    let dest_row = dest_y as usize * width;
+                    for col in 0..gw {
+                        let dest_x = base_x + col as i32;
+                        if dest_x < 0 || (dest_x as usize) >= width {
+                            continue;
+                        }
+                        let src_idx = row * gw + col;
+                        let alpha = glyph.data.get(src_idx).copied().unwrap_or(0);
+                        if alpha != 0 {
+                            let dest_idx = dest_row + dest_x as usize;
+                            let existing = buffer[dest_idx];
+                            buffer[dest_idx] = existing.saturating_add(alpha).min(255);
+                        }
+                    }
+                }
+                pen_x += glyph.advance_x;
+            }
+        }
+
+        Some((buffer, total_width, height))
     }
 }
 

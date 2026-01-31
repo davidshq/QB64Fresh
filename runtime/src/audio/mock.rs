@@ -51,6 +51,8 @@ pub struct MockAudioBackend {
     sounds: HashMap<i32, MockSound>,
     /// Next available handle.
     next_handle: i32,
+    /// MIDI sound bank (soundfont) path for _MIDISOUNDBANK (stored for tests).
+    midi_sound_bank_path: Option<String>,
 }
 
 impl MockAudioBackend {
@@ -60,6 +62,7 @@ impl MockAudioBackend {
             initialized: false,
             sounds: HashMap::new(),
             next_handle: 1,
+            midi_sound_bank_path: None,
         }
     }
 }
@@ -257,6 +260,10 @@ impl AudioBackend for MockAudioBackend {
 
     fn snd_paused(&self, handle: i32) -> bool {
         self.sounds.get(&handle).map(|s| s.paused).unwrap_or(false)
+    }
+
+    fn set_midi_sound_bank_path(&mut self, path: Option<&str>) {
+        self.midi_sound_bank_path = path.map(String::from);
     }
 }
 

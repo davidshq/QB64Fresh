@@ -4,9 +4,11 @@
 
 use super::print::qb_input_string;
 use crate::string::{
-    qb_string_data, qb_string_from_bytes, qb_string_len, qb_string_retain, QbString,
+    qb_string_data, qb_string_empty, qb_string_from_bytes, qb_string_len, qb_string_release,
+    QbString,
 };
 use std::collections::HashMap;
+use std::ffi::CStr;
 use std::io::{self, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::os::raw::c_char;
@@ -712,14 +714,30 @@ pub unsafe extern "C" fn qb_chdir(path: *const c_char) -> i32 {
     }
 }
 
+/// Shell active flag (libqb shell.h compatibility).
+///
+/// Set to 1 while a shell command is running, 0 otherwise. QB64pe checks this
+/// (e.g. in cleanup paths) to avoid doing certain operations during SHELL.
+#[no_mangle]
+pub static mut shell_call_in_progress: i32 = 0;
+
 /// SHELL - Execute an external command.
 ///
-/// If `command` is NULL, opens an interactive shell.
+/// If `command` is NULL, opens an interactive shell. Sets `shell_call_in_progress`
+/// to 1 for the duration of the call so C code can detect an active shell.
 ///
 /// # Safety
 /// - `command` must be a valid null-terminated C string or NULL
 #[no_mangle]
 pub unsafe extern "C" fn qb_shell(command: *const c_char) -> i32 {
+    shell_call_in_progress = 1;
+    let result = qb_shell_impl(command);
+    shell_call_in_progress = 0;
+    result
+}
+
+/// Inner implementation of SHELL (no flag twiddling).
+fn qb_shell_impl(command: *const c_char) -> i32 {
     if command.is_null() {
         // Open interactive shell
         #[cfg(target_os = "windows")]
@@ -737,7 +755,7 @@ pub unsafe extern "C" fn qb_shell(command: *const c_char) -> i32 {
             }
         }
     } else {
-        let cmd_str = match std::ffi::CStr::from_ptr(command).to_str() {
+        let cmd_str = match unsafe { std::ffi::CStr::from_ptr(command).to_str() } {
             Ok(s) => s,
             Err(_) => return 1,
         };
@@ -767,6 +785,8 @@ pub unsafe extern "C" fn qb_shell(command: *const c_char) -> i32 {
 
 /// _SHELLHIDE - Execute a command without showing console window.
 ///
+/// Sets `shell_call_in_progress` to 1 for the duration (libqb shell.h compatibility).
+///
 /// # Safety
 /// - `command` must be a valid null-terminated C string
 #[no_mangle]
@@ -774,8 +794,15 @@ pub unsafe extern "C" fn qb_shell_hide(command: *const c_char) -> i32 {
     if command.is_null() {
         return 1;
     }
+    shell_call_in_progress = 1;
+    let result = qb_shell_hide_impl(command);
+    shell_call_in_progress = 0;
+    result
+}
 
-    let cmd_str = match std::ffi::CStr::from_ptr(command).to_str() {
+/// Inner implementation of _SHELLHIDE (no flag twiddling).
+fn qb_shell_hide_impl(command: *const c_char) -> i32 {
+    let cmd_str = match unsafe { std::ffi::CStr::from_ptr(command).to_str() } {
         Ok(s) => s,
         Err(_) => return 1,
     };
@@ -809,6 +836,63 @@ pub unsafe extern "C" fn qb_shell_hide(command: *const c_char) -> i32 {
         }
     }
 }
+
+/// _SHELLHIDE (function form) - Execute command from QbString without showing console.
+///
+/// Used by generated code when _SHELLHIDE(command$) is called.
+/// # Safety
+/// - `cmd` must be a valid QbString pointer or null
+#[no_mangle]
+pub unsafe extern "C" fn qb_shellhide(cmd: *const QbString) -> i32 {
+    let c_str = if cmd.is_null() {
+        std::ptr::null()
+    } else {
+        qb_string_data(cmd)
+    };
+    qb_shell_hide(c_str)
+}
+
+// ============================================================================
+// Logging (Used by QB64pe) — no-op stubs
+// ============================================================================
+
+/// _LOGTRACE - no-op stub (Used by QB64pe).
+#[no_mangle]
+pub unsafe extern "C" fn qb_logtrace(_msg: *const QbString) {}
+
+/// _LOGINFO - no-op stub (Used by QB64pe).
+#[no_mangle]
+pub unsafe extern "C" fn qb_loginfo(_msg: *const QbString) {}
+
+/// _LOGWARN - no-op stub (Used by QB64pe).
+#[no_mangle]
+pub unsafe extern "C" fn qb_logwarn(_msg: *const QbString) {}
+
+/// _LOGERROR - no-op stub (Used by QB64pe).
+#[no_mangle]
+pub unsafe extern "C" fn qb_logerror(_msg: *const QbString) {}
+
+/// _LOGMINLEVEL - no-op stub (Used by QB64pe).
+#[no_mangle]
+pub unsafe extern "C" fn qb_logminlevel(_level: i64) {}
+
+// ============================================================================
+// _KEYDOWN / _KEYUP (simulate key) — stubs for linking (keyhandler)
+// ============================================================================
+
+/// _KEYDOWN (statement) — Simulate key down. No-op stub; real impl would inject
+/// key event (e.g. SendInput on Windows, XTest on Linux). Used by IDE/keyhandler.
+#[no_mangle]
+pub extern "C" fn qb_keydown_vk(_vk: u32) {}
+
+/// _KEYUP (statement) — Simulate key up. No-op stub; real impl would inject
+/// key event. Used by IDE/keyhandler for keyheld-style handling.
+#[no_mangle]
+pub extern "C" fn qb_keyup_vk(_vk: u32) {}
+
+// ============================================================================
+// ENVIRON statement
+// ============================================================================
 
 /// ENVIRON statement - Set an environment variable.
 ///
@@ -844,6 +928,72 @@ pub unsafe extern "C" fn qb_sub_environ(env: *mut QbString) {
         std::env::set_var(name, value);
     }
     // If no '=' found, ignore (invalid format)
+}
+
+/// _ENVIRONCOUNT - Number of environment variables.
+///
+/// Returns the count of environment variables in the process environment.
+/// Used by the BASIC function `_ENVIRONCOUNT`.
+///
+/// # Safety
+/// This function is safe to call from C.
+#[no_mangle]
+pub extern "C" fn qb_environcount() -> i64 {
+    std::env::vars().count() as i64
+}
+
+/// ENVIRON$ - Get environment variable by name.
+///
+/// Returns the value of the environment variable named by the given string,
+/// or an empty string if the variable is not set or name is invalid.
+/// Caller must call qb_string_release() on the returned pointer.
+///
+/// # Safety
+/// - `name` must be a valid QbString pointer or null
+#[no_mangle]
+pub unsafe extern "C" fn qb_environ(name: *const QbString) -> *mut QbString {
+    if name.is_null() {
+        return qb_string_empty();
+    }
+    let data = qb_string_data(name);
+    if data.is_null() {
+        return qb_string_empty();
+    }
+    let name_str = match CStr::from_ptr(data).to_str() {
+        Ok(s) => s,
+        Err(_) => return qb_string_empty(),
+    };
+    match std::env::var_os(name_str) {
+        Some(val) => {
+            let lossy = val.to_string_lossy();
+            let bytes = lossy.as_bytes();
+            qb_string_from_bytes(bytes.as_ptr(), bytes.len())
+        }
+        None => qb_string_empty(),
+    }
+}
+
+/// ENVIRON$(n) - Get nth environment variable (1-based).
+///
+/// Returns the nth entry in the environment as "NAME=VALUE", or empty string
+/// if index is out of range. Caller must call qb_string_release() on the result.
+///
+/// # Safety
+/// This function is safe to call from C.
+#[no_mangle]
+pub extern "C" fn qb_environ_by_index(index: i64) -> *mut QbString {
+    if index < 1 {
+        return qb_string_empty();
+    }
+    let n = (index as usize).saturating_sub(1);
+    let vars: Vec<_> = std::env::vars().collect();
+    match vars.get(n) {
+        Some((name, value)) => {
+            let entry = format!("{}={}", name, value);
+            unsafe { qb_string_from_bytes(entry.as_ptr(), entry.len()) }
+        }
+        None => qb_string_empty(),
+    }
 }
 
 /// _FILEEXISTS - Check if a file exists.
@@ -984,6 +1134,45 @@ pub unsafe extern "C" fn qb_dir(spec: *const QbString) -> *mut QbString {
     }
 
     qb_string_from_bytes(std::ptr::null(), 0)
+}
+
+/// _FILES$ - Directory listing (one entry per call).
+///
+/// Same semantics as `qb_dir`: first call with filespec, subsequent calls with
+/// empty string to get next entry. Caller must call qb_string_release on result.
+///
+/// # Safety
+/// - `spec` must be a valid QbString pointer or null
+#[no_mangle]
+pub unsafe extern "C" fn qb_files_str(spec: *const QbString) -> *mut QbString {
+    qb_dir(spec)
+}
+
+/// FILES statement - Print directory listing to console.
+///
+/// Lists all entries matching the given spec (e.g. "*.*" or ".") to stdout,
+/// one per line. Uses qb_dir in a loop; matches inline runtime behavior.
+///
+/// # Safety
+/// - `spec` must be a valid QbString pointer or null (null/empty = list current dir)
+#[no_mangle]
+pub unsafe extern "C" fn qb_files(spec: *const QbString) {
+    use super::print::{qb_print_newline, qb_print_string};
+
+    let empty = qb_string_empty();
+    let spec_or_empty = if spec.is_null() { empty } else { spec };
+    let mut s = qb_dir(spec_or_empty);
+
+    while !s.is_null() && qb_string_len(s) > 0 {
+        qb_print_string(s);
+        qb_print_newline();
+        qb_string_release(s);
+        s = qb_dir(empty);
+    }
+
+    if !s.is_null() {
+        qb_string_release(s);
+    }
 }
 
 // ============================================================================

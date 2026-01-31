@@ -398,6 +398,17 @@ impl EventRegistry {
 /// Global event registry instance.
 static EVENT_REGISTRY: Mutex<Option<EventRegistry>> = Mutex::new(None);
 
+/// Set by `qb64_custom_event(QB64_EVENT_CLOSE, ...)`. Main loop should check and exit.
+/// libqb-compatible: QB64pe sets exit_value |= 1 on close event.
+#[no_mangle]
+pub static mut qb64_exit_requested: i32 = 0;
+
+/// Event type constants (libqb event.h compatibility).
+pub const QB64_EVENT_CLOSE: i32 = 1;
+pub const QB64_EVENT_KEY: i32 = 2;
+pub const QB64_EVENT_RELATIVE_MOUSE_MOVEMENT: i32 = 3;
+pub const QB64_EVENT_FILE_DROP: i32 = 4;
+
 /// Gets or creates the global event registry.
 fn get_registry() -> EventRegistry {
     let mut registry = EVENT_REGISTRY.lock().unwrap();
@@ -483,6 +494,123 @@ pub extern "C" fn qb_uevent_trigger() {
 pub extern "C" fn qb_events_clear_all() {
     let registry = get_registry();
     registry.clear_all();
+}
+
+// -----------------------------------------------------------------------------
+// Legacy event stubs (ON COM, ON PEN, ON SIGNAL) — external runtime parity
+// -----------------------------------------------------------------------------
+// These are DOS-era event mechanisms that don't map to modern systems.
+// Stubs warn once and are no-ops so generated code linking against
+// libqb64fresh_rt (--runtime external) resolves the symbols.
+
+static ON_COM_WARN: std::sync::Once = std::sync::Once::new();
+static ON_PEN_WARN: std::sync::Once = std::sync::Once::new();
+static ON_SIGNAL_WARN: std::sync::Once = std::sync::Once::new();
+
+/// ON COM — serial port event trapping (not implemented; stub for link parity).
+///
+/// # Safety
+/// Safe to call from C; target is a label address and is not dereferenced.
+#[no_mangle]
+pub unsafe extern "C" fn qb_on_com(_port_num: i32, _target: *mut ()) {
+    ON_COM_WARN.call_once(|| {
+        eprintln!("QB64Fresh: ON COM is not implemented (serial port event trapping)");
+    });
+}
+
+/// COM(n) ON/OFF/STOP — control serial port event trapping (stub).
+#[no_mangle]
+pub extern "C" fn qb_com_control(_port_num: i32, _mode: i32) {
+    ON_COM_WARN.call_once(|| {
+        eprintln!("QB64Fresh: ON COM is not implemented (serial port event trapping)");
+    });
+}
+
+/// ON PEN — light pen event trapping (not implemented; stub for link parity).
+///
+/// # Safety
+/// Safe to call from C; target is a label address and is not dereferenced.
+#[no_mangle]
+pub unsafe extern "C" fn qb_on_pen(_target: *mut ()) {
+    ON_PEN_WARN.call_once(|| {
+        eprintln!("QB64Fresh: ON PEN is not implemented (light pen event trapping)");
+    });
+}
+
+/// PEN ON/OFF/STOP — control light pen event trapping (stub).
+#[no_mangle]
+pub extern "C" fn qb_pen_control(_mode: i32) {
+    ON_PEN_WARN.call_once(|| {
+        eprintln!("QB64Fresh: ON PEN is not implemented (light pen event trapping)");
+    });
+}
+
+/// ON SIGNAL — BASIC signal trapping (not implemented; stub for link parity).
+///
+/// # Safety
+/// Safe to call from C; target is a label address and is not dereferenced.
+#[no_mangle]
+pub unsafe extern "C" fn qb_on_signal(_signal_num: i32, _target: *mut ()) {
+    ON_SIGNAL_WARN.call_once(|| {
+        eprintln!("QB64Fresh: ON SIGNAL is not implemented (BASIC signal trapping)");
+    });
+}
+
+/// SIGNAL(n) ON/OFF/STOP — control signal trapping (stub).
+#[no_mangle]
+pub extern "C" fn qb_signal_control(_signal_num: i32, _mode: i32) {
+    ON_SIGNAL_WARN.call_once(|| {
+        eprintln!("QB64Fresh: ON SIGNAL is not implemented (BASIC signal trapping)");
+    });
+}
+
+/// Custom event callback (libqb qb64_custom_event).
+///
+/// Called by graphics/window code to report close, key, relative mouse, file drop.
+/// Returns 0 if event was handled, -1 if unknown or unhandled.
+///
+/// # Arguments
+///
+/// * `event` - One of QB64_EVENT_CLOSE, QB64_EVENT_KEY, QB64_EVENT_RELATIVE_MOUSE_MOVEMENT, QB64_EVENT_FILE_DROP
+/// * `v1`..`v8` - Event-specific integer parameters
+/// * `p1`, `p2` - Event-specific pointers (e.g. HDROP for file drop on Windows)
+///
+/// # Safety
+///
+/// Safe to call from C; p1/p2 may be null or platform-specific handles.
+#[no_mangle]
+pub unsafe extern "C" fn qb64_custom_event(
+    event: i32,
+    v1: i32,
+    v2: i32,
+    _v3: i32,
+    _v4: i32,
+    _v5: i32,
+    _v6: i32,
+    _v7: i32,
+    _v8: i32,
+    _p1: *mut std::ffi::c_void,
+    _p2: *mut std::ffi::c_void,
+) -> i32 {
+    if event == QB64_EVENT_CLOSE {
+        qb64_exit_requested |= 1;
+        return 0;
+    }
+    if event == QB64_EVENT_KEY {
+        // QB64pe handles PAUSE/BREAK via keydown_vk/keyup_vk; we stub for now
+        let _ = (v1, v2);
+        return -1;
+    }
+    if event == QB64_EVENT_RELATIVE_MOUSE_MOVEMENT {
+        // QB64pe calls qb64_custom_event_relative_mouse_movement(v1, v2); stub for now
+        let _ = (v1, v2);
+        return 0;
+    }
+    if event == QB64_EVENT_FILE_DROP {
+        // QB64pe on Windows: sets totalDroppedFiles from HDROP; stub on other platforms
+        return 0;
+    }
+    -1
 }
 
 /// Queues a key event from the graphics backend.

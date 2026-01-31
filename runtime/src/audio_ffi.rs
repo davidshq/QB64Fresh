@@ -489,6 +489,61 @@ pub extern "C" fn qb_sndplaycopy(handle: i32) -> c_int {
     }
 }
 
+// ============================================================================
+// _WAVE, _SNDNEW, _MIDISOUNDBANK (audio.h compatibility)
+// ============================================================================
+
+/// _WAVE — waveform type constant / wave output device.
+///
+/// In QB64 this can be used as a constant or to get/set the wave output device.
+/// Returns 0 (default) when used as a value. Full get/set requires SUB form.
+#[no_mangle]
+pub extern "C" fn qb_wave() -> i32 {
+    0
+}
+
+/// _SNDNEW — create a new sound buffer.
+///
+/// Allocates an empty buffer for raw sample data. Returns a handle or -1 on failure.
+/// Not yet implemented in the audio backend; returns -1.
+#[no_mangle]
+pub extern "C" fn qb_sndnew(frames: i32, channels: i32, bits: i32) -> i32 {
+    let _ = (frames, channels, bits);
+    -1
+}
+
+/// _MIDISOUNDBANK — set MIDI sound bank (soundfont) file path.
+///
+/// Stores the path to a .sf2 / .sf3 / .sfo soundfont file for use when
+/// playing MIDI (e.g. _SNDPLAYFILE with a .mid file or PLAY with MB).
+/// Pass null or empty to clear the path.
+///
+/// # Safety
+/// `filename` must be a valid QbString pointer or null.
+#[no_mangle]
+pub unsafe extern "C" fn qb_midisoundbank(filename: *const crate::string::QbString) {
+    let path = if filename.is_null() {
+        None
+    } else {
+        let data = crate::string::qb_string_data(filename);
+        if data.is_null() {
+            None
+        } else {
+            match std::ffi::CStr::from_ptr(data).to_str() {
+                Ok(s) if !s.is_empty() => Some(s.to_string()),
+                _ => None,
+            }
+        }
+    };
+
+    if crate::audio::AUDIO_BACKEND.is_none() {
+        let _ = crate::audio::init_audio();
+    }
+    if let Some(ref mut backend) = crate::audio::AUDIO_BACKEND {
+        backend.set_midi_sound_bank_path(path.as_deref());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

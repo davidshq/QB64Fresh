@@ -20,10 +20,15 @@
 //! single-threaded, so this is acceptable for now.
 
 use std::alloc::{alloc, dealloc, Layout};
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use std::ptr;
 use std::slice;
+
+use base64::Engine;
+use miniz_oxide::deflate::compress_to_vec;
+use miniz_oxide::inflate::decompress_to_vec_with_limit;
+use std::fmt::Write;
 
 /// Debug logging for string operations (leak detection).
 ///
@@ -121,6 +126,80 @@ pub unsafe extern "C" fn qb_string_new(s: *const c_char) -> *mut QbString {
 #[no_mangle]
 pub unsafe extern "C" fn qb_str_from_c(s: *const c_char) -> *mut QbString {
     qb_string_new(s)
+}
+
+/// Create a string in "conventional memory" style (QB64pe qbs_new_cmem equivalent).
+///
+/// QB64pe uses this for string array elements and DBLOCK-backed strings. We have no
+/// conventional memory block, so this allocates a normal string of the given size
+/// (zero-filled). Use for compatibility when compiling QB64pe-generated or similar code.
+///
+/// # Arguments
+/// * `size` - Length in bytes (0 = empty string).
+///
+/// # Returns
+/// New string; release with `qb_string_release`. Returns empty singleton if size is 0.
+///
+/// # Safety
+/// The returned string must be released with `qb_string_release`.
+#[no_mangle]
+pub unsafe extern "C" fn qb_string_new_cmem(size: i32) -> *mut QbString {
+    if size <= 0 {
+        return qb_string_empty();
+    }
+    let len = size as usize;
+    let zeros = vec![0u8; len];
+    qb_string_from_bytes(zeros.as_ptr(), len)
+}
+
+/// Create a QbString from a fixed buffer (QB64pe qbs_new_fixed equivalent).
+///
+/// The buffer is copied into a new reference-counted string so the result can be
+/// released with `qb_string_release`. For a read-only view without copy, QB64pe uses
+/// a different internal representation; we provide copy semantics for safety.
+///
+/// # Arguments
+/// * `ptr` - Buffer (may be null if size is 0).
+/// * `size` - Length in bytes.
+///
+/// # Returns
+/// New string; release with `qb_string_release`. Returns empty if size is 0.
+///
+/// # Safety
+/// - `ptr` must be valid for reads of `size` bytes, or null if size is 0
+/// - The returned string must be released with `qb_string_release`
+#[no_mangle]
+pub unsafe extern "C" fn qb_string_new_fixed(ptr: *const u8, size: u32) -> *mut QbString {
+    if size == 0 {
+        return qb_string_empty();
+    }
+    let len = size as usize;
+    if ptr.is_null() {
+        let zeros = vec![0u8; len];
+        return qb_string_from_bytes(zeros.as_ptr(), len);
+    }
+    qb_string_from_bytes(ptr, len)
+}
+
+/// Set a string reference to SPACE(n) (QB64pe set_qbs_size / vWatch equivalent).
+///
+/// Replaces `*target` with a new string of `newlength` spaces. The previous string
+/// is released. Used by debugger/watch logic (vWatch) to resize displayed strings.
+///
+/// # Arguments
+/// * `target` - Pointer to a QbString* (must not be null).
+/// * `newlength` - Desired length in characters (spaces). If &lt;= 0, sets to empty.
+///
+/// # Safety
+/// - `target` must be a valid pointer to a QbString*
+#[no_mangle]
+pub unsafe extern "C" fn qb_string_set_size(target: *mut *mut QbString, newlength: i32) {
+    if target.is_null() {
+        return;
+    }
+    let s = qb_space(newlength);
+    qb_string_release(*target);
+    *target = s;
 }
 
 /// Wrapper to make raw pointer Send+Sync for the singleton.
@@ -706,6 +785,39 @@ pub extern "C" fn qb_bin(n: i64) -> *mut QbString {
     unsafe { qb_string_from_bytes(s.as_ptr(), s.len()) }
 }
 
+/// HEX$(float) - Convert float's bit pattern to hexadecimal string (QB64 libqb hexoctbin).
+///
+/// # Safety
+/// - The returned string must be released with `qb_string_release`
+#[no_mangle]
+pub extern "C" fn qb_hex_float(n: f64) -> *mut QbString {
+    let bits: u64 = n.to_bits();
+    let s = format!("{:X}", bits);
+    unsafe { qb_string_from_bytes(s.as_ptr(), s.len()) }
+}
+
+/// OCT$(float) - Convert float's bit pattern to octal string (QB64 libqb hexoctbin).
+///
+/// # Safety
+/// - The returned string must be released with `qb_string_release`
+#[no_mangle]
+pub extern "C" fn qb_oct_float(n: f64) -> *mut QbString {
+    let bits: u64 = n.to_bits();
+    let s = format!("{:o}", bits);
+    unsafe { qb_string_from_bytes(s.as_ptr(), s.len()) }
+}
+
+/// _BIN$(float) - Convert float's bit pattern to binary string (QB64 libqb hexoctbin).
+///
+/// # Safety
+/// - The returned string must be released with `qb_string_release`
+#[no_mangle]
+pub extern "C" fn qb_bin_float(n: f64) -> *mut QbString {
+    let bits: u64 = n.to_bits();
+    let s = format!("{:b}", bits);
+    unsafe { qb_string_from_bytes(s.as_ptr(), s.len()) }
+}
+
 /// TRIM$ / _TRIM$ - Trim whitespace from both ends of a string.
 ///
 /// # Safety
@@ -892,6 +1004,150 @@ pub unsafe extern "C" fn qb_val(s: *const QbString) -> f64 {
 
     // Try to parse as float
     trimmed.parse::<f64>().unwrap_or(0.0)
+}
+
+/// Encode string data to base64 (_BASE64ENCODE$).
+///
+/// Returns a new QbString containing the base64-encoded result, or empty string on null input.
+/// Caller must call [`qb_string_release`] on the result.
+///
+/// # Safety
+/// - `data` must be a valid QbString pointer or null
+#[no_mangle]
+pub unsafe extern "C" fn qb_base64encode(data: *const QbString) -> *mut QbString {
+    if data.is_null() {
+        return qb_string_empty();
+    }
+    let len = qb_string_len(data);
+    let bytes = slice::from_raw_parts(qb_string_data(data) as *const u8, len);
+    let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
+    let cstr = match CString::new(encoded) {
+        Ok(c) => c,
+        Err(_) => return qb_string_empty(),
+    };
+    qb_string_new(cstr.as_ptr())
+}
+
+/// Decode base64 string to binary (_BASE64DECODE$).
+///
+/// Returns a new QbString containing the decoded bytes, or empty string on null input or decode error.
+/// Caller must call [`qb_string_release`] on the result.
+///
+/// # Safety
+/// - `data` must be a valid QbString pointer or null
+#[no_mangle]
+pub unsafe extern "C" fn qb_base64decode(data: *const QbString) -> *mut QbString {
+    if data.is_null() {
+        return qb_string_empty();
+    }
+    let len = qb_string_len(data);
+    let bytes = slice::from_raw_parts(qb_string_data(data) as *const u8, len);
+    let decoded = match base64::engine::general_purpose::STANDARD.decode(bytes) {
+        Ok(d) => d,
+        Err(_) => return qb_string_empty(),
+    };
+    if decoded.is_empty() {
+        return qb_string_empty();
+    }
+    qb_string_from_bytes(decoded.as_ptr(), decoded.len())
+}
+
+/// Adler-32 checksum (_ADLER32).
+///
+/// Returns the 32-bit checksum of the string data.
+///
+/// # Safety
+/// - `data` must be a valid QbString pointer or null (returns 0)
+#[no_mangle]
+pub unsafe extern "C" fn qb_adler32(data: *const QbString) -> u32 {
+    if data.is_null() {
+        return 0;
+    }
+    let len = qb_string_len(data);
+    let bytes = slice::from_raw_parts(qb_string_data(data) as *const u8, len);
+    let mut hasher = adler::Adler32::new();
+    hasher.write_slice(bytes);
+    hasher.checksum()
+}
+
+/// CRC-32 checksum (_CRC32).
+///
+/// Returns the 32-bit CRC of the string data.
+///
+/// # Safety
+/// - `data` must be a valid QbString pointer or null (returns 0)
+#[no_mangle]
+pub unsafe extern "C" fn qb_crc32(data: *const QbString) -> u32 {
+    if data.is_null() {
+        return 0;
+    }
+    let len = qb_string_len(data);
+    let bytes = slice::from_raw_parts(qb_string_data(data) as *const u8, len);
+    crc32fast::hash(bytes)
+}
+
+/// MD5 hash as 32-character hex string (_MD5$).
+///
+/// Returns a new QbString with the lowercase hex digest. Caller must call
+/// [`qb_string_release`] on the result.
+///
+/// # Safety
+/// - `data` must be a valid QbString pointer or null (returns empty string)
+#[no_mangle]
+pub unsafe extern "C" fn qb_md5(data: *const QbString) -> *mut QbString {
+    if data.is_null() {
+        return qb_string_empty();
+    }
+    let len = qb_string_len(data);
+    let bytes = slice::from_raw_parts(qb_string_data(data) as *const u8, len);
+    let digest = md5::compute(bytes);
+    let mut hex = String::with_capacity(32);
+    for b in digest.0.iter() {
+        let _ = write!(hex, "{:02x}", b);
+    }
+    let cstr = match CString::new(hex) {
+        Ok(c) => c,
+        Err(_) => return qb_string_empty(),
+    };
+    qb_string_new(cstr.as_ptr())
+}
+
+/// _DEFLATE$ - compress string using DEFLATE (raw deflate, no zlib wrapper).
+/// Uses default compression level 6. Caller must call qb_string_release on result.
+///
+/// # Safety
+/// - `data` must be a valid QbString pointer or null.
+#[no_mangle]
+pub unsafe extern "C" fn qb_deflate(data: *const QbString) -> *mut QbString {
+    if data.is_null() {
+        return qb_string_empty();
+    }
+    let len = qb_string_len(data);
+    let bytes = slice::from_raw_parts(qb_string_data(data) as *const u8, len);
+    let compressed = compress_to_vec(bytes, 6);
+    if compressed.is_empty() && !bytes.is_empty() {
+        return qb_string_empty();
+    }
+    qb_string_from_bytes(compressed.as_ptr(), compressed.len())
+}
+
+/// _INFLATE$ - decompress string (raw deflate).
+/// Output is limited to 64 MiB to avoid excessive memory use. Caller must call qb_string_release on result.
+///
+/// # Safety
+/// - `data` must be a valid QbString pointer or null.
+#[no_mangle]
+pub unsafe extern "C" fn qb_inflate(data: *const QbString) -> *mut QbString {
+    if data.is_null() {
+        return qb_string_empty();
+    }
+    let len = qb_string_len(data);
+    let bytes = slice::from_raw_parts(qb_string_data(data) as *const u8, len);
+    const MAX_OUT: usize = 64 * 1024 * 1024; // 64 MiB
+    match decompress_to_vec_with_limit(bytes, MAX_OUT) {
+        Ok(decompressed) => qb_string_from_bytes(decompressed.as_ptr(), decompressed.len()),
+        Err(_) => qb_string_empty(),
+    }
 }
 
 #[cfg(test)]

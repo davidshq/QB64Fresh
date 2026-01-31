@@ -26,6 +26,9 @@
 mod error;
 pub mod mock;
 
+#[cfg(feature = "audio-midi")]
+pub mod midi;
+
 #[cfg(feature = "audio-rodio")]
 pub mod rodio_backend;
 
@@ -202,6 +205,21 @@ pub trait AudioBackend {
     /// Get the number of seconds of audio currently queued.
     fn snd_rawlen(&self) -> f64 {
         0.0 // Default: no queue
+    }
+
+    // ============================================================================
+    // MIDI sound bank (_MIDISOUNDBANK)
+    // ============================================================================
+
+    /// Set the MIDI sound bank (soundfont) file path.
+    ///
+    /// Used when playing MIDI files (e.g. `_SNDPLAYFILE` with a .mid file or
+    /// PLAY with MB). Pass `None` to clear the path and use the default bank.
+    ///
+    /// # Arguments
+    /// - `path`: Path to a .sf2 / .sf3 / .sfo soundfont file, or `None` to clear
+    fn set_midi_sound_bank_path(&mut self, _path: Option<&str>) {
+        // Default: no-op (backends that support MIDI override this)
     }
 }
 

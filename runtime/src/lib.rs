@@ -27,36 +27,67 @@
 pub mod array_registry;
 pub mod audio;
 pub mod audio_ffi;
+pub mod bitops;
+pub mod buffer;
+pub mod cmem;
+pub mod completion;
+pub mod condvar;
+pub mod condvar_ffi;
+pub mod console_display_ffi;
 pub mod cp437;
 pub mod dialogs;
 pub mod events;
+pub mod filepath;
 pub mod font_ffi;
 #[cfg(feature = "freetype")]
 pub mod font_manager;
+pub mod game_controller_ffi;
+#[cfg(feature = "opengl")]
+pub mod gl_ffi;
 pub mod graphics;
 pub mod graphics_ffi;
+pub mod http;
+pub mod http_ffi;
 pub mod io;
 pub mod joystick;
+pub mod logging;
+pub mod logging_ffi;
 pub mod math;
+pub mod mem_lock;
 pub mod memory;
+pub mod mutex;
+pub mod mutex_ffi;
+pub mod qbs_compat;
 pub mod string;
+pub mod thread;
 
 // Re-export everything at the crate root for C access
 pub use array_registry::*;
 pub use audio::*;
 pub use audio_ffi::*;
+pub use buffer::*;
+pub use completion::*;
+pub use condvar_ffi::*;
+pub use console_display_ffi::*;
 pub use dialogs::*;
 pub use events::*;
+pub use filepath::*;
 pub use font_ffi::*;
 #[cfg(feature = "freetype")]
 pub use font_manager::*;
 pub use graphics::*;
 pub use graphics_ffi::*;
+pub use http::*;
+pub use http_ffi::*;
 pub use io::*;
 pub use joystick::*;
 pub use math::*;
+pub use mem_lock::*;
 pub use memory::*;
+pub use mutex_ffi::*;
+pub use qbs_compat::*;
 pub use string::*;
+pub use thread::*;
 
 /// Initialize the runtime. Call this at program start.
 ///
@@ -64,6 +95,10 @@ pub use string::*;
 /// This function is safe to call from C.
 #[no_mangle]
 pub extern "C" fn qb_runtime_init() {
+    cmem::init_dblock();
+    logging::init();
+    http::http_init();
+    game_controller_ffi::game_controller_init();
     // Future: Initialize graphics, audio, etc.
 }
 
@@ -73,6 +108,7 @@ pub extern "C" fn qb_runtime_init() {
 /// This function is safe to call from C.
 #[no_mangle]
 pub extern "C" fn qb_runtime_shutdown() {
+    http::http_stop();
     // Future: Cleanup graphics, audio, etc.
 }
 
@@ -84,6 +120,17 @@ pub extern "C" fn qb_runtime_shutdown() {
 pub extern "C" fn qb_end(exit_code: i32) {
     std::process::exit(exit_code);
 }
+
+/// Global flag set by the runtime when the user closes the window (clicks X).
+///
+/// QB64pe-generated code checks `if (stop_program) end();` in the main loop.
+/// We set this to 1 when `qb_gfx_poll_events()` sees an SDL Quit event so the
+/// program exits cleanly instead of ignoring the close button.
+///
+/// # C compatibility
+/// Exported as `uint8_t stop_program` for C code (e.g. qb64pe_fresh).
+#[no_mangle]
+pub static mut stop_program: u8 = 0;
 
 /// Stop the program (for debugging).
 ///
@@ -171,7 +218,7 @@ pub extern "C" fn _qb_init_palette() {
 }
 
 // ============================================================================
-// Error Handling Functions (Option B: error-pending and RESUME support)
+// Error Handling Functions
 // ============================================================================
 //
 // QB64pe-style flow:
@@ -181,8 +228,6 @@ pub extern "C" fn _qb_init_palette() {
 //   it calls qb_commit_error() then goto handler. qb_commit_error() copies
 //   pending to ERR_CODE/ERR_LINE so ERR/ERL work in the handler, then clears pending.
 // - RESUME clears state via qb_clear_error() so execution can continue.
-//
-// See docs/OPTION_B_IMPLEMENTATION_PLAN.md Phase 1 and 4.
 
 use std::sync::atomic::{AtomicI32, AtomicU32, Ordering};
 
@@ -350,13 +395,93 @@ pub extern "C" fn qb_inclerrorfile() -> *mut string::QbString {
     string::qb_string_empty()
 }
 
+/// Process error state when no ON ERROR handler is active (libqb fix_error equivalent).
+///
+/// If an error is pending, commits it to ERR/ERL, prints the error message to stderr,
+/// and exits with status 1. Call this when `qb_error_pending()` is non-zero and the
+/// program has no error handler (e.g. no ON ERROR GOTO was set).
+///
+/// # Safety
+/// This function is safe to call from C.
+#[no_mangle]
+pub extern "C" fn qb_fix_error() {
+    if qb_error_pending() == 0 {
+        return;
+    }
+    qb_commit_error();
+    let code = qb_err_code();
+    let line = qb_err_line();
+    let msg = qb_errormessage();
+    let msg_ptr = unsafe { string::qb_string_data(msg) };
+    let msg_owned = if msg_ptr.is_null() {
+        std::borrow::Cow::from("Unknown error")
+    } else {
+        unsafe { std::ffi::CStr::from_ptr(msg_ptr).to_string_lossy() }
+    };
+    eprintln!("Unhandled Error #{} - {}", code, msg_owned.as_ref());
+    eprintln!("Line: {}", line);
+    let _ = std::io::Write::flush(&mut std::io::stderr());
+    unsafe {
+        string::qb_string_release(msg);
+    }
+    std::process::exit(1);
+}
+
+// Error handling state (libqb error_handle.h compatibility)
+
+static ERROR_HANDLING: AtomicU32 = AtomicU32::new(0);
+static ERROR_RETRY: AtomicU32 = AtomicU32::new(0);
+
+/// Non-zero while inside an error handler (prevents re-entry from timers/callbacks).
+#[no_mangle]
+pub extern "C" fn qb_error_handling_get() -> u32 {
+    ERROR_HANDLING.load(Ordering::Relaxed)
+}
+
+/// Set error-handling flag (e.g. 1 when entering handler, 0 when leaving).
+#[no_mangle]
+pub extern "C" fn qb_error_handling_set(v: u32) {
+    ERROR_HANDLING.store(v, Ordering::Relaxed);
+}
+
+/// Non-zero when RESUME (retry) was used; cleared after retry.
+#[no_mangle]
+pub extern "C" fn qb_error_retry_get() -> u32 {
+    ERROR_RETRY.load(Ordering::Relaxed)
+}
+
+/// Set error-retry flag (e.g. 1 for RESUME (retry), 0 after retry).
+#[no_mangle]
+pub extern "C" fn qb_error_retry_set(v: u32) {
+    ERROR_RETRY.store(v, Ordering::Relaxed);
+}
+
+/// Error handler history string (libqb error_handler_history).
+/// Caller must not release the returned string.
+static ERROR_HANDLER_HISTORY: std::sync::atomic::AtomicPtr<std::ffi::c_void> =
+    std::sync::atomic::AtomicPtr::new(std::ptr::null_mut());
+
+#[no_mangle]
+pub extern "C" fn qb_error_handler_history_get() -> *mut string::QbString {
+    ERROR_HANDLER_HISTORY.load(Ordering::Relaxed) as *mut string::QbString
+}
+
+/// Set error handler history string. Takes ownership of `s` (caller must not release it).
+#[no_mangle]
+pub extern "C" fn qb_error_handler_history_set(s: *mut string::QbString) {
+    let old = ERROR_HANDLER_HISTORY.swap(s as *mut std::ffi::c_void, Ordering::Relaxed);
+    if !old.is_null() {
+        unsafe { string::qb_string_release(old as *mut string::QbString) };
+    }
+}
+
 // ============================================================================
-// Debug Event Hooks (Option B Phase 2: evnt for IDE/debugger)
+// Debug Event Hooks
 // ============================================================================
 //
 // QB64pe wraps statements in do { ... ; if (!qbevent) break; evnt(line, file); } while (r);
 // so the IDE/debugger can intercept. We provide qbevent (global) and qb_evnt() so
-// codegen can emit this pattern later. See docs/OPTION_B_IMPLEMENTATION_PLAN.md Phase 2.
+// codegen can emit this pattern later.
 
 /// Debug event flag: 0 = no debug, non-zero = call qb_evnt at statement boundaries.
 ///
