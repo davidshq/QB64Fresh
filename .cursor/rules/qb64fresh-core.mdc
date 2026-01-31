@@ -5,7 +5,7 @@ alwaysApply: true
 
 # QB64Fresh Core
 
-**Project:** Rust compiler for QB64 BASIC. C intermediate, LSP-based IDE. NOT a fork—fresh implementation informed by QB64pe.
+**Project:** Rust compiler for QB64 BASIC. C intermediate, LSP-based IDE. NOT a fork—fresh implementation aiming for full QB64pe parity.
 
 **Directory context:**
 - **QB64pe/** — READ ONLY. Use for analysis and reference only.

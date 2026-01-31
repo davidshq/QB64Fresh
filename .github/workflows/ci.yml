@@ -225,6 +225,33 @@ jobs:
           cargo +nightly fuzz build fuzz_parser
           cargo +nightly fuzz build fuzz_full_pipeline
 
+  # Build runtime with optional OpenGL feature (ensures both default and opengl build paths compile)
+  runtime-opengl:
+    name: Runtime (OpenGL feature)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install OpenGL dev packages (Linux)
+        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev libglu1-mesa-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-runtime-opengl-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-runtime-opengl-
+
+      - name: Build runtime with opengl feature
+        run: cargo build -p qb64fresh-runtime --features opengl --verbose
+
   # QB45 compatibility tests (requires larger stack for deeply nested expressions)
   qb45_compat:
     name: QB45 Compatibility Tests
