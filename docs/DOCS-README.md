@@ -44,7 +44,9 @@ Welcome to the QB64Fresh documentation! This directory contains comprehensive gu
 | [ARCHITECTURE.md](ARCHITECTURE.md) | High-level architecture: compiler pipeline, module organization, design decisions |
 | [adrs/](adrs/) | **Architecture Decision Records** - 18 ADRs documenting key design decisions |
 | [GRAPHICS.md](GRAPHICS.md) | Graphics system: architecture, backends (SDL2/Mock), implementation, supported statements |
+| [OPENGL.md](OPENGL.md) | Optional OpenGL support: `_GL*` / `SUB _GL`, enabling, runtime feature, parity with QB64pe |
 | [QB64pe/QB64PE_ARCHITECTURE.md](QB64pe/QB64PE_ARCHITECTURE.md) | Analysis of QB64PE architecture (reference for compatibility) |
+| [QB64pe/QB64PE_OPENGL_FUNCTIONALITY.md](QB64pe/QB64PE_OPENGL_FUNCTIONALITY.md) | Complete list of QB64pe OpenGL: _GL* (312), _GLU* (1), GL_* constants (590), SUB _GL, _GLRENDER, _GLCOMPAT |
 
 ### Architecture Decision Records (ADRs)
 
@@ -104,7 +106,7 @@ See [adrs/README.md](adrs/README.md) for the complete index. Key decisions:
 | [ThingsToDo/RUNTIME_ARCHITECTURE_PERSPECTIVES.md](ThingsToDo/RUNTIME_ARCHITECTURE_PERSPECTIVES.md) | Runtime architecture considerations and trade-offs |
 | [ThingsToDo/TESTING_INFRASTRUCTURE_PLAN.md](ThingsToDo/TESTING_INFRASTRUCTURE_PLAN.md) | Testing infrastructure plans and improvements |
 | [ThingsToDo/INSTALLER_PLAN.md](ThingsToDo/INSTALLER_PLAN.md) | Distribution and installer planning |
-| [ThingsToDo/OPENGL_SUPPORT.md](ThingsToDo/OPENGL_SUPPORT.md) | OpenGL support planning and considerations |
+| [ThingsToDo/OPENGL_GLUT_DESIGN.md](ThingsToDo/OPENGL_GLUT_DESIGN.md) | OpenGL / GLUT design (authoritative); user-facing: [OPENGL.md](OPENGL.md) |
 | [ThingsToDo/QB64Fresh_AND_MODERN_LANGUAGES.md](ThingsToDo/QB64Fresh_AND_MODERN_LANGUAGES.md) | Comparison with modern languages and use cases |
 | [ThingsToDo/QB64PE_IDE_FUNCTIONALITY_CHECKLIST_TODO.md](ThingsToDo/QB64PE_IDE_FUNCTIONALITY_CHECKLIST_TODO.md) | QB64PE IDE features checklist (for reference) |
 | [ThingsToDo/INFORM/INFORM_FUNCTIONALITY.md](ThingsToDo/INFORM/INFORM_FUNCTIONALITY.md) | InForm WYSIWYG UI designer documentation |
@@ -116,6 +118,7 @@ See [adrs/README.md](adrs/README.md) for the complete index. Key decisions:
 
 | Document | Description |
 |----------|-------------|
+| [CODE_REVIEW_FULL.md](CODE_REVIEW_FULL.md) | Full codebase review (bugs, architecture, DRY, docs); three-pass review and recommendations |
 | [archive/BOOTSTRAP_PLAN_FULL.md](archive/BOOTSTRAP_PLAN_FULL.md) | Complete history of compiling QB64pe with QB64Fresh (59K-line bootstrap) |
 | [archive/QB64PE_ARCHITECTURE_ANALYSIS.md](archive/QB64PE_ARCHITECTURE_ANALYSIS.md) | Original QB64PE codebase analysis (used to inform QB64Fresh design) |
 | [archive/QB64PE_IDE_FUNCTIONALITY_CHECKLIST.md](archive/QB64PE_IDE_FUNCTIONALITY_CHECKLIST.md) | QB64PE IDE features checklist (historical reference) |
@@ -167,7 +170,7 @@ docs/
 │   ├── RUNTIME_ARCHITECTURE_PERSPECTIVES.md
 │   ├── TESTING_INFRASTRUCTURE_PLAN.md
 │   ├── INSTALLER_PLAN.md
-│   ├── OPENGL_SUPPORT.md
+│   ├── OPENGL_GLUT_DESIGN.md
 │   ├── QB64Fresh_AND_MODERN_LANGUAGES.md
 │   ├── QB64PE_IDE_FUNCTIONALITY_CHECKLIST_TODO.md
 │   └── INFORM/

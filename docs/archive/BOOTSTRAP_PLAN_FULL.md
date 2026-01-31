@@ -1,7 +1,7 @@
 # Plan: Compiling QB64pe Using QB64Fresh
 
 *Created: 2026-01-20*
-*Updated: 2026-01-27*
+*Updated: 2026-01-31*
 
 This document outlines the strategy for compiling the QB64pe compiler using QB64Fresh, achieving a form of cross-compilation where a Rust-based BASIC compiler builds a C++-targeting BASIC compiler.
 
@@ -524,22 +524,98 @@ Once QB64Fresh can compile QB64pe:
 
 ### Current Actions
 
-**Progress:** 992 → 162 errors (84% reduction achieved!)
+**Status:** All bootstrap phases (A–F) complete. QB64pe compiles with QB64Fresh and produces a working executable.
 
-1. **Investigate remaining 162 parse errors**
-   - Most appear to be cascading effects from a few root causes
-   - Focus on SELECT CASE edge cases (38 errors)
-   - Single-line IF/ELSE parsing edge cases (15 errors)
+1. **Validation and follow-up**
+   - See **Bootstrap Validation** (section below) for runtime feature status and bootstrap test suite (27 tests; 23 run by default, 4 ignored).
+   - See [RUNTIME_AND_PARITY.md](../ThingsToDo/RUNTIME_AND_PARITY.md) for runtime completion and QB64pe parity (Option B: complete our runtime; ~90–95% complete).
 
-   ```bash
-   cd QB64pe/source && qb64fresh qb64pe.bas 2>&1 | sort | uniq -c | sort -rn
-   ```
+2. **Remaining for full IDE/execution**
+   - Full execution testing with real runtime (graphics-sdl2) and IDE display.
+   - Optional: address deferred `bootstrap_tests` clippy warnings (e.g. `collapsible_if`, redundant closures).
 
-2. **Target: reduce to <100 errors**, then move to Phase C
+---
 
-3. **Verify individual files parse correctly**
-   - Key finding: individual includes parse successfully
-   - The problem is cascade from errors in combined compilation
+## 7.1 Bootstrap Validation (Consolidated)
+
+*Content merged from BOOTSTRAP_VALIDATION.md (2026-01-26 / 2026-01-28).*
+
+This section tracks the validation status of QB64Fresh's ability to compile QB64pe and enable the bootstrapped QB64pe to compile BASIC programs.
+
+**Important:** QB64pe requires the **external runtime with graphics support** because it has a GUI. The compilation uses `RuntimeMode::external()` and requires SDL2 for graphics operations.
+
+### QB64pe Compilation Status ✅ COMPLETE
+
+**Status:** QB64pe source compiles successfully with QB64Fresh
+
+**Runtime Mode:** QB64pe is compiled with `RuntimeMode::external()` because it requires graphics support for its GUI (uses `SCREEN`, `_NEWIMAGE`, `_SCREENSHOW`, etc.)
+
+| Phase | Status | Details |
+|-------|--------|---------|
+| Preprocessing | ✅ | All `$INCLUDE` directives processed correctly |
+| Lexer | ✅ | All tokens recognized (0 errors) |
+| Parser | ✅ | All statements parsed (0 errors) |
+| Semantic Analysis | ✅ | Type checking passes (0 errors) |
+| Code Generation | ✅ | C code generated (~86K lines) with external runtime |
+| C Compilation | ✅ | GCC compilation succeeds (0 errors) |
+| Linking | ✅ | Runtime library built with graphics: `cargo build -p qb64fresh-runtime --release --features graphics-sdl2` (58MB static library created) |
+
+**Test:** `cargo test --test bootstrap_tests qb64pe_compiles_successfully`
+
+**Bootstrap test suite:** 27 tests total. By default 23 run; 4 are ignored (require golden file or full runtime build): `qb64pe_codegen_golden`, `qb64pe_can_compile_hello_world`, `qb64pe_qb45_compatibility_test`, `qb64pe_self_compilation_test`. To create/update the QB64pe codegen golden file: `UPDATE_GOLDEN=1 cargo test --test bootstrap_tests qb64pe_codegen_golden -- --ignored`.
+
+**Note:** The test validates code generation. Runtime library with SDL2 graphics support has been built and is ready for linking.
+
+### Executable Functionality ✅ VERIFIED
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Executable runs | ✅ | Starts without crashing |
+| Help display (`-h`) | ✅ | Shows command-line options correctly |
+| Command-line parsing | ✅ | Arguments parsed correctly |
+| Program compilation | ✅ | Code generation validated via bootstrap tests |
+
+### Runtime Features Status
+
+**File I/O ✅ COMPLETE** — Inline runtime (`src/codegen/c_backend/runtime/file.rs`). External runtime uses `runtime/include/qb64fresh_rt.h` and `runtime/src/`. All operations (OPEN, CLOSE, PRINT#, WRITE#, INPUT#, LINE INPUT#, GET, PUT, SEEK, EOF, LOF, LOC) implemented and tested in `tests/integration_tests.rs`.
+
+**Keyboard Input ✅ COMPLETE** — External: `runtime/src/io.rs`; Inline: `src/codegen/c_backend/runtime/keyboard.rs`. INKEY$, _KEYHIT (Unix & Windows); _KEYDOWN/_KEYCLEAR (stub / working). Windows uses `_kbhit()` and `_getch()` via FFI.
+
+**String Operations ✅ VALIDATED** — Concatenation, MID$ assignment, fixed-length strings, comparisons, string arrays (integration tests).
+
+**Array Operations ✅ VALIDATED** — REDIM _PRESERVE, LBOUND/UBOUND, array parameters, large arrays, array scoping (bootstrap fixes verified).
+
+**Command-Line Mode ✅ VERIFIED** — `-h` help, `-x` console mode; manual check: `./qb64pe_bootstrapped -h`.
+
+**Error Handling ✅ VERIFIED** — ON ERROR GOTO, RESUME, error reporting with line numbers (codegen).
+
+### Integration Testing Status
+
+- **Simple Program Compilation Test ✅ COMPLETE** — `qb64pe_can_compile_hello_world`: code generation validated; full execution requires runtime with graphics.
+- **Regression Tests ✅ COMPLETE** — `tests/bootstrap_tests.rs`, `mod regression_tests`: 20 regression tests (function_call_uses_canonical_name, dual_namespace_arrays_and_scalars, parser_edge_case_comparison_vs_array_assignment, string_double_wrapping_byref, select_case_*, array_variable_rename, mid_assignment_*, string_temp_pool_*, reference_counted_string_*, ffi_*, runtime_initialization_order, builtin_constant_registration, duplicate_label_emission_regression, error_handler_syntax, label_uniqueness, forward_declarations).
+- **QB4.5 Compatibility Test ⚠️ PENDING** — Run bootstrapped QB64pe on QB4.5 test suite subset; compare with original QB64pe.
+- **Self-Compilation Test ⚠️ PENDING** — Meta-bootstrap: bootstrapped QB64pe compiles itself; verify meta-compiled QB64pe works.
+
+### Validation Next Steps
+
+1. **Full Execution Testing:** Build runtime with graphics, compile QB64pe C with gcc and link against runtime + SDL2, run bootstrapped QB64pe on a simple test program.
+2. **QB4.5 Compatibility Testing:** Run representative QB4.5 suite through bootstrapped QB64pe; compare with original QB64pe.
+3. **Self-Compilation Testing:** Compile QB64pe with bootstrapped QB64pe; verify meta-compiled version.
+
+### Validation Success Criteria
+
+- **Phase 1: Runtime Features** ✅ COMPLETE — File I/O, keyboard input (console), string/array operations.
+- **Phase 2: Compiler Features** ✅ COMPLETE — Command-line parsing, error reporting.
+- **Phase 3: Integration Testing** ✅ COMPLETE — Hello World codegen validated, bootstrap suite passing, QB64pe compilation verified.
+- **Final:** Bootstrapped QB64pe can compile arbitrary BASIC programs (code generation verified); full chain QB64Fresh → QB64pe → BASIC programs; all bootstrap tests passing. QB4.5 / QB64pe compatibility: `cargo test --test qb45_compat` for current pass rates.
+
+### Current Validation Summary (2026-01-28)
+
+**Overall:** ✅ Bootstrap compilation fully validated
+
+**Metrics:** QB64pe compiles with QB64Fresh (all phases pass); bootstrap suite 27 tests (23 run by default, 4 ignored), all run tests passing; code generation validated; runtime features complete for bootstrap; 20 regression tests in `bootstrap_tests::regression_tests`.
+
+**References:** [Architecture Documentation](../ARCHITECTURE.md) — pipeline and bootstrap achievement.
 
 ---
 
@@ -737,7 +813,14 @@ Runtime Library (linked)
 
 ---
 
-## Recent Updates (2026-01-27)
+## Recent Updates
+
+### 2026-01-31
+
+- **Documentation:** Plan aligned with current state; "Current Actions" updated to reflect completed phases and links to [RUNTIME_AND_PARITY.md](../ThingsToDo/RUNTIME_AND_PARITY.md). **Merge:** BOOTSTRAP_VALIDATION.md content merged into this document as section 7.1 "Bootstrap Validation (Consolidated)"; BOOTSTRAP_VALIDATION.md removed.
+- **Code review:** Bootstrap tests included in Phase 4 code review; some clippy fixes applied in bootstrap_tests (e.g. collapsible_if, push_str → push); remaining clippy warnings deferred.
+
+### 2026-01-27
 
 **Code Quality Improvements:**
 - Comprehensive bug review completed - no critical issues found
@@ -1036,18 +1119,4 @@ Verified completion of Session 066 refactoring:
 
 **Overall Assessment:** ✅ **Good** - No critical bugs, minor improvements recommended. Codebase follows Rust best practices with proper error handling, bounds checking, and safety patterns.
 
----
-
-## Recent Updates (2026-01-27)
-
-**Code Quality Improvements:**
-- Comprehensive bug review completed - no critical issues found
-- FFI error reporting improved with systematic error logging (36+ error points)
-- Verified unwrap() refactoring completion - all codegen files use proper error handling
-- Fixed silent error handling in `set_palette_for_image()`
-
-**Current State:**
-- All bootstrap phases (A-F) complete
-- QB64pe successfully compiles to working executable
-- Code quality verified with comprehensive review
-- Minor improvements identified for future work (non-blocking)
+*(See "Recent Updates" above for the latest changes.)*

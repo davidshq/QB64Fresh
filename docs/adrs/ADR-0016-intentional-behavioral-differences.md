@@ -25,7 +25,7 @@ Key considerations:
 3. **Improve where justified**: We may choose better behavior (e.g., collecting and reporting multiple errors per run instead of stopping at the first).
 4. **Accept implementation consequences**: Some differences follow from our design (C backend, different runtime) and are documented rather than “fixed” for parity.
 
-### Examples (see INTENTIONAL_DIFFERENCES for full list)
+### Examples (see [QB64Fresh_VS_QB64pe_DIFFERENCES.md](../QB64pe/QB64Fresh_VS_QB64pe_DIFFERENCES.md) for full list)
 
 | Area | QB64pe | QB64Fresh | Rationale |
 |------|--------|-----------|-----------|
@@ -38,7 +38,7 @@ Key considerations:
 ### Relationship to Other ADRs
 
 - **ADR-0014** (Scope and excluded features): Defines what we exclude (e.g., `_GL*`, legacy DOS). This ADR covers *behavioral* differences (stricter or different semantics) and the policy of documenting them.
-- **ADR-0011** (Error handling): Explains multi-error collection; INTENTIONAL_DIFFERENCES calls out that we do not emulate single-error-stop.
+- **ADR-0011** (Error handling): Explains multi-error collection; the differences doc calls out that we do not emulate single-error-stop.
 
 ## Consequences
 

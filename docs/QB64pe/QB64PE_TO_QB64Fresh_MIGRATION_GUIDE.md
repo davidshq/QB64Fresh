@@ -1,6 +1,6 @@
-# Migration Guide: QB64 to QB64Fresh
+# Migration Guide: QB64pe to QB64Fresh
 
-This guide helps QB64 users transition to QB64Fresh, a modern rewrite of QB64 built in Rust.
+This guide helps QB64pe (and QB64) users transition to QB64Fresh, a modern rewrite of QB64 built in Rust.
 
 ---
 
@@ -8,7 +8,7 @@ This guide helps QB64 users transition to QB64Fresh, a modern rewrite of QB64 bu
 
 **Good news:** Most QB64 programs work with minimal or no changes. QB64Fresh achieves **99.1% compatibility** (114/115 files) with QB45/QBasic test suites.
 
-**Ultimate validation:** QB64Fresh successfully compiles the **QB64pe compiler itself** - a 59,000-line BASIC codebase across 39 files - into a working 2.1MB executable. See [ARCHITECTURE.md](../ARCHITECTURE.md#bootstrap-achievement) for a summary, or [docs/archive/BOOTSTRAP_PLAN_FULL.md](../archive/BOOTSTRAP_PLAN_FULL.md) for detailed implementation history.
+**Ultimate validation:** QB64Fresh successfully compiles the **QB64pe compiler itself** — a 59,000-line BASIC codebase across 39 files — into a working 2.1MB executable. See [ARCHITECTURE.md](../ARCHITECTURE.md) for the compiler pipeline, or [BOOTSTRAP_PLAN_FULL.md](../archive/BOOTSTRAP_PLAN_FULL.md) for bootstrap implementation history.
 
 ```bash
 # Try compiling your program
@@ -73,19 +73,20 @@ cargo run --release -- examples/hello.bas --tokens
 **QB64Fresh and QB64pe can consume 25GB+ memory during compilation.** Always use memory limits to prevent system crashes:
 
 ```bash
-# Set 16GB virtual memory limit (recommended)
-ulimit -v 16777216
+# Set 4GB virtual memory limit (recommended for most builds)
+ulimit -v 4194304
 
 # Then run compilation
 cargo run --release -- your_program.bas --emit-c
 ```
 
-Or use a one-liner:
+For very large programs (e.g. full QB64pe), use 8GB (`ulimit -v 8388608`) or the project helper:
+
 ```bash
-bash -c 'ulimit -v 16777216 && cargo run --release -- your_program.bas --emit-c'
+./run_limited.sh cargo run --release -- your_program.bas --emit-c
 ```
 
-See [docs/MEMORY_LIMITS.md](../MEMORY_LIMITS.md) for details.
+See [MEMORY_LIMITS.md](../MEMORY_LIMITS.md) for details and built-in source size limits.
 
 ### Editor Setup (VSCode)
 
@@ -194,7 +195,21 @@ These Windows-only features are not supported:
 | `_WINDOWHANDLE` | Not available |
 | `_CONSOLETITLE` | Not available |
 
-### 5. CALL ABSOLUTE
+### 5. RUN Statement
+
+| Usage | QB64pe | QB64Fresh |
+|-------|--------|-----------|
+| `RUN` (no args) | Restarts the program | **No-op** — restart not supported |
+| `RUN line` / `RUN label` | Jumps to line/label | **Not supported** — only `RUN "file"` is accepted |
+| `RUN "file"` | Runs program via system, then exits | Same — runs via `system()` then exits |
+
+See [QB64Fresh_VS_QB64pe_DIFFERENCES.md](QB64Fresh_VS_QB64pe_DIFFERENCES.md#7-run-statement) for details.
+
+### 6. Legacy / DOS Features
+
+Port I/O (`INP`, `OUT`, `WAIT`), `INTERRUPT`/`INTERRUPTX`, `PEN`, `IOCTL`, `ERDEV`/`ERDEV$`, and some `ON COM`/`ON UEVENT`-style handlers **compile** in QB64Fresh but have **stub-only runtime behavior** (no-op or undefined). They are documented as non-functional for portability and safety. See [QB64Fresh_VS_QB64pe_DIFFERENCES.md](QB64Fresh_VS_QB64pe_DIFFERENCES.md#3-legacy--dos-features).
+
+### 7. CALL ABSOLUTE
 
 `CALL ABSOLUTE` compiles but emits a warning. It cannot execute machine code in modern flat memory models.
 
@@ -205,7 +220,7 @@ CALL ABSOLUTE(addr%)   ' Warning: flat memory model, no-op
 
 Legacy code using `CALL ABSOLUTE` for mouse drivers should use `_MOUSEINPUT` instead.
 
-### 6. Cross-Procedure GOTO
+### 8. Cross-Procedure GOTO
 
 QB64pe allows `GOTO` to labels in other procedures (creating a forward reference in the current scope). QB64Fresh requires labels to be in the same procedure.
 
@@ -226,7 +241,7 @@ END SUB
 
 **Rationale:** This stricter behavior catches typos and prevents scope confusion. See [QB64Fresh_VS_QB64pe_DIFFERENCES.md](QB64Fresh_VS_QB64pe_DIFFERENCES.md) for details.
 
-### 7. Error Reporting
+### 9. Error Reporting
 
 QB64pe typically stops at the first error. QB64Fresh collects and reports multiple errors per compilation.
 
@@ -270,12 +285,12 @@ qb64fresh program.bas --emit-c
 ```bash
 # Option 1: Inline runtime (self-contained C)
 # Graphics/audio are stubs; frame limiting prevents infinite loops
-ulimit -v 16777216  # Set memory limit first
+ulimit -v 4194304   # Set memory limit first (4GB)
 qb64fresh program.bas --emit-c --runtime=inline
 gcc output.c -o program -lSDL2 -lm
 
 # Option 2: External runtime (links against library, full graphics/audio)
-ulimit -v 16777216  # Set memory limit first
+ulimit -v 4194304   # Set memory limit first (4GB)
 qb64fresh program.bas --emit-c --runtime=external
 gcc output.c -o program -I runtime/include -L./target/release -lqb64fresh_rt -lSDL2 -lm
 ```
@@ -284,7 +299,7 @@ gcc output.c -o program -I runtime/include -L./target/release -lqb64fresh_rt -lS
 - **Inline:** Self-contained C with embedded runtime. Graphics/audio are stubs (no-op). Use for CI, headless testing, or when you don't need graphics.
 - **External:** Links against `libqb64fresh_rt` for full graphics/audio support via SDL2 and Rodio.
 
-**Important:** Never edit generated `.c` files directly. If compilation fails, fix the code generator, not the output. See [ADR-0017](../adrs/ADR-0017-generated-code-is-ephemeral.md) for details.
+**Important:** Never edit generated `.c` files directly. If compilation fails, fix the code generator, not the output. See [ADR-0017 generated code is ephemeral](../adrs/ADR-0017-generated-code-is-ephemeral.md) for details.
 
 ---
 
@@ -452,12 +467,13 @@ error[E0042]: type mismatch
 
 ### Resources
 
-- [QB64Fresh TODO.md](../TODO.md) - Known issues and roadmap
-- [QB64Fresh_VS_QB64pe_DIFFERENCES.md](QB64Fresh_VS_QB64pe_DIFFERENCES.md) - All differences: intentional design choices and behavioral/architectural
-- [PARTIAL_IMPLEMENTATIONS.md](../ThingsToDo/PARTIAL_IMPLEMENTATIONS.md) - Implementation status by feature
-- [MEMORY_LIMITS.md](../MEMORY_LIMITS.md) - Memory limit requirements and usage
-- [DEVELOPMENT.md](../DEVELOPMENT.md) - Contributing guide
-- [QB64-PE Wiki](https://qb64phoenix.com/qb64wiki/) - Language reference (mostly compatible)
+- [QB64Fresh_VS_QB64pe_DIFFERENCES.md](QB64Fresh_VS_QB64pe_DIFFERENCES.md) — All differences: intentional design choices and behavioral/architectural
+- [LIBQB_FUNCTIONALITY.md](LIBQB_FUNCTIONALITY.md) — Runtime/libqb parity and remaining gaps
+- [PARTIAL_IMPLEMENTATIONS.md](../ThingsToDo/PARTIAL_IMPLEMENTATIONS.md) — Implementation status by feature
+- [MEMORY_LIMITS.md](../MEMORY_LIMITS.md) — Memory limit requirements, `ulimit`, and built-in source limits
+- [DEVELOPMENT.md](../DEVELOPMENT.md) — Contributing guide
+- [QB64pe IDE Functionality Checklist](QB64PE_IDE_FUNCTIONALITY_CHECKLIST.md) — IDE vs LSP/VSCode feature mapping
+- [QB64-PE Wiki](https://qb64phoenix.com/qb64wiki/) — Language reference (mostly compatible)
 
 ---
 
@@ -509,12 +525,13 @@ See [QB64Fresh_VS_QB64pe_DIFFERENCES.md](QB64Fresh_VS_QB64pe_DIFFERENCES.md) for
 ## Migration Checklist
 
 - [ ] Install Rust and build QB64Fresh
-- [ ] **Set up memory limits** (see [MEMORY_LIMITS.md](../MEMORY_LIMITS.md))
+- [ ] **Set up memory limits** (e.g. `ulimit -v 4194304` or `./run_limited.sh`; see [MEMORY_LIMITS.md](../MEMORY_LIMITS.md))
 - [ ] Test compile your program with `--typed-ir` flag
 - [ ] Address any type errors (usually `STRING * n` issues)
 - [ ] Check for cross-procedure GOTO (must be in same procedure)
 - [ ] Replace any `_GL*` commands if used
 - [ ] Replace Windows-specific features if used
+- [ ] Check RUN usage (RUN with no args is no-op; RUN line/label not supported)
 - [ ] Review [QB64Fresh_VS_QB64pe_DIFFERENCES.md](QB64Fresh_VS_QB64pe_DIFFERENCES.md) for behavioral differences
 - [ ] Set up your preferred editor with LSP (optional but recommended)
 - [ ] Compile to C and build executable (with memory limits)
@@ -522,4 +539,4 @@ See [QB64Fresh_VS_QB64pe_DIFFERENCES.md](QB64Fresh_VS_QB64pe_DIFFERENCES.md) for
 
 ---
 
-*Last updated: 2026-01-28*
+*Last updated: 2026-01-31*

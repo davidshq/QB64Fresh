@@ -335,23 +335,33 @@ regid
 
 ### Main Runtime (`internal/c/libqb.cpp`)
 
-The runtime library (~31,000 lines) provides all standard library functions callable from generated C++ code.
+The runtime library (~31,000 lines) provides all standard library functions callable from generated C++ code. The public API is declared in `internal/c/libqb/include/`; implementation lives in `internal/c/libqb/src/` and `internal/c/parts/`.
 
-### Modular Components (`internal/c/libqb/src/`)
+**QB64Fresh parity:** For current runtime parity status and remaining libqb gaps (keyhandler, legacy events, parts), see [LIBQB_FUNCTIONALITY.md](LIBQB_FUNCTIONALITY.md).
 
-| File | Purpose | Lines |
-|------|---------|-------|
-| `graphics.cpp` | Graphics rendering, screen modes | ~105K |
-| `shell.cpp` | SHELL command, process execution | ~54K |
-| `filesystem.cpp` | File operations | ~36K |
-| `gfs.cpp` | General file system | ~33K |
-| `qbs.cpp` | QB string handling (qbs type) | ~19K |
-| `http.cpp` | HTTP/networking | ~13K |
-| `mem.cpp` | Memory operations | ~11K |
-| `error_handle.cpp` | Error handling | ~11K |
-| `datetime.cpp` | Date/time functions | ~9K |
-| `string_functions.cpp` | String manipulation | Various |
-| `threading.cpp` | Threading support | Various |
+### Modular Components (`internal/c/libqb/`)
+
+**Headers (`libqb/include/`):** API surface includes `audio.h`, `bitops.h`, `buffer.h`, `clipboard.h`, `cmem.h`, `completion.h`, `compression.h`, `condvar.h`, `datetime.h`, `encoding.h`, `error_handle.h`, `event.h`, `extended_math.h`, `file-fields.h`, `filepath.h`, `filesystem.h`, `font.h`, `game_controller.h`, `gfs.h`, `graphics.h`, `gui.h`, `http.h`, `image.h`, `keyhandler.h`, `logging.h`, `mem.h`, `mutex.h`, `qblist.h`, `qbs.h`, `rounding.h`, `shell.h`, `thread.h`, and others.
+
+**Source (`libqb/src/`)** — representative modules:
+
+| File | Purpose |
+|------|---------|
+| `graphics.cpp` | Graphics rendering, screen modes |
+| `shell.cpp` | SHELL command, process execution |
+| `filesystem.cpp` | File operations |
+| `gfs.cpp` | General file system |
+| `qbs.cpp` (+ qbs_*.cpp) | QB string handling (qbs type) |
+| `http.cpp` | HTTP/networking |
+| `mem.cpp` | Memory operations |
+| `error_handle.cpp` | Error handling |
+| `datetime.cpp` | Date/time functions |
+| `string_functions.cpp` | String manipulation |
+| `threading.cpp` (+ threading-posix/windows) | Threading support |
+| `bitops.cpp`, `buffer.cpp`, `file-fields.cpp`, `filepath.cpp` | Bitops, buffer, file fields, path utilities |
+| `hexoctbin.cpp` | Hex/octal/binary literals |
+| `qblist.cpp` | QB list (dynamic arrays) |
+| `logging/` | Logging and stack traces |
 
 ### Core Data Types
 
@@ -370,9 +380,10 @@ Dynamic array structure for QB64 arrays.
 
 ### External Dependencies (`internal/c/parts/`)
 
-- **audio/** - Audio playback (miniaudio)
-- **video/** - Video/image handling (STB libraries)
-- **core/** - Core utilities
+- **audio/** - Audio playback (miniaudio), MIDI/mod/OPL (e.g. TinySoundFont, libmidi, foo_midi)
+- **video/** - Font (FreeType), image (STB, jo_gif, nanosvg, qoi, etc.); implements `font.h`, `image.h`
+- **core/** - OpenGL/GLUT (freeglut, GLEW); gl_helper_code.h for GL wrappers
+- **data/** - Compression (miniz), encoding (modp_b64) used by libqb compression/encoding
 - **gui/** - GUI components (FreeGLUT)
 - **network/** - Networking libraries
 - **input/** - Input handling (gamepad, keyboard, mouse)
@@ -748,9 +759,11 @@ Each phase should be:
 - **QB64pe Repository:** https://github.com/QB64-Phoenix-Edition/QB64pe
 - **QB64pe Wiki:** https://qb64phoenix.com/qb64wiki
 - **QB64pe Forum:** https://qb64phoenix.com/forum
-- **QB64Fresh Architecture:** See `docs/ARCHITECTURE.md`
-- **QB64Fresh intentional differences:** See [QB64Fresh_VS_QB64pe_DIFFERENCES.md](QB64Fresh_VS_QB64pe_DIFFERENCES.md) and [ADR-0016-intentional-behavioral-differences.md](../adrs/ADR-0016-intentional-behavioral-differences.md)
-- **Migrating from QB64pe:** See `docs/QB64pe/QB64PE_TO_QB64Fresh_MIGRATION_GUIDE.md`
+- **QB64Fresh Architecture:** See [ARCHITECTURE.md](../ARCHITECTURE.md)
+- **QB64Fresh vs QB64pe (differences):** [QB64Fresh_VS_QB64pe_DIFFERENCES.md](QB64Fresh_VS_QB64pe_DIFFERENCES.md)
+- **QB64Fresh libqb parity and gaps:** [LIBQB_FUNCTIONALITY.md](LIBQB_FUNCTIONALITY.md)
+- **Intentional behavioral differences:** [ADR-0016-intentional-behavioral-differences.md](../adrs/ADR-0016-intentional-behavioral-differences.md)
+- **Migrating from QB64pe:** [QB64PE_TO_QB64Fresh_MIGRATION_GUIDE.md](QB64PE_TO_QB64Fresh_MIGRATION_GUIDE.md)
 
 ---
 
@@ -762,5 +775,6 @@ Each phase should be:
 - **2026-01-25:** Comprehensive architecture documentation created (`QB64PE_ARCHITECTURE.md`)
 - **2026-01-27:** Documents merged into unified analysis and reference document
 - **2026-01-28:** References updated (QB64Fresh runtime size, intentional differences and migration docs); document history extended
+- **2026-01-31:** Runtime section refreshed: libqb include/src layout, modular components table and new modules (bitops, buffer, file-fields, filepath, hexoctbin, qblist, logging); parts expanded (data/, audio/video/core detail); added LIBQB_FUNCTIONALITY.md reference and References cleanup
 
 *This document combines the original analysis and comprehensive documentation into a single reference.*

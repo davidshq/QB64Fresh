@@ -1,7 +1,7 @@
 # QB64Fresh Language Reference
 
 **Version:** 0.1.0  
-**Last Updated:** 2026-01-26
+**Last Updated:** 2026-01-31
 
 This document provides a comprehensive reference for all statements and functions available in QB64Fresh. QB64Fresh is a modern BASIC compiler that maintains compatibility with QB4.5 and QB64 while providing a clean, well-documented implementation.
 
@@ -11,9 +11,9 @@ QB64Fresh supports **QB4.5 compatibility** and a **curated set of QB64 extension
 
 - **Excluded:** Raw OpenGL (`_GL*` commands) are intentionally excluded. QB64Fresh uses SDL2/winit for graphics. Use `DECLARE LIBRARY` to call OpenGL directly if needed.
 - **Stub-only (compile, limited/no runtime):** `INP`, `OUT`, `WAIT`, `INTERRUPT`/`INTERRUPTX`, `PEN`, `IOCTL`/`IOCTL$`, `ERDEV`/`ERDEV$`, `ON COM`, `ON UEVENT`, `ON SIGNAL`—accepted for porting but behavior is no-op or undefined.
-- **Authoritative source:** For the exact set of built-in functions and procedure signatures, see `src/semantic/builtins.rs` (405+ built-in registrations covering 240+ unique functions). For parser coverage, see `src/ast/stmt.rs` and the parser modules.
+- **Authoritative source:** For the exact set of built-in functions and procedure signatures, see `src/semantic/builtins.rs` (436+ built-in registrations: functions, subs, and constants). For parser coverage, see `src/ast/stmt.rs` and the parser modules.
 
-See [ADR-0014: Scope and Intentionally Excluded Features](adrs/ADR-0014-scope-and-excluded-features.md) and [FUTURE.md](ThingsToDo/FUTURE.md) for rationale and details.
+See [ADR-0014: Scope and Intentionally Excluded Features](adrs/ADR-0014-scope-and-excluded-features.md) and [TODO and future plans](ThingsToDo/TODO_CONSOLIDATED.md) for rationale and details.
 
 ## Table of Contents
 
@@ -342,9 +342,10 @@ Open a file for reading/writing.
 OPEN "data.txt" FOR INPUT AS #1
 OPEN "output.txt" FOR OUTPUT AS #2
 OPEN "random.dat" FOR RANDOM AS #3 LEN = 128
+OPEN "COM1:9600,N,8,1" FOR OUTPUT AS #4   ' Serial port (baud, parity N/E/O, data bits, stop bits)
 ```
 
-Modes: `INPUT`, `OUTPUT`, `APPEND`, `BINARY`, `RANDOM`
+Modes: `INPUT`, `OUTPUT`, `APPEND`, `BINARY`, `RANDOM`. Serial: use filename `"COMn:baud,parity,data,stop"` (e.g. COM1:9600,N,8,1).
 
 #### `OPEN mode$, [#]filenum, filename[, reclen]` (Legacy)
 GW-BASIC style OPEN syntax.
@@ -952,7 +953,7 @@ TIMER ON
 Joystick trigger events.
 
 #### `ON COM(n) GOSUB label` / `COM(n) ON|OFF|STOP`
-Serial port events.
+Serial port event trapping (stub: warns once, no-op). To use a serial port for I/O, use `OPEN "COM1:9600,N,8,1" FOR OUTPUT AS #n` (COM port support implemented).
 
 #### `ON PEN GOSUB label` / `PEN ON|OFF|STOP`
 Light pen events (legacy).
@@ -3416,7 +3417,8 @@ QB64Fresh supports type suffixes for variable names:
 - [Architecture Documentation](ARCHITECTURE.md)
 - [Development Guide](DEVELOPMENT.md)
 - [Testing Guide](TESTING.md)
-- [QB64PE to QB64Fresh Migration Guide](QB64PE_TO_QB64Fresh_MIGRATION_GUIDE.md)
+- [QB64PE to QB64Fresh Migration Guide](QB64pe/QB64PE_TO_QB64Fresh_MIGRATION_GUIDE.md)
+- [OpenGL / graphics approach](OPENGL.md)
 - [Scope and Excluded Features](adrs/ADR-0014-scope-and-excluded-features.md)
 
 ---

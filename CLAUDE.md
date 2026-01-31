@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-QB64Fresh is a complete ground-up rewrite of QB64, a modern BASIC compiler. This is NOT a fork - it's a fresh implementation informed by analyzing the original QB64 Phoenix Edition.
+QB64Fresh is a complete ground-up rewrite of QB64, a modern BASIC compiler. This is NOT a fork—it's a fresh implementation aiming for full QB64pe parity.
 
 **Implementation Language:** Rust
 **Code Generation:** C intermediate (with trait-based abstraction for future backends)

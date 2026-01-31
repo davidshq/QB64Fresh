@@ -447,7 +447,7 @@
 
 ---
 
-*Last updated: 2026-01-26*
+*Last updated: 2026-01-31*
 
 ---
 
@@ -1115,7 +1115,7 @@ Debugger fully implemented with 50+ tests passing. See [ADR-0013](../adrs/ADR-00
 
 **Test:** `cargo test --test bootstrap_tests qb64pe_compiles_successfully`
 
-**Files:** `tests/bootstrap_tests.rs`, `docs/archive/BOOTSTRAP_VALIDATION.md`
+**Files:** `tests/bootstrap_tests.rs`, `docs/archive/BOOTSTRAP_PLAN_FULL.md` (Bootstrap Validation §7.1)
 
 **Note:** Full execution testing (compiling BASIC programs with bootstrapped QB64pe) is pending but code generation is fully validated.
 
@@ -1221,7 +1221,7 @@ Debugger fully implemented with 50+ tests passing. See [ADR-0013](../adrs/ADR-00
 
 ## Option B Implementation Plan (2026-01-29)
 
-*Completed items from [OPTION_B_IMPLEMENTATION_PLAN.md](../OPTION_B_IMPLEMENTATION_PLAN.md).*
+*Completed items from [TODO_CONSOLIDATED.md](../ThingsToDo/TODO_CONSOLIDATED.md#option-b-complete-runtime-library) (Option B section; formerly OPTION_B_IMPLEMENTATION_PLAN.md / OPTION_B_COMPLETE_RUNTIME.md).*
 
 ### Prerequisites
 - [x] Generated C compiles and links with runtime (e.g. `qb64pe_fresh.c` + `libqb64fresh_rt`).
@@ -1247,6 +1247,280 @@ Debugger fully implemented with 50+ tests passing. See [ADR-0013](../adrs/ADR-00
 
 Completed or reference-only docs from `docs/ThingsToDo/` were moved to `docs/archive/`:
 
-- [x] **BOOTSTRAP_VALIDATION.md** → `docs/archive/BOOTSTRAP_VALIDATION.md` — Bootstrap compilation fully validated; runtime features and regression tests complete. Optional next steps (QB4.5 compatibility test, self-compilation) remain in the archived doc.
+- [x] **BOOTSTRAP_VALIDATION.md** → merged into `docs/archive/BOOTSTRAP_PLAN_FULL.md` §7.1 (2026-01-31) — Bootstrap compilation fully validated; runtime features and regression tests complete. Optional next steps (QB4.5 compatibility test, self-compilation) documented in that section.
 - [x] **QB64PE_INCREMENTAL_TESTING.md** → `docs/archive/QB64PE_INCREMENTAL_TESTING.md` — Full QB64pe compilation succeeds; Phases 1, 2, 4 complete. Summary in [TESTING-COMPLETED.md](TESTING-COMPLETED.md).
-- [x] **ARCHITECTURAL_REVIEW_ITEM5_IMPLEMENTATION.md** → `docs/archive/ARCHITECTURAL_REVIEW_ITEM5_IMPLEMENTATION.md` — Item 5 Phase 1 (Runtime Architecture) complete; Phase 2–3 deferred. Summary in [ARCHITECTURAL_REVIEW_COMPLETED.md](ARCHITECTURAL_REVIEW_COMPLETED.md).
+- [x] **ARCHITECTURAL_REVIEW_ITEM5_IMPLEMENTATION.md** → merged into [ARCHITECTURAL_REVIEW_COMPLETED.md](ARCHITECTURAL_REVIEW_COMPLETED.md) — Item 5 Phase 1 (Runtime Architecture) complete; Phase 2–3 deferred. Full content now in ARCHITECTURAL_REVIEW_COMPLETED.md §5.
+
+---
+
+## Option B: Runtime Library Completion ✅ (2026-01-30)
+
+**Status:** ~85-90% of runtime functionality complete. Production-ready for most BASIC programs.
+
+*Completed items from [TODO_CONSOLIDATED.md](../ThingsToDo/TODO_CONSOLIDATED.md#option-b-complete-runtime-library) (Option B section).*
+
+### TIER 1: Critical Core ✅ COMPLETE
+
+#### String System
+- [x] Reference-counted strings (QbString) - fully functional
+- [x] All major string functions (LEFT$, RIGHT$, MID$, INSTR, CHR$, ASC, UCASE$, LCASE$, TRIM$, HEX$, OCT$, _BIN$, STR$, VAL, etc.) - ~40+ functions
+- [x] String concatenation, comparison
+- [x] String/number conversions
+- [x] Temporary string management (uses reference counting instead of pool)
+
+**Note:** QbString is NOT binary-compatible with QB64pe's qbs* structure. For full compatibility, qbs structure would still be needed.
+
+#### Memory Management System
+- [x] `qb_memnew` - Allocate memory block
+- [x] `qb_memfree` - Free memory block
+- [x] `qb_memget` - Read from memory
+- [x] `qb_memput` - Write to memory
+- [x] `qb_memcopy` - Copy memory
+- [x] `qb_memfill` - Fill memory
+- [x] `qb_mem_of` - Wrap existing memory (_MEM)
+- [x] `qb_memexists` - Check validity (_MEMEXISTS)
+- [x] `qb_memelement` - Array element access (_MEMELEMENT)
+- [x] `qb_memimage` - Image memory access (_MEMIMAGE)
+- [x] `qb_memsound` - Sound memory access (_MEMSOUND)
+- [x] `qb_offset` - Get pointer offset (_OFFSET)
+
+#### Error Handling System
+- [x] `qb_error_pending` - Check if error is pending
+- [x] `qb_set_error` - Set pending error from runtime
+- [x] `qb_clear_error` - Clear pending error (RESUME NEXT)
+- [x] `qb_commit_error` - Commit pending to ERR/ERL
+- [x] `qb_err_code` - ERR function
+- [x] `qb_err_line` - ERL function
+- [x] `qb_errorline` - _ERRORLINE function
+- [x] `qb_errormessage` - _ERRORMESSAGE$ function
+- [x] `qb_inclerrorline` - _INCLERRORLINE function
+- [x] `qb_inclerrorfile` - _INCLERRORFILE$ function
+
+### TIER 2: Essential Features ✅ COMPLETE
+
+#### File I/O System (GFS Layer)
+- [x] `qb_file_open` - OPEN statement (all modes: INPUT, OUTPUT, APPEND, RANDOM, BINARY)
+- [x] `qb_file_close` - CLOSE statement
+- [x] `qb_file_close_all` - Close all files
+- [x] `qb_file_seek` - SEEK statement
+- [x] `qb_file_seek_record` - Random access record positioning
+- [x] `qb_file_get` - GET statement (binary)
+- [x] `qb_file_put` - PUT statement (binary)
+- [x] `qb_file_print_*` - PRINT # statement
+- [x] `qb_file_write_*` - WRITE # statement
+- [x] `qb_file_input_*` - INPUT # statement
+- [x] `qb_file_line_input` - LINE INPUT # statement
+- [x] `qb_eof` - EOF function
+- [x] `qb_lof` - LOF function
+- [x] `qb_loc` - LOC function
+- [x] `qb_seek` - SEEK function
+- [x] `qb_freefile` - FREEFILE function
+- [x] `qb_field_start` / `qb_field_add` - FIELD statement support
+- [x] `qb_lset` / `qb_rset` - LSET/RSET statements
+- [x] `qb_file_kill` - KILL statement
+- [x] `qb_file_rename` - NAME statement
+- [x] `qb_file_exists` - _FILEEXISTS function
+- [x] `qb_chdir` - CHDIR statement
+- [x] `qb_mkdir` - MKDIR statement
+- [x] `qb_rmdir` - RMDIR statement
+- [x] `qb_dir_exists` - _DIREXISTS function
+- [x] `qb_dir` - DIR$ function
+- [x] `qb_cwd` - _CWD$ function
+- [x] `qb_startdir` - _STARTDIR$ function
+- [x] `qb_sub_environ` - ENVIRON statement
+
+#### Graphics System (SDL2 Backend)
+- [x] `qb_gfx_init` / `qb_gfx_shutdown` - Graphics initialization
+- [x] `qb_gfx_screen` - SCREEN statement (modes 0-13)
+- [x] `qb_gfx_cls` - CLS statement
+- [x] `qb_gfx_color` - COLOR statement
+- [x] `qb_gfx_locate` - LOCATE statement
+- [x] `qb_gfx_print` - PRINT in graphics mode
+- [x] `qb_gfx_pset` - PSET statement
+- [x] `qb_gfx_line` - LINE statement
+- [x] `qb_gfx_box` - BOX/LINE with BF option
+- [x] `qb_gfx_circle` - CIRCLE statement
+- [x] `qb_gfx_paint` - PAINT statement
+- [x] `qb_gfx_point` - POINT function
+- [x] `qb_rgb` / `qb_rgba` - _RGB32, _RGBA32 functions
+- [x] `qb_gfx_newimage` - _NEWIMAGE function
+- [x] `qb_gfx_loadimage` - _LOADIMAGE function
+- [x] `qb_gfx_freeimage` - _FREEIMAGE statement
+- [x] `qb_gfx_putimage` - _PUTIMAGE statement
+- [x] `qb_gfx_get` / `qb_gfx_put` - GET/PUT array operations
+- [x] `qb_gfx_palette` - PALETTE statement
+- [x] `qb_palettecolor` - _PALETTECOLOR function/statement
+- [x] `qb_gfx_view` - VIEW statement
+- [x] `qb_gfx_window` - WINDOW statement
+- [x] `qb_gfx_pmap` - PMAP function
+- [x] `qb_gfx_pcopy` - PCOPY statement
+- [x] `qb_mouse_*` - Mouse functions (_MOUSEX, _MOUSEY, _MOUSEBUTTON, etc.)
+- [x] `qb_loadfont` / `qb_font` - Font functions
+- [x] `qb_clipboard_get` / `qb_clipboard_set` - Clipboard functions
+- [x] `qb_fullscreen` - _FULLSCREEN function/statement
+- [x] `qb_screenmove` / `qb_screenshow` / `qb_screenhide` - Window control
+- [x] `qb_sub__title` - _TITLE statement
+- [x] `qb_maptriangle` - _MAPTRIANGLE statement
+
+#### Audio System (Rodio Backend)
+- [x] `qb_audio_init` / `qb_audio_shutdown` - Audio initialization
+- [x] `qb_beep` - BEEP statement
+- [x] `qb_sound` - SOUND statement
+- [x] `qb_play` - PLAY statement (MML)
+- [x] `qb_sndopen` - _SNDOPEN function
+- [x] `qb_sndclose` - _SNDCLOSE statement
+- [x] `qb_sndplay` - _SNDPLAY statement
+- [x] `qb_sndstop` - _SNDSTOP statement
+- [x] `qb_sndpause` - _SNDPAUSE statement
+- [x] `qb_sndresume` - _SNDRESUME statement
+- [x] `qb_sndloop` - _SNDLOOP statement
+- [x] `qb_sndvol` - _SNDVOL statement
+- [x] `qb_sndbal` - _SNDBAL statement
+- [x] `qb_sndlen` - _SNDLEN function
+- [x] `qb_sndgetpos` - _SNDGETPOS function
+- [x] `qb_sndsetpos` - _SNDSETPOS statement
+- [x] `qb_sndplaying` - _SNDPLAYING function
+- [x] `qb_sndpaused` - _SNDPAUSED function
+- [x] `qb_sndcopy` - _SNDCOPY function
+- [x] `qb_sndplayfile` - _SNDPLAYFILE function
+- [x] `qb_sndopenraw` - _SNDOPENRAW function
+- [x] `qb_sndraw` / `qb_sndraw_stereo` - _SNDRAW statement
+- [x] `qb_sndrawlen` - _SNDRAWLEN function
+
+### TIER 3: Important Features ✅ COMPLETE
+
+#### Event System
+- [x] `qbevent` - Global debug event flag
+- [x] `qb_evnt` - Statement-level debug hook
+- [x] `qb_on_key` - ON KEY(n) GOSUB registration
+- [x] `qb_key_control` - KEY(n) ON/OFF/STOP
+- [x] `qb_on_timer` - ON TIMER(n) GOSUB registration
+- [x] `qb_timer_control` - TIMER ON/OFF/STOP
+- [x] `qb_on_uevent` - ON UEVENT GOSUB registration
+- [x] `qb_uevent_control` - UEVENT ON/OFF/STOP
+- [x] `qb_uevent_trigger` - UEVENT statement
+- [x] `qb_check_key_event` - Check for key events
+- [x] `qb_check_timer_event` - Check for timer events
+- [x] `qb_check_uevent` - Check for user events
+- [x] `qb_keyhit` - _KEYHIT function
+- [x] `qb_keydown` - _KEYDOWN function
+- [x] `qb_inkey` - INKEY$ function
+- [x] `qb_mouse_x` / `qb_mouse_y` - _MOUSEX, _MOUSEY functions
+- [x] `qb_mouse_button` - _MOUSEBUTTON function
+- [x] `qb_mouse_input` - _MOUSEINPUT function
+- [x] `qb_mouse_wheel` - _MOUSEWHEEL function
+- [x] `qb_mouse_move` - _MOUSEMOVE statement
+
+#### Date/Time Functions
+- [x] `qb_date` - DATE$ function (MM-DD-YYYY)
+- [x] `qb_time` - TIME$ function (HH:MM:SS)
+- [x] `qb_date64` - _DATE$ function (YYYY-MM-DD)
+- [x] `qb_time64` - _TIME$ function (HH:MM:SS)
+- [x] `qb_timer` - TIMER function
+- [x] `qb_sleep` / `qb_delay` - _DELAY statement
+- [x] `qb_cwd` - _CWD$ function
+- [x] `qb_startdir` - _STARTDIR$ function
+- [x] `qb_os` - _OS$ function
+
+#### Math Functions
+- [x] `qb_abs_*` - ABS function (int/float)
+- [x] `qb_sgn_*` - SGN function (int/float)
+- [x] `qb_int` / `qb_fix` - INT, FIX functions
+- [x] `qb_cint` / `qb_clng` - CINT, CLNG functions
+- [x] `qb_sin` / `qb_cos` / `qb_tan` - Trigonometric functions
+- [x] `qb_atn` / `qb_asin` / `qb_acos` - Inverse trigonometric
+- [x] `qb_sinh` / `qb_cosh` / `qb_tanh` - Hyperbolic functions
+- [x] `qb_sqr` - SQR function (with error handling)
+- [x] `qb_log` / `qb_log10` - LOG, LOG10 functions (with error handling)
+- [x] `qb_exp` - EXP function (with error handling)
+- [x] `qb_pow` / `qb_pow_int` - Exponentiation
+- [x] `qb_randomize` / `qb_rnd` - Random number functions
+- [x] `qb_d2r` / `qb_r2d` - Degree/radian conversion
+- [x] `qb_pi` / `qb_e` - Mathematical constants
+- [x] `qb_min_*` / `qb_max_*` - MIN, MAX functions
+- [x] `qb_readbit` / `qb_setbit` / `qb_resetbit` / `qb_togglebit` - Bit manipulation
+- [x] `qb_rol` / `qb_ror` - Rotate left/right
+
+### TIER 4: Nice to Have (Partial)
+
+#### Type Conversions
+- [x] `qb_hex` - HEX$ function
+- [x] `qb_oct` - OCT$ function
+- [x] `qb_bin` - _BIN$ function
+
+#### Additional Features
+- [x] **Clipboard:** `qb_clipboard_get` / `qb_clipboard_set` - Platform-specific clipboard access
+- [x] **Shell:** `qb_shell` - SHELL command execution
+- [x] **Environment:** `qb_sub_environ` - ENVIRON statement (partial)
+- [x] **Networking:** `qb_net_*` functions - _OPENHOST, _OPENCONNECTION, _OPENCLIENT, GET#/PUT# on network handles
+- [x] **Dialogs:** `qb_openfiledialog`, `qb_savefiledialog`, `qb_selectfolderdialog`, `qb_messagebox_ex`
+- [x] **Joystick:** `qb_stick`, `qb_strig`, `qb_devices`, `qb_axis`, `qb_button`
+- [x] **Interrupt emulation:** `qb_interrupt` / `qb_interruptx` - DOS interrupt emulation (INT 0x33 mouse)
+
+### Implementation Phases ✅ COMPLETE
+
+- [x] **Phase 1:** String System (4-6 weeks) - QbString implemented with ~40+ functions
+- [x] **Phase 2:** Memory & Error Handling (2-3 weeks) - All _MEM* functions and error handling complete
+- [x] **Phase 3:** File I/O (3-4 weeks) - Full GFS layer with all file operations
+- [x] **Phase 4:** Graphics (4-6 weeks) - SDL2 backend with all drawing primitives
+- [x] **Phase 5:** Audio (2-3 weeks) - Rodio backend with all sound functions
+- [x] **Phase 6:** Polish (2-4 weeks) - Event system, date/time, math functions complete
+
+### Statistics
+
+- **Original Estimated Scope:** 17,000 - 27,000 lines
+- **Completed:** ~85-90% of runtime functionality
+- **Remaining Scope:** ~3,000 - 5,000 lines (mostly compatibility features and advanced features)
+- **Status:** Production-ready for most BASIC programs
+
+**Remaining items** (not blocking production use):
+- qbs-compatible string system (only needed for binary compatibility)
+- CMEM support (only needed for legacy programs)
+- MKx$/CVx type conversion functions
+- File locking (LOCK/UNLOCK)
+- COM port support
+- Some advanced graphics features
+- Threading support
+- HTTP client
+- Compression (zlib)
+
+---
+
+## Partial Implementations Doc – Completed Items (moved 2026-01-31)
+
+*Completed items moved from [PARTIAL_IMPLEMENTATIONS.md](../ThingsToDo/PARTIAL_IMPLEMENTATIONS.md) “Recent Changes” section.*
+
+### 2026-01-31
+- [x] **Documentation update** – Verified against current codebase. External runtime: I/O split into `io/` submodule (mod.rs, print.rs, input.rs, file.rs). New modules: bitops, buffer, cmem, completion, condvar, condvar_ffi, console_display_ffi, cp437, events, filepath, game_controller_ffi, http, http_ffi, logging, logging_ffi, mem_lock, mutex, mutex_ffi, qbs_compat, thread. Audio has midi.rs. Inline runtime: bitops.rs, logging.rs added. All references to `runtime/src/io.rs` updated to `runtime/src/io/` (file.rs, input.rs). HTTP client (libqb_http_*) and logging (qb_log*, libqb_log*) documented. Test count note updated to 1,700+.
+- [x] **Implementation Order – Core I/O** – Strings, console I/O, file I/O, keyboard, math (done for bootstrap).
+- [x] **Implementation Order – Graphics foundation** – SDL2 window, screen modes, CLS, COLOR, PSET, LINE, CIRCLE, VIEW, WINDOW, GET/PUT, _PUTIMAGE, alpha blending, PCOPY, screen pages (done in external).
+- [x] **Implementation Order – Graphics extended** – Images, fonts, _LOADFONT, _PRINTSTRING, Unicode; _MAPTRIANGLE, _COPYPALETTE, _DISPLAYORDER.
+- [x] **Implementation Order – Audio** – BEEP, SOUND, _SNDOPEN/_SNDPLAY family, PLAY, rodio backend (done in external).
+- [x] **Implementation Order – Input** – Mouse, game controller/joystick (STICK, STRIG, _DEVICES, _AXIS, _BUTTON, ON STRIG) (done in external).
+- [x] **Implementation Order – System** – Dialogs, clipboard; networking (`qb_net_*` in runtime and header); directory ops (`qb_chdir`, `qb_mkdir`, `qb_rmdir`, `qb_dir_exists` in header and io.rs) (done in external).
+- [x] **Phase 1.1 Memory Management** – _MEMNEW, _MEMFREE, _MEMEXISTS, _MEMCOPY, _MEMGET, _MEMPUT, _MEMFILL, _MEM, _MEMELEMENT complete (inline + external). _MEMSOUND/_MEMIMAGE stub (returns empty).
+- [x] **Phase 1.2 String System** – All functions complete: LEN, LEFT$, RIGHT$, MID$, INSTR, _INSTRREV, UCASE$, LCASE$, LTRIM$, RTRIM$, _TRIM$, SPACE$, STRING$, CHR$, ASC, STR$, VAL, HEX$, OCT$, _BIN$ (inline + external).
+- [x] **Phase 1.3 Math Functions** – All complete: ABS, SGN, INT, FIX, CINT, CLNG, CSNG, CDBL, SQR, LOG, EXP, SIN, COS, TAN, ATN, _ASIN, _ACOS, _ATAN2, _SINH, _COSH, _TANH, _PI, RND, RANDOMIZE, _D2R, _R2D (inline + external).
+- [x] **Phase 1.4 File I/O** – All complete: OPEN, CLOSE, PRINT #, INPUT #, LINE INPUT #, WRITE #, GET, PUT, SEEK, LOC, LOF, EOF, FREEFILE, KILL, NAME, CHDIR, MKDIR, RMDIR, _FILEEXISTS, _DIREXISTS (inline + external).
+- [x] **Phase 3.1 Keyboard** – INKEY$, INPUT, LINE INPUT, _KEYHIT, _KEYDOWN, _KEYCLEAR complete (inline + external).
+- [x] **Phase 3.2 Mouse** – _MOUSEINPUT, _MOUSEX/Y, _MOUSEBUTTON, _MOUSEWHEEL, _MOUSESHOW/HIDE, _MOUSEMOVE full in external; inline stubs.
+- [x] **Phase 3.3 Game Controller** – STICK, STRIG, _DEVICES, _DEVICE$, _AXIS, _BUTTON full in external; inline stubs.
+- [x] **Phase 4 Audio** – BEEP, SOUND, PLAY, _SNDOPEN/_SNDCLOSE, _SNDPLAY/PAUSE/STOP, _SNDLOOP/VOL/BAL, _SNDPLAYING/LEN/GETPOS/SETPOS full in external; inline stubs.
+- [x] **Phase 5.1 Timing** – TIMER, _DELAY, SLEEP, _LIMIT, DATE$, TIME$ complete (inline + external).
+- [x] **Phase 5.2 Environment and Shell** – ENVIRON$, ENVIRON, COMMAND$, _OS$, _SHELL, SHELL, SYSTEM, END complete (inline + external).
+- [x] **Phase 5.3 Dialogs and Clipboard** – _MESSAGEBOX, _OPENFILEDIALOG$, _SAVEFILEDIALOG$, _SELECTFOLDERDIALOG$, _CLIPBOARD$ full in external; inline stubs.
+- [x] **Phase 5.4 Error Handling** – ON ERROR GOTO, ON ERROR GOTO _NEWHANDLER, RESUME, ERR, ERL, _ERRORMESSAGE$, ERROR complete (inline + external).
+- [x] **Phase 6 Networking** – _OPENHOST, _OPENCONNECTION, _OPENCLIENT, _CONNECTED, _CLOSEHOST (qb_net_*) implemented in external runtime and header; inline stubs. API differs from QB64pe (numeric port vs string).
+- [x] **File I/O Features (FIELD/LSET/RSET)** – qb_field_start, qb_field_add, LSET/RSET fully implemented in runtime/src/io/file.rs.
+- [x] **Debugger Infrastructure** – run/pause/step_over/step_into/step_out/stop, process_events/handle_event, variable evaluation, attach mode, expression evaluation (DAP) infrastructure complete; requires runtime integration hooks.
+
+### 2026-01-28
+- [x] **Documentation update** – Verified against current codebase. External runtime tree now includes `array_registry.rs`. Array metadata note corrected (inline: `src/codegen/c_backend/runtime/arrays.rs`; external: `runtime/src/array_registry.rs`).
+
+### 2026-01-27
+- [x] **FIELD statement** – Fully implemented (see File I/O Features in PARTIAL_IMPLEMENTATIONS.md).
+- [x] **LSET/RSET** – Fully implemented (see File I/O Features in PARTIAL_IMPLEMENTATIONS.md).
+- [x] **Graphics features** – Console scrolling, per-image palettes, STEP position tracking, and window functions verified/implemented (see Graphics Features in PARTIAL_IMPLEMENTATIONS.md).
+
+### 2026-01-26
+- [x] **Array metadata tracking** – Hash table registry; `qb_array_register` / `qb_array_register_md`, `qb_array_update`, `qb_array_erase`; LBOUND/UBOUND correct. Paths documented in PARTIAL_IMPLEMENTATIONS.md.

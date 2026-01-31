@@ -49,7 +49,7 @@ QB64Fresh can compile **QB64pe itself** — a 59,000-line BASIC compiler — int
 | Parse + Codegen | ~800ms |
 | Status | ✅ `-h` works, ✅ Runtime features complete, ⚠️ Full execution testing in progress |
 
-The bootstrapped QB64pe runs and displays help. Runtime features (file I/O, keyboard input) are implemented and validated. QB64pe is compiled with external runtime (requires graphics support for GUI). Full execution testing (compiling BASIC programs with bootstrapped QB64pe) is in progress. See [docs/archive/BOOTSTRAP_VALIDATION.md](docs/archive/BOOTSTRAP_VALIDATION.md) for current status.
+The bootstrapped QB64pe runs and displays help. Runtime features (file I/O, keyboard input) are implemented and validated. QB64pe is compiled with external runtime (requires graphics support for GUI). Full execution testing (compiling BASIC programs with bootstrapped QB64pe) is in progress. See [docs/archive/BOOTSTRAP_PLAN_FULL.md](docs/archive/BOOTSTRAP_PLAN_FULL.md) (Bootstrap Validation section) for current status.
 
 **IMPORTANT:** Always use memory limits when running either compiler. See [docs/MEMORY_LIMITS.md](docs/MEMORY_LIMITS.md).
 
@@ -97,12 +97,12 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed documentation.
 - C library integration (DECLARE LIBRARY)
 - **C header parsing** (auto-extract functions, constants, structs from `.h` files)
 - 240+ built-in functions
+- **OpenGL (optional)** — `_GL*` / `_GLU*` and `SUB _GL` when enabled; see [docs/OPENGL.md](docs/OPENGL.md)
 
 ### Not Yet Implemented
 - Alpha blending
 - Hardware acceleration
 - Multi-threading (_THREAD)
-- OpenGL commands (intentionally excluded — use DECLARE LIBRARY for raw GL)
 
 ## Docs
 

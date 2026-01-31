@@ -20,7 +20,7 @@
 - **Phase 4:** Core compiler (without IDE) — COMPILES SUCCESSFULLY
 - **Phase 5:** Full compiler — COMPILES SUCCESSFULLY
 
-Phase 3 (Built-in Functions in isolation) remains BLOCKED by design (tight coupling to main compiler). Full doc: [QB64PE_INCREMENTAL_TESTING.md](QB64PE_INCREMENTAL_TESTING.md).
+Phase 3 (Built-in Functions in isolation) now PASSES using stub infrastructure (sections/phase3_stubs.bas: validname, tryRemoveSymbol$, AddQuotes$, subfunc, subfuncn). Full doc: [QB64PE_INCREMENTAL_TESTING.md](QB64PE_INCREMENTAL_TESTING.md).
 
 ---
 

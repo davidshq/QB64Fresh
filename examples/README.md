@@ -58,6 +58,7 @@ gcc -I runtime/include drawing.c -L target/release -lqb64fresh_rt $(pkg-config -
 | `colors.bas` | COLOR, PALETTE, RGB |
 | `animation.bas` | Simple sprite animation |
 | `mouse_input.bas` | Mouse tracking and clicks |
+| `opengl_minimal.bas` | OpenGL: SUB _GL, _GLRENDER, _GLBEGIN/_GLEND, _GLVERTEX3F (requires runtime with `opengl` feature) |
 
 ### Games (`games/`)
 | File | Description |

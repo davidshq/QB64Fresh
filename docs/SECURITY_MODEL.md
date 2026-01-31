@@ -1,6 +1,6 @@
 # QB64Fresh Security Model: SHELL and File Operations
 
-*Last updated: 2026-01-26*
+*Last updated: 2026-01-31*
 
 The architectural decision (no sandbox, match traditional BASIC) is in [ADR-0015: No-Sandbox Execution Model](adrs/ADR-0015-no-sandbox-execution-model.md).
 
@@ -95,7 +95,7 @@ All path arguments are expressions. They are passed through to the runtime or ge
 
 - **Path traversal:** `../` and absolute paths (e.g. `/etc/passwd`, `C:\Windows\System32`) are accepted. Resolution is done entirely by the OS.
 - **OPEN / BLOAD / BSAVE:** The inline C runtime uses `fopen(filename, mode)`. On non-Windows, it may also try a normalized path (backslash → forward slash) if the first `fopen` fails; the path is not otherwise restricted.
-- **KILL, NAME, MKDIR, RMDIR, CHDIR:** Implemented in `runtime/src/io.rs` via `std::fs::*` and `std::env::set_current_dir`. No extra checks.
+- **KILL, NAME, MKDIR, RMDIR, CHDIR:** Implemented in `runtime/src/io/input.rs` via `std::fs::*` and `std::env::set_current_dir`. No extra checks.
 - **KILL and globbing:** The runtime uses `std::fs::remove_file` only. **Glob patterns (e.g. `KILL "*.tmp"`) are not expanded**; such a path is passed as the literal filename `"*.tmp"`, so only a file named `*.tmp` would be removed. This differs from QB64/QB64PE, where `KILL "*.tmp"` can delete multiple files.
 
 ### 2.3 Security Considerations
@@ -145,12 +145,12 @@ Any such feature would be documented separately and would not change the default
 
 ---
 
-## 5. References
+## 6. References
 
 - **Parser:** `src/parser/system.rs` (KILL, NAME, MKDIR, RMDIR, CHDIR, SHELL, _SHELLHIDE), `src/parser/file_io.rs` (OPEN, etc.)
 - **Codegen:** `src/codegen/c_backend/stmt/mod.rs` (SHELL, file ops), `src/codegen/c_backend/file_io.rs` (OPEN), `src/codegen/c_backend/runtime/file.rs` (inline `qb_file_open`, etc.)
-- **Runtime:** `runtime/src/io.rs` (`qb_shell`, `qb_shell_hide`, `qb_file_kill`, `qb_file_rename`, `qb_mkdir`, `qb_rmdir`, `qb_chdir`, `qb_file_exists`, `qb_direxists`, `qb_dir`, `qb_files`)
-- **Design discussion:** `docs/ThingsToDo/CODEBASE_REVIEW_CONSOLIDATED.md` (SHELL command injection, path traversal)
+- **Runtime:** `runtime/src/io/input.rs` (`qb_shell`, `qb_shell_hide`, `qb_file_kill`, `qb_file_rename`, `qb_mkdir`, `qb_rmdir`, `qb_chdir`, `qb_file_exists`, `qb_dir_exists`, `qb_dir`, `qb_files`); `runtime/src/io/file.rs` (file open/close and tests).
+- **Design:** `docs/ThingsToDo/CODE_REVIEW_PLAN.md`; ADR-0015 (no-sandbox execution model).
 
 ---
 
