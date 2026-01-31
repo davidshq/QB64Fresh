@@ -520,14 +520,15 @@ pub enum StatementKind {
     },
 
     // ==================== File I/O Statements ====================
-    /// `OPEN filename FOR mode [ACCESS access] [lock] AS [#]filenum [LEN=reclen]`
+    /// `OPEN filename [FOR mode] [ACCESS access] [lock] AS [#]filenum [LEN=reclen]`
     ///
     /// Opens a file for reading, writing, or both.
+    /// FOR mode may be omitted for COM ports: `OPEN "COM1:9600,N,8,1" AS #1`.
     OpenFile {
-        /// The filename expression (usually a string).
+        /// The filename expression (usually a string, or COM port spec).
         filename: Expr,
-        /// The file mode (Input, Output, Append, Binary, Random).
-        mode: FileMode,
+        /// The file mode (Input, Output, Append, Binary, Random). None when FOR is omitted (e.g. COM).
+        mode: Option<FileMode>,
         /// Optional access mode (Read, Write, ReadWrite).
         access: Option<FileAccess>,
         /// Optional lock mode (Shared, Read, Write, ReadWrite).

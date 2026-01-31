@@ -766,7 +766,7 @@ pub enum TypedStatementKind {
 
     /// RANDOMIZE statement to seed the random number generator.
     ///
-    /// RANDOMIZE [seed] - Initialize random number generator.
+    /// RANDOMIZE \[seed\] - Initialize random number generator (optional seed).
     /// - `RANDOMIZE` - no seed (implementation defined behavior)
     /// - `RANDOMIZE TIMER` - seed is the TIMER function call
     /// - `RANDOMIZE expr` - seed with specific value
@@ -780,8 +780,8 @@ pub enum TypedStatementKind {
     OpenFile {
         /// The filename expression.
         filename: TypedExpr,
-        /// The file mode.
-        mode: FileMode,
+        /// The file mode (None when FOR omitted, e.g. COM port).
+        mode: Option<FileMode>,
         /// Optional access mode.
         access: Option<FileAccess>,
         /// Optional lock mode.
@@ -2087,7 +2087,7 @@ pub struct TypedParameter {
 }
 
 /// A typed array dimension.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypedArrayDimension {
     /// Lower bound (evaluated to constant).
     pub lower: i64,

@@ -219,7 +219,7 @@ fn try_fold_builtin(name: &str, args: &[TypedExpr]) -> Option<FoldedValue> {
 
         "_ROUND" if folded_args.len() == 1 => match &folded_args[0] {
             FoldedValue::Integer(v) => Some(FoldedValue::Integer(*v)),
-            FoldedValue::Float(v) => Some(FoldedValue::Float(v.round())),
+            FoldedValue::Float(v) => Some(FoldedValue::Integer(v.round() as i64)),
             _ => None,
         },
 
@@ -843,6 +843,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)] // 3.14 is a test value, not PI
     fn test_emit_folded() {
         assert_eq!(emit_folded(&FoldedValue::Integer(42)), "42LL");
         assert_eq!(

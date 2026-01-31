@@ -19,14 +19,18 @@ pub(super) fn emit_system_stmt(
 ) -> Result<(), CodeGenError> {
     match kind {
         TypedStatementKind::Kill { filename } => {
+            let retry_label = emitter.next_label("err_retry");
+            writeln_code!(output, "{}{}:", indent, retry_label)?;
             let filename_code = emitter.emit_expr(filename)?;
             let filename_access =
                 emit_string_data_access(filename, &filename_code, &emitter.config.runtime_mode);
             writeln_code!(output, "{}qb_file_kill({});", indent, filename_access)?;
-            emitter.emit_error_pending_goto_handler(indent, output)?;
+            emitter.emit_error_pending_goto_handler(indent, Some(&retry_label), output)?;
         }
 
         TypedStatementKind::Rename { old_name, new_name } => {
+            let retry_label = emitter.next_label("err_retry");
+            writeln_code!(output, "{}{}:", indent, retry_label)?;
             let old_code = emitter.emit_expr(old_name)?;
             let new_code = emitter.emit_expr(new_name)?;
             let old_access =
@@ -40,31 +44,37 @@ pub(super) fn emit_system_stmt(
                 old_access,
                 new_access
             )?;
-            emitter.emit_error_pending_goto_handler(indent, output)?;
+            emitter.emit_error_pending_goto_handler(indent, Some(&retry_label), output)?;
         }
 
         TypedStatementKind::Mkdir { path } => {
+            let retry_label = emitter.next_label("err_retry");
+            writeln_code!(output, "{}{}:", indent, retry_label)?;
             let path_code = emitter.emit_expr(path)?;
             let path_access =
                 emit_string_data_access(path, &path_code, &emitter.config.runtime_mode);
             writeln_code!(output, "{}qb_mkdir({});", indent, path_access)?;
-            emitter.emit_error_pending_goto_handler(indent, output)?;
+            emitter.emit_error_pending_goto_handler(indent, Some(&retry_label), output)?;
         }
 
         TypedStatementKind::Rmdir { path } => {
+            let retry_label = emitter.next_label("err_retry");
+            writeln_code!(output, "{}{}:", indent, retry_label)?;
             let path_code = emitter.emit_expr(path)?;
             let path_access =
                 emit_string_data_access(path, &path_code, &emitter.config.runtime_mode);
             writeln_code!(output, "{}qb_rmdir({});", indent, path_access)?;
-            emitter.emit_error_pending_goto_handler(indent, output)?;
+            emitter.emit_error_pending_goto_handler(indent, Some(&retry_label), output)?;
         }
 
         TypedStatementKind::Chdir { path } => {
+            let retry_label = emitter.next_label("err_retry");
+            writeln_code!(output, "{}{}:", indent, retry_label)?;
             let path_code = emitter.emit_expr(path)?;
             let path_access =
                 emit_string_data_access(path, &path_code, &emitter.config.runtime_mode);
             writeln_code!(output, "{}qb_chdir({});", indent, path_access)?;
-            emitter.emit_error_pending_goto_handler(indent, output)?;
+            emitter.emit_error_pending_goto_handler(indent, Some(&retry_label), output)?;
         }
 
         TypedStatementKind::Environ { env_string } => {
@@ -76,6 +86,8 @@ pub(super) fn emit_system_stmt(
             if emitter.config.no_shell {
                 return Err(CodeGenError::new(CodeGenErrorKind::ShellDisabled));
             }
+            let retry_label = emitter.next_label("err_retry");
+            writeln_code!(output, "{}{}:", indent, retry_label)?;
             if let Some(cmd) = command {
                 let cmd_code = emitter.emit_expr(cmd)?;
                 // qb_shell expects const char*, not qb_string*
@@ -85,7 +97,7 @@ pub(super) fn emit_system_stmt(
             } else {
                 writeln_code!(output, "{}qb_shell(NULL);", indent)?;
             }
-            emitter.emit_error_pending_goto_handler(indent, output)?;
+            emitter.emit_error_pending_goto_handler(indent, Some(&retry_label), output)?;
         }
 
         TypedStatementKind::ShellHide { command } => {

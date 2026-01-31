@@ -465,6 +465,45 @@ fn emit_expr_internal(
                 return Ok(format!("qb_ubound2({})", args_str));
             }
 
+            // Special case: CSNG — type-dependent wrapper (overflow error 6)
+            if upper_name == "CSNG" && args.len() == 1 {
+                let arg_code = emit_expr(
+                    &args[0],
+                    no_shell,
+                    variable_renames,
+                    param_names,
+                    byref_scalar_names,
+                    byref_udt_names,
+                    byref_string_names,
+                    byref_string_basic_names,
+                    dynamic_external_c_names,
+                )?;
+                let c_fn = match args[0].basic_type {
+                    BasicType::Single => "qb_csng_float",
+                    _ => "qb_csng_double",
+                };
+                return Ok(format!("{}({})", c_fn, arg_code));
+            }
+
+            // Special case: CDBL — use qb_cdbl_float when arg is Single
+            if upper_name == "CDBL" && args.len() == 1 {
+                let arg_code = emit_expr(
+                    &args[0],
+                    no_shell,
+                    variable_renames,
+                    param_names,
+                    byref_scalar_names,
+                    byref_udt_names,
+                    byref_string_names,
+                    byref_string_basic_names,
+                    dynamic_external_c_names,
+                )?;
+                return Ok(match args[0].basic_type {
+                    BasicType::Single => format!("qb_cdbl_float({})", arg_code),
+                    _ => format!("(double)({})", arg_code),
+                });
+            }
+
             // Special case: LEN - use qb_len_str for strings, sizeof for numeric types
             if upper_name == "LEN" && args.len() == 1 {
                 let arg_code = emit_expr(
@@ -484,6 +523,40 @@ fn emit_expr_internal(
                     // Numeric types: use sizeof to get byte size
                     return Ok(format!("(int32_t)sizeof({})", arg_code));
                 }
+            }
+
+            // Special case: HEX$/OCT$/_BIN$ with float arg use _float variant (bit pattern)
+            if (upper_name == "HEX$" || upper_name == "OCT$" || upper_name == "_BIN$")
+                && args.len() == 1
+            {
+                let arg_code = emit_expr(
+                    &args[0],
+                    no_shell,
+                    variable_renames,
+                    param_names,
+                    byref_scalar_names,
+                    byref_udt_names,
+                    byref_string_names,
+                    byref_string_basic_names,
+                    dynamic_external_c_names,
+                )?;
+                let use_float = matches!(args[0].basic_type, BasicType::Double | BasicType::Single);
+                let c_name = if use_float {
+                    match upper_name.as_str() {
+                        "HEX$" => "qb_hex_float",
+                        "OCT$" => "qb_oct_float",
+                        "_BIN$" => "qb_bin_float",
+                        _ => unreachable!(),
+                    }
+                } else {
+                    match upper_name.as_str() {
+                        "HEX$" => "qb_hex",
+                        "OCT$" => "qb_oct",
+                        "_BIN$" => "qb_bin",
+                        _ => unreachable!(),
+                    }
+                };
+                return Ok(format!("{}({})", c_name, arg_code));
             }
 
             // Special case: VARPTR - returns address of variable as integer
@@ -820,6 +893,67 @@ fn emit_expr_internal(
                 };
             }
 
+            // Special case: _INPUTBOX$(title, message, default_input) — 3 optional strings → qb_inputbox(const char*, const char*, const char*)
+            if upper_name == "_INPUTBOX$" {
+                let args_code: Result<Vec<_>, _> = args
+                    .iter()
+                    .map(|e| {
+                        emit_expr(
+                            e,
+                            no_shell,
+                            variable_renames,
+                            param_names,
+                            byref_scalar_names,
+                            byref_udt_names,
+                            byref_string_names,
+                            byref_string_basic_names,
+                            dynamic_external_c_names,
+                        )
+                    })
+                    .collect();
+                let args_vec = args_code?;
+                let a0 = args_vec
+                    .first()
+                    .map(|c| format!("qb_string_data({})", c))
+                    .unwrap_or_else(|| "NULL".to_string());
+                let a1 = args_vec
+                    .get(1)
+                    .map(|c| format!("qb_string_data({})", c))
+                    .unwrap_or_else(|| "NULL".to_string());
+                let a2 = args_vec
+                    .get(2)
+                    .map(|c| format!("qb_string_data({})", c))
+                    .unwrap_or_else(|| "NULL".to_string());
+                return Ok(format!("qb_inputbox({}, {}, {})", a0, a1, a2));
+            }
+
+            // Special case: _COLORCHOOSERDIALOG(title, defaultRGB) — 2 optional args → qb_colorchooserdialog(const char*, uint32_t)
+            if upper_name == "_COLORCHOOSERDIALOG" {
+                let args_code: Result<Vec<_>, _> = args
+                    .iter()
+                    .map(|e| {
+                        emit_expr(
+                            e,
+                            no_shell,
+                            variable_renames,
+                            param_names,
+                            byref_scalar_names,
+                            byref_udt_names,
+                            byref_string_names,
+                            byref_string_basic_names,
+                            dynamic_external_c_names,
+                        )
+                    })
+                    .collect();
+                let args_vec = args_code?;
+                let a0 = args_vec
+                    .first()
+                    .map(|c| format!("qb_string_data({})", c))
+                    .unwrap_or_else(|| "NULL".to_string());
+                let a1 = args_vec.get(1).map(|c| c.as_str()).unwrap_or("0");
+                return Ok(format!("qb_colorchooserdialog({}, (uint32_t)({}))", a0, a1));
+            }
+
             // Special case: _SCREENIMAGE - provide default 0,0,0,0 for full screen capture
             if upper_name == "_SCREENIMAGE" {
                 let args_code: Result<Vec<_>, _> = args
@@ -866,6 +1000,35 @@ fn emit_expr_internal(
                     .collect();
                 let args_str = args_code?.join(", ");
                 return Ok(format!("qb_command_n({})", args_str));
+            }
+
+            // Special case: ENVIRON$(index) uses qb_environ_by_index, ENVIRON$(name$) uses qb_environ
+            if upper_name == "ENVIRON$" && args.len() == 1 {
+                let arg = &args[0];
+                let arg_code = emit_expr(
+                    arg,
+                    no_shell,
+                    variable_renames,
+                    param_names,
+                    byref_scalar_names,
+                    byref_udt_names,
+                    byref_string_names,
+                    byref_string_basic_names,
+                    dynamic_external_c_names,
+                )?;
+                let use_index = matches!(
+                    arg.basic_type,
+                    BasicType::Integer
+                        | BasicType::Long
+                        | BasicType::Integer64
+                        | BasicType::Single
+                        | BasicType::Double
+                );
+                return Ok(if use_index {
+                    format!("qb_environ_by_index({})", arg_code)
+                } else {
+                    format!("qb_environ({})", arg_code)
+                });
             }
 
             // Special case: ASC with 2 arguments (position) uses qb_asc2
@@ -2139,12 +2302,45 @@ fn emit_string_comparison(left: &str, right: &str, op: &BinaryOp) -> Result<Stri
     Ok(result)
 }
 
+/// Maps a BASIC OpenGL/_GL* name to its C wrapper (call_gl* or call_glu*).
+///
+/// QB64pe uses wrappers that check sub_gl_called before calling gl*.
+/// _GLBEGIN -> call_glBegin, _GLVERTEX3F -> call_glVertex3f, _GLUPERSPECTIVE -> call_gluPerspective.
+fn opengl_c_name(name: &str) -> String {
+    let s = name.trim_start_matches('_');
+    let (prefix, rest) = if s.to_uppercase().starts_with("GLU") {
+        ("call_glu", &s[3..])
+    } else if s.to_uppercase().starts_with("GL") {
+        ("call_gl", &s[2..])
+    } else {
+        return format!(
+            "qb_{}",
+            name.to_lowercase().replace(['&', '%', '$', '!', '#'], "")
+        );
+    };
+    let rest_lower = rest.to_lowercase();
+    let first = rest_lower
+        .chars()
+        .next()
+        .map(|c| c.to_uppercase().next().unwrap_or(c))
+        .unwrap_or_default();
+    let tail: String = rest_lower.chars().skip(1).collect();
+    format!("{}{}{}", prefix, first, tail)
+}
+
 /// Maps a BASIC function name to its C equivalent.
 ///
 /// Built-in BASIC functions are mapped to corresponding runtime functions
 /// or standard C math functions. User-defined functions are prefixed with `qb_`.
 pub(super) fn c_function_name(name: &str) -> String {
     let upper = name.to_uppercase();
+    // OpenGL _GL* / _GLU* (except _GLRENDER and _GLCOMPAT) map to call_gl* / call_glu*
+    if (upper.starts_with("_GL") || upper.starts_with("_GLU"))
+        && upper != "_GLRENDER"
+        && upper != "_GLCOMPAT"
+    {
+        return opengl_c_name(name);
+    }
     match upper.as_str() {
         // Math functions
         "ABS" => "fabs".to_string(),
@@ -2166,7 +2362,7 @@ pub(super) fn c_function_name(name: &str) -> String {
         "_ATAN2" => "atan2".to_string(),
         "_HYPOT" => "hypot".to_string(),
         "_CEIL" => "ceil".to_string(),
-        "_ROUND" => "round".to_string(),
+        "_ROUND" => "qb_round_double".to_string(),
         "_MIN" => "fmin".to_string(),
         "_MAX" => "fmax".to_string(),
         "_CLAMP" => "qb_clamp".to_string(),

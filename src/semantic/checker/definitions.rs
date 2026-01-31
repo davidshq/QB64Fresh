@@ -128,6 +128,10 @@ impl<'a> TypeChecker<'a> {
                 // Note: We'll still mark as static=false below to avoid codegen issues
             }
 
+            // Arrays are static only if $STATIC directive is active, this is an array,
+            // and all bounds are constant (checked above). Used for symbol table and REDIM validation.
+            let is_static = self.array_mode_static && !typed_dims.is_empty() && !has_runtime_bounds;
+
             // Define symbol. DIM a() AS type = dynamic array (ArrayVariable with empty dims),
             // so lookup_array finds it for a(1) and REDIM a(1 TO 5).
             let symbol_kind = if var.dimensions.is_empty() && !var.is_dynamic_array {
@@ -141,6 +145,7 @@ impl<'a> TypeChecker<'a> {
                             upper_bound: d.upper,
                         })
                         .collect(),
+                    is_static,
                 }
             };
 
@@ -184,10 +189,6 @@ impl<'a> TypeChecker<'a> {
                     });
                 }
             }
-
-            // Arrays are static only if $STATIC directive is active, this is an array,
-            // and all bounds are constant (checked above)
-            let is_static = self.array_mode_static && !typed_dims.is_empty() && !has_runtime_bounds;
 
             typed_variables.push(TypedDimVariable {
                 name: var.name.clone(),
@@ -385,6 +386,10 @@ impl<'a> TypeChecker<'a> {
         // Enter SUB scope
         self.symbols.enter_scope(ScopeKind::Sub);
         self.in_sub = true;
+        let is_sub_gl = name.eq_ignore_ascii_case("_GL");
+        if is_sub_gl {
+            self.in_sub_gl = true;
+        }
 
         // Collect labels from body for forward reference support (QB45 local GOSUB pattern)
         self.collect_labels_from_body(body);
@@ -404,8 +409,12 @@ impl<'a> TypeChecker<'a> {
                 // array access and array passing work correctly inside the procedure
                 let symbol_kind = if p.is_array {
                     // Array parameters have unknown dimensions at definition time
-                    // We use empty dimensions which will be filled at call site
-                    SymbolKind::ArrayVariable { dimensions: vec![] }
+                    // We use empty dimensions which will be filled at call site.
+                    // Parameters are never static arrays.
+                    SymbolKind::ArrayVariable {
+                        dimensions: vec![],
+                        is_static: false,
+                    }
                 } else {
                     SymbolKind::Parameter { by_val: p.by_val }
                 };
@@ -441,6 +450,9 @@ impl<'a> TypeChecker<'a> {
 
         // Exit scope
         self.in_sub = false;
+        if is_sub_gl {
+            self.in_sub_gl = false;
+        }
         self.symbols.exit_scope();
 
         TypedStatement::new(
@@ -522,7 +534,10 @@ impl<'a> TypeChecker<'a> {
                 // Array parameters need to be registered as ArrayVariable so
                 // array access and array passing work correctly inside the procedure
                 let symbol_kind = if p.is_array {
-                    SymbolKind::ArrayVariable { dimensions: vec![] }
+                    SymbolKind::ArrayVariable {
+                        dimensions: vec![],
+                        is_static: false,
+                    }
                 } else {
                     SymbolKind::Parameter { by_val: p.by_val }
                 };

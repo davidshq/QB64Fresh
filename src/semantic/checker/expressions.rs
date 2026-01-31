@@ -656,7 +656,7 @@ impl<'a> TypeChecker<'a> {
             // Clone values upfront to release borrow before calling check_array_access
             let resolved_name = symbol.name.clone();
             let element_type = symbol.basic_type.clone();
-            let dimensions = if let SymbolKind::ArrayVariable { dimensions } = &symbol.kind {
+            let dimensions = if let SymbolKind::ArrayVariable { dimensions, .. } = &symbol.kind {
                 dimensions.clone()
             } else {
                 vec![]
@@ -781,11 +781,12 @@ impl<'a> TypeChecker<'a> {
                     })
                     .collect();
 
-                // Define the implicit array
+                // Define the implicit array (implicit arrays are always dynamic)
                 let implicit_array = Symbol {
                     name: name.to_string(),
                     kind: SymbolKind::ArrayVariable {
                         dimensions: dimensions.clone(),
+                        is_static: false,
                     },
                     basic_type: element_type.clone(),
                     span,
@@ -798,6 +799,19 @@ impl<'a> TypeChecker<'a> {
                 return self.check_array_access(name, args, dimensions, element_type, span);
             }
         };
+
+        // _GL* commands (except _GLRENDER and _GLCOMPAT) only valid inside SUB _GL (QB64pe error 270)
+        let upper_name = name.to_uppercase();
+        if (upper_name.starts_with("_GL") || upper_name.starts_with("_GLU"))
+            && upper_name != "_GLRENDER"
+            && upper_name != "_GLCOMPAT"
+            && !self.in_sub_gl
+        {
+            self.errors.push(SemanticError::GlOutsideSubGl {
+                name: name.to_string(),
+                span,
+            });
+        }
 
         // SUBs don't return values
         if proc.kind == ProcedureKind::Sub {
@@ -972,7 +986,7 @@ impl<'a> TypeChecker<'a> {
         {
             // Check if this name refers to a declared array (use array namespace)
             if let Some(symbol) = self.symbols.lookup_array(name)
-                && let SymbolKind::ArrayVariable { dimensions } = &symbol.kind
+                && let SymbolKind::ArrayVariable { dimensions, .. } = &symbol.kind
             {
                 let typed_dimensions: Vec<TypedArrayDimension> = dimensions
                     .iter()

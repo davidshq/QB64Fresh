@@ -24,18 +24,18 @@
 //!
 //! # Module Structure
 //!
-//! The parser is split into focused modules:
-//! - [`tokens`] - Token navigation utilities (peek, advance, match, expect)
-//! - [`expressions`] - Pratt parser for expressions
-//! - [`statements`] - Statement dispatcher and simple statements
-//! - [`control_flow`] - IF/FOR/WHILE/DO/SELECT parsing
-//! - [`procedures`] - SUB/FUNCTION/TYPE definitions
-//! - [`directives`] - Preprocessor directives ($INCLUDE, $IF)
-//! - [`audio`] - BEEP, SOUND, PLAY, _SND* statements
-//! - [`file_io`] - OPEN, CLOSE, GET, PUT, SEEK, WRITE # statements
-//! - [`graphics`] - SCREEN, LINE, CIRCLE, PAINT, VIEW, WINDOW, _DISPLAY, etc.
-//! - [`system`] - SHELL, KILL, NAME, MKDIR, BLOAD, BSAVE, _CLIPBOARD$, etc.
-//! - [`error`] - Parse error types
+//! The parser is split into focused modules (internal implementation details):
+//! - `tokens` - Token navigation utilities (peek, advance, match, expect)
+//! - `expressions` - Pratt parser for expressions
+//! - `statements` - Statement dispatcher and simple statements
+//! - `control_flow` - IF/FOR/WHILE/DO/SELECT parsing
+//! - `procedures` - SUB/FUNCTION/TYPE definitions
+//! - `directives` - Preprocessor directives ($INCLUDE, $IF)
+//! - `audio` - BEEP, SOUND, PLAY, _SND* statements
+//! - `file_io` - OPEN, CLOSE, GET, PUT, SEEK, WRITE # statements
+//! - `graphics` - SCREEN, LINE, CIRCLE, PAINT, VIEW, WINDOW, _DISPLAY, etc.
+//! - `system` - SHELL, KILL, NAME, MKDIR, BLOAD, BSAVE, _CLIPBOARD$, etc.
+//! - [`error`] - Parse error types (public API)
 //!
 //! # Error Recovery
 //!

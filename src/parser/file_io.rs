@@ -29,21 +29,30 @@ impl<'a> Parser<'a> {
             return self.parse_open_legacy(start, first_expr);
         }
 
-        // Modern syntax: OPEN filename FOR mode ...
-        // first_expr is the filename
+        // Modern syntax: OPEN filename [FOR mode] ... AS #filenum
+        // Or COM-style: OPEN "COM1:9600,N,8,1" AS #1 (FOR omitted)
         let filename = first_expr;
-        self.expect(&TokenKind::For, "FOR")?;
-        let mode = self.parse_file_mode()?;
 
-        let access = if self.match_token(&TokenKind::Access) {
-            Some(self.parse_file_access()?)
+        let (mode, access, lock) = if self.match_token(&TokenKind::As) {
+            // OPEN filename AS #n [LEN=reclen] — no FOR (e.g. COM port)
+            (None, None, None)
         } else {
-            None
+            self.expect(&TokenKind::For, "FOR or AS")?;
+            let mode = self.parse_file_mode()?;
+            let access = if self.match_token(&TokenKind::Access) {
+                Some(self.parse_file_access()?)
+            } else {
+                None
+            };
+            let lock = self.parse_file_lock()?;
+            (Some(mode), access, lock)
         };
 
-        let lock = self.parse_file_lock()?;
-
-        self.expect(&TokenKind::As, "AS")?;
+        if mode.is_none() {
+            // We already consumed AS above; file_num and record_len follow
+        } else {
+            self.expect(&TokenKind::As, "AS")?;
+        }
         self.match_token(&TokenKind::Hash);
 
         let file_num = self.parse_expression()?;

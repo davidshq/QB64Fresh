@@ -7,6 +7,9 @@
 //! - `SOUND` - Tone generation
 //! - `PLAY` - MML music string playback
 //! - `_SND*` family - Modern sound file operations
+//! - `_WAVE` - Waveform type constant / wave output device
+//! - `_SNDNEW` - Create new sound buffer
+//! - `_MIDISOUNDBANK` - Set MIDI sound bank (soundfont) file path
 //!
 //! For full audio support, use `--runtime external` and link with `libqb64fresh_rt`.
 
@@ -229,6 +232,36 @@ pub(super) fn emit_audio_functions(output: &mut String) -> Result<(), CodeGenErr
     // _SNDRAWLEN - get length of queued raw audio in seconds (returns 0)
     writeln_code!(output, "double qb_sndrawlen(void) {{")?;
     writeln_code!(output, "    return 0.0;")?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(output)?;
+
+    // _WAVE - waveform type constant / get wave output device (QB64 compatibility)
+    writeln_code!(output, "int32_t qb_wave(void) {{")?;
+    writeln_code!(
+        output,
+        "    return 0; /* Waveform constant / device; 0 = default */"
+    )?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(output)?;
+
+    // _SNDNEW - create new sound buffer (frames, channels, bits [, sampleRate])
+    writeln_code!(
+        output,
+        "int32_t qb_sndnew(int32_t frames, int32_t channels, int32_t bits) {{"
+    )?;
+    writeln_code!(output, "    _qb_audio_warn();")?;
+    writeln_code!(output, "    (void)frames; (void)channels; (void)bits;")?;
+    writeln_code!(
+        output,
+        "    return -1; /* Invalid handle when inline runtime */"
+    )?;
+    writeln_code!(output, "}}")?;
+    writeln_code!(output)?;
+
+    // _MIDISOUNDBANK - set MIDI sound bank (soundfont) file path
+    writeln_code!(output, "void qb_midisoundbank(qb_string* filename) {{")?;
+    writeln_code!(output, "    _qb_audio_warn();")?;
+    writeln_code!(output, "    (void)filename;")?;
     writeln_code!(output, "}}")?;
     writeln_code!(output)?;
     Ok(())

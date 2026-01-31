@@ -189,6 +189,11 @@ pub(super) fn emit_keyboard_functions(output: &mut String) -> Result<(), CodeGen
     writeln_code!(output, "#endif")?;
     writeln_code!(output)?;
 
+    // _KEYDOWN (simulate key down) / _KEYUP (simulate key up) — stubs for linking (no-op)
+    writeln_code!(output, "void qb_keydown_vk(uint32_t vk) {{ (void)vk; }}")?;
+    writeln_code!(output, "void qb_keyup_vk(uint32_t vk) {{ (void)vk; }}")?;
+    writeln_code!(output)?;
+
     // _CINP - raw console input (returns character code, no echo)
     writeln_code!(output, "#ifdef _WIN32")?;
     writeln_code!(output, "int64_t qb_cinp(void) {{")?;

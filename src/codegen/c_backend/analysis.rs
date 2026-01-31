@@ -15,8 +15,8 @@ use std::collections::{HashMap, HashSet};
 
 use crate::codegen::error::CodeGenError;
 use crate::semantic::typed_ir::{
-    TypedDataValue, TypedExternalDeclaration, TypedParameter, TypedProgram, TypedStatement,
-    TypedStatementKind,
+    TypedCaseMatch, TypedDataValue, TypedDoCondition, TypedExpr, TypedExprKind,
+    TypedExternalDeclaration, TypedParameter, TypedProgram, TypedStatement, TypedStatementKind,
 };
 use crate::semantic::types::BasicType;
 use crate::writeln_code;
@@ -76,6 +76,309 @@ pub(super) fn has_screen_hide(program: &TypedProgram) -> bool {
         }
     }
     false
+}
+
+/// Returns true if the program uses OpenGL: it defines `SUB _GL` or calls any `_GL*` sub/function.
+///
+/// Used to decide whether to emit `#define QB64FRESH_OPENGL` and link OpenGL (optional layer).
+/// Returns true if the program uses OpenGL (defines `SUB _GL` or calls `_GL*`).
+pub fn program_uses_opengl(program: &TypedProgram) -> bool {
+    for stmt in &program.statements {
+        if statement_uses_opengl(stmt) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Recursively checks if a statement is or contains SUB _GL or a call to an _GL* procedure.
+fn statement_uses_opengl(stmt: &TypedStatement) -> bool {
+    match &stmt.kind {
+        TypedStatementKind::SubDefinition { name, body, .. } => {
+            if name.eq_ignore_ascii_case("_GL") {
+                return true;
+            }
+            for s in body {
+                if statement_uses_opengl(s) {
+                    return true;
+                }
+            }
+            false
+        }
+        TypedStatementKind::Call { name, args, .. } => {
+            if name.starts_with("_GL") {
+                return true;
+            }
+            for a in args {
+                if expr_uses_opengl(a) {
+                    return true;
+                }
+            }
+            false
+        }
+        TypedStatementKind::FunctionDefinition { body, .. } => {
+            for s in body {
+                if statement_uses_opengl(s) {
+                    return true;
+                }
+            }
+            false
+        }
+        TypedStatementKind::If {
+            then_branch,
+            elseif_branches,
+            else_branch,
+            condition,
+            ..
+        } => {
+            if expr_uses_opengl(condition) {
+                return true;
+            }
+            for s in then_branch {
+                if statement_uses_opengl(s) {
+                    return true;
+                }
+            }
+            for (cond, branch) in elseif_branches {
+                if expr_uses_opengl(cond) {
+                    return true;
+                }
+                for s in branch {
+                    if statement_uses_opengl(s) {
+                        return true;
+                    }
+                }
+            }
+            if let Some(branch) = else_branch {
+                for s in branch {
+                    if statement_uses_opengl(s) {
+                        return true;
+                    }
+                }
+            }
+            false
+        }
+        TypedStatementKind::For {
+            start,
+            end,
+            step,
+            body,
+            ..
+        } => {
+            if expr_uses_opengl(start) || expr_uses_opengl(end) {
+                return true;
+            }
+            if let Some(s) = step
+                && expr_uses_opengl(s)
+            {
+                return true;
+            }
+            for s in body {
+                if statement_uses_opengl(s) {
+                    return true;
+                }
+            }
+            false
+        }
+        TypedStatementKind::While {
+            condition, body, ..
+        } => {
+            if expr_uses_opengl(condition) {
+                return true;
+            }
+            for s in body {
+                if statement_uses_opengl(s) {
+                    return true;
+                }
+            }
+            false
+        }
+        TypedStatementKind::DoLoop {
+            pre_condition,
+            body,
+            post_condition,
+            ..
+        } => {
+            for TypedDoCondition { condition, .. } in
+                [pre_condition, post_condition].into_iter().flatten()
+            {
+                if expr_uses_opengl(condition) {
+                    return true;
+                }
+            }
+            for s in body {
+                if statement_uses_opengl(s) {
+                    return true;
+                }
+            }
+            false
+        }
+        TypedStatementKind::SelectCase {
+            test_expr,
+            cases,
+            case_else,
+            ..
+        } => {
+            if expr_uses_opengl(test_expr) {
+                return true;
+            }
+            for case in cases {
+                for m in &case.matches {
+                    match m {
+                        TypedCaseMatch::Single(e) => {
+                            if expr_uses_opengl(e) {
+                                return true;
+                            }
+                        }
+                        TypedCaseMatch::Range { from, to } => {
+                            if expr_uses_opengl(from) || expr_uses_opengl(to) {
+                                return true;
+                            }
+                        }
+                        TypedCaseMatch::Comparison { value, .. } => {
+                            if expr_uses_opengl(value) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+                for s in &case.body {
+                    if statement_uses_opengl(s) {
+                        return true;
+                    }
+                }
+            }
+            if let Some(else_stmts) = case_else {
+                for s in else_stmts {
+                    if statement_uses_opengl(s) {
+                        return true;
+                    }
+                }
+            }
+            false
+        }
+        TypedStatementKind::ConditionalBlockResolved { statements, .. } => {
+            for s in statements {
+                if statement_uses_opengl(s) {
+                    return true;
+                }
+            }
+            false
+        }
+        TypedStatementKind::Const { definitions } => {
+            for (_, e, _) in definitions {
+                if expr_uses_opengl(e) {
+                    return true;
+                }
+            }
+            false
+        }
+        TypedStatementKind::Assignment { value, .. } => expr_uses_opengl(value),
+        TypedStatementKind::Redim { variables, .. } => {
+            for v in variables {
+                for d in &v.dimensions {
+                    if let Some(l) = &d.lower
+                        && expr_uses_opengl(l)
+                    {
+                        return true;
+                    }
+                    if expr_uses_opengl(&d.upper) {
+                        return true;
+                    }
+                }
+            }
+            false
+        }
+        TypedStatementKind::Dim { .. } => false,
+        TypedStatementKind::Print { items, .. } => items.iter().any(|i| expr_uses_opengl(&i.expr)),
+        TypedStatementKind::Input { .. } => false,
+        TypedStatementKind::Line {
+            x1,
+            y1,
+            x2,
+            y2,
+            color,
+            style,
+            ..
+        } => {
+            x1.as_ref().is_some_and(expr_uses_opengl)
+                || y1.as_ref().is_some_and(expr_uses_opengl)
+                || expr_uses_opengl(x2)
+                || expr_uses_opengl(y2)
+                || color.as_ref().is_some_and(expr_uses_opengl)
+                || style.as_ref().is_some_and(expr_uses_opengl)
+        }
+        TypedStatementKind::Circle {
+            x,
+            y,
+            radius,
+            color,
+            ..
+        } => {
+            expr_uses_opengl(x)
+                || expr_uses_opengl(y)
+                || expr_uses_opengl(radius)
+                || color.as_ref().is_some_and(expr_uses_opengl)
+        }
+        TypedStatementKind::Pset { x, y, color, .. } => {
+            expr_uses_opengl(x)
+                || expr_uses_opengl(y)
+                || color.as_ref().is_some_and(expr_uses_opengl)
+        }
+        TypedStatementKind::Paint {
+            x,
+            y,
+            color,
+            border,
+            ..
+        } => {
+            expr_uses_opengl(x)
+                || expr_uses_opengl(y)
+                || color.as_ref().is_some_and(expr_uses_opengl)
+                || border.as_ref().is_some_and(expr_uses_opengl)
+        }
+        TypedStatementKind::Locate { row, col, .. } => {
+            row.as_ref().is_some_and(expr_uses_opengl) || col.as_ref().is_some_and(expr_uses_opengl)
+        }
+        TypedStatementKind::Screen { mode, .. } => mode.as_ref().is_some_and(expr_uses_opengl),
+        TypedStatementKind::Limit { fps } => expr_uses_opengl(fps),
+        TypedStatementKind::Delay { seconds } => expr_uses_opengl(seconds),
+        TypedStatementKind::DefSeg { segment } => segment.as_ref().is_some_and(expr_uses_opengl),
+        TypedStatementKind::Poke { address, value, .. } => {
+            expr_uses_opengl(address) || expr_uses_opengl(value)
+        }
+        _ => {
+            // Remaining statement kinds without nested _GL* in this pass
+            false
+        }
+    }
+}
+
+/// Recursively checks if an expression contains a call to an _GL* function.
+fn expr_uses_opengl(expr: &TypedExpr) -> bool {
+    match &expr.kind {
+        TypedExprKind::FunctionCall { name, args, .. } => {
+            if name.starts_with("_GL") {
+                return true;
+            }
+            args.iter().any(expr_uses_opengl)
+        }
+        TypedExprKind::ExternalFunctionCall { name, args, .. } => {
+            if name.starts_with("_GL") {
+                return true;
+            }
+            args.iter().any(expr_uses_opengl)
+        }
+        TypedExprKind::Binary { left, right, .. } => {
+            expr_uses_opengl(left) || expr_uses_opengl(right)
+        }
+        TypedExprKind::Unary { operand, .. } => expr_uses_opengl(operand),
+        TypedExprKind::Grouped(e) => expr_uses_opengl(e),
+        TypedExprKind::ArrayAccess { indices, .. } => indices.iter().any(expr_uses_opengl),
+        TypedExprKind::Convert { expr, .. } => expr_uses_opengl(expr),
+        TypedExprKind::FieldAccess { object, .. } => expr_uses_opengl(object),
+        _ => false,
+    }
 }
 
 /// Collects DECLARE DYNAMIC LIBRARY blocks and the set of C names that are dynamically loaded.

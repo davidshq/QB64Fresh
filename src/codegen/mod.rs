@@ -33,7 +33,7 @@
 mod c_backend;
 mod error;
 
-pub use c_backend::{CBackend, RuntimeMode};
+pub use c_backend::{CBackend, RuntimeMode, program_uses_opengl};
 pub use error::{CodeGenError, CodeGenErrorKind};
 
 use crate::semantic::TypedProgram;

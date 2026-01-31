@@ -72,6 +72,7 @@ use crate::semantic::typed_ir::{TypedProgram, TypedStatement, TypedStatementKind
 use crate::write_code;
 use crate::writeln_code;
 
+pub use self::analysis::program_uses_opengl;
 use self::analysis::{
     collect_callback_wrappers, collect_data_values, collect_dynamic_libraries,
     collect_type_definitions, has_screen_hide,
@@ -344,6 +345,8 @@ pub struct CBackend {
     no_shell: bool,
     /// Embedded files from $EMBED directives.
     embedded_files: Vec<EmbeddedFile>,
+    /// When true, emit #define QB64FRESH_OPENGL and (later) OpenGL code. Set by --opengl or detection.
+    uses_opengl: bool,
 }
 
 impl Default for CBackend {
@@ -361,6 +364,7 @@ impl CBackend {
             source_file: None,
             no_shell: false,
             embedded_files: Vec::new(),
+            uses_opengl: false,
         }
     }
 
@@ -372,7 +376,17 @@ impl CBackend {
             source_file: None,
             no_shell: false,
             embedded_files: Vec::new(),
+            uses_opengl: false,
         }
+    }
+
+    /// Enables OpenGL code emission (#define QB64FRESH_OPENGL and optional _GL* code).
+    ///
+    /// When true, generated C will define QB64FRESH_OPENGL so the build can link OpenGL.
+    /// Set automatically when the program uses SUB _GL or _GL* calls, or explicitly via --opengl.
+    pub fn with_opengl(mut self, enabled: bool) -> Self {
+        self.uses_opengl = enabled;
+        self
     }
 
     /// Enables debug mode for breakpoints, stepping, and debugger integration.
@@ -489,6 +503,7 @@ impl CodeGenerator for CBackend {
         emitter.debug.enabled = self.debug_enabled;
         emitter.debug.source_file = self.source_file.clone();
         emitter.config.no_shell = self.no_shell;
+        emitter.uses_opengl = self.uses_opengl;
         let mut output = String::new();
 
         // Register string types in the type registry if in inline mode
@@ -498,12 +513,13 @@ impl CodeGenerator for CBackend {
             ctx.push_error(e);
         }
 
-        // Header (with optional debug support)
+        // Header (with optional debug support and OpenGL define)
         if let Err(e) = emit_header_with_debug(
             &mut output,
             &mut runtime_mode,
             self.debug_enabled,
             self.source_file.as_deref(),
+            self.uses_opengl,
         ) {
             ctx.push_error(e);
         }
@@ -973,6 +989,15 @@ impl CodeGenerator for CBackend {
             writeln_code!(&mut output, "    /* Initialize start directory */")
         );
         collect_err!(ctx, writeln_code!(&mut output, "    qb_init_startdir();"));
+        // Register SUB _GL with runtime so it is invoked each frame when _GLRENDER is active
+        if self.uses_opengl {
+            collect_err!(ctx, writeln_code!(&mut output, "#ifdef QB64FRESH_OPENGL"));
+            collect_err!(
+                ctx,
+                writeln_code!(&mut output, "    qb_gl_register_sub_gl(qb_sub__gl);")
+            );
+            collect_err!(ctx, writeln_code!(&mut output, "#endif"));
+        }
         // Load DECLARE DYNAMIC LIBRARY modules (dlopen/LoadLibrary + dlsym/GetProcAddress)
         if !dynamic_libs.is_empty() {
             collect_err!(
