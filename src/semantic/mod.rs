@@ -185,16 +185,14 @@ impl SemanticAnalyzer {
                 symbols::ProcedureKind::External => "External",
             };
 
+            // Show BYVAL/BYREF explicitly so hover matches codegen; see BYREF_BYVAL_CONTRACT.md.
             let params: Vec<String> = proc
                 .params
                 .iter()
                 .map(|p| {
                     let type_str = format_type(&p.basic_type);
-                    if p.by_val {
-                        format!("BYVAL {} AS {}", p.name, type_str)
-                    } else {
-                        format!("{} AS {}", p.name, type_str)
-                    }
+                    let modifier = if p.by_val { "BYVAL " } else { "BYREF " };
+                    format!("{}{} AS {}", modifier, p.name, type_str)
                 })
                 .collect();
 
@@ -401,8 +399,9 @@ fn format_symbol_hover(sym: &Symbol) -> String {
                 sym.name, val_str, type_str
             )
         }
+        // BYVAL/BYREF display must match codegen; see docs/reference/BYREF_BYVAL_CONTRACT.md.
         symbols::SymbolKind::Parameter { by_val } => {
-            let modifier = if *by_val { "BYVAL " } else { "" };
+            let modifier = if *by_val { "BYVAL " } else { "BYREF " };
             format!(
                 "```basic\n{}{} AS {}\n```\n\n**Parameter**",
                 modifier, sym.name, type_str

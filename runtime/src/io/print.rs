@@ -1,7 +1,11 @@
 //! I/O Functions for QB64Fresh Runtime
 //!
 //! This module provides PRINT, INPUT, and file I/O operations.
+//!
+//! When graphics mode is active (after SCREEN is called), PRINT statements
+//! render text to the graphics window instead of stdout.
 
+use crate::graphics::{graphics_newline, graphics_print, is_graphics_active};
 use crate::string::{
     qb_string_data, qb_string_from_bytes, qb_string_len, qb_string_retain, QbString,
 };
@@ -23,23 +27,42 @@ use std::os::unix::io::AsRawFd;
 // ============================================================================
 
 /// Print an integer value.
+///
+/// If graphics mode is active, prints to the graphics window.
+/// Otherwise, prints to stdout.
 #[no_mangle]
 pub extern "C" fn qb_print_int(n: i64) {
-    print!("{}", n);
+    let text = format!("{}", n);
+    if is_graphics_active() {
+        let _ = graphics_print(&text);
+    } else {
+        print!("{}", text);
+    }
 }
 
 /// Print a floating-point value.
+///
+/// If graphics mode is active, prints to the graphics window.
+/// Otherwise, prints to stdout.
 #[no_mangle]
 pub extern "C" fn qb_print_float(n: f64) {
     // BASIC typically displays floats without trailing zeros
-    if n == n.trunc() && n.abs() < 1e15 {
-        print!("{}", n as i64);
+    let text = if n == n.trunc() && n.abs() < 1e15 {
+        format!("{}", n as i64)
     } else {
-        print!("{}", n);
+        format!("{}", n)
+    };
+    if is_graphics_active() {
+        let _ = graphics_print(&text);
+    } else {
+        print!("{}", text);
     }
 }
 
 /// Print a string.
+///
+/// If graphics mode is active, prints to the graphics window.
+/// Otherwise, prints to stdout.
 ///
 /// # Safety
 /// - `s` must be a valid QbString pointer or null
@@ -51,13 +74,32 @@ pub unsafe extern "C" fn qb_print_string(s: *const QbString) {
     let data = qb_string_data(s);
     let len = qb_string_len(s);
     let slice = std::slice::from_raw_parts(data as *const u8, len);
-    let _ = io::stdout().write_all(slice);
+
+    if is_graphics_active() {
+        // Convert bytes to string for graphics print
+        if let Ok(text) = std::str::from_utf8(slice) {
+            let _ = graphics_print(text);
+        } else {
+            // Fall back to lossy conversion for non-UTF8 data
+            let text = String::from_utf8_lossy(slice);
+            let _ = graphics_print(&text);
+        }
+    } else {
+        let _ = io::stdout().write_all(slice);
+    }
 }
 
 /// Print a newline.
+///
+/// If graphics mode is active, advances the cursor to the next line in the graphics window.
+/// Otherwise, prints a newline to stdout.
 #[no_mangle]
 pub extern "C" fn qb_print_newline() {
-    println!();
+    if is_graphics_active() {
+        let _ = graphics_newline();
+    } else {
+        println!();
+    }
 }
 
 /// Print a tab (move to next print zone).
@@ -65,13 +107,21 @@ pub extern "C" fn qb_print_newline() {
 /// In BASIC, print zones are typically 14 columns wide.
 #[no_mangle]
 pub extern "C" fn qb_print_tab() {
-    print!("\t");
+    if is_graphics_active() {
+        let _ = graphics_print("\t");
+    } else {
+        print!("\t");
+    }
 }
 
 /// Print a space (semicolon separator in some contexts).
 #[no_mangle]
 pub extern "C" fn qb_print_space() {
-    print!(" ");
+    if is_graphics_active() {
+        let _ = graphics_print(" ");
+    } else {
+        print!(" ");
+    }
 }
 
 /// Flush stdout to ensure output is visible.

@@ -13,7 +13,7 @@
 //! the generation of C code for BASIC DEF FN statements.
 
 use crate::codegen::error::CodeGenError;
-use crate::semantic::typed_ir::{TypedExpr, TypedParameter, TypedStatement};
+use crate::semantic::typed_ir::{TypedExpr, TypedParameter, TypedStatement, TypedStatementKind};
 use crate::semantic::types::BasicType;
 use crate::writeln_code;
 
@@ -117,4 +117,29 @@ impl super::StmtEmitter {
 
         Ok(())
     }
+}
+
+/// Dispatcher for DEF FN statement kinds.
+pub(super) fn emit_def_fn_stmt(
+    emitter: &mut super::StmtEmitter,
+    kind: &TypedStatementKind,
+    _indent: &str,
+    output: &mut String,
+) -> Result<(), CodeGenError> {
+    match kind {
+        TypedStatementKind::DefFn {
+            name,
+            params,
+            return_type,
+            body,
+        } => emitter.emit_def_fn(name, params, return_type, body, output)?,
+        TypedStatementKind::DefFnMultiLine {
+            name,
+            params,
+            return_type,
+            body,
+        } => emitter.emit_def_fn_multiline(name, params, return_type, body, output)?,
+        _ => unreachable!("emit_def_fn_stmt called with non-DEF-FN kind"),
+    }
+    Ok(())
 }

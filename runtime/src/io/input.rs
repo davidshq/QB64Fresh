@@ -7,12 +7,48 @@ use crate::string::{
     qb_string_data, qb_string_empty, qb_string_from_bytes, qb_string_len, qb_string_release,
     QbString,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::ffi::CStr;
 use std::io::{self, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::os::raw::c_char;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
+
+/// Queue of INKEY$ key bytes pushed by the graphics backend when the window has focus.
+/// When graphics is active, qb_inkey() pumps events and reads from this queue so that
+/// keys go to the program (e.g. IDE message box can be dismissed with Enter).
+static GRAPHICS_INKEY_QUEUE: Mutex<VecDeque<Vec<u8>>> = Mutex::new(VecDeque::new());
+
+/// Debug: log first N key pushes for IDE key-delivery verification.
+static PUSH_INKEY_LOG_COUNT: AtomicU32 = AtomicU32::new(0);
+const PUSH_INKEY_LOG_LIMIT: u32 = 30;
+/// Debug: log first N inkey returns from graphics queue.
+pub(super) static INKEY_RETURN_LOG_COUNT: AtomicU32 = AtomicU32::new(0);
+pub(super) const INKEY_RETURN_LOG_LIMIT: u32 = 30;
+
+/// Push a key's INKEY$ bytes from the graphics backend (e.g. SDL KeyDown).
+/// Called by the graphics layer so that qb_inkey() and qb_keyhit() see keys when
+/// the program is in a tight "while (qb_inkey() == \"\")" loop and not calling
+/// qb_limit/qb_gfx_poll_events elsewhere.
+pub fn push_inkey_from_graphics(bytes: Vec<u8>) {
+    if bytes.is_empty() {
+        return;
+    }
+    let n = PUSH_INKEY_LOG_COUNT.fetch_add(1, Ordering::Relaxed);
+    if n < PUSH_INKEY_LOG_LIMIT {
+        let first = bytes.first().copied().unwrap_or(0);
+        crate::debug_log::log(
+            "io/input.rs",
+            "push_inkey_from_graphics",
+            &format!("\"n\":{},\"len\":{},\"first_byte\":{}", n, bytes.len(), first),
+            "ide_key_delivery",
+        );
+    }
+    if let Ok(mut q) = GRAPHICS_INKEY_QUEUE.lock() {
+        q.push_back(bytes);
+    }
+}
 
 // ============================================================================
 // INPUT Functions
@@ -479,13 +515,37 @@ mod keyboard {
 /// - The returned string must be released with `qb_string_release`
 #[no_mangle]
 pub extern "C" fn qb_inkey() -> *mut QbString {
+    // When graphics is active, keys go to SDL. The IDE (and other programs) may block
+    // in "while (qb_inkey() == \"\")" without calling qb_limit. Pump events once so
+    // SDL key events are processed and pushed to GRAPHICS_INKEY_QUEUE.
+    unsafe {
+        if crate::graphics::GRAPHICS_BACKEND.is_some() {
+            let _ = crate::graphics::poll_events_if_active();
+            if let Ok(mut q) = GRAPHICS_INKEY_QUEUE.lock() {
+                if let Some(bytes) = q.pop_front() {
+                    if !bytes.is_empty() {
+                        let n = INKEY_RETURN_LOG_COUNT.fetch_add(1, Ordering::Relaxed);
+                        if n < INKEY_RETURN_LOG_LIMIT {
+                            let first = bytes.first().copied().unwrap_or(0);
+                            crate::debug_log::log(
+                                "io/input.rs",
+                                "qb_inkey_returned_from_graphics",
+                                &format!("\"n\":{},\"len\":{},\"first_byte\":{}", n, bytes.len(), first),
+                                "ide_key_delivery",
+                            );
+                        }
+                        return qb_string_from_bytes(bytes.as_ptr(), bytes.len());
+                    }
+                }
+            }
+        }
+    }
     if let Some(key) = keyboard::read_key() {
         let inkey_bytes = keyboard::key_to_inkey_string(&key);
         if !inkey_bytes.is_empty() {
             return unsafe { qb_string_from_bytes(inkey_bytes.as_ptr(), inkey_bytes.len()) };
         }
     }
-
     crate::string::qb_string_empty()
 }
 
@@ -498,14 +558,26 @@ pub extern "C" fn qb_inkey() -> *mut QbString {
 /// This function is safe to call from C.
 #[no_mangle]
 pub extern "C" fn qb_keyhit() -> i64 {
+    // When graphics is active, pump once and check graphics inkey queue (same as qb_inkey).
+    unsafe {
+        if crate::graphics::GRAPHICS_BACKEND.is_some() {
+            let _ = crate::graphics::poll_events_if_active();
+            if let Ok(mut q) = GRAPHICS_INKEY_QUEUE.lock() {
+                if let Some(bytes) = q.pop_front() {
+                    match bytes.len() {
+                        1 => return bytes[0] as i64,
+                        2 if bytes[0] == 0 => return -(bytes[1] as i64 * 256),
+                        _ => return bytes.first().copied().unwrap_or(0) as i64,
+                    }
+                }
+            }
+        }
+    }
     if let Some(key) = keyboard::read_key() {
         let inkey_bytes = keyboard::key_to_inkey_string(&key);
         match inkey_bytes.len() {
             1 => inkey_bytes[0] as i64,
-            2 if inkey_bytes[0] == 0 => {
-                // Extended key: return as negative
-                -(inkey_bytes[1] as i64 * 256)
-            }
+            2 if inkey_bytes[0] == 0 => -(inkey_bytes[1] as i64 * 256),
             _ => inkey_bytes.first().copied().unwrap_or(0) as i64,
         }
     } else {
@@ -541,7 +613,9 @@ pub extern "C" fn qb_keydown(keycode: i64) -> i32 {
 /// Clear the keyboard buffer (_KEYCLEAR).
 #[no_mangle]
 pub extern "C" fn qb_keyclear() {
-    // Clear any buffered input
+    if let Ok(mut q) = GRAPHICS_INKEY_QUEUE.lock() {
+        q.clear();
+    }
     keyboard::enable_raw_mode();
     while keyboard::input_available() {
         let _ = keyboard::read_key();
@@ -1005,8 +1079,19 @@ pub extern "C" fn qb_environ_by_index(index: i64) -> *mut QbString {
 ///
 /// # Safety
 /// - `path` must be a valid QbString pointer or null
+static mut _DBG_FILE_EXISTS_COUNT: u32 = 0;
+
 #[no_mangle]
 pub unsafe extern "C" fn qb_file_exists(path: *const QbString) -> i32 {
+    _DBG_FILE_EXISTS_COUNT = _DBG_FILE_EXISTS_COUNT.saturating_add(1);
+    if _DBG_FILE_EXISTS_COUNT <= 20 {
+        crate::debug_log::log(
+            "io/input.rs:qb_file_exists",
+            "qb_file_exists called",
+            &format!("\"n\":{}", _DBG_FILE_EXISTS_COUNT),
+            "early",
+        );
+    }
     if path.is_null() {
         return 0;
     }
@@ -1039,8 +1124,19 @@ pub unsafe extern "C" fn qb_file_exists(path: *const QbString) -> i32 {
 ///
 /// # Safety
 /// - `path` must be a valid QbString pointer or null
+static mut _DBG_DIR_EXISTS_COUNT: u32 = 0;
+
 #[no_mangle]
 pub unsafe extern "C" fn qb_dir_exists(path: *const QbString) -> i32 {
+    _DBG_DIR_EXISTS_COUNT = _DBG_DIR_EXISTS_COUNT.saturating_add(1);
+    if _DBG_DIR_EXISTS_COUNT <= 20 {
+        crate::debug_log::log(
+            "io/input.rs:qb_dir_exists",
+            "qb_dir_exists called",
+            &format!("\"n\":{}", _DBG_DIR_EXISTS_COUNT),
+            "early",
+        );
+    }
     if path.is_null() {
         return 0;
     }

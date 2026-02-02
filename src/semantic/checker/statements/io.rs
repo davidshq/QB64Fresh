@@ -1,10 +1,9 @@
-//! File I/O statement type checking.
+//! File and console I/O statement type checking.
 //!
-//! This module handles type checking for file I/O statements:
-//! - OPEN, CLOSE
-//! - PRINT #, WRITE #, INPUT #, LINE INPUT #
-//! - GET, PUT, SEEK
-//! - LOCK, UNLOCK
+//! This module handles type checking for:
+//! - Console I/O: PRINT, PRINT USING, INPUT, LINE INPUT, LPRINT
+//! - File I/O: OPEN, CLOSE, PRINT #, WRITE #, INPUT #, LINE INPUT #, GET, PUT, SEEK, LOCK, UNLOCK
+//! - Legacy file/string: FILES, FIELD, LSET, RSET
 
 use crate::ast::{Expr, FileAccess, FileLock, FileMode, InputTarget, PrintItem, Span};
 use crate::semantic::{
@@ -665,14 +664,120 @@ impl<'a> TypeChecker<'a> {
     }
 }
 
-/// Dispatch function for file I/O statements.
+/// Dispatch function for console and file I/O statements.
 pub(super) fn check_io_stmt(
     checker: &mut super::super::TypeChecker,
     kind: &crate::ast::StatementKind,
     span: crate::ast::Span,
 ) -> crate::semantic::typed_ir::TypedStatement {
+    use crate::ast::StatementKind;
+    use crate::semantic::typed_ir::{TypedStatement, TypedStatementKind};
+
     match kind {
-        crate::ast::StatementKind::OpenFile {
+        StatementKind::Print { values, newline } => {
+            checker.check_print(values, *newline, span)
+        }
+        StatementKind::PrintUsing {
+            format,
+            values,
+            newline,
+        } => {
+            let typed_format = checker.check_expr(format);
+            if !typed_format.basic_type.is_string() {
+                checker.errors.push(SemanticError::type_mismatch(
+                    "STRING",
+                    format!("{:?}", typed_format.basic_type),
+                    span,
+                ));
+            }
+            let typed_values: Vec<_> = values.iter().map(|v| checker.check_expr(v)).collect();
+            TypedStatement::new(
+                TypedStatementKind::PrintUsing {
+                    format: typed_format,
+                    values: typed_values,
+                    newline: *newline,
+                },
+                span,
+            )
+        }
+        StatementKind::Input {
+            prompt,
+            show_question_mark,
+            same_line,
+            targets,
+        } => checker.check_input(prompt, *show_question_mark, *same_line, targets, span),
+        StatementKind::LineInput {
+            suppress_newline: _,
+            prompt,
+            target,
+        } => checker.check_line_input(prompt, target, span),
+        StatementKind::Lprint { values, newline } => {
+            let typed_values = checker.check_print_items(values);
+            TypedStatement::new(
+                TypedStatementKind::Lprint {
+                    values: typed_values,
+                    newline: *newline,
+                },
+                span,
+            )
+        }
+        StatementKind::FilesStmt { filespec } => {
+            let typed_filespec = filespec.as_ref().map(|f| checker.check_expr(f));
+            TypedStatement::new(
+                TypedStatementKind::FilesStmt {
+                    filespec: typed_filespec,
+                },
+                span,
+            )
+        }
+        StatementKind::FieldStmt { file_num, fields } => {
+            let typed_file_num = checker.check_expr(file_num);
+            let typed_fields: Vec<_> = fields
+                .iter()
+                .map(|f| crate::semantic::typed_ir::TypedFieldSpec {
+                    width: checker.check_expr(&f.width),
+                    variable: f.variable.clone(),
+                })
+                .collect();
+            TypedStatement::new(
+                TypedStatementKind::FieldStmt {
+                    file_num: typed_file_num,
+                    fields: typed_fields,
+                },
+                span,
+            )
+        }
+        StatementKind::Lset { variable, value } => {
+            let typed_value = checker.check_expr(value);
+            let resolved_name = if let Some(symbol) = checker.symbols.lookup_symbol(variable) {
+                symbol.name.clone()
+            } else {
+                variable.clone()
+            };
+            TypedStatement::new(
+                TypedStatementKind::Lset {
+                    variable: resolved_name,
+                    value: typed_value,
+                },
+                span,
+            )
+        }
+        StatementKind::Rset { variable, value } => {
+            let typed_value = checker.check_expr(value);
+            let resolved_name = if let Some(symbol) = checker.symbols.lookup_symbol(variable) {
+                symbol.name.clone()
+            } else {
+                variable.clone()
+            };
+            TypedStatement::new(
+                TypedStatementKind::Rset {
+                    variable: resolved_name,
+                    value: typed_value,
+                },
+                span,
+            )
+        }
+        StatementKind::OpenFile {
             filename,
             mode,
             access,
@@ -688,7 +793,7 @@ pub(super) fn check_io_stmt(
             record_len.as_ref(),
             span,
         ),
-        crate::ast::StatementKind::OpenFileLegacy {
+        StatementKind::OpenFileLegacy {
             mode_expr,
             file_num,
             filename,
@@ -696,40 +801,40 @@ pub(super) fn check_io_stmt(
         } => {
             checker.check_open_file_legacy(mode_expr, file_num, filename, record_len.as_ref(), span)
         }
-        crate::ast::StatementKind::CloseFile { file_nums } => {
+        StatementKind::CloseFile { file_nums } => {
             checker.check_close_file(file_nums, span)
         }
-        crate::ast::StatementKind::LockFile { file_num } => checker.check_lock_file(file_num, span),
-        crate::ast::StatementKind::UnlockFile { file_num } => {
+        StatementKind::LockFile { file_num } => checker.check_lock_file(file_num, span),
+        StatementKind::UnlockFile { file_num } => {
             checker.check_unlock_file(file_num, span)
         }
-        crate::ast::StatementKind::FilePrint {
+        StatementKind::FilePrint {
             file_num,
             values,
             newline,
         } => checker.check_file_print(file_num, values, *newline, span),
-        crate::ast::StatementKind::FileWrite { file_num, values } => {
+        StatementKind::FileWrite { file_num, values } => {
             checker.check_file_write(file_num, values, span)
         }
-        crate::ast::StatementKind::FileInput { file_num, targets } => {
+        StatementKind::FileInput { file_num, targets } => {
             checker.check_file_input(file_num, targets, span)
         }
-        crate::ast::StatementKind::FileLineInput { file_num, target } => {
+        StatementKind::FileLineInput { file_num, target } => {
             checker.check_file_line_input(file_num, target, span)
         }
-        crate::ast::StatementKind::FileGet {
+        StatementKind::FileGet {
             file_num,
             position,
             target,
         } => checker.check_file_get(file_num, position.as_ref(), target, span),
-        crate::ast::StatementKind::FilePut {
+        StatementKind::FilePut {
             file_num,
             position,
             target,
         } => checker.check_file_put(file_num, position.as_ref(), target, span),
-        crate::ast::StatementKind::FileSeek { file_num, position } => {
+        StatementKind::FileSeek { file_num, position } => {
             checker.check_file_seek(file_num, position, span)
         }
-        _ => unreachable!("Not a file I/O statement"),
+        _ => unreachable!("check_io_stmt called with non-I/O statement"),
     }
 }

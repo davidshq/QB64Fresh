@@ -15,7 +15,7 @@ use crate::ast::ExitType;
 use crate::codegen::error::CodeGenError;
 use crate::semantic::typed_ir::{
     TypedCaseClause, TypedCaseCompareOp, TypedCaseMatch, TypedDoCondition, TypedExpr,
-    TypedStatement,
+    TypedStatement, TypedStatementKind,
 };
 use crate::semantic::types::BasicType;
 use crate::writeln_code;
@@ -659,4 +659,194 @@ impl super::StmtEmitter {
             }
         }
     }
+}
+
+/// Dispatcher for control flow statement kinds.
+pub(super) fn emit_control_flow_stmt(
+    emitter: &mut super::StmtEmitter,
+    kind: &TypedStatementKind,
+    indent: &str,
+    output: &mut String,
+) -> Result<(), CodeGenError> {
+    match kind {
+        TypedStatementKind::If {
+            condition,
+            then_branch,
+            elseif_branches,
+            else_branch,
+        } => emitter.emit_if(
+            indent,
+            condition,
+            then_branch,
+            elseif_branches,
+            else_branch,
+            output,
+        )?,
+
+        TypedStatementKind::SelectCase {
+            test_expr,
+            cases,
+            case_else,
+        } => emitter.emit_select_case(indent, test_expr, cases, case_else, false, output)?,
+
+        TypedStatementKind::SelectEveryCase {
+            test_expr,
+            cases,
+            case_else,
+        } => emitter.emit_select_case(indent, test_expr, cases, case_else, true, output)?,
+
+        TypedStatementKind::For {
+            variable,
+            var_type,
+            start,
+            end,
+            step,
+            body,
+        } => emitter.emit_for(indent, variable, var_type, start, end, step, body, output)?,
+
+        TypedStatementKind::While { condition, body } => {
+            emitter.emit_while(indent, condition, body, output)?
+        }
+
+        TypedStatementKind::DoLoop {
+            pre_condition,
+            body,
+            post_condition,
+        } => emitter.emit_do_loop(indent, pre_condition, body, post_condition, output)?,
+
+        TypedStatementKind::Goto { target } => {
+            let c_label = emitter.proc_label(target);
+            writeln_code!(output, "{}goto {};", indent, c_label)?;
+        }
+
+        TypedStatementKind::Gosub { target } => {
+            let c_label = emitter.proc_label(target);
+            let return_label = emitter.next_label("gosub_ret");
+            writeln_code!(
+                output,
+                "{}_gosub_stack[_gosub_sp++] = &&{};",
+                indent,
+                return_label
+            )?;
+            writeln_code!(output, "{}goto {};", indent, c_label)?;
+            writeln_code!(output, "{}{}:;", indent, return_label)?;
+        }
+
+        TypedStatementKind::Return => {
+            writeln_code!(
+                output,
+                "{}if (_gosub_sp > 0) goto *_gosub_stack[--_gosub_sp];",
+                indent
+            )?;
+        }
+
+        TypedStatementKind::Exit { exit_type } => emitter.emit_exit(indent, exit_type, output)?,
+
+        TypedStatementKind::End { exit_code } => {
+            if let Some(code) = exit_code {
+                let code_expr = emitter.emit_expr(code)?;
+                writeln_code!(output, "{}exit((int){});", indent, code_expr)?;
+            } else {
+                writeln_code!(output, "{}exit(0);", indent)?;
+            }
+        }
+
+        TypedStatementKind::Stop => {
+            writeln_code!(output, "{}/* STOP */", indent)?;
+            writeln_code!(output, "{}exit(1);", indent)?;
+        }
+
+        TypedStatementKind::System { exit_code } => {
+            if let Some(code) = exit_code {
+                let code_expr = emitter.emit_expr(code)?;
+                writeln_code!(output, "{}exit((int){});", indent, code_expr)?;
+            } else {
+                writeln_code!(output, "{}exit(0);", indent)?;
+            }
+        }
+
+        TypedStatementKind::Sleep { seconds } => {
+            if let Some(secs) = seconds {
+                let secs_code = emitter.emit_expr(secs)?;
+                writeln_code!(output, "{}qb_sleep((int){});", indent, secs_code)?;
+            } else {
+                writeln_code!(output, "{}qb_sleep_keypress();", indent)?;
+            }
+        }
+
+        TypedStatementKind::Wait {
+            port,
+            and_mask,
+            xor_mask,
+        } => {
+            let port_code = emitter.emit_expr(port)?;
+            let and_code = emitter.emit_expr(and_mask)?;
+            if let Some(xor) = xor_mask {
+                let xor_code = emitter.emit_expr(xor)?;
+                writeln_code!(
+                    output,
+                    "{}qb_wait((int){}, (int){}, (int){});",
+                    indent,
+                    port_code,
+                    and_code,
+                    xor_code
+                )?;
+            } else {
+                writeln_code!(
+                    output,
+                    "{}qb_wait((int){}, (int){}, 0);",
+                    indent,
+                    port_code,
+                    and_code
+                )?;
+            }
+        }
+
+        TypedStatementKind::Delay { seconds } => {
+            let secs_code = emitter.emit_expr(seconds)?;
+            writeln_code!(output, "{}qb_delay({});", indent, secs_code)?;
+        }
+
+        TypedStatementKind::Limit { fps } => {
+            let fps_code = emitter.emit_expr(fps)?;
+            writeln_code!(output, "{}qb_limit((int){});", indent, fps_code)?;
+            let return_label = emitter.next_label("strig_ret");
+            writeln_code!(output, "{}/* STRIG event check */", indent)?;
+            writeln_code!(
+                output,
+                "{}_qb_strig_event_id = qb_strig_check_event();",
+                indent
+            )?;
+            writeln_code!(output, "{}if (_qb_strig_event_id) {{", indent)?;
+            writeln_code!(
+                output,
+                "{}    _gosub_stack[_gosub_sp++] = &&{};",
+                indent,
+                return_label
+            )?;
+            writeln_code!(output, "{}    goto _qb_strig_dispatch;", indent)?;
+            writeln_code!(output, "{}}}", indent)?;
+            writeln_code!(output, "{}{}:;", indent, return_label)?;
+            writeln_code!(output, "{}qb_strig_event_done();", indent)?;
+        }
+
+        TypedStatementKind::Erase { arrays } => {
+            for array_name in arrays {
+                let mut c_name = c_identifier(array_name);
+                if let Some(renamed) = emitter.procedure.variable_renames.get(&c_name)
+                    && !renamed.ends_with("_scalar")
+                {
+                    c_name = renamed.clone();
+                }
+                writeln_code!(output, "{}qb_array_erase({});", indent, c_name)?;
+            }
+        }
+
+        TypedStatementKind::KeyClear => {
+            writeln_code!(output, "{}qb_keyclear();", indent)?;
+        }
+
+        _ => unreachable!("emit_control_flow_stmt called with non-control-flow kind"),
+    }
+    Ok(())
 }

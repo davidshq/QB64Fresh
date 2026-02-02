@@ -8,6 +8,8 @@ This directory contains detailed API reference documentation for QB64Fresh's pro
 |----------|-------------|
 | [HEADER_PARSER_API.md](HEADER_PARSER_API.md) | Complete Rust API reference and architecture for the C header parser (`header-parsing` feature) |
 | [CODEGEN_WRITE_HELPERS.md](CODEGEN_WRITE_HELPERS.md) | Error-handling wrappers for code generation output writing |
+| [TYPED_IR_CONTRACT.md](TYPED_IR_CONTRACT.md) | Contract between semantic and codegen: TypedExprKind/TypedStatementKind variants, invariants, and assumptions |
+| [BYREF_BYVAL_CONTRACT.md](BYREF_BYVAL_CONTRACT.md) | Where BYREF/BYVAL is stored (`by_val` vs `is_byval`), call-site audit, and LSP/codegen consistency |
 
 ## Purpose
 
@@ -22,4 +24,4 @@ For architecture and design decisions, see [docs/adrs/](../adrs/).
 
 ---
 
-*Last updated: 2026-01-26*
+*Last updated: 2026-01-31*

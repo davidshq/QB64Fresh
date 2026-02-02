@@ -14,7 +14,7 @@
 //! and the GOSUB stack.
 
 use crate::codegen::error::CodeGenError;
-use crate::semantic::typed_ir::TypedExpr;
+use crate::semantic::typed_ir::{TypedExpr, TypedStatementKind};
 use crate::writeln_code;
 
 impl super::StmtEmitter {
@@ -321,4 +321,31 @@ impl super::StmtEmitter {
 
         Ok(())
     }
+}
+
+/// Dispatcher for error handling and computed jump statement kinds.
+pub(super) fn emit_error_jump_stmt(
+    emitter: &mut super::StmtEmitter,
+    kind: &TypedStatementKind,
+    indent: &str,
+    output: &mut String,
+) -> Result<(), CodeGenError> {
+    match kind {
+        TypedStatementKind::OnErrorGoto { target } => {
+            emitter.emit_on_error_goto(indent, target, output)?;
+        }
+        TypedStatementKind::OnErrorResumeNext => {
+            emitter.emit_on_error_resume_next(indent, output)?;
+        }
+        TypedStatementKind::ResumeStmt { target } => emitter.emit_resume(indent, target, output)?,
+        TypedStatementKind::ErrorStmt { code } => emitter.emit_error_stmt(indent, code, output)?,
+        TypedStatementKind::OnGoto { selector, targets } => {
+            emitter.emit_on_goto(indent, selector, targets, output)?;
+        }
+        TypedStatementKind::OnGosub { selector, targets } => {
+            emitter.emit_on_gosub(indent, selector, targets, output)?;
+        }
+        _ => unreachable!("emit_error_jump_stmt called with non-error-jump kind"),
+    }
+    Ok(())
 }

@@ -7,7 +7,7 @@ use super::font::{get_char_bitmap, is_pixel_set, FONT_HEIGHT, FONT_WIDTH};
 use super::{GraphicsBackend, GraphicsError, GraphicsErrorKind};
 use sdl2::event::{Event, WindowEvent};
 use sdl2::joystick::Joystick;
-use sdl2::keyboard::Scancode;
+use sdl2::keyboard::{Keycode, Scancode};
 use sdl2::mouse::MouseButton;
 use sdl2::pixels::Color;
 use sdl2::pixels::PixelFormatEnum;
@@ -315,6 +315,93 @@ impl std::fmt::Debug for SDL2Backend {
     }
 }
 
+/// Map SDL KeyDown (scancode, keycode) to INKEY$ bytes for qb_inkey().
+/// Extended keys (arrows, F1–F12, etc.) → [0, scan_code]; ASCII keys → [byte].
+fn sdl_key_to_inkey_bytes(scancode: Option<Scancode>, keycode: Option<Keycode>) -> Vec<u8> {
+    // Extended keys: QB64 INKEY$ uses CHR$(0) + CHR$(scan_code)
+    if let Some(s) = scancode {
+        let ext = match s {
+            Scancode::Up => 72,
+            Scancode::Down => 80,
+            Scancode::Left => 75,
+            Scancode::Right => 77,
+            Scancode::Home => 71,
+            Scancode::End => 79,
+            Scancode::Insert => 82,
+            Scancode::Delete => 83,
+            Scancode::PageUp => 73,
+            Scancode::PageDown => 81,
+            Scancode::F1 => 59,
+            Scancode::F2 => 60,
+            Scancode::F3 => 61,
+            Scancode::F4 => 62,
+            Scancode::F5 => 63,
+            Scancode::F6 => 64,
+            Scancode::F7 => 65,
+            Scancode::F8 => 66,
+            Scancode::F9 => 67,
+            Scancode::F10 => 68,
+            Scancode::F11 => 133,
+            Scancode::F12 => 134,
+            _ => 0,
+        };
+        if ext != 0 {
+            return vec![0, ext as u8];
+        }
+    }
+    // ASCII-style keys from keycode (Return, Escape, Backspace, Tab, printable)
+    if let Some(k) = keycode {
+        let byte = match k {
+            Keycode::Return | Keycode::Return2 => 13,
+            Keycode::Escape => 27,
+            Keycode::Backspace => 8,
+            Keycode::Tab => 9,
+            Keycode::Space => 32,
+            Keycode::A => 97,
+            Keycode::B => 98,
+            Keycode::C => 99,
+            Keycode::D => 100,
+            Keycode::E => 101,
+            Keycode::F => 102,
+            Keycode::G => 103,
+            Keycode::H => 104,
+            Keycode::I => 105,
+            Keycode::J => 106,
+            Keycode::K => 107,
+            Keycode::L => 108,
+            Keycode::M => 109,
+            Keycode::N => 110,
+            Keycode::O => 111,
+            Keycode::P => 112,
+            Keycode::Q => 113,
+            Keycode::R => 114,
+            Keycode::S => 115,
+            Keycode::T => 116,
+            Keycode::U => 117,
+            Keycode::V => 118,
+            Keycode::W => 119,
+            Keycode::X => 120,
+            Keycode::Y => 121,
+            Keycode::Z => 122,
+            Keycode::Num0 => 48,
+            Keycode::Num1 => 49,
+            Keycode::Num2 => 50,
+            Keycode::Num3 => 51,
+            Keycode::Num4 => 52,
+            Keycode::Num5 => 53,
+            Keycode::Num6 => 54,
+            Keycode::Num7 => 55,
+            Keycode::Num8 => 56,
+            Keycode::Num9 => 57,
+            _ => 0,
+        };
+        if byte != 0 {
+            return vec![byte];
+        }
+    }
+    vec![]
+}
+
 impl SDL2Backend {
     pub fn new() -> Self {
         Self {
@@ -407,9 +494,12 @@ impl SDL2Backend {
             return Ok(());
         }
 
-        let scale = self.text_scale.max(1);
-        let new_width = columns * FONT_WIDTH * scale;
-        let new_height = rows * self.text_font_height * scale;
+        // Use scale=1 for window sizing (don't use text_scale which may be 2 for IDE_COMPAT)
+        let new_width = columns * FONT_WIDTH;
+        let new_height = rows * self.text_font_height;
+
+        self.text_cols = Some(columns);
+        self.text_rows = Some(rows);
 
         if new_width == self.width && new_height == self.height {
             return Ok(());
@@ -417,6 +507,9 @@ impl SDL2Backend {
 
         if let Some(canvas) = self.canvas.as_mut() {
             let _ = canvas.window_mut().set_size(new_width, new_height);
+            if std::env::var("QB64FRESH_NO_LOGICAL_SIZE").is_err() {
+                let _ = canvas.set_logical_size(new_width, new_height);
+            }
         }
 
         self.width = new_width;
@@ -430,7 +523,7 @@ impl SDL2Backend {
         if let Some(tc) = self.texture_creator.as_ref() {
             self.page_textures = (0..self.max_pages)
                 .map(|_| {
-                    tc.create_texture_streaming(PixelFormatEnum::ARGB8888, new_width, new_height)
+                    tc.create_texture_streaming(PixelFormatEnum::RGBA8888, new_width, new_height)
                         .ok()
                 })
                 .collect();
@@ -525,6 +618,17 @@ impl SDL2Backend {
             } else {
                 None
             }
+        }
+    }
+
+    /// Resolve palette index (0–255) to opaque RGBA for drawing and text.
+    /// BASIC COLOR 7, 0 and LINE/PSET/CIRCLE 7 pass palette indices; the backend
+    /// expects RGBA. Values 0–255 with no alpha byte are looked up in screen_palette.
+    fn resolve_palette_color(&self, color: u32) -> u32 {
+        if color <= 255 && (color >> 24) == 0 {
+            self.screen_palette[color as usize] | 0xFF00_0000
+        } else {
+            color
         }
     }
 
@@ -1958,6 +2062,14 @@ impl SDL2Backend {
 
 impl GraphicsBackend for SDL2Backend {
     fn initialize(&mut self, width: u32, height: u32) -> Result<(), GraphicsError> {
+        // #region agent log
+        crate::debug_log::log(
+            "graphics/sdl2.rs:initialize",
+            "SDL2 initialize entry",
+            &format!("\"width\":{},\"height\":{}", width, height),
+            "C",
+        );
+        // #endregion
         if self.initialized {
             return Err(GraphicsError::already_initialized());
         }
@@ -1988,24 +2100,48 @@ impl GraphicsBackend for SDL2Backend {
                 format!("SDL2 window creation failed: {}", e),
             )
         })?;
+        // #region agent log
+        crate::debug_log::log(
+            "graphics/sdl2.rs:initialize",
+            "SDL2 window built",
+            "\"step\":\"window_built\"",
+            "D",
+        );
+        // #endregion
 
-        let canvas = window.into_canvas().build().map_err(|e| {
+        let mut canvas = window.into_canvas().build().map_err(|e| {
             GraphicsError::new(
                 GraphicsErrorKind::BackendError,
                 format!("SDL2 canvas creation failed: {}", e),
             )
         })?;
 
+        // Match renderer logical size to our buffer so 1:1 mapping; skip if env disables it (some drivers distort with logical size).
+        let use_logical_size = std::env::var("QB64FRESH_NO_LOGICAL_SIZE").is_err();
+        if use_logical_size {
+            canvas.set_logical_size(width, height).map_err(|e| {
+                GraphicsError::new(
+                    GraphicsErrorKind::BackendError,
+                    format!("SDL2 set_logical_size failed: {}", e),
+                )
+            })?;
+        }
+        crate::debug_log::log(
+            "graphics/sdl2.rs:initialize",
+            "sdl2_init_logical_size",
+            &format!("\"w\":{},\"h\":{},\"use_logical\":{}", width, height, use_logical_size),
+            "D",
+        );
+
         // Create texture creator for persistent GPU textures (hardware acceleration)
         // Uses unsafe_textures feature for 'static lifetime simplification
         let texture_creator = canvas.texture_creator();
 
-        // Create persistent streaming textures for each page
-        // These textures remain allocated and are only updated when dirty
+        // Create persistent streaming textures for each page (RGBA8888 = explicit R,G,B,A byte order; avoids driver misinterpretation of ARGB8888).
         let page_textures: Vec<Option<Texture>> = (0..self.max_pages)
             .map(|_| {
                 texture_creator
-                    .create_texture_streaming(PixelFormatEnum::ARGB8888, width, height)
+                    .create_texture_streaming(PixelFormatEnum::RGBA8888, width, height)
                     .ok()
             })
             .collect();
@@ -2077,13 +2213,29 @@ impl GraphicsBackend for SDL2Backend {
 
         // Show window immediately so it is visible (e.g. IDE startup)
         if let Some(ref mut c) = self.canvas {
-            c.window_mut().show();
+            let win = c.window_mut();
+            win.show();
+            win.raise(); // Bring to front and give focus (fixes "icon visible but no UI" on Linux)
             self.screen_visible = true;
+            let (w, h) = win.size();
+            let (x, y) = win.position();
+            crate::debug_log::log(
+                "graphics/sdl2.rs:initialize",
+                "window show+raise",
+                &format!("\"w\":{},\"h\":{},\"x\":{},\"y\":{}", w, h, x, y),
+                "D",
+            );
         }
 
         // Initialize turtle to center of screen
         self.turtle.x = width as f64 / 2.0;
         self.turtle.y = height as f64 / 2.0;
+
+        // IDE compat: default to black text on gray background so first frame matches expected UI
+        if std::env::var("QB64FRESH_IDE_COMPAT").is_ok() {
+            self.fg_color = self.resolve_palette_color(0);  // Black
+            self.bg_color = self.resolve_palette_color(7);   // Light gray
+        }
 
         self.cls()?;
         self.display()?;
@@ -2157,8 +2309,8 @@ impl GraphicsBackend for SDL2Backend {
             return Err(GraphicsError::not_initialized());
         }
 
-        self.fg_color = foreground;
-        self.bg_color = background;
+        self.fg_color = self.resolve_palette_color(foreground);
+        self.bg_color = self.resolve_palette_color(background);
 
         Ok(())
     }
@@ -2247,6 +2399,8 @@ impl GraphicsBackend for SDL2Backend {
             return Err(GraphicsError::not_initialized());
         }
 
+        let color = self.resolve_palette_color(color);
+
         // Update last referenced graphics point
         self.last_gfx_x = x;
         self.last_gfx_y = y;
@@ -2317,6 +2471,8 @@ impl GraphicsBackend for SDL2Backend {
         if !self.initialized {
             return Err(GraphicsError::not_initialized());
         }
+
+        let color = self.resolve_palette_color(color);
 
         // Transform coordinates
         let (sx1, sy1) = self.world_to_screen(x1 as f64, y1 as f64);
@@ -2410,6 +2566,8 @@ impl GraphicsBackend for SDL2Backend {
             return Err(GraphicsError::not_initialized());
         }
 
+        let color = self.resolve_palette_color(color);
+
         // Update last referenced graphics point
         self.last_gfx_x = x;
         self.last_gfx_y = y;
@@ -2454,6 +2612,9 @@ impl GraphicsBackend for SDL2Backend {
         if !self.initialized {
             return Err(GraphicsError::not_initialized());
         }
+
+        let color = self.resolve_palette_color(color);
+        let boundary_color = boundary_color.map(|c| self.resolve_palette_color(c));
 
         // Update last referenced graphics point
         self.last_gfx_x = x;
@@ -2502,26 +2663,68 @@ impl GraphicsBackend for SDL2Backend {
         let height = self.height as usize;
 
         // Upload dirty visual page to its persistent texture
-        // This replaces per-pixel canvas.draw_point() calls with a single bulk upload
+        // This replaces per-pixel canvas.draw_point() calls with a single bulk upload.
+        // Try with_lock first; on failure (e.g. some Wayland/driver configs) fall back to update().
         if self.page_dirty.get(vp).copied().unwrap_or(false) {
             if let Some(page) = self.page_buffers.get(vp) {
                 if let Some(Some(texture)) = self.page_textures.get_mut(vp) {
-                    // Bulk copy pixel buffer to GPU texture
-                    let _ = texture.with_lock(None, |buffer: &mut [u8], pitch: usize| {
+                    let upload_ok = texture
+                        .with_lock(None, |buffer: &mut [u8], pitch: usize| {
+                            for y in 0..height {
+                                for x in 0..width {
+                                    let pixel = page[y * width + x];
+                                    let offset = y * pitch + x * 4;
+                                    // RGBA8888: explicit R,G,B,A byte order (our pixel is 0xAARRGGBB)
+                                    buffer[offset] = ((pixel >> 16) & 0xFF) as u8; // R
+                                    buffer[offset + 1] = ((pixel >> 8) & 0xFF) as u8; // G
+                                    buffer[offset + 2] = (pixel & 0xFF) as u8; // B
+                                    buffer[offset + 3] = ((pixel >> 24) & 0xFF) as u8; // A
+                                }
+                            }
+                        })
+                        .is_ok();
+
+                    if !upload_ok {
+                        // Fallback: some drivers fail with_lock (e.g. streaming texture); use update() with CPU buffer.
+                        use std::sync::atomic::{AtomicU32, Ordering};
+                        static LOCK_FAIL_LOG: AtomicU32 = AtomicU32::new(0);
+                        if LOCK_FAIL_LOG.fetch_add(1, Ordering::Relaxed) < 3 {
+                            crate::debug_log::log(
+                                "graphics/sdl2.rs:display",
+                                "sdl2_texture_with_lock_failed",
+                                "\"using_update_fallback\":true",
+                                "W",
+                            );
+                        }
+                        let pitch = width * 4;
+                        let mut buf = vec![0u8; height * pitch];
                         for y in 0..height {
                             for x in 0..width {
                                 let pixel = page[y * width + x];
                                 let offset = y * pitch + x * 4;
-                                // ARGB8888 format (SDL expects BGRA byte order)
-                                buffer[offset] = (pixel & 0xFF) as u8; // B
-                                buffer[offset + 1] = ((pixel >> 8) & 0xFF) as u8; // G
-                                buffer[offset + 2] = ((pixel >> 16) & 0xFF) as u8; // R
-                                buffer[offset + 3] = ((pixel >> 24) & 0xFF) as u8;
-                                // A
+                                buf[offset] = ((pixel >> 16) & 0xFF) as u8;
+                                buf[offset + 1] = ((pixel >> 8) & 0xFF) as u8;
+                                buf[offset + 2] = (pixel & 0xFF) as u8;
+                                buf[offset + 3] = ((pixel >> 24) & 0xFF) as u8;
                             }
                         }
-                    });
-                    // Mark page as clean after upload
+                        if texture.update(None, &buf, pitch).is_err() {
+                            use std::sync::atomic::{AtomicU32, Ordering};
+                            static UPDATE_FAIL_LOG: AtomicU32 = AtomicU32::new(0);
+                            if UPDATE_FAIL_LOG.fetch_add(1, Ordering::Relaxed) < 3 {
+                                crate::debug_log::log(
+                                    "graphics/sdl2.rs:display",
+                                    "sdl2_texture_upload_failed",
+                                    "\"with_lock_and_update_fallback_failed\":true",
+                                    "E",
+                                );
+                            }
+                            // Keep dirty so we retry next frame
+                            return Ok(());
+                        }
+                    }
+
+                    // Mark page as clean after successful upload
                     if let Some(dirty) = self.page_dirty.get_mut(vp) {
                         *dirty = false;
                     }
@@ -2531,8 +2734,40 @@ impl GraphicsBackend for SDL2Backend {
 
         // Blit persistent texture to screen (single GPU operation)
         if let Some(canvas) = self.canvas.as_mut() {
+            // Log first 3 displays to confirm runtime version and dimensions (runtime evidence).
+            use std::sync::atomic::{AtomicU32, Ordering};
+            static DISPLAY_LOG_COUNT: AtomicU32 = AtomicU32::new(0);
+            let n = DISPLAY_LOG_COUNT.fetch_add(1, Ordering::Relaxed);
+            if n < 3 {
+                crate::debug_log::log(
+                    "graphics/sdl2.rs:display",
+                    "sdl2_display",
+                    &format!(
+                        "\"n\":{},\"w\":{},\"h\":{},\"vp\":{},\"fix\":\"v2_explicit_dst\"",
+                        n, self.width, self.height, vp
+                    ),
+                    "D",
+                );
+            }
+
+            // Clear to background so letterbox/uncovered areas are consistent (not garbage).
+            let bg = self.bg_color;
+            let (r, g, b, a) = (
+                ((bg >> 16) & 0xFF) as u8,
+                ((bg >> 8) & 0xFF) as u8,
+                (bg & 0xFF) as u8,
+                ((bg >> 24) & 0xFF) as u8,
+            );
+            let _ = canvas.set_draw_color(Color::RGBA(r, g, b, a));
+            let _ = canvas.clear();
             if let Some(Some(texture)) = self.page_textures.get(vp) {
-                let _ = canvas.copy(texture, None, None);
+                // When QB64FRESH_NO_LOGICAL_SIZE=1 we skip logical size; use None dst so texture stretches to full target.
+                let dst = if std::env::var("QB64FRESH_NO_LOGICAL_SIZE").is_ok() {
+                    None
+                } else {
+                    Some(Rect::new(0, 0, self.width, self.height))
+                };
+                let _ = canvas.copy(texture, None, dst);
             }
             canvas.present();
         }
@@ -2726,28 +2961,35 @@ impl GraphicsBackend for SDL2Backend {
 
             for event in event_pump.poll_iter() {
                 match event {
-                    Event::Quit { .. } => return Ok(false),
+                    Event::Quit { .. } => {
+                        return Ok(false);
+                    }
                     // GNOME/Wayland and many WMs send WindowEvent::Close when user clicks the X button
                     // (not always Event::Quit). Handle both so the window closes cleanly.
                     Event::Window {
                         win_event: WindowEvent::Close,
                         ..
-                    } => return Ok(false),
+                    } => {
+                        return Ok(false);
+                    }
                     Event::KeyDown {
-                        keycode: Some(sdl2::keyboard::Keycode::Escape),
+                        scancode,
+                        keycode,
                         ..
-                    } => return Ok(false),
-                    Event::KeyDown { scancode, .. } => {
-                        // Check for ON KEY event trapping
+                    } => {
+                        // Push INKEY$ bytes so qb_inkey() and qb_keyhit() see keys when
+                        // graphics has focus. IDE getinput() loops "while (qb_inkey() == \"\")"
+                        // then calls qb_keyhit() — the first call consumes the key, so we push
+                        // two copies: one for qb_inkey() to break the loop, one for qb_keyhit()
+                        // so KB is set and the message box dismisses.
+                        let inkey_bytes = sdl_key_to_inkey_bytes(scancode, keycode);
+                        if !inkey_bytes.is_empty() {
+                            crate::io::push_inkey_from_graphics(inkey_bytes.clone());
+                            crate::io::push_inkey_from_graphics(inkey_bytes);
+                        }
+                        // ON KEY event trapping
                         if let Some(scancode_val) = scancode {
                             use crate::events::qb_queue_key_event;
-                            // Map SDL2 scancodes to QB64 key numbers (1-31)
-                            // Key mapping:
-                            // - 1-10: F1-F10
-                            // - 11: Up arrow
-                            // - 12: Left arrow
-                            // - 13: Right arrow
-                            // - 14: Down arrow
                             let key_num = match scancode_val {
                                 Scancode::F1 => 1,
                                 Scancode::F2 => 2,
@@ -2994,7 +3236,14 @@ impl GraphicsBackend for SDL2Backend {
 
     fn set_palette(&mut self, index: i32, color: u32) -> Result<(), GraphicsError> {
         if index >= 0 && index < 256 {
-            self.palette.colors[index as usize] = color;
+            // IDE compat: keep palette 0 (black) and 7 (light gray) fixed so COLOR 0,7 gives gray UI
+            if std::env::var("QB64FRESH_IDE_COMPAT").is_ok() && (index == 0 || index == 7) {
+                return Ok(());
+            }
+            let idx = index as usize;
+            self.palette.colors[idx] = color;
+            // Keep screen_palette in sync so resolve_palette_color (used by COLOR) sees it
+            self.screen_palette[idx] = color;
         }
         Ok(())
     }
@@ -3043,6 +3292,10 @@ impl GraphicsBackend for SDL2Backend {
         }
 
         if handle == 0 {
+            // IDE compat: keep palette 0 (black) and 7 (light gray) fixed so COLOR 0,7 gives gray UI
+            if std::env::var("QB64FRESH_IDE_COMPAT").is_ok() && (index == 0 || index == 7) {
+                return Ok(());
+            }
             // Screen/current destination - update screen_palette
             self.screen_palette[index as usize] = color;
             // Also update global palette for compatibility
@@ -3519,8 +3772,26 @@ impl GraphicsBackend for SDL2Backend {
 
     fn screen_show(&mut self) {
         if let Some(canvas) = self.canvas.as_mut() {
-            canvas.window_mut().show();
+            let win = canvas.window_mut();
+            win.show();
+            if win.is_minimized() {
+                win.restore();
+            }
+            win.raise(); // Bring to front (fixes "icon visible but no UI" on Linux)
             self.screen_visible = true;
+            crate::debug_log::log(
+                "graphics/sdl2.rs:screen_show",
+                "show+restore+raise",
+                "\"canvas\":1",
+                "D",
+            );
+        } else {
+            crate::debug_log::log(
+                "graphics/sdl2.rs:screen_show",
+                "SDL2 screen_show: no canvas",
+                "\"canvas\":0",
+                "D",
+            );
         }
     }
 

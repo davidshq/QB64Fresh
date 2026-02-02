@@ -21,9 +21,8 @@ pub(super) fn check_misc_stmt(
     span: crate::ast::Span,
 ) -> TypedStatement {
     match kind {
-        // Note: Print, PrintUsing, Input, LineInput, System, Sleep, Wait, Delay,
-        // Limit, Erase, and KeyClear are handled directly in statements.rs before
-        // this dispatch, so they won't reach here.
+        // Note: Print, PrintUsing, Input, LineInput are in io; System, Sleep, Wait,
+        // Delay, Limit, Erase, KeyClear are in system; they are not dispatched here.
         StatementKind::Expression(expr) => {
             let typed_expr = checker.check_expr(expr);
             TypedStatement::new(TypedStatementKind::Expression(typed_expr), span)
@@ -753,7 +752,355 @@ pub(super) fn check_misc_stmt(
             )
         }
 
-        // ==================== Graphics Statements ====================
+        // ==================== Event/port/interrupt statements ====================
+        StatementKind::OnKey { key_num, target } => {
+            let typed_key_num = checker.check_expr(key_num);
+            TypedStatement::new(
+                TypedStatementKind::OnKey {
+                    key_num: typed_key_num,
+                    target: target.clone(),
+                },
+                span,
+            )
+        }
+        StatementKind::KeyControl { key_num, mode } => {
+            let typed_key_num = checker.check_expr(key_num);
+            TypedStatement::new(
+                TypedStatementKind::KeyControl {
+                    key_num: typed_key_num,
+                    mode: *mode,
+                },
+                span,
+            )
+        }
+        StatementKind::OnTimer { interval, target } => {
+            let typed_interval = checker.check_expr(interval);
+            TypedStatement::new(
+                TypedStatementKind::OnTimer {
+                    interval: typed_interval,
+                    target: target.clone(),
+                },
+                span,
+            )
+        }
+        StatementKind::TimerControl { mode } => {
+            TypedStatement::new(TypedStatementKind::TimerControl { mode: *mode }, span)
+        }
+        StatementKind::StrigControl { button_num, mode } => {
+            let typed_button_num = checker.check_expr(button_num);
+            TypedStatement::new(
+                TypedStatementKind::StrigControl {
+                    button_num: typed_button_num,
+                    mode: *mode,
+                },
+                span,
+            )
+        }
+        StatementKind::OnStrig { button_num, target } => {
+            let typed_button_num = checker.check_expr(button_num);
+            TypedStatement::new(
+                TypedStatementKind::OnStrig {
+                    button_num: typed_button_num,
+                    target: target.clone(),
+                },
+                span,
+            )
+        }
+        StatementKind::OnCom { port_num, target } => {
+            let typed_port_num = checker.check_expr(port_num);
+            TypedStatement::new(
+                TypedStatementKind::OnCom {
+                    port_num: typed_port_num,
+                    target: target.clone(),
+                },
+                span,
+            )
+        }
+        StatementKind::ComControl { port_num, mode } => {
+            let typed_port_num = checker.check_expr(port_num);
+            TypedStatement::new(
+                TypedStatementKind::ComControl {
+                    port_num: typed_port_num,
+                    mode: *mode,
+                },
+                span,
+            )
+        }
+        StatementKind::OnPen { target } => TypedStatement::new(
+            TypedStatementKind::OnPen {
+                target: target.clone(),
+            },
+            span,
+        ),
+        StatementKind::PenControl { mode } => {
+            TypedStatement::new(TypedStatementKind::PenControl { mode: *mode }, span)
+        }
+        StatementKind::OnUevent { target } => TypedStatement::new(
+            TypedStatementKind::OnUevent {
+                target: target.clone(),
+            },
+            span,
+        ),
+        StatementKind::UeventControl { mode } => {
+            TypedStatement::new(TypedStatementKind::UeventControl { mode: *mode }, span)
+        }
+        StatementKind::UeventTrigger => {
+            TypedStatement::new(TypedStatementKind::UeventTrigger, span)
+        }
+        StatementKind::OnSignal { signal_num, target } => {
+            let typed_signal_num = checker.check_expr(signal_num);
+            TypedStatement::new(
+                TypedStatementKind::OnSignal {
+                    signal_num: typed_signal_num,
+                    target: target.clone(),
+                },
+                span,
+            )
+        }
+        StatementKind::SignalControl { signal_num, mode } => {
+            let typed_signal_num = checker.check_expr(signal_num);
+            TypedStatement::new(
+                TypedStatementKind::SignalControl {
+                    signal_num: typed_signal_num,
+                    mode: *mode,
+                },
+                span,
+            )
+        }
+        StatementKind::OutPort { port, value } => {
+            let typed_port = checker.check_expr(port);
+            let typed_value = checker.check_expr(value);
+            TypedStatement::new(
+                TypedStatementKind::OutPort {
+                    port: typed_port,
+                    value: typed_value,
+                },
+                span,
+            )
+        }
+        StatementKind::InterruptStmt {
+            int_num,
+            in_regs,
+            out_regs,
+        } => {
+            let typed_int_num = checker.check_expr(int_num);
+            TypedStatement::new(
+                TypedStatementKind::InterruptStmt {
+                    int_num: typed_int_num,
+                    in_regs: in_regs.clone(),
+                    out_regs: out_regs.clone(),
+                },
+                span,
+            )
+        }
+        StatementKind::InterruptXStmt {
+            int_num,
+            in_regs,
+            out_regs,
+        } => {
+            let typed_int_num = checker.check_expr(int_num);
+            TypedStatement::new(
+                TypedStatementKind::InterruptXStmt {
+                    int_num: typed_int_num,
+                    in_regs: in_regs.clone(),
+                    out_regs: out_regs.clone(),
+                },
+                span,
+            )
+        }
+
+        // ==================== Legacy file / runtime stubs ====================
+        StatementKind::IoctlStmt {
+            file_num,
+            control_string,
+        } => {
+            let typed_file_num = checker.check_expr(file_num);
+            let typed_control_string = checker.check_expr(control_string);
+            TypedStatement::new(
+                TypedStatementKind::IoctlStmt {
+                    file_num: typed_file_num,
+                    control_string: typed_control_string,
+                },
+                span,
+            )
+        }
+        StatementKind::FreeStmt => TypedStatement::new(TypedStatementKind::FreeStmt, span),
+        StatementKind::ClearStmt { stack_size } => {
+            let typed_stack_size = stack_size.as_ref().map(|s| checker.check_expr(s));
+            TypedStatement::new(
+                TypedStatementKind::ClearStmt {
+                    stack_size: typed_stack_size,
+                },
+                span,
+            )
+        }
+        StatementKind::ResetStmt => {
+            TypedStatement::new(TypedStatementKind::ResetStmt, span)
+        }
+
+        // ==================== Window/desktop (QB64) ====================
+        StatementKind::TitleStmt { title } => {
+            let typed_title = checker.check_expr(title);
+            TypedStatement::new(
+                TypedStatementKind::TitleStmt { title: typed_title },
+                span,
+            )
+        }
+        StatementKind::ScreenMoveStmt { x, y, center } => {
+            let typed_x = x.as_ref().map(|e| checker.check_expr(e));
+            let typed_y = y.as_ref().map(|e| checker.check_expr(e));
+            TypedStatement::new(
+                TypedStatementKind::ScreenMoveStmt {
+                    x: typed_x,
+                    y: typed_y,
+                    center: *center,
+                },
+                span,
+            )
+        }
+        StatementKind::FullScreenStmt { mode } => TypedStatement::new(
+            TypedStatementKind::FullScreenStmt { mode: *mode },
+            span,
+        ),
+        StatementKind::AllowFullScreenStmt { mode } => TypedStatement::new(
+            TypedStatementKind::AllowFullScreenStmt { mode: *mode },
+            span,
+        ),
+        StatementKind::ScreenIconStmt => {
+            TypedStatement::new(TypedStatementKind::ScreenIconStmt, span)
+        }
+        StatementKind::IconStmt { handle } => {
+            let typed_handle = handle.as_ref().map(|h| checker.check_expr(h));
+            TypedStatement::new(
+                TypedStatementKind::IconStmt {
+                    handle: typed_handle,
+                },
+                span,
+            )
+        }
+        StatementKind::ScreenHideStmt => {
+            TypedStatement::new(TypedStatementKind::ScreenHideStmt, span)
+        }
+        StatementKind::ScreenShowStmt => {
+            TypedStatement::new(TypedStatementKind::ScreenShowStmt, span)
+        }
+        StatementKind::ConsoleTitleStmt { title } => {
+            let typed_title = checker.check_expr(title);
+            TypedStatement::new(
+                TypedStatementKind::ConsoleTitleStmt { title: typed_title },
+                span,
+            )
+        }
+        StatementKind::ConsoleStmt { visible } => TypedStatement::new(
+            TypedStatementKind::ConsoleStmt { visible: *visible },
+            span,
+        ),
+
+        // ==================== Assert and meta directives ====================
+        StatementKind::AssertStmt { condition, message } => {
+            let typed_condition = checker.check_expr(condition);
+            let typed_message = message.as_ref().map(|m| checker.check_expr(m));
+            TypedStatement::new(
+                TypedStatementKind::AssertStmt {
+                    condition: typed_condition,
+                    message: typed_message,
+                },
+                span,
+            )
+        }
+        StatementKind::MetaAsserts { console } => {
+            checker.symbols.define_meta_let("_ASSERTS_", 1, span);
+            if *console {
+                checker.symbols.define_meta_let("_CONSOLE_", 1, span);
+            }
+            TypedStatement::new(
+                TypedStatementKind::MetaAsserts { console: *console },
+                span,
+            )
+        }
+        StatementKind::MetaNoPrefix => {
+            TypedStatement::new(TypedStatementKind::MetaNoPrefix, span)
+        }
+        StatementKind::MetaColor { depth } => {
+            TypedStatement::new(TypedStatementKind::MetaColor { depth: *depth }, span)
+        }
+        StatementKind::MetaResize { enabled } => TypedStatement::new(
+            TypedStatementKind::MetaResize { enabled: *enabled },
+            span,
+        ),
+        StatementKind::MetaResizeStretch => {
+            TypedStatement::new(TypedStatementKind::MetaResizeStretch, span)
+        }
+        StatementKind::MetaResizeSmooth => {
+            TypedStatement::new(TypedStatementKind::MetaResizeSmooth, span)
+        }
+        StatementKind::MetaStatic => {
+            checker.array_mode_static = true;
+            TypedStatement::new(TypedStatementKind::MetaStatic, span)
+        }
+        StatementKind::MetaDynamic => {
+            checker.array_mode_static = false;
+            TypedStatement::new(TypedStatementKind::MetaDynamic, span)
+        }
+        StatementKind::MetaDebug => {
+            TypedStatement::new(TypedStatementKind::MetaDebug, span)
+        }
+        StatementKind::MetaIncludeOnce => {
+            TypedStatement::new(TypedStatementKind::MetaIncludeOnce, span)
+        }
+        StatementKind::MetaExeIcon { filename } => TypedStatement::new(
+            TypedStatementKind::MetaExeIcon {
+                filename: filename.clone(),
+            },
+            span,
+        ),
+        StatementKind::MetaVersionInfo { key, value } => TypedStatement::new(
+            TypedStatementKind::MetaVersionInfo {
+                key: key.clone(),
+                value: value.clone(),
+            },
+            span,
+        ),
+        StatementKind::MetaErrorDirective { message } => {
+            checker.errors.push(crate::semantic::error::SemanticError::CompileTimeError {
+                message: message.clone(),
+                span,
+            });
+            TypedStatement::new(
+                TypedStatementKind::MetaErrorDirective {
+                    message: message.clone(),
+                },
+                span,
+            )
+        }
+        StatementKind::MetaEmbed { filename } => TypedStatement::new(
+            TypedStatementKind::MetaEmbed {
+                filename: filename.clone(),
+            },
+            span,
+        ),
+        StatementKind::MetaMidiSoundFont { filename } => TypedStatement::new(
+            TypedStatementKind::MetaMidiSoundFont {
+                filename: filename.clone(),
+            },
+            span,
+        ),
+        StatementKind::MetaUnstable { feature } => TypedStatement::new(
+            TypedStatementKind::MetaUnstable {
+                feature: feature.clone(),
+            },
+            span,
+        ),
+        StatementKind::MetaFormat => {
+            TypedStatement::new(TypedStatementKind::MetaFormat, span)
+        }
+        StatementKind::MetaUseLibrary { library } => TypedStatement::new(
+            TypedStatementKind::MetaUseLibrary {
+                library: library.clone(),
+            },
+            span,
+        ),
+
         _ => unreachable!("Not a misc statement"),
     }
 }

@@ -23,6 +23,99 @@ pub(super) fn emit_misc_stmt(
     output: &mut String,
 ) -> Result<(), CodeGenError> {
     match kind {
+        TypedStatementKind::Label { name } => {
+            let c_label = emitter.proc_label(name);
+            if emitter.codegen.emitted_labels.insert(c_label.clone()) {
+                writeln_code!(output, "{}:", c_label)?;
+            }
+        }
+        TypedStatementKind::Comment(text) => {
+            writeln_code!(output, "{}/* {} */", indent, text)?;
+        }
+        TypedStatementKind::Expression(expr) => {
+            let expr_code = emitter.emit_expr(expr)?;
+            writeln_code!(output, "{}{};", indent, expr_code)?;
+        }
+        TypedStatementKind::IncludeDirective { path } => {
+            writeln_code!(output, "{}/* $INCLUDE: '{}' */", indent, path)?;
+        }
+        TypedStatementKind::DefSeg { segment } => {
+            if let Some(seg_expr) = segment {
+                let seg_code = emitter.emit_expr(seg_expr)?;
+                writeln_code!(output, "{}qb_def_seg((int32_t){});", indent, seg_code)?;
+            } else {
+                writeln_code!(output, "{}qb_def_seg(-1);", indent)?;
+            }
+        }
+        TypedStatementKind::Poke { address, value } => {
+            let addr_code = emitter.emit_expr(address)?;
+            let val_code = emitter.emit_expr(value)?;
+            writeln_code!(
+                output,
+                "{}qb_poke((int32_t){}, (uint8_t){});",
+                indent,
+                addr_code,
+                val_code
+            )?;
+        }
+        TypedStatementKind::MemPutTyped {
+            mem,
+            offset,
+            value,
+            value_type,
+        } => {
+            let mem_code = emitter.emit_expr(mem)?;
+            let offset_code = emitter.emit_expr(offset)?;
+            let value_code = emitter.emit_expr(value)?;
+            let c_ty = c_type(value_type);
+            writeln_code!(
+                output,
+                "{indent}*(({c_ty}*)((char*)({mem_code}).offset + ({offset_code}))) = ({c_ty})({value_code});"
+            )?;
+        }
+        TypedStatementKind::ConditionalBlock {
+            condition,
+            then_branch,
+            elseif_branches,
+            else_branch,
+        } => {
+            writeln_code!(output, "{}/* $IF {} */", indent, condition)?;
+            for s in then_branch {
+                emitter.emit_stmt(s, output)?;
+            }
+            for (elseif_cond, elseif_body) in elseif_branches {
+                writeln_code!(output, "{}/* $ELSEIF {} */", indent, elseif_cond)?;
+                for s in elseif_body {
+                    emitter.emit_stmt(s, output)?;
+                }
+            }
+            if let Some(else_body) = else_branch {
+                writeln_code!(output, "{}/* $ELSE */", indent)?;
+                for s in else_body {
+                    emitter.emit_stmt(s, output)?;
+                }
+            }
+            writeln_code!(output, "{}/* $END IF */", indent)?;
+        }
+        TypedStatementKind::ConditionalBlockResolved {
+            original_condition,
+            statements,
+        } => {
+            if !statements.is_empty() {
+                writeln_code!(
+                    output,
+                    "{}/* Conditional compilation: {} */",
+                    indent,
+                    original_condition
+                )?;
+                for s in statements {
+                    emitter.emit_stmt(s, output)?;
+                }
+            }
+        }
+        TypedStatementKind::Call { name, args, params } => {
+            super::call::emit_call_stmt(emitter, name, args, params, indent, output)?;
+        }
         TypedStatementKind::Swap { left, right } => {
             let mut left_code = emitter.emit_expr(left)?;
             let mut right_code = emitter.emit_expr(right)?;

@@ -16,7 +16,7 @@
 //!   - Restoring to specific labeled DATA statement
 
 use crate::codegen::error::CodeGenError;
-use crate::semantic::typed_ir::TypedReadTarget;
+use crate::semantic::typed_ir::{TypedReadTarget, TypedStatementKind};
 use crate::semantic::types::BasicType;
 use crate::writeln_code;
 
@@ -192,4 +192,35 @@ impl super::StmtEmitter {
         }
         Ok(())
     }
+}
+
+/// Dispatches DATA-related statement kinds (READ, RESTORE, RANDOMIZE).
+///
+/// Keeps the main statement match in `mod.rs` thin.
+pub(super) fn emit_data_related_stmt(
+    emitter: &mut super::StmtEmitter,
+    kind: &TypedStatementKind,
+    indent: &str,
+    output: &mut String,
+) -> Result<(), CodeGenError> {
+    match kind {
+        TypedStatementKind::Read { targets } => {
+            emitter.emit_read(indent, targets, output)?;
+        }
+        TypedStatementKind::Restore { label } => {
+            emitter.emit_restore(indent, label, output)?;
+        }
+        TypedStatementKind::Randomize { seed } => {
+            if let Some(seed_expr) = seed {
+                let seed_code = emitter.emit_expr(seed_expr)?;
+                writeln_code!(output, "{}qb_randomize((double)({}));", indent, seed_code)?;
+            } else {
+                writeln_code!(output, "{}qb_randomize_timer();", indent)?;
+            }
+        }
+        _ => {
+            unreachable!("emit_data_related_stmt called with non-data kind")
+        }
+    }
+    Ok(())
 }

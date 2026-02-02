@@ -129,7 +129,7 @@ pub(super) fn emit_timing_functions(output: &mut String) -> Result<(), CodeGenEr
         output,
         "    /* Poll SDL2 events to keep window responsive */"
     )?;
-    writeln_code!(output, "    qb_gfx_poll_events();")?;
+    writeln_code!(output, "    if (qb_gfx_poll_events() == 0) exit(0);")?;
     writeln_code!(output, "    /* Update display */")?;
     writeln_code!(output, "    qb_gfx_display();")?;
     writeln_code!(output, "}}")?;

@@ -197,9 +197,11 @@ const QB_FILE_LOCK_ONLY: i32 = 5;
 
 /// Applies file locking on Unix based on lock mode.
 /// SHARED/DEFAULT: no lock (match inline C). LOCK_* / ONLY: LOCK_EX.
+/// Uses LOCK_NB (non-blocking) so OPEN never blocks if the file is already locked
+/// (e.g. temp.bin from a previous IDE instance); avoids IDE hanging at startup.
 #[cfg(unix)]
 fn apply_flock(file: &File, lock: i32) {
-    use libc::{flock, LOCK_EX};
+    use libc::{flock, LOCK_EX, LOCK_NB};
     // Only apply exclusive lock for explicit lock modes; DEFAULT and SHARED = no lock (match inline C).
     let use_exclusive = matches!(
         lock,
@@ -210,7 +212,8 @@ fn apply_flock(file: &File, lock: i32) {
     }
     let fd = file.as_raw_fd();
     unsafe {
-        flock(fd, LOCK_EX);
+        // Non-blocking: if lock is held (e.g. by another process), skip lock and proceed (OPEN still succeeds).
+        let _ = flock(fd, LOCK_EX | LOCK_NB);
     }
 }
 
@@ -459,6 +462,8 @@ pub unsafe extern "C" fn qb_file_open(
 /// # Safety
 /// - `filename` must be a valid QbString pointer or null
 /// - `mode` must be a valid null-terminated C string
+static mut _DBG_FILE_OPEN_STR_COUNT: u32 = 0;
+
 #[no_mangle]
 pub unsafe extern "C" fn qb_file_open_str(
     fnum: i32,
@@ -467,6 +472,15 @@ pub unsafe extern "C" fn qb_file_open_str(
     access: i32,
     lock: i32,
 ) {
+    _DBG_FILE_OPEN_STR_COUNT = _DBG_FILE_OPEN_STR_COUNT.saturating_add(1);
+    if _DBG_FILE_OPEN_STR_COUNT <= 10 {
+        crate::debug_log::log(
+            "io/file.rs:qb_file_open_str",
+            "qb_file_open_str called",
+            &format!("\"n\":{},\"fnum\":{}", _DBG_FILE_OPEN_STR_COUNT, fnum),
+            "early",
+        );
+    }
     if filename.is_null() {
         crate::qb_set_error(52, 0); // Bad file number (null filename)
         return;

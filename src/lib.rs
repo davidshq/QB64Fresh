@@ -21,6 +21,10 @@
 //! - [`codegen`] - Code generation backends (C backend implemented)
 //! - [`lsp`] - Language Server Protocol implementation for IDE integration
 //!
+//! For tools (formatter, linter, debugger, LSP), use the **[`compiler_api`]** facade
+//! instead of calling phases directly: it exposes "parse only," "parse + analyze,"
+//! "analyze from AST," and "compile" so that dependency boundaries stay stable.
+//!
 //! ## Example
 //!
 //! ```
@@ -41,6 +45,7 @@
 
 pub mod ast;
 pub mod codegen;
+pub mod compiler_api;
 pub mod error_formatting;
 pub mod lexer;
 pub mod library;
@@ -56,10 +61,14 @@ pub mod semantic;
 #[cfg(feature = "header-parsing")]
 pub mod header_parser;
 
-/// Re-export commonly used types for convenience
+/// Re-export commonly used types and compiler API for convenience.
 pub mod prelude {
     pub use crate::ast::{Expr, ExprKind, Program, Span, Statement, StatementKind};
     pub use crate::codegen::{CBackend, CodeGenError, CodeGenerator, GeneratedOutput, RuntimeMode};
+    pub use crate::compiler_api::{
+        analyze, compile, parse, parse_and_analyze, parse_tokens, CompileApiError, CompileOptions,
+        ParseApiError, ParseOptions,
+    };
     pub use crate::lexer::{Lexer, Token, TokenKind};
     pub use crate::parser::{ParseError, Parser};
     pub use crate::preprocessor::{

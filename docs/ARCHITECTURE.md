@@ -354,6 +354,16 @@ pub enum BasicType { Integer, Long, Single, Double, String, ... }
 pub struct TypedProgram { statements: Vec<TypedStatement> }
 ```
 
+#### Array vs function call resolution
+
+In BASIC, `name(args)` is syntactically ambiguous: it can be array access (e.g. `arr(i)`) or a function call (e.g. `fn(x)`). The parser does not distinguish them and produces a single AST node: `ExprKind::FunctionCall { name, args }`. There is no separate `ArrayAccess` (or similar) in the AST. Disambiguation happens in the **semantic** phase in `src/semantic/checker/expressions.rs` via `check_function_call`:
+
+1. **Symbol table lookup order:** The checker first consults the **array** namespace (`symbols.lookup_array(name)`). If the name is declared as an array (variable or UDT field array), the expression is resolved to **typed IR** as `TypedExprKind::ArrayAccess`.
+2. **Procedure vs variable:** If the name is not an array, the checker then considers external functions (DECLARE LIBRARY), then the **procedure** namespace (`symbols.lookup_procedure(name)`). If a procedure (SUB/FUNCTION or built-in) is found, the expression becomes `TypedExprKind::FunctionCall`. If the name is a **scalar variable** only, the checker reports a “not an array” error (user wrote `x(1)` but `x` is a scalar).
+3. **Typed IR:** The typed IR therefore distinguishes `ArrayAccess` from `FunctionCall`; codegen and later phases see the resolved kind. See `docs/reference/TYPED_IR_CONTRACT.md` for the full list of `TypedExprKind` variants.
+
+This rule is critical for anyone working on the parser, semantic checker, or codegen: **AST = single `FunctionCall` form; typed IR = resolved `ArrayAccess` or `FunctionCall` (or `ExternalFunctionCall`) according to symbol table.**
+
 ### Code Generation (`src/codegen/`)
 
 Uses a trait-based design for backend flexibility:

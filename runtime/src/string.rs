@@ -105,8 +105,29 @@ fn string_layout(capacity: usize) -> Layout {
 /// # Safety
 /// - `s` must be a valid null-terminated C string
 /// - The returned string must be released with `qb_string_release`
+static mut DEBUG_FIRST_CALL: bool = true;
+static mut DEBUG_CALL_COUNT: u64 = 0;
+
 #[no_mangle]
 pub unsafe extern "C" fn qb_string_new(s: *const c_char) -> *mut QbString {
+    if DEBUG_FIRST_CALL {
+        DEBUG_FIRST_CALL = false;
+        crate::debug_log::log(
+            "string.rs:qb_string_new",
+            "first runtime call (qb_string_new)",
+            "\"early\":1",
+            "A",
+        );
+    }
+    DEBUG_CALL_COUNT += 1;
+    if DEBUG_CALL_COUNT % 1000 == 0 && DEBUG_CALL_COUNT > 0 {
+        crate::debug_log::log(
+            "string.rs:qb_string_new",
+            "qb_string_new progress",
+            &format!("\"count\":{}", DEBUG_CALL_COUNT),
+            "A",
+        );
+    }
     if s.is_null() {
         return qb_string_empty();
     }

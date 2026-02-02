@@ -10,15 +10,20 @@
 //! - **Array assignment:** `array(i, j) = value`
 //! - **Array field assignment:** `array(i).field = value`
 //! - **Field assignment:** `udt.field = value`
+//! - **MID$ assignment:** `MID$(str$, start[, length]) = value`
+//! - **ASC assignment:** `ASC(str$, pos) = value`
 //!
 //! All methods handle fixed-length string assignments specially, using
 //! `strncpy` to copy string data into character arrays.
+//!
+//! The module also exports [`emit_assignments_stmt`] for the statement dispatcher.
 
 use crate::codegen::error::CodeGenError;
-use crate::semantic::typed_ir::TypedArrayDimension;
+use crate::semantic::typed_ir::{TypedArrayDimension, TypedStatementKind};
 use crate::semantic::types::BasicType;
 use crate::writeln_code;
 
+use super::super::expr::unwrap_qb_str_from_c;
 use super::super::types::{c_identifier, c_type};
 
 impl super::StmtEmitter {
@@ -473,4 +478,176 @@ impl super::StmtEmitter {
 
         Ok(())
     }
+
+    /// Emits MID$(target, start[, length]) = value.
+    pub(crate) fn emit_mid_assignment(
+        &self,
+        indent: &str,
+        target: &crate::semantic::typed_ir::TypedExpr,
+        start: &crate::semantic::typed_ir::TypedExpr,
+        length: &Option<crate::semantic::typed_ir::TypedExpr>,
+        value: &crate::semantic::typed_ir::TypedExpr,
+        output: &mut String,
+    ) -> Result<(), CodeGenError> {
+        let target_code_raw = self.emit_expr(target)?;
+        let target_code = if matches!(
+            target.basic_type,
+            crate::semantic::types::BasicType::FixedString(_)
+        ) {
+            let mut unwrapped = unwrap_qb_str_from_c(&target_code_raw);
+            while unwrapped.starts_with("qb_str_from_c(") {
+                unwrapped = unwrap_qb_str_from_c(&unwrapped);
+            }
+            unwrapped
+        } else {
+            target_code_raw
+        };
+        let start_code = self.emit_expr(start)?;
+        let value_code = self.emit_expr(value)?;
+
+        if matches!(
+            target.basic_type,
+            crate::semantic::types::BasicType::FixedString(_)
+        ) {
+            let len_code = if let Some(len_expr) = length {
+                self.emit_expr(len_expr)?
+            } else {
+                format!("(int32_t)(strlen({}) - ({} - 1))", target_code, start_code)
+            };
+            let data_access = self.config.runtime_mode.string_data_access("_mid_val");
+            writeln_code!(
+                output,
+                "{} {{ QbString* _mid_val = {}; if (_mid_val) {{ int32_t _mid_start = {} - 1; int32_t _mid_len = {}; int32_t _mid_copy_len = _mid_len < (int32_t)strlen({}) ? _mid_len : (int32_t)strlen({}); if (_mid_start >= 0 && _mid_start < (int32_t)strlen({})) {{ strncpy({} + _mid_start, {}, _mid_copy_len); }} }} }}",
+                indent,
+                value_code,
+                start_code,
+                len_code,
+                target_code,
+                target_code,
+                target_code,
+                target_code,
+                data_access
+            )?;
+        } else if let Some(len_expr) = length {
+            let len_code = self.emit_expr(len_expr)?;
+            writeln_code!(
+                output,
+                "{}qb_mid_assign(&({}), {}, {}, {});",
+                indent,
+                target_code,
+                start_code,
+                len_code,
+                value_code
+            )?;
+        } else {
+            writeln_code!(
+                output,
+                "{}qb_mid_assign(&({}), {}, -1, {});",
+                indent,
+                target_code,
+                start_code,
+                value_code
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Emits ASC(str$, pos) = value (single-character write).
+    pub(crate) fn emit_asc_assignment(
+        &self,
+        indent: &str,
+        target: &crate::semantic::typed_ir::TypedExpr,
+        position: &crate::semantic::typed_ir::TypedExpr,
+        value: &crate::semantic::typed_ir::TypedExpr,
+        output: &mut String,
+    ) -> Result<(), CodeGenError> {
+        let target_code = self.emit_expr(target)?;
+        let position_code = self.emit_expr(position)?;
+        let value_code = self.emit_expr(value)?;
+        writeln_code!(
+            output,
+            "{}qb_asc_assign(&({}), {}, {});",
+            indent,
+            target_code,
+            position_code,
+            value_code
+        )?;
+        Ok(())
+    }
+}
+
+/// Dispatcher for assignment-related statement kinds.
+///
+/// Matches on assignment variants and calls the appropriate `StmtEmitter` method.
+pub(super) fn emit_assignments_stmt(
+    emitter: &mut super::StmtEmitter,
+    kind: &TypedStatementKind,
+    indent: &str,
+    output: &mut String,
+) -> Result<(), CodeGenError> {
+    match kind {
+        TypedStatementKind::Assignment {
+            name,
+            value,
+            target_type,
+        } => emitter.emit_assignment(indent, name, value, target_type, output)?,
+
+        TypedStatementKind::ArrayAssignment {
+            name,
+            indices,
+            value,
+            dimensions,
+            element_type,
+        } => emitter.emit_array_assignment(
+            indent,
+            name,
+            indices,
+            value,
+            dimensions,
+            element_type,
+            output,
+        )?,
+
+        TypedStatementKind::ArrayFieldAssignment {
+            name,
+            indices,
+            fields,
+            value,
+            dimensions,
+            element_type: _,
+            field_type,
+        } => emitter.emit_array_field_assignment(
+            indent,
+            name,
+            indices,
+            fields,
+            value,
+            dimensions,
+            field_type,
+            output,
+        )?,
+
+        TypedStatementKind::FieldAssignment {
+            name,
+            fields,
+            value,
+            field_type,
+        } => emitter.emit_field_assignment(indent, name, fields, value, field_type, output)?,
+
+        TypedStatementKind::MidAssignment {
+            target,
+            start,
+            length,
+            value,
+        } => emitter.emit_mid_assignment(indent, target, start, length, value, output)?,
+
+        TypedStatementKind::AscAssignment {
+            target,
+            position,
+            value,
+        } => emitter.emit_asc_assignment(indent, target, position, value, output)?,
+
+        _ => unreachable!("emit_assignments_stmt called with non-assignment kind"),
+    }
+    Ok(())
 }

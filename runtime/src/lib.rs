@@ -26,6 +26,7 @@
 
 pub mod array_registry;
 pub mod audio;
+pub mod debug_log;
 pub mod audio_ffi;
 pub mod bitops;
 pub mod buffer;
@@ -181,6 +182,14 @@ static START_DIR: OnceLock<String> = OnceLock::new();
 /// Stores the current working directory at program start.
 #[no_mangle]
 pub extern "C" fn qb_init_startdir() {
+    // #region agent log
+    debug_log::log(
+        "lib.rs:qb_init_startdir",
+        "qb_init_startdir entered",
+        "\"entered\":1",
+        "early",
+    );
+    // #endregion
     if let Ok(cwd) = std::env::current_dir() {
         let _ = START_DIR.set(cwd.to_string_lossy().to_string());
     } else {
@@ -196,6 +205,14 @@ pub extern "C" fn qb_init_startdir() {
 /// - The returned string must be released with `qb_string_release`
 #[no_mangle]
 pub extern "C" fn qb_startdir() -> *mut string::QbString {
+    // #region agent log
+    debug_log::log(
+        "lib.rs:qb_startdir",
+        "qb_startdir called",
+        "\"entered\":1",
+        "early",
+    );
+    // #endregion
     if let Some(start_dir) = START_DIR.get() {
         unsafe {
             let c_str = std::ffi::CString::new(start_dir.as_str()).unwrap_or_default();

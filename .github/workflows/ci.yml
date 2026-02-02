@@ -252,6 +252,38 @@ jobs:
       - name: Build runtime with opengl feature
         run: cargo build -p qb64fresh-runtime --features opengl --verbose
 
+  # IDE equivalence: console-only tests + GUI repro compile check (no QB64pe in CI)
+  ide-equivalence:
+    name: IDE Equivalence
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-ide-eq-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-ide-eq-
+
+      - name: Build qb64fresh
+        run: cargo build --bin qb64fresh --verbose
+
+      - name: Run IDE equivalence console-only tests
+        run: |
+          RUN_PE=0 QB64FRESH="$PWD/target/debug/qb64fresh" ./tests/ide_equivalence/run_ide_equivalence.sh
+
+      - name: Check GUI IDE equivalence repros compile
+        run: |
+          QB64FRESH="$PWD/target/debug/qb64fresh" ./tests/ide_equivalence/check_gui_compile.sh
+
   # QB45 compatibility tests (requires larger stack for deeply nested expressions)
   qb45_compat:
     name: QB45 Compatibility Tests

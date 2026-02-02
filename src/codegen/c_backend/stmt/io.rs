@@ -13,10 +13,15 @@
 //! - `emit_print_item` - Handles individual PRINT item code generation:
 //!   - Type-appropriate print functions
 //!   - Print separators (comma for tab, semicolon for no space)
+//!
+//! - [`emit_console_io_stmt`] - Dispatcher for PRINT, PRINT USING, INPUT, LINE INPUT.
 
 use crate::ast::PrintSeparator;
 use crate::codegen::error::CodeGenError;
-use crate::semantic::typed_ir::{TypedArrayDimension, TypedInputTarget, TypedPrintItem};
+use crate::semantic::typed_ir::{
+    TypedArrayDimension, TypedInputTarget, TypedPrintItem, TypedStatementKind,
+};
+use crate::semantic::types::BasicType;
 use crate::writeln_code;
 
 use super::super::expr::escape_string;
@@ -283,4 +288,187 @@ impl super::StmtEmitter {
 
         Ok(())
     }
+
+    /// Emits PRINT statement (items and optional newline).
+    pub(crate) fn emit_print(
+        &self,
+        indent: &str,
+        items: &[TypedPrintItem],
+        newline: bool,
+        output: &mut String,
+    ) -> Result<(), CodeGenError> {
+        for item in items {
+            self.emit_print_item(item, output)?;
+        }
+        if newline {
+            writeln_code!(output, "{}qb_print_newline();", indent)?;
+        }
+        Ok(())
+    }
+
+    /// Emits PRINT USING statement.
+    pub(crate) fn emit_print_using(
+        &self,
+        indent: &str,
+        format: &crate::semantic::typed_ir::TypedExpr,
+        values: &[crate::semantic::typed_ir::TypedExpr],
+        newline: bool,
+        output: &mut String,
+    ) -> Result<(), CodeGenError> {
+        let format_code = self.emit_expr(format)?;
+        if values.is_empty() {
+            writeln_code!(
+                output,
+                "{}qb_print_using({}, NULL, 0);",
+                indent,
+                format_code
+            )?;
+        } else {
+            writeln_code!(output, "{}{{", indent)?;
+            writeln_code!(output, "{}    QbPrintValue _pv[{}];", indent, values.len())?;
+            for (i, value) in values.iter().enumerate() {
+                let value_code = self.emit_expr(value)?;
+                match &value.basic_type {
+                    BasicType::String => {
+                        writeln_code!(
+                            output,
+                            "{}    _pv[{}].type = QB_TYPE_STRING; _pv[{}].str_val = {};",
+                            indent,
+                            i,
+                            i,
+                            value_code
+                        )?;
+                    }
+                    BasicType::Integer | BasicType::Long => {
+                        writeln_code!(
+                            output,
+                            "{}    _pv[{}].type = QB_TYPE_INT; _pv[{}].int_val = (int64_t){};",
+                            indent,
+                            i,
+                            i,
+                            value_code
+                        )?;
+                    }
+                    BasicType::Single | BasicType::Double => {
+                        writeln_code!(
+                            output,
+                            "{}    _pv[{}].type = QB_TYPE_DOUBLE; _pv[{}].dbl_val = (double){};",
+                            indent,
+                            i,
+                            i,
+                            value_code
+                        )?;
+                    }
+                    _ => {
+                        writeln_code!(
+                            output,
+                            "{}    _pv[{}].type = QB_TYPE_DOUBLE; _pv[{}].dbl_val = (double){};",
+                            indent,
+                            i,
+                            i,
+                            value_code
+                        )?;
+                    }
+                }
+            }
+            writeln_code!(
+                output,
+                "{}    qb_print_using({}, _pv, {});",
+                indent,
+                format_code,
+                values.len()
+            )?;
+            writeln_code!(output, "{}}}", indent)?;
+        }
+        if newline {
+            writeln_code!(output, "{}qb_print_newline();", indent)?;
+        }
+        Ok(())
+    }
+
+    /// Emits LINE INPUT statement.
+    pub(crate) fn emit_line_input(
+        &self,
+        indent: &str,
+        prompt: &Option<String>,
+        target: &TypedInputTarget,
+        output: &mut String,
+    ) -> Result<(), CodeGenError> {
+        use TypedInputTarget::*;
+
+        let target_code = match target {
+            Variable { name, .. } => c_identifier(name),
+            ArrayElement { name, indices, .. } => {
+                let c_arr = c_identifier(name);
+                let idx_code: Vec<_> = indices
+                    .iter()
+                    .map(|e| self.emit_expr(e))
+                    .collect::<Result<_, _>>()?;
+                let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
+                format!("{}[{}]", c_arr, idx)
+            }
+            ArrayElementField {
+                name,
+                indices,
+                fields,
+                ..
+            } => {
+                let c_arr = c_identifier(name);
+                let idx_code: Vec<_> = indices
+                    .iter()
+                    .map(|e| self.emit_expr(e))
+                    .collect::<Result<_, _>>()?;
+                let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
+                let field_chain = fields.join(".");
+                format!("{}[{}].{}", c_arr, idx, field_chain)
+            }
+            Field { name, fields, .. } => {
+                let c_name = c_identifier(name);
+                let field_chain = fields.join(".");
+                format!("{}.{}", c_name, field_chain)
+            }
+        };
+        let prompt_arg = match prompt {
+            Some(p) => format!("\"{}\"", escape_string(p)),
+            None => "NULL".to_string(),
+        };
+        writeln_code!(
+            output,
+            "{}qb_input_string({}, &{}, 0);",
+            indent,
+            prompt_arg,
+            target_code
+        )?;
+        Ok(())
+    }
+}
+
+/// Dispatcher for console I/O statement kinds (PRINT, PRINT USING, INPUT, LINE INPUT).
+pub(super) fn emit_console_io_stmt(
+    emitter: &mut super::StmtEmitter,
+    kind: &TypedStatementKind,
+    indent: &str,
+    output: &mut String,
+) -> Result<(), CodeGenError> {
+    match kind {
+        TypedStatementKind::Print { items, newline } => {
+            emitter.emit_print(indent, items, *newline, output)?;
+        }
+        TypedStatementKind::PrintUsing {
+            format,
+            values,
+            newline,
+        } => emitter.emit_print_using(indent, format, values, *newline, output)?,
+        TypedStatementKind::Input {
+            prompt,
+            show_question_mark,
+            same_line,
+            targets,
+        } => emitter.emit_input(indent, prompt, *show_question_mark, *same_line, targets, output)?,
+        TypedStatementKind::LineInput { prompt, target } => {
+            emitter.emit_line_input(indent, prompt, target, output)?;
+        }
+        _ => unreachable!("emit_console_io_stmt called with non-console-I/O kind"),
+    }
+    Ok(())
 }

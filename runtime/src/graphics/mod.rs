@@ -1070,6 +1070,14 @@ pub static mut GRAPHICS_BACKEND: Option<Box<dyn GraphicsBackend>> = None;
 /// # Errors
 /// Returns an error if initialization fails.
 pub fn init_graphics(width: u32, height: u32) -> Result<(), GraphicsError> {
+    // #region agent log
+    crate::debug_log::log(
+        "graphics/mod.rs:init_graphics",
+        "init_graphics entry",
+        &format!("\"width\":{},\"height\":{}", width, height),
+        "C",
+    );
+    // #endregion
     if std::env::var("QB64FRESH_GFX_TRACE").is_ok() {
         eprintln!("QB64Fresh: init_graphics {}x{}", width, height);
         let _ = std::io::Write::flush(&mut std::io::stderr());
@@ -1081,6 +1089,14 @@ pub fn init_graphics(width: u32, height: u32) -> Result<(), GraphicsError> {
         unsafe {
             GRAPHICS_BACKEND = Some(backend);
         }
+        // #region agent log
+        crate::debug_log::log(
+            "graphics/mod.rs:init_graphics",
+            "init_graphics ok",
+            "\"result\":\"ok\"",
+            "A",
+        );
+        // #endregion
         Ok(())
     }
 
@@ -1104,6 +1120,47 @@ pub fn shutdown_graphics() -> Result<(), GraphicsError> {
         }
     }
     Ok(())
+}
+
+/// Check if graphics backend is initialized and active.
+///
+/// Returns `true` if graphics mode is active, `false` otherwise.
+/// Used by print functions to determine whether to output to graphics window or console.
+pub fn is_graphics_active() -> bool {
+    unsafe { GRAPHICS_BACKEND.is_some() }
+}
+
+/// Print text to the graphics window.
+///
+/// This is called by the I/O print functions when graphics mode is active.
+/// Returns `Ok(())` on success, or an error if graphics is not initialized.
+pub fn graphics_print(text: &str) -> Result<(), GraphicsError> {
+    unsafe {
+        if let Some(ref mut backend) = GRAPHICS_BACKEND {
+            backend.print(text)
+        } else {
+            Err(GraphicsError::not_initialized())
+        }
+    }
+}
+
+/// Print a newline to the graphics window (advance cursor to next line).
+pub fn graphics_newline() -> Result<(), GraphicsError> {
+    graphics_print("\n")
+}
+
+/// Poll SDL events to update keyboard/mouse state.
+///
+/// This should be called periodically to keep the input buffers updated.
+/// Returns `true` if the window is still open, `false` if it should close.
+pub fn poll_events_if_active() -> bool {
+    unsafe {
+        if let Some(ref mut backend) = GRAPHICS_BACKEND {
+            backend.poll_events().unwrap_or(true)
+        } else {
+            true // No graphics = don't signal close
+        }
+    }
 }
 
 /// Helper macro to call methods on the global backend.

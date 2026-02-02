@@ -514,31 +514,7 @@ pub(in crate::codegen) fn emit_header_with_debug(
             writeln_code!(output, "    return _qb_argc - 1;")?;
             writeln_code!(output, "}}")?;
             writeln_code!(output)?;
-            // qb_environcount - _ENVIRONCOUNT - returns number of environment variables
-            writeln_code!(output, "#ifdef _WIN32")?;
-            writeln_code!(output, "int64_t qb_environcount(void) {{")?;
-            writeln_code!(output, "    int count = 0;")?;
-            writeln_code!(output, "    char* env = GetEnvironmentStringsA();")?;
-            writeln_code!(output, "    if (env) {{")?;
-            writeln_code!(output, "        char* p = env;")?;
-            writeln_code!(
-                output,
-                "        while (*p) {{ count++; p += strlen(p) + 1; }}"
-            )?;
-            writeln_code!(output, "        FreeEnvironmentStringsA(env);")?;
-            writeln_code!(output, "    }}")?;
-            writeln_code!(output, "    return count;")?;
-            writeln_code!(output, "}}")?;
-            writeln_code!(output, "#else")?;
-            writeln_code!(output, "extern char** environ;")?;
-            writeln_code!(output, "int64_t qb_environcount(void) {{")?;
-            writeln_code!(output, "    int count = 0;")?;
-            writeln_code!(output, "    if (environ) {{")?;
-            writeln_code!(output, "        while (environ[count]) count++;")?;
-            writeln_code!(output, "    }}")?;
-            writeln_code!(output, "    return count;")?;
-            writeln_code!(output, "}}")?;
-            writeln_code!(output, "#endif")?;
+            // qb_environcount - provided by runtime library (qb64fresh_rt.h)
             writeln_code!(output)?;
             // qb_fullpath - _FULLPATH$ (absolute path)
             writeln_code!(output, "QbString* qb_fullpath(const QbString* path) {{")?;
@@ -621,161 +597,10 @@ pub(in crate::codegen) fn emit_header_with_debug(
             )?;
             writeln_code!(output, "}}")?;
             writeln_code!(output)?;
-            // qb_file_get_string - GET # for strings (binary read into string buffer)
-            // This function is provided by the runtime library (declared in qb64fresh_rt.h)
-            // Do NOT emit stub in external mode
+            // qb_file_get_string - provided by runtime library (qb64fresh_rt.h)
+            // qb_environ, qb_environ_by_index - provided by runtime library (qb64fresh_rt.h)
             writeln_code!(output)?;
-            // qb_environ - ENVIRON$ function
-            writeln_code!(output, "QbString* qb_environ(const QbString* name) {{")?;
-            writeln_code!(output, "    if (!name) return qb_string_empty();")?;
-            writeln_code!(output, "    const char* name_str = qb_string_data(name);")?;
-            writeln_code!(output, "    const char* val = getenv(name_str);")?;
-            writeln_code!(
-                output,
-                "    return val ? qb_string_new(val) : qb_string_empty();"
-            )?;
-            writeln_code!(output, "}}")?;
-            writeln_code!(output)?;
-            // qb_environ_by_index - ENVIRON$(n) - get nth environment variable (1-based, "NAME=VALUE")
-            writeln_code!(output, "#ifdef _WIN32")?;
-            writeln_code!(output, "QbString* qb_environ_by_index(int64_t n) {{")?;
-            writeln_code!(output, "    if (n < 1) return qb_string_empty();")?;
-            writeln_code!(output, "    char* env = GetEnvironmentStringsA();")?;
-            writeln_code!(output, "    if (!env) return qb_string_empty();")?;
-            writeln_code!(output, "    char* p = env;")?;
-            writeln_code!(output, "    int64_t i = 1;")?;
-            writeln_code!(
-                output,
-                "    while (*p && i < n) {{ i++; p += strlen(p) + 1; }}"
-            )?;
-            writeln_code!(
-                output,
-                "    QbString* result = *p ? qb_string_new(p) : qb_string_empty();"
-            )?;
-            writeln_code!(output, "    FreeEnvironmentStringsA(env);")?;
-            writeln_code!(output, "    return result;")?;
-            writeln_code!(output, "}}")?;
-            writeln_code!(output, "#else")?;
-            writeln_code!(output, "extern char** environ;")?;
-            writeln_code!(output, "QbString* qb_environ_by_index(int64_t n) {{")?;
-            writeln_code!(
-                output,
-                "    if (n < 1 || !environ) return qb_string_empty();"
-            )?;
-            writeln_code!(output, "    int64_t i = (int64_t)n - 1;")?;
-            writeln_code!(output, "    int j = 0;")?;
-            writeln_code!(output, "    while (environ[j]) j++;")?;
-            writeln_code!(output, "    if (i >= (int64_t)j) return qb_string_empty();")?;
-            writeln_code!(output, "    return qb_string_new(environ[i]);")?;
-            writeln_code!(output, "}}")?;
-            writeln_code!(output, "#endif")?;
-            writeln_code!(output)?;
-            // qb_base64encode - _BASE64ENCODE$ (libqb encoding.h)
-            writeln_code!(
-                output,
-                "static const char _qb_b64[] = \"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/\";"
-            )?;
-            writeln_code!(output, "QbString* qb_base64encode(const QbString* data) {{")?;
-            writeln_code!(output, "    if (!data) return qb_string_empty();")?;
-            writeln_code!(output, "    size_t len = qb_string_len(data);")?;
-            writeln_code!(
-                output,
-                "    const uint8_t* in = (const uint8_t*)qb_string_data(data);"
-            )?;
-            writeln_code!(output, "    size_t out_len = 4 * ((len + 2) / 3);")?;
-            writeln_code!(output, "    char* out = (char*)malloc(out_len + 1);")?;
-            writeln_code!(output, "    if (!out) return qb_string_empty();")?;
-            writeln_code!(output, "    size_t i, j = 0;")?;
-            writeln_code!(output, "    for (i = 0; i + 2 < len; i += 3) {{")?;
-            writeln_code!(output, "        out[j++] = _qb_b64[(in[i] >> 2) & 63];")?;
-            writeln_code!(
-                output,
-                "        out[j++] = _qb_b64[((in[i] & 3) << 4) | (in[i+1] >> 4)];"
-            )?;
-            writeln_code!(
-                output,
-                "        out[j++] = _qb_b64[((in[i+1] & 15) << 2) | (in[i+2] >> 6)];"
-            )?;
-            writeln_code!(output, "        out[j++] = _qb_b64[in[i+2] & 63];")?;
-            writeln_code!(output, "    }}")?;
-            writeln_code!(output, "    if (i < len) {{")?;
-            writeln_code!(output, "        out[j++] = _qb_b64[(in[i] >> 2) & 63];")?;
-            writeln_code!(
-                output,
-                "        out[j++] = (i + 1 < len) ? _qb_b64[((in[i] & 3) << 4) | (in[i+1] >> 4)] : _qb_b64[(in[i] & 3) << 4];"
-            )?;
-            writeln_code!(
-                output,
-                "        out[j++] = (i + 1 < len) ? _qb_b64[((in[i+1] & 15) << 2)] : '=';"
-            )?;
-            writeln_code!(output, "        out[j++] = '=';")?;
-            writeln_code!(output, "    }}")?;
-            writeln_code!(output, "    out[j] = '\\0';")?;
-            writeln_code!(
-                output,
-                "    QbString* r = qb_string_from_bytes((uint8_t*)out, (size_t)j);"
-            )?;
-            writeln_code!(output, "    free(out);")?;
-            writeln_code!(output, "    return r;")?;
-            writeln_code!(output, "}}")?;
-            writeln_code!(output)?;
-            // qb_base64decode - _BASE64DECODE$ (libqb encoding.h)
-            writeln_code!(output, "static int _qb_b64_char(char c) {{")?;
-            writeln_code!(output, "    if (c >= 'A' && c <= 'Z') return c - 'A';")?;
-            writeln_code!(output, "    if (c >= 'a' && c <= 'z') return c - 'a' + 26;")?;
-            writeln_code!(output, "    if (c >= '0' && c <= '9') return c - '0' + 52;")?;
-            writeln_code!(
-                output,
-                "    if (c == '+') return 62; if (c == '/') return 63;"
-            )?;
-            writeln_code!(output, "    return -1;")?;
-            writeln_code!(output, "}}")?;
-            writeln_code!(output, "QbString* qb_base64decode(const QbString* data) {{")?;
-            writeln_code!(output, "    if (!data) return qb_string_empty();")?;
-            writeln_code!(output, "    size_t len = qb_string_len(data);")?;
-            writeln_code!(output, "    const char* in = qb_string_data(data);")?;
-            writeln_code!(
-                output,
-                "    while (len > 0 && (in[len-1] == '=' || in[len-1] == ' ' || in[len-1] == '\\n')) len--;"
-            )?;
-            writeln_code!(output, "    size_t out_len = (len * 3) / 4;")?;
-            writeln_code!(output, "    uint8_t* out = (uint8_t*)malloc(out_len + 1);")?;
-            writeln_code!(output, "    if (!out) return qb_string_empty();")?;
-            writeln_code!(output, "    size_t i, j = 0;")?;
-            writeln_code!(output, "    for (i = 0; i + 3 < len; i += 4) {{")?;
-            writeln_code!(
-                output,
-                "        int a = _qb_b64_char(in[i]), b = _qb_b64_char(in[i+1]), c = _qb_b64_char(in[i+2]), d = _qb_b64_char(in[i+3]);"
-            )?;
-            writeln_code!(
-                output,
-                "        if (a < 0 || b < 0 || c < 0 || d < 0) {{ free(out); return qb_string_empty(); }}"
-            )?;
-            writeln_code!(output, "        out[j++] = (uint8_t)((a << 2) | (b >> 4));")?;
-            writeln_code!(
-                output,
-                "        out[j++] = (uint8_t)(((b & 15) << 4) | (c >> 2));"
-            )?;
-            writeln_code!(output, "        out[j++] = (uint8_t)(((c & 3) << 6) | d);")?;
-            writeln_code!(output, "    }}")?;
-            writeln_code!(output, "    if (i < len && len - i >= 2) {{")?;
-            writeln_code!(
-                output,
-                "        int a = _qb_b64_char(in[i]), b = _qb_b64_char(in[i+1]);"
-            )?;
-            writeln_code!(
-                output,
-                "        if (a >= 0 && b >= 0) {{ out[j++] = (uint8_t)((a << 2) | (b >> 4)); }}"
-            )?;
-            writeln_code!(
-                output,
-                "        if (i + 2 < len) {{ int c = _qb_b64_char(in[i+2]); if (c >= 0) out[j++] = (uint8_t)(((b & 15) << 4) | (c >> 2)); }}"
-            )?;
-            writeln_code!(output, "    }}")?;
-            writeln_code!(output, "    QbString* r = qb_string_from_bytes(out, j);")?;
-            writeln_code!(output, "    free(out);")?;
-            writeln_code!(output, "    return r;")?;
-            writeln_code!(output, "}}")?;
+            // qb_base64encode / qb_base64decode - provided by runtime library (qb64fresh_rt.h)
             writeln_code!(output)?;
             // qb_cvi - unpack 2-byte string to 16-bit integer
             writeln_code!(output, "int16_t qb_cvi(const QbString* s) {{")?;
@@ -836,145 +661,7 @@ pub(in crate::codegen) fn emit_header_with_debug(
             writeln_code!(output, "    fclose(f);")?;
             writeln_code!(output, "}}")?;
             writeln_code!(output)?;
-            // qb_deflate/qb_inflate - compression (stub by default; define QB64FRESH_COMPRESSION_EXTERNAL and link runtime/c_src/compression.c -lz for real)
-            writeln_code!(output, "#ifndef QB64FRESH_COMPRESSION_EXTERNAL")?;
-            writeln_code!(output, "QbString* qb_deflate(const QbString* data) {{")?;
-            writeln_code!(output, "    (void)data;")?;
-            writeln_code!(output, "    return qb_string_empty();")?;
-            writeln_code!(output, "}}")?;
-            writeln_code!(output, "QbString* qb_inflate(const QbString* data) {{")?;
-            writeln_code!(output, "    (void)data;")?;
-            writeln_code!(output, "    return qb_string_empty();")?;
-            writeln_code!(output, "}}")?;
-            writeln_code!(output, "#endif")?;
-            writeln_code!(output)?;
-            // qb_adler32 - _ADLER32 (libqb hashing.h)
-            writeln_code!(output, "uint32_t qb_adler32(const QbString* data) {{")?;
-            writeln_code!(output, "    if (!data) return 1;")?;
-            writeln_code!(output, "    size_t len = qb_string_len(data);")?;
-            writeln_code!(
-                output,
-                "    const uint8_t* p = (const uint8_t*)qb_string_data(data);"
-            )?;
-            writeln_code!(output, "    uint32_t s1 = 1, s2 = 0;")?;
-            writeln_code!(output, "    for (size_t i = 0; i < len; i++) {{")?;
-            writeln_code!(output, "        s1 = (s1 + p[i]) % 65521u;")?;
-            writeln_code!(output, "        s2 = (s2 + s1) % 65521u;")?;
-            writeln_code!(output, "    }}")?;
-            writeln_code!(output, "    return (s2 << 16) | s1;")?;
-            writeln_code!(output, "}}")?;
-            writeln_code!(output)?;
-            // qb_crc32 - _CRC32 (libqb hashing.h), table-based
-            writeln_code!(output, "static uint32_t _qb_crc32_table[256];")?;
-            writeln_code!(output, "static int _qb_crc32_table_done = 0;")?;
-            writeln_code!(output, "static void _qb_crc32_init(void) {{")?;
-            writeln_code!(output, "    if (_qb_crc32_table_done) return;")?;
-            writeln_code!(output, "    for (uint32_t i = 0; i < 256; i++) {{")?;
-            writeln_code!(output, "        uint32_t c = i;")?;
-            writeln_code!(
-                output,
-                "        for (int j = 0; j < 8; j++) c = (c >> 1) ^ (0xEDB88320u & -(c & 1));"
-            )?;
-            writeln_code!(output, "        _qb_crc32_table[i] = c;")?;
-            writeln_code!(output, "    }}")?;
-            writeln_code!(output, "    _qb_crc32_table_done = 1;")?;
-            writeln_code!(output, "}}")?;
-            writeln_code!(output, "uint32_t qb_crc32(const QbString* data) {{")?;
-            writeln_code!(output, "    if (!data) return 0;")?;
-            writeln_code!(output, "    _qb_crc32_init();")?;
-            writeln_code!(output, "    size_t len = qb_string_len(data);")?;
-            writeln_code!(
-                output,
-                "    const uint8_t* p = (const uint8_t*)qb_string_data(data);"
-            )?;
-            writeln_code!(output, "    uint32_t crc = 0xFFFFFFFFu;")?;
-            writeln_code!(output, "    for (size_t i = 0; i < len; i++)")?;
-            writeln_code!(
-                output,
-                "        crc = _qb_crc32_table[(crc ^ p[i]) & 0xFF] ^ (crc >> 8);"
-            )?;
-            writeln_code!(output, "    return crc ^ 0xFFFFFFFFu;")?;
-            writeln_code!(output, "}}")?;
-            writeln_code!(output)?;
-            // qb_md5 - _MD5$ (libqb hashing.h), minimal RFC 1321 implementation
-            writeln_code!(output, "QbString* qb_md5(const QbString* data) {{")?;
-            writeln_code!(output, "    if (!data) return qb_string_empty();")?;
-            writeln_code!(output, "    size_t len = qb_string_len(data);")?;
-            writeln_code!(
-                output,
-                "    const uint8_t* msg = (const uint8_t*)qb_string_data(data);"
-            )?;
-            writeln_code!(
-                output,
-                "    uint32_t r[] = {{7,12,17,22,7,12,17,22,7,12,17,22,7,12,17,22,"
-            )?;
-            writeln_code!(output, "        5,9,14,20,5,9,14,20,5,9,14,20,5,9,14,20,")?;
-            writeln_code!(
-                output,
-                "        4,11,16,23,4,11,16,23,4,11,16,23,4,11,16,23,"
-            )?;
-            writeln_code!(
-                output,
-                "        6,10,15,21,6,10,15,21,6,10,15,21,6,10,15,21}};"
-            )?;
-            writeln_code!(output, "    uint32_t k[64];")?;
-            writeln_code!(
-                output,
-                "    for (int i = 0; i < 64; i++) k[i] = (uint32_t)(fabs(sin((double)(i+1))) * 4294967296.0);"
-            )?;
-            writeln_code!(
-                output,
-                "    uint32_t h0 = 0x67452301, h1 = 0xEFCDAB89, h2 = 0x98BADCFE, h3 = 0x10325476;"
-            )?;
-            writeln_code!(output, "    size_t new_len = (((len + 8) / 64) + 1) * 64;")?;
-            writeln_code!(output, "    uint8_t* buf = (uint8_t*)calloc(new_len, 1);")?;
-            writeln_code!(output, "    if (!buf) return qb_string_empty();")?;
-            writeln_code!(output, "    memcpy(buf, msg, len);")?;
-            writeln_code!(output, "    buf[len] = 0x80;")?;
-            writeln_code!(output, "    uint64_t bits = len * 8;")?;
-            writeln_code!(output, "    memcpy(buf + new_len - 8, &bits, 8);")?;
-            writeln_code!(
-                output,
-                "    for (size_t offset = 0; offset < new_len; offset += 64) {{"
-            )?;
-            writeln_code!(output, "        uint32_t* w = (uint32_t*)(buf + offset);")?;
-            writeln_code!(output, "        uint32_t a = h0, b = h1, c = h2, d = h3;")?;
-            writeln_code!(output, "        for (int i = 0; i < 64; i++) {{")?;
-            writeln_code!(output, "            uint32_t f, g;")?;
-            writeln_code!(
-                output,
-                "            if (i < 16) {{ f = (b & c) | ((~b) & d); g = i; }}"
-            )?;
-            writeln_code!(
-                output,
-                "            else if (i < 32) {{ f = (d & b) | ((~d) & c); g = (5*i + 1) % 16; }}"
-            )?;
-            writeln_code!(
-                output,
-                "            else if (i < 48) {{ f = b ^ c ^ d; g = (3*i + 5) % 16; }}"
-            )?;
-            writeln_code!(
-                output,
-                "            else {{ f = c ^ (b | (~d)); g = (7*i) % 16; }}"
-            )?;
-            writeln_code!(output, "            uint32_t x = a + f + k[i] + w[g];")?;
-            writeln_code!(output, "            uint32_t temp = d; d = c; c = b;")?;
-            writeln_code!(
-                output,
-                "            b = b + ((x << r[i]) | (x >> (32 - r[i])));"
-            )?;
-            writeln_code!(output, "            a = temp;")?;
-            writeln_code!(output, "        }}")?;
-            writeln_code!(output, "        h0 += a; h1 += b; h2 += c; h3 += d;")?;
-            writeln_code!(output, "    }}")?;
-            writeln_code!(output, "    free(buf);")?;
-            writeln_code!(output, "    char hex[33];")?;
-            writeln_code!(
-                output,
-                "    snprintf(hex, sizeof(hex), \"%08x%08x%08x%08x\", h0, h1, h2, h3);"
-            )?;
-            writeln_code!(output, "    return qb_string_new(hex);")?;
-            writeln_code!(output, "}}")?;
+            // qb_deflate/qb_inflate, qb_adler32, qb_crc32, qb_md5 - provided by runtime library (qb64fresh_rt.h)
             writeln_code!(output)?;
             // qb_red32, qb_green32, qb_blue32 - color component extraction
             writeln_code!(
@@ -1034,18 +721,7 @@ pub(in crate::codegen) fn emit_header_with_debug(
                 output,
                 "int32_t qb_alpha32(uint32_t c) {{ return (c >> 24) & 0xFF; }}"
             )?;
-            writeln_code!(
-                output,
-                "double qb_arccot(double n) {{ return atan(1.0 / n); }}"
-            )?;
-            writeln_code!(
-                output,
-                "double qb_arccsc(double n) {{ return asin(1.0 / n); }}"
-            )?;
-            writeln_code!(
-                output,
-                "double qb_arcsec(double n) {{ return acos(1.0 / n); }}"
-            )?;
+            // qb_arccot, qb_arccsc, qb_arcsec, qb_clamp, qb_cot, qb_coth, qb_csc, qb_csch - provided by runtime library
             writeln_code!(output, "int32_t qb_backgroundcolor(void) {{ return 0; }}")?;
             writeln_code!(
                 output,
@@ -1053,21 +729,7 @@ pub(in crate::codegen) fn emit_header_with_debug(
             )?;
             writeln_code!(
                 output,
-                "double qb_clamp(double x, double min, double max) {{ if (x < min) return min; if (x > max) return max; return x; }}"
-            )?;
-            writeln_code!(
-                output,
                 "int32_t qb_console(int32_t mode) {{ (void)mode; return 1; }}"
-            )?;
-            writeln_code!(output, "double qb_cot(double n) {{ return 1.0 / tan(n); }}")?;
-            writeln_code!(
-                output,
-                "double qb_coth(double n) {{ return 1.0 / tanh(n); }}"
-            )?;
-            writeln_code!(output, "double qb_csc(double n) {{ return 1.0 / sin(n); }}")?;
-            writeln_code!(
-                output,
-                "double qb_csch(double n) {{ return 1.0 / sinh(n); }}"
             )?;
             writeln_code!(output, "int32_t qb_csrlin(void) {{ return 1; }}")?;
             writeln_code!(
@@ -1165,7 +827,7 @@ pub(in crate::codegen) fn emit_header_with_debug(
                 output,
                 "    /* Poll SDL2 events to keep window responsive */"
             )?;
-            writeln_code!(output, "    qb_gfx_poll_events();")?;
+            writeln_code!(output, "    if (qb_gfx_poll_events() == 0) exit(0);")?;
             writeln_code!(output, "    /* Update display */")?;
             writeln_code!(output, "    qb_gfx_display();")?;
             writeln_code!(output, "}}")?;
@@ -1174,11 +836,7 @@ pub(in crate::codegen) fn emit_header_with_debug(
 
             // Additional missing functions for QB64PE compatibility
             writeln_code!(output, "/* Additional QB64PE-specific functions */")?;
-            writeln_code!(output, "double qb_sec(double n) {{ return 1.0 / cos(n); }}")?;
-            writeln_code!(
-                output,
-                "double qb_sech(double n) {{ return 1.0 / cosh(n); }}"
-            )?;
+            // qb_sec, qb_sech - provided by runtime library
             writeln_code!(output, "int32_t qb_negate(int32_t n) {{ return -n; }}")?;
             writeln_code!(
                 output,
@@ -1270,10 +928,7 @@ pub(in crate::codegen) fn emit_header_with_debug(
                 "QbString* qb_mks(float n) {{ uint8_t bytes[4]; memcpy(bytes, &n, 4); return qb_string_from_bytes(bytes, 4); }}"
             )?;
             writeln_code!(output, "int64_t qb_windowhasfocus(void) {{ return -1; }}")?;
-            writeln_code!(
-                output,
-                "void qb_view_print(int32_t top, int32_t bottom) {{ (void)top; (void)bottom; }}"
-            )?;
+            // qb_view_print - provided by runtime library
             writeln_code!(output, "int32_t qb_totaldroppedfiles(void) {{ return 0; }}")?;
             writeln_code!(output)?;
             // qb_sleep_keypress - needed even in external mode (not in runtime library)

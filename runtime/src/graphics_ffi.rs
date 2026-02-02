@@ -132,13 +132,21 @@ pub extern "C" fn qb_gfx_screen(
     active_page: i32,
     visual_page: i32,
 ) -> c_int {
+    // #region agent log
+    crate::debug_log::log(
+        "graphics_ffi.rs:qb_gfx_screen",
+        "qb_gfx_screen called",
+        &format!("\"mode\":{},\"active_page\":{},\"visual_page\":{}", mode, active_page, visual_page),
+        "E",
+    );
+    // #endregion
     // Mode -1 means "keep current mode, just set pages"
     if mode == -1 {
-        // Ensure graphics is initialized (default to text mode if not)
+        // Ensure graphics is initialized (default to IDE-compatible size if not)
         unsafe {
             if crate::graphics::GRAPHICS_BACKEND.is_none() {
-                // Initialize with default text mode dimensions
-                if let Err(e) = crate::graphics::init_graphics(640, 400) {
+                // Initialize with IDE-compatible dimensions: 160 cols * 8 px = 1280, 50 rows * 8 px = 400
+                if let Err(e) = crate::graphics::init_graphics(1280, 400) {
                     return log_ffi_error!("qb_gfx_screen (init for mode -1)", e);
                 }
             }
@@ -1452,6 +1460,7 @@ pub extern "C" fn qb_gfx_putimage_simple(src_handle: i32, dest_handle: i32) -> c
 }
 
 /// Put_image with destination coordinates.
+/// `scale_mode` is passed from BASIC _PUTIMAGE; runtime may use it for stretch/smooth (currently ignored).
 #[no_mangle]
 pub extern "C" fn qb_gfx_putimage(
     dx1: i32,
@@ -1460,6 +1469,7 @@ pub extern "C" fn qb_gfx_putimage(
     dy2: i32,
     src_handle: i32,
     dest_handle: i32,
+    _scale_mode: i32,
 ) -> c_int {
     unsafe {
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
@@ -2155,8 +2165,9 @@ pub extern "C" fn qb_fullscreen_get() -> i32 {
 pub extern "C" fn qb_screenmove(x: i32, y: i32) {
     unsafe {
         // Auto-initialize graphics if not already (IDE calls _SCREENMOVE before showing)
+        // Use IDE-compatible size: 160 cols * 8 px = 1280, 50 rows * 8 px = 400
         if crate::graphics::GRAPHICS_BACKEND.is_none() {
-            let _ = crate::graphics::init_graphics(640, 400);
+            let _ = crate::graphics::init_graphics(1280, 400);
         }
         if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
             backend.screen_move(x, y);
@@ -2193,10 +2204,34 @@ fn ide_compat_enabled() -> bool {
 #[no_mangle]
 pub extern "C" fn qb_screenshow() {
     unsafe {
+        // #region agent log
+        crate::debug_log::log(
+            "graphics_ffi.rs:qb_screenshow",
+            "qb_screenshow entered",
+            "\"entered\":1",
+            "A",
+        );
+        // #endregion
         // Auto-initialize graphics if not already initialized
         if crate::graphics::GRAPHICS_BACKEND.is_none() {
-            // Initialize with default dimensions for IDE/text mode
-            if let Err(e) = crate::graphics::init_graphics(640, 400) {
+            // #region agent log
+            crate::debug_log::log(
+                "graphics_ffi.rs:qb_screenshow",
+                "init_graphics from screenshow (backend was none)",
+                "\"width\":1280,\"height\":400",
+                "A",
+            );
+            // #endregion
+            // Initialize with IDE-compatible dimensions: 160 cols * 8 px = 1280, 50 rows * 8 px = 400
+            if let Err(e) = crate::graphics::init_graphics(1280, 400) {
+                // #region agent log
+                crate::debug_log::log(
+                    "graphics_ffi.rs:qb_screenshow",
+                    "init_graphics failed",
+                    "\"err\":1",
+                    "E",
+                );
+                // #endregion
                 eprintln!("QB64Fresh: _SCREENSHOW failed to init graphics: {:?}", e);
                 let _ = std::io::Write::flush(&mut std::io::stderr());
                 return;
@@ -2211,6 +2246,14 @@ pub extern "C" fn qb_screenshow() {
                 let _ = std::io::Write::flush(&mut std::io::stderr());
             }
             backend.screen_show();
+            // #region agent log
+            crate::debug_log::log(
+                "graphics_ffi.rs:qb_screenshow",
+                "backend.screen_show() returned",
+                "\"done\":1",
+                "D",
+            );
+            // #endregion
         }
     }
 }
@@ -2219,7 +2262,23 @@ pub extern "C" fn qb_screenshow() {
 #[no_mangle]
 pub extern "C" fn qb_screenhide() {
     unsafe {
+        // #region agent log
+        crate::debug_log::log(
+            "graphics_ffi.rs:qb_screenhide",
+            "qb_screenhide entered",
+            "\"entered\":1",
+            "B",
+        );
+        // #endregion
         if ide_compat_enabled() {
+            // #region agent log
+            crate::debug_log::log(
+                "graphics_ffi.rs:qb_screenhide",
+                "return early ide_compat",
+                "\"branch\":\"ide_compat\"",
+                "B",
+            );
+            // #endregion
             if screen_trace_enabled() {
                 eprintln!("QB64Fresh: _SCREENHIDE ignored (IDE compat)");
                 let _ = std::io::Write::flush(&mut std::io::stderr());
@@ -2235,6 +2294,14 @@ pub extern "C" fn qb_screenhide() {
         }
         if SUPPRESS_NEXT_SCREENHIDE {
             SUPPRESS_NEXT_SCREENHIDE = false;
+            // #region agent log
+            crate::debug_log::log(
+                "graphics_ffi.rs:qb_screenhide",
+                "SUPPRESS_NEXT_SCREENHIDE consumed",
+                "\"branch\":\"suppress\"",
+                "B",
+            );
+            // #endregion
             if screen_trace_enabled() {
                 eprintln!("QB64Fresh: _SCREENHIDE suppressed (first hide)");
                 let _ = std::io::Write::flush(&mut std::io::stderr());

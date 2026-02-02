@@ -11,7 +11,7 @@ use crate::codegen::error::CodeGenError;
 use crate::writeln_code;
 
 use crate::ast::{FileAccess, FileLock, FileMode, PrintSeparator};
-use crate::semantic::typed_ir::{TypedExpr, TypedInputTarget, TypedPrintItem};
+use crate::semantic::typed_ir::{TypedExpr, TypedInputTarget, TypedPrintItem, TypedStatementKind};
 use crate::semantic::types::BasicType;
 
 use super::stmt::StmtEmitter;
@@ -269,7 +269,7 @@ impl StmtEmitter {
                             // Double-wrapped - unwrap one level
                             expr_code
                                 .strip_prefix("qb_str_from_c(")
-                                .and_then(|s| s.strip_suffix(")"))
+                                .and_then(|s: &str| s.strip_suffix(")"))
                                 .unwrap_or(&expr_code)
                                 .to_string()
                         } else {
@@ -899,4 +899,95 @@ fn type_size(ty: &BasicType) -> &'static str {
         BasicType::Mem => "sizeof(qb_mem)",
         BasicType::Void | BasicType::Unknown => "4",
     }
+}
+
+/// Dispatcher for file I/O statement kinds.
+pub(super) fn emit_file_io_stmt(
+    emitter: &mut StmtEmitter,
+    kind: &TypedStatementKind,
+    indent: &str,
+    output: &mut String,
+) -> Result<(), CodeGenError> {
+    match kind {
+        TypedStatementKind::OpenFile {
+            filename,
+            mode,
+            access,
+            lock,
+            file_num,
+            record_len,
+        } => emitter.emit_open_file(
+            indent,
+            filename,
+            *mode,
+            *access,
+            *lock,
+            file_num,
+            record_len.as_ref(),
+            output,
+        )?,
+
+        TypedStatementKind::OpenFileLegacy {
+            mode_expr,
+            file_num,
+            filename,
+            record_len,
+        } => emitter.emit_open_file_legacy(
+            indent,
+            mode_expr,
+            file_num,
+            filename,
+            record_len.as_ref(),
+            output,
+        )?,
+
+        TypedStatementKind::CloseFile { file_nums } => {
+            emitter.emit_close_file(indent, file_nums, output)?;
+        }
+
+        TypedStatementKind::LockFile { file_num } => {
+            emitter.emit_lock_file(indent, file_num, output)?;
+        }
+
+        TypedStatementKind::UnlockFile { file_num } => {
+            emitter.emit_unlock_file(indent, file_num, output)?;
+        }
+
+        TypedStatementKind::FilePrint {
+            file_num,
+            items,
+            newline,
+        } => emitter.emit_file_print(indent, file_num, items, *newline, output)?,
+
+        TypedStatementKind::FileWrite { file_num, values } => {
+            emitter.emit_file_write(indent, file_num, values, output)?;
+        }
+
+        TypedStatementKind::FileInput { file_num, targets } => {
+            emitter.emit_file_input(indent, file_num, targets, output)?;
+        }
+
+        TypedStatementKind::FileLineInput { file_num, target } => {
+            emitter.emit_file_line_input(indent, file_num, target, output)?;
+        }
+
+        TypedStatementKind::FileGet {
+            file_num,
+            position,
+            target,
+        } => emitter.emit_file_get(indent, file_num, position.as_ref(), target, output)?,
+
+        TypedStatementKind::FilePut {
+            file_num,
+            position,
+            target,
+        } => emitter.emit_file_put(indent, file_num, position.as_ref(), target, output)?,
+
+        TypedStatementKind::FileSeek { file_num, position } => {
+            emitter.emit_file_seek(indent, file_num, position, output)?;
+        }
+
+        _ => unreachable!("emit_file_io_stmt called with non-file-I/O kind"),
+    }
+    Ok(())
 }

@@ -15,6 +15,10 @@ QB64Fresh supports **QB4.5 compatibility** and a **curated set of QB64 extension
 
 See [ADR-0014: Scope and Intentionally Excluded Features](adrs/ADR-0014-scope-and-excluded-features.md) and [TODO and future plans](ThingsToDo/TODO_CONSOLIDATED.md) for rationale and details.
 
+### Name resolution: array vs function call
+
+Expressions of the form `name(args)` are syntactically the same for both array access and function calls. The parser represents both as a single expression kind (`FunctionCall` in the AST). The **semantic** phase resolves them using the symbol table: if `name` is an array (variable or UDT field), the expression becomes an array access; if `name` is a procedure (built-in or user-defined) or an external function, it becomes a function call. If `name` is only a scalar variable, the compiler reports an error (e.g. “not an array”). For full details and lookup order, see [ARCHITECTURE.md — Semantic Analysis: Array vs function call resolution](ARCHITECTURE.md#array-vs-function-call-resolution).
+
 ## Table of Contents
 
 0. [Scope and Implementation Status](#scope-and-implementation-status)

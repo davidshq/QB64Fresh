@@ -81,7 +81,7 @@
 
 ### 2.2 Architecture
 
-- **Pipeline and modules:** Clear separation (lexer → parser → semantic → codegen → C). No major architectural issues. Stmt codegen is split across many files under `stmt/`, which is good for maintainability.
+- **Pipeline and modules:** Clear separation (lexer → parser → semantic → codegen → C). No major architectural issues. Expression codegen is split into `c_backend/expr/` (binary, calls, helpers, literals, special, unary, mod). Statement codegen is split across `c_backend/stmt/` (mod, state, call, assignments, control_flow, data, def_fn, definitions, error_jump, graphics, io, meta, misc, system, etc.), which is good for maintainability.
 
 - **EvntIndentGuard (codegen):** Uses a raw pointer to restore indent on drop. Works but is the only use of raw pointer in the compiler. Alternative: pass `&mut CodeGenState` and store a copy of the previous indent, then restore in `Drop`. Would avoid `unsafe` at the cost of a slightly larger guard struct.
 
@@ -89,15 +89,7 @@
 
 ### 2.3 Code smells (minor)
 
-- **Very long files:** Some modules are large (e.g. `runtime/src/io/file.rs`, `runtime/src/graphics/sdl2.rs`, `src/codegen/c_backend/expr.rs`). Already split into logical sections. Optional: extract more submodules (e.g. file.rs by operation) if they grow further.
-
 - **Magic numbers / strings:** Some C backend and runtime code use string literals for C snippets and env var names. Consider constants (e.g. `QB64FRESH_DEBUG_PIPE`) in one place for maintainability.
-
-- **Stub vs full implementation:** Many “stub” paths (inline runtime, no network, etc.) are clearly commented. No lost functionality identified; stubs are intentional for compatibility and linking.
-
-### 2.4 Lost functionality
-
-- **None identified.** Stub behavior is documented (e.g. LOCK/UNLOCK no-op, SETMEM/CALL ABSOLUTE legacy stubs). No features that were previously implemented and then removed without replacement.
 
 ---
 
@@ -109,27 +101,7 @@
 
 - **Runtime:** No crate-level `#![warn(missing_docs)]`; many public FFI functions have `///` docs and `# Safety` where needed. Some internal helpers lack doc comments; acceptable for non-public code.
 
-- **Codegen:** Many inline `//` comments in `src/codegen/c_backend/` (thousands of lines of comments). They explain C emission; consider adding short `//!` or `///` module/function summaries at the top of the busiest files (e.g. `expr.rs`, `mod.rs`) for quicker navigation.
-
-### 3.2 Outdated documentation
-
-- **CLAUDE.md — Key Files Reference:** Header says “as of 2026-01-23”. Some entries are slightly off:
-  - Parser: table lists `src/parser/statements.rs` (single file); actual layout is `src/parser/statements/` (e.g. `assignments.rs`, `control_etc.rs`, `data_dims.rs`, `declare.rs`, `mod.rs`, `print_input.rs`). Update the table and/or project structure to match.
-  - Same for “Project Structure” section: it shows `statements.rs`; should show `statements/*.rs` or list the submodules.
-
-- **CLAUDE.md — Documentation table:** Lists `docs/PARSER_PLAN.md` and `docs/QB64_SYNTAX_REFERENCE.md`. If these were moved or renamed, update paths (or remove if obsolete).
-
-- **README.md:** Accurate; “VIBE CODED: Use with caution” and bootstrap/status sections are current. No changes required for correctness.
-
-### 3.3 Docs that are in good shape
-
-- **docs/DOCS-README.md:** Navigation and structure are current.
-- **docs/archive/CODE_REVIEW_LOG.md:** Reflects prior review; Phase 0 baseline (build, test, clippy) is consistent with current state after the PartialEq fix.
-- **ADR and architecture docs:** Not re-verified line-by-line but referenced and consistent with design (Rust, C backend, trait-based graphics/audio, LSP, etc.).
-
-### 3.4 Cargo / config
-
-- **Cargo.toml (root):** `edition = "2024"`. Rust 2024 edition is available; ensure CI and contributors use a compatible toolchain. If the project targets stable only, confirm that 2024 is enabled on stable or adjust.
+- **Codegen:** Many inline `//` comments in `src/codegen/c_backend/` (thousands of lines of comments). They explain C emission; consider adding short `//!` or `///` module/function summaries at the top of the busiest modules (e.g. `expr/`, `stmt/mod.rs`) for quicker navigation. Expression codegen now lives in `expr/` (binary, calls, literals, unary, etc.); statement codegen in `stmt/` (mod, state, call, assignments, control_flow, etc.).
 
 ---
 
@@ -138,7 +110,7 @@
 ### High
 
 1. **Keep the PartialEq/Eq fix** for `UserTypeMember` and `TypedArrayDimension` (already applied).
-2. **Update CLAUDE.md** “Key Files Reference” and “Project Structure” to match the real parser layout (`parser/statements/*.rs` and any other split modules). Optionally refresh the “as of” date.
+2. **Update CLAUDE.md** “Key Files Reference” and “Project Structure” to match the real layout: parser `statements/`, codegen `c_backend/expr/` and `c_backend/stmt/` (state, call, system, etc.), semantic `builtins/` and `checker/statements/` (including system). Optionally refresh the “as of” date.
 3. **Codegen debug emission:** Replace `emit_debug_runtime(...).unwrap()` with proper error handling or `expect("...")` and a short comment.
 
 ### Medium
@@ -158,7 +130,7 @@
 
 ## Files and areas reviewed
 
-- **Compiler:** `src/lib.rs`, `main.rs`, `ast/`, `lexer/`, `parser/` (including `parser/statements/`), `preprocessor.rs`, `semantic/` (including `checker/`, `checker/statements/`), `codegen/` (including `c_backend/`, `c_backend/runtime/`, `c_backend/stmt/`), `lsp/`, `error_formatting.rs`, `library.rs`, `header_parser/` (when present).
+- **Compiler:** `src/lib.rs`, `main.rs`, `compiler_api.rs`, `ast/`, `lexer/`, `parser/` (including `parser/statements/`), `preprocessor.rs`, `semantic/` (including `builtins/`, `checker/`, `checker/statements/`), `codegen/` (including `c_backend/`, `c_backend/expr/`, `c_backend/runtime/`, `c_backend/stmt/`), `lsp/`, `error_formatting.rs`, `library.rs`, `header_parser/` (when present).
 - **Runtime:** `runtime/src/lib.rs`, `string.rs`, `io/`, `math.rs`, `graphics/`, `audio/`, `*_ffi.rs`, and other modules under `runtime/src/`.
 - **Tools:** `tools/fmt/`, `tools/lint/`, `tools/debug/`, `tools/fix_encoding.rs`, `tools/README.md`.
 - **Tests / benches / fuzz:** `tests/*.rs`, `benches/*.rs`, `fuzz/*.rs`.
@@ -170,3 +142,4 @@
 ## Changelog
 
 - **2026-01-31:** Initial full review; fixed `UserTypeMember`/`TypedArrayDimension` PartialEq/Eq; added `CODE_REVIEW_FULL.md`.
+- **2026-01-31:** Updated to reflect post–file-splitting layout: codegen expression in `c_backend/expr/` (no longer single `expr.rs`), semantic builtins in `semantic/builtins/`, stmt codegen with `stmt/state.rs`, `stmt/call.rs`, `stmt/system.rs`, etc.; semantic checker `statements/system.rs`; compiler facade `compiler_api.rs`; "Files and areas reviewed" and "Very long files" / "Architecture" sections aligned to current structure.

@@ -7,7 +7,7 @@
 //! - _MESSAGEBOX - Show a message box with buttons
 //! - _INPUTBOX$ - Show an input dialog
 
-use crate::string::{qb_string_empty, qb_string_from_bytes, QbString};
+use crate::string::{qb_string_data, qb_string_empty, qb_string_from_bytes, QbString};
 use std::ffi::CStr;
 use std::os::raw::c_char;
 
@@ -318,6 +318,50 @@ pub unsafe extern "C" fn qb_messagebox_ex(
         }
         QB_MBRET_OK
     }
+}
+
+/// _MESSAGEBOX(msg$, title$, btns$) — QbString* args; maps btns to QB_MB_* and calls qb_messagebox_ex.
+///
+/// Called from generated C for 3-arg _MESSAGEBOX. `btns` string is case-insensitive:
+/// "ok", "okcancel", "abortretryignore", "yesnocancel", "yesno", "retrycancel".
+///
+/// # Safety
+/// All QbString* must be valid or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn qb_messagebox(
+    msg: *const QbString,
+    title: *const QbString,
+    btns: *const QbString,
+) -> i32 {
+    let title_c = if title.is_null() {
+        std::ptr::null()
+    } else {
+        qb_string_data(title)
+    };
+    let message_c = if msg.is_null() {
+        std::ptr::null()
+    } else {
+        qb_string_data(msg)
+    };
+    let buttons = if btns.is_null() {
+        QB_MB_OK
+    } else {
+        let s = qb_string_data(btns);
+        if s.is_null() {
+            QB_MB_OK
+        } else {
+            match CStr::from_ptr(s).to_str().unwrap_or("").to_lowercase().as_str() {
+                "ok" => QB_MB_OK,
+                "okcancel" => QB_MB_OKCANCEL,
+                "abortretryignore" => QB_MB_ABORTRETRYIGNORE,
+                "yesnocancel" => QB_MB_YESNOCANCEL,
+                "yesno" => QB_MB_YESNO,
+                "retrycancel" => QB_MB_RETRYCANCEL,
+                _ => QB_MB_OK,
+            }
+        }
+    };
+    qb_messagebox_ex(title_c, message_c, buttons)
 }
 
 /// Show a system notification (toast / action center).

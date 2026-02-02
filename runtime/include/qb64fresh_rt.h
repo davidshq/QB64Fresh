@@ -1005,6 +1005,8 @@ QbString* qb_selectfolderdialog(const char* title, const char* initial_dir);
 
 /* Message box */
 int32_t qb_messagebox_ex(const char* title, const char* message, int32_t buttons);
+/* _MESSAGEBOX(msg$, title$, btns$) - QbString* args; maps btns string to QB_MB_* and calls qb_messagebox_ex */
+int32_t qb_messagebox(QbString* msg, QbString* title, QbString* btns);
 
 /* Notify popup (toast / action center); icon_type: "info" | "warning" | "error" */
 void qb_notifypopup(const char* title, const char* message, const char* icon_type);
@@ -1482,7 +1484,7 @@ int32_t qb_gfx_newimage(int32_t width, int32_t height, int32_t mode);
 int32_t qb_gfx_loadimage(const char* filename, int32_t mode);
 int qb_gfx_freeimage(int32_t handle);
 int qb_gfx_putimage_simple(int32_t src_handle, int32_t dest_handle);
-int qb_gfx_putimage(int32_t dx1, int32_t dy1, int32_t dx2, int32_t dy2, int32_t src_handle, int32_t dest_handle);
+int qb_gfx_putimage(int32_t dx1, int32_t dy1, int32_t dx2, int32_t dy2, int32_t src_handle, int32_t dest_handle, int scale_mode);
 int qb_gfx_putimage_full(int32_t dx1, int32_t dy1, int32_t dx2, int32_t dy2, int32_t src_handle, int32_t dest_handle, int32_t sx1, int32_t sy1, int32_t sx2, int32_t sy2);
 int qb_gfx_source(int32_t handle);
 int qb_gfx_dest(int32_t handle);

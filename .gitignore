@@ -45,6 +45,8 @@ runtime/c_src/gl_wrappers_generated.inc
 
 # Runtime comparison test output (run_comparison.sh writes results/fresh/, results/qb64pe/)
 /tests/runtime_comparison/results/
+# IDE equivalence test output (run_ide_equivalence.sh)
+/tests/ide_equivalence/results/
 # Files/dirs created by running comparison tests (e.g. 174_input_hash.bas, 213_chdir.bas)
 /tests/runtime_comparison/rt_*
 

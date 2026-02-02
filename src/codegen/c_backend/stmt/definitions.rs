@@ -15,7 +15,7 @@ use std::collections::HashSet;
 use crate::codegen::error::CodeGenError;
 use crate::semantic::typed_ir::{
     TypedArrayDimension, TypedExternalDeclaration, TypedParameter, TypedRedimDimension,
-    TypedStatement,
+    TypedStatement, TypedStatementKind,
 };
 use crate::semantic::types::BasicType;
 use crate::writeln_code;
@@ -1241,6 +1241,210 @@ fn emit_string_writebacks(
             // Write back the local string pointer to the caller's variable
             // *name_str_ref = name_str;
             writeln_code!(output, "    *{}_ref = {};", c_name, c_name)?;
+        }
+    }
+    Ok(())
+}
+
+/// Dispatches definition-related statement kinds to the appropriate emitter methods.
+///
+/// Handles SubDefinition, FunctionDefinition, Dim, Const, DefType, Define,
+/// OptionBase, OptionExplicit, OptionExplicitArray, CommonStmt, SharedStmt,
+/// StaticStmt, and Redim. This keeps the main statement match in `mod.rs` thin.
+pub(super) fn emit_definitions_stmt(
+    emitter: &mut super::StmtEmitter,
+    kind: &TypedStatementKind,
+    indent: &str,
+    output: &mut String,
+) -> Result<(), CodeGenError> {
+    match kind {
+        TypedStatementKind::SubDefinition {
+            name,
+            params,
+            body,
+            is_static: _,
+        } => {
+            emitter.emit_sub_definition(indent, name, params, body, output)?;
+        }
+        TypedStatementKind::FunctionDefinition {
+            name,
+            params,
+            return_type,
+            body,
+            is_static: _,
+        } => {
+            emitter.emit_function_definition(indent, name, params, return_type, body, output)?;
+        }
+        TypedStatementKind::Dim {
+            variables,
+            shared: _,
+        } => {
+            for var in variables {
+                if !var.dimensions.is_empty() {
+                    emitter.emit_dim(
+                        indent,
+                        &var.name,
+                        &var.basic_type,
+                        &var.dimensions,
+                        var.is_static,
+                        output,
+                    )?;
+                }
+            }
+        }
+        TypedStatementKind::Const { definitions } => {
+            for (name, value, _basic_type) in definitions {
+                let c_name = c_identifier(name);
+                let value_code = emitter.emit_expr(value)?;
+                writeln_code!(
+                    output,
+                    "{}const {} {} = {};",
+                    indent,
+                    c_type(&value.basic_type),
+                    c_name,
+                    value_code
+                )?;
+            }
+        }
+        TypedStatementKind::DefType
+        | TypedStatementKind::Define
+        | TypedStatementKind::OptionBase
+        | TypedStatementKind::OptionExplicit
+        | TypedStatementKind::OptionExplicitArray => {
+            // DEFxxx / OPTION affect type inference but generate no C code
+        }
+        TypedStatementKind::CommonStmt { shared: _, variables: _ } => {
+            writeln_code!(
+                output,
+                "{}/* COMMON statement - handled at program level */",
+                indent
+            )?;
+        }
+        TypedStatementKind::SharedStmt { variables: _ } => {
+            writeln_code!(
+                output,
+                "{}/* SHARED statement - variables accessed from module level */",
+                indent
+            )?;
+        }
+        TypedStatementKind::StaticStmt { variables } => {
+            for var in variables {
+                let c_name = c_identifier(&var.name);
+                let c_ty = c_type(&var.basic_type);
+
+                if var.dimensions.is_empty() {
+                    let init = match var.basic_type {
+                        BasicType::String => "NULL".to_string(),
+                        _ => default_init(&var.basic_type),
+                    };
+                    writeln_code!(output, "{}static {} {} = {};", indent, c_ty, c_name, init)?;
+                } else if var.is_static {
+                    let sizes: Vec<String> = var
+                        .dimensions
+                        .iter()
+                        .map(|d| format!("{}", d.upper - d.lower + 1))
+                        .collect();
+                    let array_dims = sizes.join("][");
+                    writeln_code!(
+                        output,
+                        "{}static {} {}[{}] = {{0}};",
+                        indent, c_ty, c_name, array_dims
+                    )?;
+                    if var.dimensions.len() == 1 {
+                        writeln_code!(
+                            output,
+                            "{}qb_array_register({}, {}, {});",
+                            indent,
+                            c_name,
+                            var.dimensions[0].lower,
+                            var.dimensions[0].upper
+                        )?;
+                    } else {
+                        let lowers: Vec<String> =
+                            var.dimensions.iter().map(|d| d.lower.to_string()).collect();
+                        let uppers: Vec<String> =
+                            var.dimensions.iter().map(|d| d.upper.to_string()).collect();
+                        writeln_code!(
+                            output,
+                            "{}{{ int32_t _lb[] = {{{}}}; int32_t _ub[] = {{{}}}; qb_array_register_md({}, {}, _lb, _ub); }}",
+                            indent,
+                            lowers.join(", "),
+                            uppers.join(", "),
+                            c_name,
+                            var.dimensions.len()
+                        )?;
+                    }
+                } else {
+                    let sizes: Vec<String> = var
+                        .dimensions
+                        .iter()
+                        .map(|d| format!("({})", d.upper - d.lower + 1))
+                        .collect();
+                    let size_expr = sizes.join(" * ");
+                    let alloc_fn = if var.basic_type == BasicType::String {
+                        "calloc"
+                    } else {
+                        "malloc"
+                    };
+                    if var.basic_type == BasicType::String {
+                        writeln_code!(
+                            output,
+                            "{}static {}* {} = {}({}, sizeof({}));",
+                            indent, c_ty, c_name, alloc_fn, size_expr, c_ty
+                        )?;
+                    } else {
+                        writeln_code!(
+                            output,
+                            "{}static {}* {} = {}(sizeof({}) * {});",
+                            indent, c_ty, c_name, alloc_fn, c_ty, size_expr
+                        )?;
+                    }
+                    if var.dimensions.len() == 1 {
+                        writeln_code!(
+                            output,
+                            "{}qb_array_register({}, {}, {});",
+                            indent,
+                            c_name,
+                            var.dimensions[0].lower,
+                            var.dimensions[0].upper
+                        )?;
+                    } else {
+                        let lowers: Vec<String> =
+                            var.dimensions.iter().map(|d| d.lower.to_string()).collect();
+                        let uppers: Vec<String> =
+                            var.dimensions.iter().map(|d| d.upper.to_string()).collect();
+                        writeln_code!(
+                            output,
+                            "{}{{ int32_t _lb[] = {{{}}}; int32_t _ub[] = {{{}}}; qb_array_register_md({}, {}, _lb, _ub); }}",
+                            indent,
+                            lowers.join(", "),
+                            uppers.join(", "),
+                            c_name,
+                            var.dimensions.len()
+                        )?;
+                    }
+                }
+            }
+        }
+        TypedStatementKind::Redim {
+            preserve,
+            shared: _shared,
+            variables,
+        } => {
+            for var in variables {
+                emitter.emit_redim(
+                    indent,
+                    *preserve,
+                    &var.name,
+                    &var.element_type,
+                    &var.dimensions,
+                    output,
+                )?;
+            }
+        }
+        _ => {
+            // Not a definitions statement; caller should not pass other kinds
+            unreachable!("emit_definitions_stmt called with non-definition kind")
         }
     }
     Ok(())

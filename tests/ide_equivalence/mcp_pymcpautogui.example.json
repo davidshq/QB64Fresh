@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "PyMCPAutoGUI": {
+      "command": "/path/to/QB64Fresh/.venv/bin/python",
+      "args": ["-m", "pymcpautogui.server"],
+      "cwd": "/path/to/QB64Fresh"
+    }
+  }
+}

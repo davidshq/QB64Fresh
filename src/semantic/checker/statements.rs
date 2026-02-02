@@ -1,9 +1,8 @@
-//! Statement type checking dispatcher.
+//! Statement type checking dispatcher (thin).
 //!
 //! This module contains the main `check_statement` method that dispatches
-//! to appropriate handlers based on statement type. Simple pass-through
-//! statements are handled directly here, while complex statements delegate
-//! to specialized modules.
+//! to submodules only; all handling is in assignments, io, control_flow,
+//! definitions, data, error_flow, misc, graphics, audio, and system.
 //!
 //! # Module Structure
 //!
@@ -15,8 +14,9 @@
 //! - [`definitions`] - Definition statements (DIM, CONST, SUB, FUNCTION, etc.)
 //! - [`error_flow`] - Error handling and computed control flow (ON ERROR, ON...GOTO)
 //! - [`graphics`] - Graphics statements (SCREEN, PSET, LINE, CIRCLE, etc.)
-//! - [`io`] - File I/O statements (OPEN, CLOSE, PRINT #, GET, PUT)
+//! - [`io`] - Console and file I/O (PRINT, INPUT, OPEN, CLOSE, PRINT #, LPRINT, FILES, FIELD, LSET, RSET)
 //! - [`misc`] - Miscellaneous statements (SWAP, POKE, meta directives, etc.)
+//! - [`system`] - System integration (KILL, RENAME, SHELL, DECLARE LIBRARY, etc.)
 
 mod assignments;
 mod audio;
@@ -27,6 +27,7 @@ mod error_flow;
 mod graphics;
 mod io;
 mod misc;
+mod system;
 
 use crate::ast::{
     ArrayDimension, ExternalDeclaration, PrintItem, Span, Statement, StatementKind, ViewCoords,
@@ -60,47 +61,28 @@ impl<'a> TypeChecker<'a> {
                 assignments::check_assignments_stmt(self, k, stmt.span)
             }
 
-            StatementKind::Print { values, newline } => {
-                self.check_print(values, *newline, stmt.span)
-            }
-
-            StatementKind::PrintUsing {
-                format,
-                values,
-                newline,
-            } => {
-                let typed_format = self.check_expr(format);
-                // Format string should be a string type (STRING or STRING * N)
-                if !typed_format.basic_type.is_string() {
-                    self.errors.push(SemanticError::type_mismatch(
-                        "STRING",
-                        format!("{:?}", typed_format.basic_type),
-                        stmt.span,
-                    ));
-                }
-                let typed_values: Vec<_> = values.iter().map(|v| self.check_expr(v)).collect();
-                TypedStatement::new(
-                    TypedStatementKind::PrintUsing {
-                        format: typed_format,
-                        values: typed_values,
-                        newline: *newline,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::Input {
-                prompt,
-                show_question_mark,
-                same_line,
-                targets,
-            } => self.check_input(prompt, *show_question_mark, *same_line, targets, stmt.span),
-
-            StatementKind::LineInput {
-                suppress_newline: _,
-                prompt,
-                target,
-            } => self.check_line_input(prompt, target, stmt.span),
+            // Console and file I/O statements (Print, PrintUsing, Input, LineInput, OPEN.., Lprint, FILES, FIELD, LSET, RSET)
+            k @ (StatementKind::Print { .. }
+            | StatementKind::PrintUsing { .. }
+            | StatementKind::Input { .. }
+            | StatementKind::LineInput { .. }
+            | StatementKind::OpenFile { .. }
+            | StatementKind::OpenFileLegacy { .. }
+            | StatementKind::CloseFile { .. }
+            | StatementKind::LockFile { .. }
+            | StatementKind::UnlockFile { .. }
+            | StatementKind::FilePrint { .. }
+            | StatementKind::FileWrite { .. }
+            | StatementKind::FileInput { .. }
+            | StatementKind::FileLineInput { .. }
+            | StatementKind::FileGet { .. }
+            | StatementKind::FilePut { .. }
+            | StatementKind::FileSeek { .. }
+            | StatementKind::Lprint { .. }
+            | StatementKind::FilesStmt { .. }
+            | StatementKind::FieldStmt { .. }
+            | StatementKind::Lset { .. }
+            | StatementKind::Rset { .. }) => io::check_io_stmt(self, k, stmt.span),
 
             // Control flow statements
             k @ (StatementKind::If { .. }
@@ -119,68 +101,6 @@ impl<'a> TypeChecker<'a> {
                 control_flow::check_control_flow_stmt(self, k, stmt.span)
             }
 
-            StatementKind::System { exit_code } => {
-                let typed_exit_code = exit_code.as_ref().map(|e| self.check_expr(e));
-                TypedStatement::new(
-                    TypedStatementKind::System {
-                        exit_code: typed_exit_code,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::Sleep { seconds } => {
-                let typed_seconds = seconds.as_ref().map(|s| self.check_expr(s));
-                TypedStatement::new(
-                    TypedStatementKind::Sleep {
-                        seconds: typed_seconds,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::Wait {
-                port,
-                and_mask,
-                xor_mask,
-            } => {
-                let typed_port = self.check_expr(port);
-                let typed_and = self.check_expr(and_mask);
-                let typed_xor = xor_mask.as_ref().map(|x| self.check_expr(x));
-                TypedStatement::new(
-                    TypedStatementKind::Wait {
-                        port: typed_port,
-                        and_mask: typed_and,
-                        xor_mask: typed_xor,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::Delay { seconds } => {
-                let typed_seconds = self.check_expr(seconds);
-                TypedStatement::new(
-                    TypedStatementKind::Delay {
-                        seconds: typed_seconds,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::Limit { fps } => {
-                let typed_fps = self.check_expr(fps);
-                TypedStatement::new(TypedStatementKind::Limit { fps: typed_fps }, stmt.span)
-            }
-
-            StatementKind::Erase { arrays } => TypedStatement::new(
-                TypedStatementKind::Erase {
-                    arrays: arrays.clone(),
-                },
-                stmt.span,
-            ),
-
-            StatementKind::KeyClear => TypedStatement::new(TypedStatementKind::KeyClear, stmt.span),
-
             // Definition statements
             k @ (StatementKind::Call { .. }
             | StatementKind::Dim { .. }
@@ -195,20 +115,6 @@ impl<'a> TypeChecker<'a> {
             | StatementKind::FunctionDefinition { .. }) => {
                 definitions::check_definitions_stmt(self, k, stmt.span)
             }
-
-            // File I/O statements
-            k @ (StatementKind::OpenFile { .. }
-            | StatementKind::OpenFileLegacy { .. }
-            | StatementKind::CloseFile { .. }
-            | StatementKind::LockFile { .. }
-            | StatementKind::UnlockFile { .. }
-            | StatementKind::FilePrint { .. }
-            | StatementKind::FileWrite { .. }
-            | StatementKind::FileInput { .. }
-            | StatementKind::FileLineInput { .. }
-            | StatementKind::FileGet { .. }
-            | StatementKind::FilePut { .. }
-            | StatementKind::FileSeek { .. }) => io::check_io_stmt(self, k, stmt.span),
 
             // Data statements
             k @ (StatementKind::Data { .. }
@@ -297,727 +203,90 @@ impl<'a> TypeChecker<'a> {
             | StatementKind::SndPlayCopy { .. }
             | StatementKind::SndSetPos { .. }) => audio::check_audio_stmt(self, k, stmt.span),
 
-            // ==================== System Integration Statements ====================
-            StatementKind::Kill { filename } => {
-                let typed_filename = self.check_expr(filename);
-                TypedStatement::new(
-                    TypedStatementKind::Kill {
-                        filename: typed_filename,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::Rename { old_name, new_name } => {
-                let typed_old = self.check_expr(old_name);
-                let typed_new = self.check_expr(new_name);
-                TypedStatement::new(
-                    TypedStatementKind::Rename {
-                        old_name: typed_old,
-                        new_name: typed_new,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::Mkdir { path } => {
-                let typed_path = self.check_expr(path);
-                TypedStatement::new(TypedStatementKind::Mkdir { path: typed_path }, stmt.span)
-            }
-
-            StatementKind::Rmdir { path } => {
-                let typed_path = self.check_expr(path);
-                TypedStatement::new(TypedStatementKind::Rmdir { path: typed_path }, stmt.span)
-            }
-
-            StatementKind::Chdir { path } => {
-                let typed_path = self.check_expr(path);
-                TypedStatement::new(TypedStatementKind::Chdir { path: typed_path }, stmt.span)
-            }
-
-            StatementKind::Environ { env_string } => {
-                let typed_env_string = self.check_expr(env_string);
-                // ENVIRON expects a string argument
-                if !typed_env_string.basic_type.is_string() {
-                    self.errors.push(SemanticError::type_mismatch(
-                        "STRING",
-                        format!("{:?}", typed_env_string.basic_type),
-                        stmt.span,
-                    ));
-                }
-                TypedStatement::new(
-                    TypedStatementKind::Environ {
-                        env_string: typed_env_string,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::ShellCmd { command } => {
-                let typed_command = command.as_ref().map(|c| self.check_expr(c));
-                TypedStatement::new(
-                    TypedStatementKind::ShellCmd {
-                        command: typed_command,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::ShellHide { command } => {
-                let typed_command = self.check_expr(command);
-                TypedStatement::new(
-                    TypedStatementKind::ShellHide {
-                        command: typed_command,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::Bload { filename, address } => {
-                let typed_filename = self.check_expr(filename);
-                let typed_address = address.as_ref().map(|a| self.check_expr(a));
-                TypedStatement::new(
-                    TypedStatementKind::Bload {
-                        filename: typed_filename,
-                        address: typed_address,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::Bsave {
-                filename,
-                address,
-                length,
-            } => {
-                let typed_filename = self.check_expr(filename);
-                let typed_address = self.check_expr(address);
-                let typed_length = self.check_expr(length);
-                TypedStatement::new(
-                    TypedStatementKind::Bsave {
-                        filename: typed_filename,
-                        address: typed_address,
-                        length: typed_length,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::Setmem { bytes } => {
-                // SETMEM is obsolete - throw compile error matching QB64pe behavior
-                self.errors.push(SemanticError::CommandNotImplemented {
-                    name: "SETMEM".to_string(),
-                    span: stmt.span,
-                });
-                let typed_bytes = self.check_expr(bytes);
-                TypedStatement::new(TypedStatementKind::Setmem { bytes: typed_bytes }, stmt.span)
-            }
-
-            StatementKind::CallAbsolute { args, address } => {
-                let typed_args: Vec<_> = args.iter().map(|e| self.check_expr(e)).collect();
-                let typed_address = self.check_expr(address);
-                TypedStatement::new(
-                    TypedStatementKind::CallAbsolute {
-                        args: typed_args,
-                        address: typed_address,
-                    },
-                    stmt.span,
-                )
-            }
-
-            // ==================== Mouse Input Statements ====================
-            StatementKind::MouseHide => {
-                TypedStatement::new(TypedStatementKind::MouseHide, stmt.span)
-            }
-
-            StatementKind::MouseShow => {
-                TypedStatement::new(TypedStatementKind::MouseShow, stmt.span)
-            }
-
-            StatementKind::MouseMoveStmt { x, y } => {
-                let typed_x = self.check_expr(x);
-                let typed_y = self.check_expr(y);
-                TypedStatement::new(
-                    TypedStatementKind::MouseMoveStmt {
-                        x: typed_x,
-                        y: typed_y,
-                    },
-                    stmt.span,
-                )
-            }
-
-            // ==================== Clipboard Statement ====================
-            StatementKind::ClipboardSet { text } => {
-                let typed_text = self.check_expr(text);
-                TypedStatement::new(
-                    TypedStatementKind::ClipboardSet { text: typed_text },
-                    stmt.span,
-                )
-            }
-
-            // ==================== C Library Integration ====================
-            StatementKind::DeclareLibrary {
-                library_name,
-                is_dynamic,
-                declarations,
-            } => {
-                // Check if library_name is a header file (.h extension)
-                // If so, parse the header to auto-generate function declarations
-                #[cfg(feature = "header-parsing")]
-                let header_declarations = if let Some(lib_name) = library_name.as_ref() {
-                    if lib_name.ends_with(".h") {
-                        self.parse_header_file(lib_name, stmt.span)
-                    } else {
-                        Vec::new()
-                    }
-                } else {
-                    Vec::new()
-                };
-
-                #[cfg(not(feature = "header-parsing"))]
-                let header_declarations: Vec<ExternalDeclaration> = Vec::new();
-
-                // Merge header declarations with manual declarations
-                // Manual declarations take precedence (appear later in the list)
-                let mut all_declarations: Vec<TypedExternalDeclaration> = header_declarations
-                    .iter()
-                    .map(|decl| self.register_external_function(decl))
-                    .collect();
-
-                // Add manual declarations (these can override header-parsed ones)
-                for decl in declarations {
-                    all_declarations.push(self.register_external_function(decl));
-                }
-
-                TypedStatement::new(
-                    TypedStatementKind::DeclareLibrary {
-                        library_name: library_name.clone(),
-                        is_dynamic: *is_dynamic,
-                        declarations: all_declarations,
-                    },
-                    stmt.span,
-                )
-            }
-
-            // Forward declarations - parsed for compatibility but don't generate code
-            StatementKind::DeclareSub { name, params: _ } => TypedStatement::new(
-                TypedStatementKind::DeclareSub { name: name.clone() },
-                stmt.span,
-            ),
-
-            StatementKind::DeclareFunction {
-                name,
-                params: _,
-                return_type: _,
-            } => TypedStatement::new(
-                TypedStatementKind::DeclareFunction { name: name.clone() },
-                stmt.span,
-            ),
-
-            // ==================== Phase 7: Additional Statements ====================
-            StatementKind::Run { target } => {
-                let typed_target = target.as_ref().map(|t| self.check_expr(t));
-                TypedStatement::new(
-                    TypedStatementKind::Run {
-                        target: typed_target,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::Chain { filename } => {
-                let typed_filename = self.check_expr(filename);
-                // Filename should be a string (STRING or STRING * N)
-                if !typed_filename.basic_type.is_string() {
-                    self.errors.push(SemanticError::type_mismatch(
-                        "STRING",
-                        format!("{:?}", typed_filename.basic_type),
-                        stmt.span,
-                    ));
-                }
-                TypedStatement::new(
-                    TypedStatementKind::Chain {
-                        filename: typed_filename,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::Tron => TypedStatement::new(TypedStatementKind::Tron, stmt.span),
-
-            StatementKind::Troff => TypedStatement::new(TypedStatementKind::Troff, stmt.span),
-
-            StatementKind::Lprint { values, newline } => {
-                let typed_values = self.check_print_items(values);
-                TypedStatement::new(
-                    TypedStatementKind::Lprint {
-                        values: typed_values,
-                        newline: *newline,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::FilesStmt { filespec } => {
-                let typed_filespec = filespec.as_ref().map(|f| self.check_expr(f));
-                TypedStatement::new(
-                    TypedStatementKind::FilesStmt {
-                        filespec: typed_filespec,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::FieldStmt { file_num, fields } => {
-                let typed_file_num = self.check_expr(file_num);
-                let typed_fields: Vec<_> = fields
-                    .iter()
-                    .map(|f| TypedFieldSpec {
-                        width: self.check_expr(&f.width),
-                        variable: f.variable.clone(),
-                    })
-                    .collect();
-                TypedStatement::new(
-                    TypedStatementKind::FieldStmt {
-                        file_num: typed_file_num,
-                        fields: typed_fields,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::Lset { variable, value } => {
-                let typed_value = self.check_expr(value);
-                // Resolve variable name through symbol lookup (handles suffix mismatch)
-                let resolved_name = if let Some(symbol) = self.symbols.lookup_symbol(variable) {
-                    symbol.name.clone()
-                } else {
-                    variable.clone()
-                };
-                TypedStatement::new(
-                    TypedStatementKind::Lset {
-                        variable: resolved_name,
-                        value: typed_value,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::Rset { variable, value } => {
-                let typed_value = self.check_expr(value);
-                // Resolve variable name through symbol lookup (handles suffix mismatch)
-                let resolved_name = if let Some(symbol) = self.symbols.lookup_symbol(variable) {
-                    symbol.name.clone()
-                } else {
-                    variable.clone()
-                };
-                TypedStatement::new(
-                    TypedStatementKind::Rset {
-                        variable: resolved_name,
-                        value: typed_value,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::OnKey { key_num, target } => {
-                let typed_key_num = self.check_expr(key_num);
-                TypedStatement::new(
-                    TypedStatementKind::OnKey {
-                        key_num: typed_key_num,
-                        target: target.clone(),
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::KeyControl { key_num, mode } => {
-                let typed_key_num = self.check_expr(key_num);
-                TypedStatement::new(
-                    TypedStatementKind::KeyControl {
-                        key_num: typed_key_num,
-                        mode: *mode,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::OnTimer { interval, target } => {
-                let typed_interval = self.check_expr(interval);
-                TypedStatement::new(
-                    TypedStatementKind::OnTimer {
-                        interval: typed_interval,
-                        target: target.clone(),
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::TimerControl { mode } => {
-                TypedStatement::new(TypedStatementKind::TimerControl { mode: *mode }, stmt.span)
-            }
-
-            StatementKind::StrigControl { button_num, mode } => {
-                let typed_button_num = self.check_expr(button_num);
-                TypedStatement::new(
-                    TypedStatementKind::StrigControl {
-                        button_num: typed_button_num,
-                        mode: *mode,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::OnStrig { button_num, target } => {
-                let typed_button_num = self.check_expr(button_num);
-                TypedStatement::new(
-                    TypedStatementKind::OnStrig {
-                        button_num: typed_button_num,
-                        target: target.clone(),
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::OnCom { port_num, target } => {
-                let typed_port_num = self.check_expr(port_num);
-                TypedStatement::new(
-                    TypedStatementKind::OnCom {
-                        port_num: typed_port_num,
-                        target: target.clone(),
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::ComControl { port_num, mode } => {
-                let typed_port_num = self.check_expr(port_num);
-                TypedStatement::new(
-                    TypedStatementKind::ComControl {
-                        port_num: typed_port_num,
-                        mode: *mode,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::OnPen { target } => TypedStatement::new(
-                TypedStatementKind::OnPen {
-                    target: target.clone(),
-                },
-                stmt.span,
-            ),
-
-            StatementKind::PenControl { mode } => {
-                TypedStatement::new(TypedStatementKind::PenControl { mode: *mode }, stmt.span)
-            }
-
-            StatementKind::OnUevent { target } => TypedStatement::new(
-                TypedStatementKind::OnUevent {
-                    target: target.clone(),
-                },
-                stmt.span,
-            ),
-
-            StatementKind::UeventControl { mode } => {
-                TypedStatement::new(TypedStatementKind::UeventControl { mode: *mode }, stmt.span)
-            }
-
-            StatementKind::UeventTrigger => {
-                TypedStatement::new(TypedStatementKind::UeventTrigger, stmt.span)
-            }
-
-            StatementKind::OnSignal { signal_num, target } => {
-                let typed_signal_num = self.check_expr(signal_num);
-                TypedStatement::new(
-                    TypedStatementKind::OnSignal {
-                        signal_num: typed_signal_num,
-                        target: target.clone(),
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::SignalControl { signal_num, mode } => {
-                let typed_signal_num = self.check_expr(signal_num);
-                TypedStatement::new(
-                    TypedStatementKind::SignalControl {
-                        signal_num: typed_signal_num,
-                        mode: *mode,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::OutPort { port, value } => {
-                let typed_port = self.check_expr(port);
-                let typed_value = self.check_expr(value);
-                TypedStatement::new(
-                    TypedStatementKind::OutPort {
-                        port: typed_port,
-                        value: typed_value,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::InterruptStmt {
-                int_num,
-                in_regs,
-                out_regs,
-            } => {
-                let typed_int_num = self.check_expr(int_num);
-                TypedStatement::new(
-                    TypedStatementKind::InterruptStmt {
-                        int_num: typed_int_num,
-                        in_regs: in_regs.clone(),
-                        out_regs: out_regs.clone(),
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::InterruptXStmt {
-                int_num,
-                in_regs,
-                out_regs,
-            } => {
-                let typed_int_num = self.check_expr(int_num);
-                TypedStatement::new(
-                    TypedStatementKind::InterruptXStmt {
-                        int_num: typed_int_num,
-                        in_regs: in_regs.clone(),
-                        out_regs: out_regs.clone(),
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::IoctlStmt {
-                file_num,
-                control_string,
-            } => {
-                // IOCTL is a stub (legacy DOS device control)
-                // QB64pe also stubs this, so we just compile it to a no-op
-                let typed_file_num = self.check_expr(file_num);
-                let typed_control_string = self.check_expr(control_string);
-                TypedStatement::new(
-                    TypedStatementKind::IoctlStmt {
-                        file_num: typed_file_num,
-                        control_string: typed_control_string,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::FreeStmt => TypedStatement::new(TypedStatementKind::FreeStmt, stmt.span),
-
-            StatementKind::ClearStmt { stack_size } => {
-                let typed_stack_size = stack_size.as_ref().map(|s| self.check_expr(s));
-                TypedStatement::new(
-                    TypedStatementKind::ClearStmt {
-                        stack_size: typed_stack_size,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::ResetStmt => {
-                TypedStatement::new(TypedStatementKind::ResetStmt, stmt.span)
-            }
-
-            // Window/Desktop statements (QB64)
-            StatementKind::TitleStmt { title } => {
-                let typed_title = self.check_expr(title);
-                TypedStatement::new(
-                    TypedStatementKind::TitleStmt { title: typed_title },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::ScreenMoveStmt { x, y, center } => {
-                let typed_x = x.as_ref().map(|e| self.check_expr(e));
-                let typed_y = y.as_ref().map(|e| self.check_expr(e));
-                TypedStatement::new(
-                    TypedStatementKind::ScreenMoveStmt {
-                        x: typed_x,
-                        y: typed_y,
-                        center: *center,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::FullScreenStmt { mode } => TypedStatement::new(
-                TypedStatementKind::FullScreenStmt { mode: *mode },
-                stmt.span,
-            ),
-
-            StatementKind::AllowFullScreenStmt { mode } => TypedStatement::new(
-                TypedStatementKind::AllowFullScreenStmt { mode: *mode },
-                stmt.span,
-            ),
-
-            StatementKind::ScreenIconStmt => {
-                TypedStatement::new(TypedStatementKind::ScreenIconStmt, stmt.span)
-            }
-
-            StatementKind::IconStmt { handle } => {
-                let typed_handle = handle.as_ref().map(|h| self.check_expr(h));
-                TypedStatement::new(
-                    TypedStatementKind::IconStmt {
-                        handle: typed_handle,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::ScreenHideStmt => {
-                TypedStatement::new(TypedStatementKind::ScreenHideStmt, stmt.span)
-            }
-
-            StatementKind::ScreenShowStmt => {
-                TypedStatement::new(TypedStatementKind::ScreenShowStmt, stmt.span)
-            }
-
-            StatementKind::ConsoleTitleStmt { title } => {
-                let typed_title = self.check_expr(title);
-                TypedStatement::new(
-                    TypedStatementKind::ConsoleTitleStmt { title: typed_title },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::ConsoleStmt { visible } => TypedStatement::new(
-                TypedStatementKind::ConsoleStmt { visible: *visible },
-                stmt.span,
-            ),
-
-            StatementKind::AssertStmt { condition, message } => {
-                let typed_condition = self.check_expr(condition);
-                let typed_message = message.as_ref().map(|m| self.check_expr(m));
-                TypedStatement::new(
-                    TypedStatementKind::AssertStmt {
-                        condition: typed_condition,
-                        message: typed_message,
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::MetaAsserts { console } => {
-                // Set preprocessor variables: _ASSERTS_ = 1, and _CONSOLE_ = 1 if console mode
-                self.symbols.define_meta_let("_ASSERTS_", 1, stmt.span);
-                if *console {
-                    self.symbols.define_meta_let("_CONSOLE_", 1, stmt.span);
-                }
-                TypedStatement::new(
-                    TypedStatementKind::MetaAsserts { console: *console },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::MetaNoPrefix => {
-                TypedStatement::new(TypedStatementKind::MetaNoPrefix, stmt.span)
-            }
-
-            StatementKind::MetaColor { depth } => {
-                TypedStatement::new(TypedStatementKind::MetaColor { depth: *depth }, stmt.span)
-            }
-
-            StatementKind::MetaResize { enabled } => TypedStatement::new(
-                TypedStatementKind::MetaResize { enabled: *enabled },
-                stmt.span,
-            ),
-
-            StatementKind::MetaResizeStretch => {
-                TypedStatement::new(TypedStatementKind::MetaResizeStretch, stmt.span)
-            }
-
-            StatementKind::MetaResizeSmooth => {
-                TypedStatement::new(TypedStatementKind::MetaResizeSmooth, stmt.span)
-            }
-
-            StatementKind::MetaStatic => {
-                // Set array mode to static - affects all arrays declared after this directive
-                self.array_mode_static = true;
-                TypedStatement::new(TypedStatementKind::MetaStatic, stmt.span)
-            }
-
-            StatementKind::MetaDynamic => {
-                // Set array mode to dynamic - affects all arrays declared after this directive
-                self.array_mode_static = false;
-                TypedStatement::new(TypedStatementKind::MetaDynamic, stmt.span)
-            }
-
-            StatementKind::MetaDebug => {
-                TypedStatement::new(TypedStatementKind::MetaDebug, stmt.span)
-            }
-
-            StatementKind::MetaIncludeOnce => {
-                TypedStatement::new(TypedStatementKind::MetaIncludeOnce, stmt.span)
-            }
-
-            StatementKind::MetaExeIcon { filename } => TypedStatement::new(
-                TypedStatementKind::MetaExeIcon {
-                    filename: filename.clone(),
-                },
-                stmt.span,
-            ),
-
-            StatementKind::MetaVersionInfo { key, value } => TypedStatement::new(
-                TypedStatementKind::MetaVersionInfo {
-                    key: key.clone(),
-                    value: value.clone(),
-                },
-                stmt.span,
-            ),
-
-            StatementKind::MetaErrorDirective { message } => {
-                // $ERROR halts compilation: push error so analyzer returns Err and driver exits.
-                self.errors.push(SemanticError::CompileTimeError {
-                    message: message.clone(),
-                    span: stmt.span,
-                });
-                TypedStatement::new(
-                    TypedStatementKind::MetaErrorDirective {
-                        message: message.clone(),
-                    },
-                    stmt.span,
-                )
-            }
-
-            StatementKind::MetaEmbed { filename } => TypedStatement::new(
-                TypedStatementKind::MetaEmbed {
-                    filename: filename.clone(),
-                },
-                stmt.span,
-            ),
-
-            StatementKind::MetaMidiSoundFont { filename } => TypedStatement::new(
-                TypedStatementKind::MetaMidiSoundFont {
-                    filename: filename.clone(),
-                },
-                stmt.span,
-            ),
-
-            StatementKind::MetaUnstable { feature } => TypedStatement::new(
-                TypedStatementKind::MetaUnstable {
-                    feature: feature.clone(),
-                },
-                stmt.span,
-            ),
-
-            StatementKind::MetaFormat => {
-                TypedStatement::new(TypedStatementKind::MetaFormat, stmt.span)
-            }
-
-            StatementKind::MetaUseLibrary { library } => TypedStatement::new(
-                TypedStatementKind::MetaUseLibrary {
-                    library: library.clone(),
-                },
-                stmt.span,
-            ),
+            // System integration and runtime (SYSTEM, SLEEP, RUN, CHAIN, KILL, DECLARE LIBRARY, etc.)
+            k @ (StatementKind::System { .. }
+            | StatementKind::Sleep { .. }
+            | StatementKind::Wait { .. }
+            | StatementKind::Delay { .. }
+            | StatementKind::Limit { .. }
+            | StatementKind::Erase { .. }
+            | StatementKind::KeyClear
+            | StatementKind::Run { .. }
+            | StatementKind::Chain { .. }
+            | StatementKind::Tron
+            | StatementKind::Troff
+            | StatementKind::Kill { .. }
+            | StatementKind::Rename { .. }
+            | StatementKind::Mkdir { .. }
+            | StatementKind::Rmdir { .. }
+            | StatementKind::Chdir { .. }
+            | StatementKind::Environ { .. }
+            | StatementKind::ShellCmd { .. }
+            | StatementKind::ShellHide { .. }
+            | StatementKind::Bload { .. }
+            | StatementKind::Bsave { .. }
+            | StatementKind::Setmem { .. }
+            | StatementKind::CallAbsolute { .. }
+            | StatementKind::MouseHide
+            | StatementKind::MouseShow
+            | StatementKind::MouseMoveStmt { .. }
+            | StatementKind::ClipboardSet { .. }
+            | StatementKind::DeclareLibrary { .. }
+            | StatementKind::DeclareSub { .. }
+            | StatementKind::DeclareFunction { .. }) => system::check_system_stmt(self, k, stmt.span),
+
+            // Event/port, legacy file, window, assert, and meta directives (OnKey, IoctlStmt, TitleStmt, MetaAsserts, etc.)
+            k @ (StatementKind::OnKey { .. }
+            | StatementKind::KeyControl { .. }
+            | StatementKind::OnTimer { .. }
+            | StatementKind::TimerControl { .. }
+            | StatementKind::StrigControl { .. }
+            | StatementKind::OnStrig { .. }
+            | StatementKind::OnCom { .. }
+            | StatementKind::ComControl { .. }
+            | StatementKind::OnPen { .. }
+            | StatementKind::PenControl { .. }
+            | StatementKind::OnUevent { .. }
+            | StatementKind::UeventControl { .. }
+            | StatementKind::UeventTrigger
+            | StatementKind::OnSignal { .. }
+            | StatementKind::SignalControl { .. }
+            | StatementKind::OutPort { .. }
+            | StatementKind::InterruptStmt { .. }
+            | StatementKind::InterruptXStmt { .. }
+            | StatementKind::IoctlStmt { .. }
+            | StatementKind::FreeStmt
+            | StatementKind::ClearStmt { .. }
+            | StatementKind::ResetStmt
+            | StatementKind::TitleStmt { .. }
+            | StatementKind::ScreenMoveStmt { .. }
+            | StatementKind::FullScreenStmt { .. }
+            | StatementKind::AllowFullScreenStmt { .. }
+            | StatementKind::ScreenIconStmt
+            | StatementKind::IconStmt { .. }
+            | StatementKind::ScreenHideStmt
+            | StatementKind::ScreenShowStmt
+            | StatementKind::ConsoleTitleStmt { .. }
+            | StatementKind::ConsoleStmt { .. }
+            | StatementKind::AssertStmt { .. }
+            | StatementKind::MetaAsserts { .. }
+            | StatementKind::MetaNoPrefix
+            | StatementKind::MetaColor { .. }
+            | StatementKind::MetaResize { .. }
+            | StatementKind::MetaResizeStretch
+            | StatementKind::MetaResizeSmooth
+            | StatementKind::MetaStatic
+            | StatementKind::MetaDynamic
+            | StatementKind::MetaDebug
+            | StatementKind::MetaIncludeOnce
+            | StatementKind::MetaExeIcon { .. }
+            | StatementKind::MetaVersionInfo { .. }
+            | StatementKind::MetaErrorDirective { .. }
+            | StatementKind::MetaEmbed { .. }
+            | StatementKind::MetaMidiSoundFont { .. }
+            | StatementKind::MetaUnstable { .. }
+            | StatementKind::MetaFormat
+            | StatementKind::MetaUseLibrary { .. }) => misc::check_misc_stmt(self, k, stmt.span),
         }
     }
 
