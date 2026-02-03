@@ -3,10 +3,34 @@
 //! This module handles the emission of C code for all statement types,
 //! including control flow, I/O operations, procedure definitions, and more.
 //!
+//! # Module Organization
+//!
+//! The statement emitter is split across multiple files for maintainability:
+//!
+//! - `mod.rs` (this file) - Core `StmtEmitter` struct and main `emit_stmt()` dispatcher
+//! - `assignments.rs` - Assignment statement helpers
+//! - `control_flow.rs` - IF, FOR, WHILE, DO, SELECT CASE
+//! - `data.rs` - DATA/READ/RESTORE handling
+//! - `def_fn.rs` - DEF FN single-line and multi-line functions
+//! - `definitions.rs` - DIM, REDIM, SUB/FUNCTION definitions, DECLARE LIBRARY
+//! - `error_jump.rs` - Error handling (ON ERROR) and computed jumps (ON...GOTO/GOSUB)
+//! - `io.rs` - PRINT and INPUT helpers
+//!
 //! # Loop Handling
 //!
 //! Loops are tracked on a stack to support EXIT statements. Each loop
 //! type (FOR, WHILE, DO) generates a break label that EXIT can target.
+
+mod assignments;
+mod control_flow;
+mod data;
+mod def_fn;
+mod definitions;
+mod error_jump;
+mod io;
+
+// Re-export standalone functions for use by parent module
+pub(in crate::codegen::c_backend) use definitions::emit_params;
 
 use std::collections::HashMap;
 use std::fmt::Write;
@@ -16,13 +40,11 @@ use crate::ast::{
 };
 use crate::codegen::error::CodeGenError;
 use crate::semantic::typed_ir::{
-    TypedArrayDimension, TypedCaseCompareOp, TypedCaseMatch, TypedDoCondition, TypedExpr,
-    TypedInputTarget, TypedMember, TypedParameter, TypedPrintItem, TypedReadTarget, TypedStatement,
-    TypedStatementKind,
+    TypedExprKind, TypedInputTarget, TypedStatement, TypedStatementKind,
 };
 use crate::semantic::types::BasicType;
 
-use super::expr::{c_function_name, emit_expr, escape_string};
+use super::expr::{emit_expr, escape_string};
 use super::types::{c_identifier, c_type, default_init};
 
 /// Context for the current loop (for EXIT statement handling).
@@ -47,6 +69,12 @@ pub(super) struct StmtEmitter {
     pub loop_stack: Vec<LoopContext>,
     /// Map of DATA labels to their indices (for RESTORE with label).
     pub data_label_indices: HashMap<String, usize>,
+    /// Current procedure name (for unique label generation).
+    pub current_proc: Option<String>,
+    /// Current function's return variable (for EXIT FUNCTION).
+    pub current_func_ret_var: Option<String>,
+    /// Global variable names (to avoid re-declaring as locals).
+    pub global_var_names: std::collections::HashSet<String>,
 }
 
 impl StmtEmitter {
@@ -57,6 +85,9 @@ impl StmtEmitter {
             indent: 0,
             loop_stack: Vec::new(),
             data_label_indices: HashMap::new(),
+            current_proc: None,
+            current_func_ret_var: None,
+            global_var_names: std::collections::HashSet::new(),
         }
     }
 
@@ -67,8 +98,19 @@ impl StmtEmitter {
         label
     }
 
+    /// Converts a BASIC label to a C label, prefixing with procedure name if in a procedure.
+    /// This ensures line number labels (e.g., _line_1) are unique per procedure.
+    fn proc_label(&self, label: &str) -> String {
+        let base_label = c_identifier(label);
+        if let Some(ref proc) = self.current_proc {
+            format!("{}_{}", proc, base_label)
+        } else {
+            base_label
+        }
+    }
+
     /// Returns the current indentation string.
-    fn indent_str(&self) -> String {
+    pub(crate) fn indent_str(&self) -> String {
         "    ".repeat(self.indent)
     }
 
@@ -114,10 +156,10 @@ impl StmtEmitter {
                 value,
                 dimensions,
                 element_type: _,
-                field_type: _,
+                field_type,
             } => {
                 self.emit_array_field_assignment(
-                    &indent, name, indices, fields, value, dimensions, output,
+                    &indent, name, indices, fields, value, dimensions, field_type, output,
                 )?;
             }
 
@@ -375,12 +417,12 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::Goto { target } => {
-                let c_label = c_identifier(target);
+                let c_label = self.proc_label(target);
                 writeln!(output, "{}goto {};", indent, c_label).unwrap();
             }
 
             TypedStatementKind::Gosub { target } => {
-                let c_label = c_identifier(target);
+                let c_label = self.proc_label(target);
                 let return_label = self.next_label("gosub_ret");
                 // Push return address onto stack and jump to subroutine
                 writeln!(
@@ -407,8 +449,13 @@ impl StmtEmitter {
                 self.emit_exit(&indent, exit_type, output)?;
             }
 
-            TypedStatementKind::End => {
-                writeln!(output, "{}exit(0);", indent).unwrap();
+            TypedStatementKind::End { exit_code } => {
+                if let Some(code) = exit_code {
+                    let code_expr = emit_expr(code)?;
+                    writeln!(output, "{}exit((int){});", indent, code_expr).unwrap();
+                } else {
+                    writeln!(output, "{}exit(0);", indent).unwrap();
+                }
             }
 
             TypedStatementKind::Stop => {
@@ -416,8 +463,13 @@ impl StmtEmitter {
                 writeln!(output, "{}exit(1);", indent).unwrap();
             }
 
-            TypedStatementKind::System => {
-                writeln!(output, "{}exit(0);", indent).unwrap();
+            TypedStatementKind::System { exit_code } => {
+                if let Some(code) = exit_code {
+                    let code_expr = emit_expr(code)?;
+                    writeln!(output, "{}exit((int){});", indent, code_expr).unwrap();
+                } else {
+                    writeln!(output, "{}exit(0);", indent).unwrap();
+                }
             }
 
             TypedStatementKind::Sleep { seconds } => {
@@ -476,14 +528,71 @@ impl StmtEmitter {
                 writeln!(output, "{}qb_keyclear();", indent).unwrap();
             }
 
-            TypedStatementKind::Call { name, args } => {
-                let args_code: Result<Vec<_>, _> = args.iter().map(emit_expr).collect();
-                let args_str = args_code?.join(", ");
+            TypedStatementKind::Call { name, args, params } => {
+                // Generate arguments, adding & for byref parameters
+                // For non-lvalue expressions passed to byref, we need temp vars
+                let mut args_codes = Vec::new();
+                let mut temp_decls = Vec::new();
+                let mut temp_counter = 0;
+
+                for (i, arg) in args.iter().enumerate() {
+                    let arg_code = emit_expr(arg)?;
+                    // Check if this parameter is byref (and not an array ref which decays to pointer)
+                    let is_byref = params
+                        .get(i)
+                        .map(|p| !p.by_val && !p.is_array)
+                        .unwrap_or(false);
+                    if is_byref {
+                        // For byref, we need to pass the address
+                        // Check if expression is an lvalue (can take address of)
+                        // Note: Built-in constants like _TRUE, _FALSE are Variables in the AST
+                        // but expand to C macros, so they're not true lvalues
+                        let is_builtin_const = matches!(&arg.kind, TypedExprKind::Variable(name)
+                            if name.starts_with('_') && name.chars().all(|c| c.is_uppercase() || c == '_'));
+
+                        let is_lvalue = !is_builtin_const
+                            && matches!(
+                                arg.kind,
+                                TypedExprKind::Variable { .. }
+                                    | TypedExprKind::ArrayAccess { .. }
+                                    | TypedExprKind::FieldAccess { .. }
+                            );
+
+                        if is_lvalue {
+                            // Variable/array/field can be addressed directly
+                            args_codes.push(format!("&({})", arg_code));
+                        } else {
+                            // Non-lvalue expression - need a temporary variable
+                            let param_type = params.get(i).map(|p| &p.basic_type);
+                            let c_ty = param_type
+                                .map(c_type)
+                                .unwrap_or_else(|| "int32_t".to_string());
+                            let temp_name = format!("_tmp_arg_{}", temp_counter);
+                            temp_counter += 1;
+                            temp_decls.push(format!("{} {} = {};", c_ty, temp_name, arg_code));
+                            args_codes.push(format!("&{}", temp_name));
+                        }
+                    } else {
+                        args_codes.push(arg_code);
+                    }
+                }
+                let args_str = args_codes.join(", ");
+                let upper_name = name.to_uppercase();
+
                 // Check for built-in SUBs with special C function names
-                let c_name = match name.to_uppercase().as_str() {
+                // Some have variable argument counts requiring different function names
+                let c_name = match upper_name.as_str() {
+                    "_ICON" => match args.len() {
+                        0 => "qb_icon".to_string(),
+                        1 => "qb_icon1".to_string(),
+                        _ => "qb_icon2".to_string(),
+                    },
+                    "_ACCEPTFILEDROP" => match args.len() {
+                        0 => "qb_acceptfiledrop".to_string(),
+                        _ => "qb_acceptfiledrop1".to_string(),
+                    },
                     "_WRITEFILE" => "qb_writefile".to_string(),
                     "_EXIT" => "qb_exit".to_string(),
-                    "_ACCEPTFILEDROP" => "qb_acceptfiledrop".to_string(),
                     "_FINISHDROP" => "qb_finishdrop".to_string(),
                     "_CONSOLECURSOR" => "qb_consolecursor".to_string(),
                     "_CONSOLEFONT" => "qb_consolefont".to_string(),
@@ -497,7 +606,6 @@ impl StmtEmitter {
                     "_DEPTHBUFFER" => "qb_depthbuffer".to_string(),
                     "_DISPLAYORDER" => "qb_displayorder".to_string(),
                     "_SNDLIMIT" => "qb_sndlimit".to_string(),
-                    "_ICON" => "qb_icon".to_string(),
                     "_HIDE" => "qb_hide".to_string(),
                     "_SHOW" => "qb_show".to_string(),
                     "_ONTOP" => "qb_ontop".to_string(),
@@ -538,7 +646,18 @@ impl StmtEmitter {
                     // Default: user-defined SUBs use qb_sub_ prefix
                     _ => format!("qb_sub_{}", c_identifier(name).to_lowercase()),
                 };
-                writeln!(output, "{}{}({});", indent, c_name, args_str).unwrap();
+
+                // If we have temp declarations, wrap in a block
+                if temp_decls.is_empty() {
+                    writeln!(output, "{}{}({});", indent, c_name, args_str).unwrap();
+                } else {
+                    writeln!(output, "{}{{ ", indent).unwrap();
+                    for decl in temp_decls {
+                        writeln!(output, "{}    {}", indent, decl).unwrap();
+                    }
+                    writeln!(output, "{}    {}({});", indent, c_name, args_str).unwrap();
+                    writeln!(output, "{}}}", indent).unwrap();
+                }
             }
 
             TypedStatementKind::SubDefinition {
@@ -564,8 +683,18 @@ impl StmtEmitter {
                 variables,
                 shared: _,
             } => {
+                // Scalar DIMs are hoisted to function scope by collect_implicit_locals
+                // Only emit arrays here (they need runtime allocation)
                 for var in variables {
-                    self.emit_dim(&indent, &var.name, &var.basic_type, &var.dimensions, output)?;
+                    if !var.dimensions.is_empty() {
+                        self.emit_dim(
+                            &indent,
+                            &var.name,
+                            &var.basic_type,
+                            &var.dimensions,
+                            output,
+                        )?;
+                    }
                 }
             }
 
@@ -631,7 +760,7 @@ impl StmtEmitter {
             }
 
             TypedStatementKind::Label { name } => {
-                let c_label = c_identifier(name);
+                let c_label = self.proc_label(name);
                 writeln!(output, "{}:", c_label).unwrap();
             }
 
@@ -734,12 +863,31 @@ impl StmtEmitter {
             TypedStatementKind::Swap { left, right } => {
                 let left_code = emit_expr(left)?;
                 let right_code = emit_expr(right)?;
-                let c_ty = c_type(&left.basic_type);
-
                 let temp_var = self.next_label("swap_temp");
-                writeln!(output, "{}{} {} = {};", indent, c_ty, temp_var, left_code).unwrap();
-                writeln!(output, "{}{} = {};", indent, left_code, right_code).unwrap();
-                writeln!(output, "{}{} = {};", indent, right_code, temp_var).unwrap();
+
+                // Fixed-length strings need special handling (C arrays can't be assigned directly)
+                if let BasicType::FixedString(n) = &left.basic_type {
+                    // For fixed-length strings, use strcpy for the swap
+                    writeln!(output, "{}{{ char {}[{}];", indent, temp_var, n + 1).unwrap();
+                    writeln!(output, "{}    strcpy({}, {});", indent, temp_var, left_code).unwrap();
+                    writeln!(
+                        output,
+                        "{}    strcpy({}, {});",
+                        indent, left_code, right_code
+                    )
+                    .unwrap();
+                    writeln!(
+                        output,
+                        "{}    strcpy({}, {}); }}",
+                        indent, right_code, temp_var
+                    )
+                    .unwrap();
+                } else {
+                    let c_ty = c_type(&left.basic_type);
+                    writeln!(output, "{}{} {} = {};", indent, c_ty, temp_var, left_code).unwrap();
+                    writeln!(output, "{}{} = {};", indent, left_code, right_code).unwrap();
+                    writeln!(output, "{}{} = {};", indent, right_code, temp_var).unwrap();
+                }
             }
 
             TypedStatementKind::Continue { continue_type } => {
@@ -747,12 +895,9 @@ impl StmtEmitter {
                 writeln!(output, "{}continue;", indent).unwrap();
             }
 
-            TypedStatementKind::TypeDefinition {
-                name,
-                members,
-                custom_type,
-            } => {
-                self.emit_type_definition(&indent, name, members, *custom_type, output)?;
+            TypedStatementKind::TypeDefinition { .. } => {
+                // TYPE definitions are collected and emitted upfront by collect_type_definitions()
+                // in mod.rs before global variables, so we skip them here.
             }
 
             TypedStatementKind::Data { .. } => {
@@ -940,7 +1085,12 @@ impl StmtEmitter {
 
                     if var.dimensions.is_empty() {
                         // Simple static variable
-                        let init = default_init(&var.basic_type);
+                        // For strings, we must use NULL because function calls
+                        // are not valid in static initializers in C
+                        let init = match var.basic_type {
+                            BasicType::String => "NULL".to_string(),
+                            _ => default_init(&var.basic_type),
+                        };
                         writeln!(output, "{}static {} {} = {};", indent, c_ty, c_name, init)
                             .unwrap();
                     } else {
@@ -1140,24 +1290,25 @@ impl StmtEmitter {
                     "0".to_string()
                 };
 
-                // step2 flag indicates x2/y2 are relative to x1/y1
-                let step_flag = if *step2 { "1" } else { "0" };
+                // In LINE statement, STEP only applies to the endpoint (step2)
+                // step1 = 0 (first point is absolute), step2 = whether endpoint is relative
+                let step2_flag = if *step2 { "1" } else { "0" };
 
                 match box_style {
                     None => {
-                        // Plain line
-                        writeln!(output, "{}qb_gfx_line_ex((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, {}, (uint32_t){});",
-                                 indent, x1_code, y1_code, x2_code, y2_code, step_flag, color_code).unwrap();
+                        // Plain line: qb_gfx_line_step(x1, y1, x2, y2, color, step1, step2)
+                        writeln!(output, "{}qb_gfx_line_step((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (uint32_t){}, 0, {});",
+                                 indent, x1_code, y1_code, x2_code, y2_code, color_code, step2_flag).unwrap();
                     }
                     Some(false) => {
-                        // Box (outline)
-                        writeln!(output, "{}qb_gfx_box_ex((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, {}, (uint32_t){}, 0);",
-                                 indent, x1_code, y1_code, x2_code, y2_code, step_flag, color_code).unwrap();
+                        // Box (outline): qb_gfx_box_step(x1, y1, x2, y2, color, filled, step1, step2)
+                        writeln!(output, "{}qb_gfx_box_step((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (uint32_t){}, 0, 0, {});",
+                                 indent, x1_code, y1_code, x2_code, y2_code, color_code, step2_flag).unwrap();
                     }
                     Some(true) => {
-                        // Filled box
-                        writeln!(output, "{}qb_gfx_box_ex((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, {}, (uint32_t){}, 1);",
-                                 indent, x1_code, y1_code, x2_code, y2_code, step_flag, color_code).unwrap();
+                        // Filled box: qb_gfx_box_step(x1, y1, x2, y2, color, filled, step1, step2)
+                        writeln!(output, "{}qb_gfx_box_step((int32_t){}, (int32_t){}, (int32_t){}, (int32_t){}, (uint32_t){}, 1, 0, {});",
+                                 indent, x1_code, y1_code, x2_code, y2_code, color_code, step2_flag).unwrap();
                     }
                 }
             }
@@ -1975,12 +2126,14 @@ impl StmtEmitter {
 
             TypedStatementKind::Lset { variable, value } => {
                 let value_code = emit_expr(value)?;
-                writeln!(output, "{}qb_lset(&{}, {});", indent, variable, value_code).unwrap();
+                let c_var = c_identifier(variable);
+                writeln!(output, "{}qb_lset(&{}, {});", indent, c_var, value_code).unwrap();
             }
 
             TypedStatementKind::Rset { variable, value } => {
                 let value_code = emit_expr(value)?;
-                writeln!(output, "{}qb_rset(&{}, {});", indent, variable, value_code).unwrap();
+                let c_var = c_identifier(variable);
+                writeln!(output, "{}qb_rset(&{}, {});", indent, c_var, value_code).unwrap();
             }
 
             TypedStatementKind::OnKey { key_num, target } => {
@@ -2384,1307 +2537,4 @@ impl StmtEmitter {
 
         Ok(())
     }
-
-    /// Emits an extern declaration for a C library function.
-    ///
-    /// For external C functions, we need to emit C types, not BASIC types:
-    /// - BYVAL STRING → const char* (not qb_string*)
-    /// - STRING (by reference) → qb_string** (pointer to pointer for output)
-    /// - Return STRING → char* (caller must handle with qb_string_new)
-    fn emit_extern_declaration(
-        &self,
-        indent: &str,
-        decl: &crate::semantic::typed_ir::TypedExternalDeclaration,
-        output: &mut String,
-    ) {
-        use super::types::c_type;
-        use crate::semantic::types::BasicType;
-
-        // For external functions returning STRING, use char*
-        let return_type = if decl.return_type == BasicType::String {
-            "char*".to_string()
-        } else {
-            c_type(&decl.return_type)
-        };
-
-        let params: Vec<String> = decl
-            .params
-            .iter()
-            .map(|p| {
-                // For external functions, STRING params need special handling:
-                // - BYVAL STRING → const char* (C string)
-                // - BYREF STRING → qb_string** (pointer to BASIC string pointer)
-                let param_type = if p.typ == BasicType::String {
-                    if p.is_byval {
-                        "const char*".to_string()
-                    } else {
-                        "qb_string**".to_string()
-                    }
-                } else {
-                    c_type(&p.typ)
-                };
-                format!("{} {}", param_type, p.name)
-            })
-            .collect();
-        let params_str = if params.is_empty() {
-            "void".to_string()
-        } else {
-            params.join(", ")
-        };
-
-        writeln!(
-            output,
-            "{}extern {} {}({});",
-            indent, return_type, decl.c_name, params_str
-        )
-        .unwrap();
-    }
-
-    // Helper methods for complex statements
-
-    fn emit_assignment(
-        &self,
-        indent: &str,
-        name: &str,
-        value: &crate::semantic::typed_ir::TypedExpr,
-        target_type: &BasicType,
-        output: &mut String,
-    ) -> Result<(), CodeGenError> {
-        let c_name = c_identifier(name);
-        let value_code = emit_expr(value)?;
-
-        if value.basic_type != *target_type {
-            let c_ty = c_type(target_type);
-            writeln!(output, "{}{} = ({})({});", indent, c_name, c_ty, value_code).unwrap();
-        } else {
-            writeln!(output, "{}{} = {};", indent, c_name, value_code).unwrap();
-        }
-        Ok(())
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn emit_array_assignment(
-        &self,
-        indent: &str,
-        name: &str,
-        indices: &[crate::semantic::typed_ir::TypedExpr],
-        value: &crate::semantic::typed_ir::TypedExpr,
-        dimensions: &[TypedArrayDimension],
-        element_type: &BasicType,
-        output: &mut String,
-    ) -> Result<(), CodeGenError> {
-        let c_name = c_identifier(name);
-        let value_code = emit_expr(value)?;
-
-        let indices_code: Result<Vec<_>, _> = indices.iter().map(emit_expr).collect();
-        let indices_code = indices_code?;
-
-        let index_expr = if dimensions.is_empty() || indices_code.len() == 1 {
-            if let Some(dim) = dimensions.first() {
-                format!("{} - {}", indices_code[0], dim.lower)
-            } else {
-                indices_code[0].clone()
-            }
-        } else {
-            let mut linear_parts = Vec::new();
-            for (i, (idx, dim)) in indices_code.iter().zip(dimensions.iter()).enumerate() {
-                let adjusted = format!("({} - {})", idx, dim.lower);
-                if i < dimensions.len() - 1 {
-                    let stride: i64 = dimensions[i + 1..]
-                        .iter()
-                        .map(|d| d.upper - d.lower + 1)
-                        .product();
-                    linear_parts.push(format!("{} * {}", adjusted, stride));
-                } else {
-                    linear_parts.push(adjusted);
-                }
-            }
-            linear_parts.join(" + ")
-        };
-
-        if value.basic_type != *element_type {
-            let c_ty = c_type(element_type);
-            writeln!(
-                output,
-                "{}{}[{}] = ({})({});",
-                indent, c_name, index_expr, c_ty, value_code
-            )
-            .unwrap();
-        } else {
-            writeln!(
-                output,
-                "{}{}[{}] = {};",
-                indent, c_name, index_expr, value_code
-            )
-            .unwrap();
-        }
-        Ok(())
-    }
-
-    /// Emits a UDT array field assignment: `array(i).field = value`
-    #[allow(clippy::too_many_arguments)]
-    fn emit_array_field_assignment(
-        &self,
-        indent: &str,
-        name: &str,
-        indices: &[crate::semantic::typed_ir::TypedExpr],
-        fields: &[String],
-        value: &crate::semantic::typed_ir::TypedExpr,
-        dimensions: &[TypedArrayDimension],
-        output: &mut String,
-    ) -> Result<(), CodeGenError> {
-        let c_name = c_identifier(name);
-        let value_code = emit_expr(value)?;
-
-        let indices_code: Result<Vec<_>, _> = indices.iter().map(emit_expr).collect();
-        let indices_code = indices_code?;
-
-        // Calculate linear index for multi-dimensional arrays
-        let index_expr = if dimensions.is_empty() || indices_code.len() == 1 {
-            if let Some(dim) = dimensions.first() {
-                format!("{} - {}", indices_code[0], dim.lower)
-            } else {
-                indices_code[0].clone()
-            }
-        } else {
-            let mut linear_parts = Vec::new();
-            for (i, (idx, dim)) in indices_code.iter().zip(dimensions.iter()).enumerate() {
-                let adjusted = format!("({} - {})", idx, dim.lower);
-                if i < dimensions.len() - 1 {
-                    let stride: i64 = dimensions[i + 1..]
-                        .iter()
-                        .map(|d| d.upper - d.lower + 1)
-                        .product();
-                    linear_parts.push(format!("{} * {}", adjusted, stride));
-                } else {
-                    linear_parts.push(adjusted);
-                }
-            }
-            linear_parts.join(" + ")
-        };
-
-        // Build field access chain: .field1.field2...
-        let field_chain: String = fields
-            .iter()
-            .map(|f| format!(".{}", c_identifier(f)))
-            .collect();
-
-        writeln!(
-            output,
-            "{}{}[{}]{} = {};",
-            indent, c_name, index_expr, field_chain, value_code
-        )
-        .unwrap();
-
-        Ok(())
-    }
-
-    /// Emits a simple UDT field assignment: `udt.field = value`
-    fn emit_field_assignment(
-        &self,
-        indent: &str,
-        name: &str,
-        fields: &[String],
-        value: &crate::semantic::typed_ir::TypedExpr,
-        field_type: &BasicType,
-        output: &mut String,
-    ) -> Result<(), CodeGenError> {
-        let c_name = c_identifier(name);
-        let value_code = emit_expr(value)?;
-
-        // Build field access chain: .field1.field2...
-        let field_chain: String = fields
-            .iter()
-            .map(|f| format!(".{}", c_identifier(f)))
-            .collect();
-
-        // Handle fixed-length string fields specially
-        if let BasicType::FixedString(len) = field_type {
-            // For fixed-length strings, we need to copy the string content
-            // The value is a qb_string*, we need to copy its data into the char array
-            writeln!(
-                output,
-                "{}{{ qb_string* _tmp = {}; strncpy({}{}, _tmp ? _tmp->data : \"\", {}); {}{}[{}] = '\\0'; qb_string_free(_tmp); }}",
-                indent, value_code, c_name, field_chain, len, c_name, field_chain, len
-            ).unwrap();
-        } else {
-            writeln!(
-                output,
-                "{}{}{} = {};",
-                indent, c_name, field_chain, value_code
-            )
-            .unwrap();
-        }
-
-        Ok(())
-    }
-
-    fn emit_input(
-        &self,
-        indent: &str,
-        prompt: &Option<String>,
-        show_question_mark: bool,
-        same_line: bool,
-        targets: &[TypedInputTarget],
-        output: &mut String,
-    ) -> Result<(), CodeGenError> {
-        use TypedInputTarget::*;
-
-        // Note: same_line is currently stored but not used in codegen
-        // The runtime would need to be updated to support this behavior
-        // (keep cursor on same line after input instead of moving to new line)
-        let _ = same_line;
-
-        let full_prompt = match prompt {
-            Some(p) => {
-                if show_question_mark {
-                    format!("{}? ", p)
-                } else {
-                    p.clone()
-                }
-            }
-            None => {
-                if show_question_mark {
-                    "? ".to_string()
-                } else {
-                    String::new()
-                }
-            }
-        };
-
-        for (i, target) in targets.iter().enumerate() {
-            let (target_code, var_type) = match target {
-                Variable { name, basic_type } => (c_identifier(name), basic_type.clone()),
-                ArrayElement {
-                    name,
-                    indices,
-                    element_type,
-                } => {
-                    let c_arr = c_identifier(name);
-                    let idx_code: Vec<_> =
-                        indices.iter().map(emit_expr).collect::<Result<_, _>>()?;
-                    // Use first index for 1D array syntax (TODO: handle multi-dim)
-                    let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
-                    (format!("{}[{}]", c_arr, idx), element_type.clone())
-                }
-                ArrayElementField {
-                    name,
-                    indices,
-                    fields,
-                    field_type,
-                } => {
-                    let c_arr = c_identifier(name);
-                    let idx_code: Vec<_> =
-                        indices.iter().map(emit_expr).collect::<Result<_, _>>()?;
-                    let idx = idx_code.first().map(|s| s.as_str()).unwrap_or("0");
-                    let field_chain = fields.join(".");
-                    (
-                        format!("{}[{}].{}", c_arr, idx, field_chain),
-                        field_type.clone(),
-                    )
-                }
-                Field {
-                    name,
-                    fields,
-                    field_type,
-                } => {
-                    let c_var = c_identifier(name);
-                    let field_chain = fields.join(".");
-                    (format!("{}.{}", c_var, field_chain), field_type.clone())
-                }
-            };
-
-            let prompt_arg = if i == 0 && !full_prompt.is_empty() {
-                format!("\"{}\"", escape_string(&full_prompt))
-            } else {
-                "NULL".to_string()
-            };
-
-            if var_type.is_string() {
-                writeln!(
-                    output,
-                    "{}qb_input_string({}, &{});",
-                    indent, prompt_arg, target_code
-                )
-                .unwrap();
-            } else if var_type.is_float() {
-                writeln!(
-                    output,
-                    "{}qb_input_float({}, &{});",
-                    indent, prompt_arg, target_code
-                )
-                .unwrap();
-            } else {
-                writeln!(
-                    output,
-                    "{}qb_input_int({}, &{});",
-                    indent, prompt_arg, target_code
-                )
-                .unwrap();
-            }
-        }
-        Ok(())
-    }
-
-    fn emit_if(
-        &mut self,
-        indent: &str,
-        condition: &crate::semantic::typed_ir::TypedExpr,
-        then_branch: &[TypedStatement],
-        elseif_branches: &[(crate::semantic::typed_ir::TypedExpr, Vec<TypedStatement>)],
-        else_branch: &Option<Vec<TypedStatement>>,
-        output: &mut String,
-    ) -> Result<(), CodeGenError> {
-        let cond_code = emit_expr(condition)?;
-        writeln!(output, "{}if ({}) {{", indent, cond_code).unwrap();
-
-        self.indent += 1;
-        for stmt in then_branch {
-            self.emit_stmt(stmt, output)?;
-        }
-        self.indent -= 1;
-
-        for (elseif_cond, elseif_body) in elseif_branches {
-            let elseif_code = emit_expr(elseif_cond)?;
-            writeln!(output, "{}}} else if ({}) {{", indent, elseif_code).unwrap();
-
-            self.indent += 1;
-            for stmt in elseif_body {
-                self.emit_stmt(stmt, output)?;
-            }
-            self.indent -= 1;
-        }
-
-        if let Some(else_body) = else_branch {
-            writeln!(output, "{}}} else {{", indent).unwrap();
-
-            self.indent += 1;
-            for stmt in else_body {
-                self.emit_stmt(stmt, output)?;
-            }
-            self.indent -= 1;
-        }
-
-        writeln!(output, "{}}}", indent).unwrap();
-        Ok(())
-    }
-
-    fn emit_select_case(
-        &mut self,
-        indent: &str,
-        test_expr: &crate::semantic::typed_ir::TypedExpr,
-        cases: &[crate::semantic::typed_ir::TypedCaseClause],
-        case_else: &Option<Vec<TypedStatement>>,
-        is_everycase: bool,
-        output: &mut String,
-    ) -> Result<(), CodeGenError> {
-        let test_var = self.next_label("select");
-        let test_code = emit_expr(test_expr)?;
-        let c_ty = c_type(&test_expr.basic_type);
-
-        writeln!(output, "{}{} {} = {};", indent, c_ty, test_var, test_code).unwrap();
-
-        if is_everycase {
-            // SELECT EVERYCASE: evaluate ALL cases and execute ALL matching ones
-            // Also track if any case matched for CASE ELSE
-            let matched_var = self.next_label("matched");
-            writeln!(output, "{}int {} = 0;", indent, matched_var).unwrap();
-
-            for case in cases {
-                let condition = self.emit_case_condition(&test_var, &case.matches)?;
-                writeln!(output, "{}if ({}) {{", indent, condition).unwrap();
-                writeln!(output, "{}    {} = 1;", indent, matched_var).unwrap();
-
-                self.indent += 1;
-                for stmt in &case.body {
-                    self.emit_stmt(stmt, output)?;
-                }
-                self.indent -= 1;
-                writeln!(output, "{}}}", indent).unwrap();
-            }
-
-            // CASE ELSE: only execute if no cases matched
-            if let Some(else_body) = case_else {
-                writeln!(output, "{}if (!{}) {{", indent, matched_var).unwrap();
-
-                self.indent += 1;
-                for stmt in else_body {
-                    self.emit_stmt(stmt, output)?;
-                }
-                self.indent -= 1;
-                writeln!(output, "{}}}", indent).unwrap();
-            }
-        } else {
-            // Standard SELECT CASE: execute first matching case only
-            let mut first = true;
-            for case in cases {
-                let condition = self.emit_case_condition(&test_var, &case.matches)?;
-
-                if first {
-                    writeln!(output, "{}if ({}) {{", indent, condition).unwrap();
-                    first = false;
-                } else {
-                    writeln!(output, "{}}} else if ({}) {{", indent, condition).unwrap();
-                }
-
-                self.indent += 1;
-                for stmt in &case.body {
-                    self.emit_stmt(stmt, output)?;
-                }
-                self.indent -= 1;
-            }
-
-            if let Some(else_body) = case_else {
-                writeln!(output, "{}}} else {{", indent).unwrap();
-
-                self.indent += 1;
-                for stmt in else_body {
-                    self.emit_stmt(stmt, output)?;
-                }
-                self.indent -= 1;
-            }
-
-            if !first {
-                writeln!(output, "{}}}", indent).unwrap();
-            }
-        }
-        Ok(())
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn emit_for(
-        &mut self,
-        indent: &str,
-        variable: &str,
-        var_type: &BasicType,
-        start: &crate::semantic::typed_ir::TypedExpr,
-        end: &crate::semantic::typed_ir::TypedExpr,
-        step: &Option<crate::semantic::typed_ir::TypedExpr>,
-        body: &[TypedStatement],
-        output: &mut String,
-    ) -> Result<(), CodeGenError> {
-        let c_var = c_identifier(variable);
-        let c_ty = c_type(var_type);
-        let start_code = emit_expr(start)?;
-        let end_code = emit_expr(end)?;
-        let step_code = match step {
-            Some(s) => emit_expr(s)?,
-            None => "1".to_string(),
-        };
-
-        let break_label = self.next_label("for_end");
-        self.loop_stack.push(LoopContext {
-            break_label: break_label.clone(),
-            loop_type: ExitType::For,
-        });
-
-        let end_var = self.next_label("for_end_val");
-        let step_var = self.next_label("for_step");
-        writeln!(output, "{}{} {} = {};", indent, c_ty, end_var, end_code).unwrap();
-        writeln!(output, "{}{} {} = {};", indent, c_ty, step_var, step_code).unwrap();
-
-        writeln!(
-            output,
-            "{}for ({} {} = {}; ({} > 0) ? ({} <= {}) : ({} >= {}); {} += {}) {{",
-            indent,
-            c_ty,
-            c_var,
-            start_code,
-            step_var,
-            c_var,
-            end_var,
-            c_var,
-            end_var,
-            c_var,
-            step_var
-        )
-        .unwrap();
-
-        self.indent += 1;
-        for stmt in body {
-            self.emit_stmt(stmt, output)?;
-        }
-        self.indent -= 1;
-
-        writeln!(output, "{}}}", indent).unwrap();
-        writeln!(output, "{}{}:;", indent, break_label).unwrap();
-
-        self.loop_stack.pop();
-        Ok(())
-    }
-
-    fn emit_while(
-        &mut self,
-        indent: &str,
-        condition: &crate::semantic::typed_ir::TypedExpr,
-        body: &[TypedStatement],
-        output: &mut String,
-    ) -> Result<(), CodeGenError> {
-        let cond_code = emit_expr(condition)?;
-        let break_label = self.next_label("while_end");
-
-        self.loop_stack.push(LoopContext {
-            break_label: break_label.clone(),
-            loop_type: ExitType::While,
-        });
-
-        writeln!(output, "{}while ({}) {{", indent, cond_code).unwrap();
-
-        self.indent += 1;
-        for stmt in body {
-            self.emit_stmt(stmt, output)?;
-        }
-        self.indent -= 1;
-
-        writeln!(output, "{}}}", indent).unwrap();
-        writeln!(output, "{}{}:;", indent, break_label).unwrap();
-
-        self.loop_stack.pop();
-        Ok(())
-    }
-
-    fn emit_do_loop(
-        &mut self,
-        indent: &str,
-        pre_condition: &Option<TypedDoCondition>,
-        body: &[TypedStatement],
-        post_condition: &Option<TypedDoCondition>,
-        output: &mut String,
-    ) -> Result<(), CodeGenError> {
-        let break_label = self.next_label("do_end");
-
-        self.loop_stack.push(LoopContext {
-            break_label: break_label.clone(),
-            loop_type: ExitType::Do,
-        });
-
-        match (pre_condition, post_condition) {
-            (Some(pre), None) => {
-                let cond = self.emit_do_condition(pre)?;
-                writeln!(output, "{}while ({}) {{", indent, cond).unwrap();
-            }
-            (None, Some(_post)) => {
-                writeln!(output, "{}do {{", indent).unwrap();
-            }
-            (None, None) => {
-                writeln!(output, "{}for (;;) {{", indent).unwrap();
-            }
-            (Some(_), Some(_)) => {
-                return Err(CodeGenError::internal(
-                    "DO loop cannot have both pre and post conditions",
-                ));
-            }
-        }
-
-        self.indent += 1;
-        for stmt in body {
-            self.emit_stmt(stmt, output)?;
-        }
-        self.indent -= 1;
-
-        if let Some(post) = post_condition {
-            let cond = self.emit_do_condition(post)?;
-            writeln!(output, "{}}} while ({});", indent, cond).unwrap();
-        } else {
-            writeln!(output, "{}}}", indent).unwrap();
-        }
-
-        writeln!(output, "{}{}:;", indent, break_label).unwrap();
-        self.loop_stack.pop();
-        Ok(())
-    }
-
-    fn emit_exit(
-        &self,
-        indent: &str,
-        exit_type: &ExitType,
-        output: &mut String,
-    ) -> Result<(), CodeGenError> {
-        let label = self
-            .loop_stack
-            .iter()
-            .rev()
-            .find(|ctx| ctx.loop_type == *exit_type)
-            .map(|ctx| ctx.break_label.clone());
-
-        if let Some(label) = label {
-            writeln!(output, "{}goto {};", indent, label).unwrap();
-        } else {
-            // EXIT SUB or EXIT FUNCTION
-            writeln!(output, "{}return;", indent).unwrap();
-        }
-        Ok(())
-    }
-
-    fn emit_sub_definition(
-        &mut self,
-        indent: &str,
-        name: &str,
-        params: &[TypedParameter],
-        body: &[TypedStatement],
-        output: &mut String,
-    ) -> Result<(), CodeGenError> {
-        let c_name = format!("qb_sub_{}", c_identifier(name).to_lowercase());
-        let params_str = emit_params(params);
-
-        writeln!(output, "{}void {}({}) {{", indent, c_name, params_str).unwrap();
-
-        self.indent += 1;
-        for stmt in body {
-            self.emit_stmt(stmt, output)?;
-        }
-        self.indent -= 1;
-
-        writeln!(output, "{}}}", indent).unwrap();
-        writeln!(output).unwrap();
-        Ok(())
-    }
-
-    fn emit_function_definition(
-        &mut self,
-        indent: &str,
-        name: &str,
-        params: &[TypedParameter],
-        return_type: &BasicType,
-        body: &[TypedStatement],
-        output: &mut String,
-    ) -> Result<(), CodeGenError> {
-        let c_name = c_function_name(name);
-        let c_ret_type = c_type(return_type);
-        let params_str = emit_params(params);
-
-        writeln!(
-            output,
-            "{}{} {}({}) {{",
-            indent, c_ret_type, c_name, params_str
-        )
-        .unwrap();
-
-        let ret_var = c_identifier(name);
-        writeln!(
-            output,
-            "    {} {} = {};",
-            c_ret_type,
-            ret_var,
-            default_init(return_type)
-        )
-        .unwrap();
-
-        self.indent += 1;
-        for stmt in body {
-            self.emit_stmt(stmt, output)?;
-        }
-        self.indent -= 1;
-
-        writeln!(output, "    return {};", ret_var).unwrap();
-        writeln!(output, "{}}}", indent).unwrap();
-        writeln!(output).unwrap();
-        Ok(())
-    }
-
-    fn emit_dim(
-        &self,
-        indent: &str,
-        name: &str,
-        basic_type: &BasicType,
-        dimensions: &[TypedArrayDimension],
-        output: &mut String,
-    ) -> Result<(), CodeGenError> {
-        let c_name = c_identifier(name);
-        let c_ty = c_type(basic_type);
-
-        if dimensions.is_empty() {
-            let init = default_init(basic_type);
-            writeln!(output, "{}{} {} = {};", indent, c_ty, c_name, init).unwrap();
-        } else {
-            let sizes: Vec<String> = dimensions
-                .iter()
-                .map(|d| format!("({})", d.upper - d.lower + 1))
-                .collect();
-            let size_expr = sizes.join(" * ");
-            writeln!(
-                output,
-                "{}{}* {} = malloc(sizeof({}) * {});",
-                indent, c_ty, c_name, c_ty, size_expr
-            )
-            .unwrap();
-        }
-        Ok(())
-    }
-
-    fn emit_type_definition(
-        &self,
-        indent: &str,
-        name: &str,
-        members: &[TypedMember],
-        custom_type: bool,
-        output: &mut String,
-    ) -> Result<(), CodeGenError> {
-        let c_name = c_identifier(name);
-
-        // CUSTOMTYPE modifier indicates C-compatible (packed) memory layout
-        // This uses #pragma pack to ensure no padding between members
-        if custom_type {
-            writeln!(output, "{}#pragma pack(push, 1)", indent).unwrap();
-        }
-
-        writeln!(output, "{}typedef struct {} {{", indent, c_name).unwrap();
-
-        for member in members {
-            let c_member_type = c_type(&member.basic_type);
-            let c_member_name = c_identifier(&member.name);
-
-            if let BasicType::FixedString(len) = &member.basic_type {
-                writeln!(output, "{}    char {}[{}];", indent, c_member_name, len + 1).unwrap();
-            } else {
-                writeln!(output, "{}    {} {};", indent, c_member_type, c_member_name).unwrap();
-            }
-        }
-
-        writeln!(output, "{}}} {};", indent, c_name).unwrap();
-
-        if custom_type {
-            writeln!(output, "{}#pragma pack(pop)", indent).unwrap();
-        }
-
-        writeln!(output).unwrap();
-        Ok(())
-    }
-
-    fn emit_read(
-        &self,
-        indent: &str,
-        targets: &[TypedReadTarget],
-        output: &mut String,
-    ) -> Result<(), CodeGenError> {
-        for target in targets {
-            let (c_target, var_type) = match target {
-                TypedReadTarget::Variable { name, basic_type } => {
-                    (c_identifier(name), basic_type.clone())
-                }
-                TypedReadTarget::ArrayElement {
-                    name,
-                    indices,
-                    basic_type,
-                } => {
-                    let c_arr = c_identifier(name);
-                    let idx_parts: Vec<_> = indices
-                        .iter()
-                        .map(emit_expr)
-                        .collect::<Result<Vec<_>, _>>()?;
-                    let idx_str = idx_parts.join("][");
-                    (format!("{}[{}]", c_arr, idx_str), basic_type.clone())
-                }
-                TypedReadTarget::ArrayFieldElement {
-                    name,
-                    indices,
-                    field,
-                    basic_type,
-                } => {
-                    let c_arr = c_identifier(name);
-                    let c_field = c_identifier(field);
-                    let idx_parts: Vec<_> = indices
-                        .iter()
-                        .map(emit_expr)
-                        .collect::<Result<Vec<_>, _>>()?;
-                    let idx_str = idx_parts.join("][");
-                    (
-                        format!("{}[{}].{}", c_arr, idx_str, c_field),
-                        basic_type.clone(),
-                    )
-                }
-            };
-
-            match var_type {
-                BasicType::String | BasicType::FixedString(_) => {
-                    writeln!(
-                        output,
-                        "{}if (_qb_data_ptr < _qb_data_count && _qb_data[_qb_data_ptr].type == 's') {{",
-                        indent
-                    )
-                    .unwrap();
-                    writeln!(
-                        output,
-                        "{}    {} = qb_str_from_c(_qb_data[_qb_data_ptr].v.s);",
-                        indent, c_target
-                    )
-                    .unwrap();
-                    writeln!(
-                        output,
-                        "{}}} else if (_qb_data_ptr < _qb_data_count) {{",
-                        indent
-                    )
-                    .unwrap();
-                    writeln!(
-                        output,
-                        "{}    {} = qb_str_float(_qb_data[_qb_data_ptr].v.n);",
-                        indent, c_target
-                    )
-                    .unwrap();
-                    writeln!(output, "{}}}", indent).unwrap();
-                    writeln!(output, "{}_qb_data_ptr++;", indent).unwrap();
-                }
-                _ => {
-                    let c_ty = c_type(&var_type);
-                    writeln!(
-                        output,
-                        "{}if (_qb_data_ptr < _qb_data_count && _qb_data[_qb_data_ptr].type == 'd') {{",
-                        indent
-                    )
-                    .unwrap();
-                    writeln!(
-                        output,
-                        "{}    {} = ({})_qb_data[_qb_data_ptr].v.n;",
-                        indent, c_target, c_ty
-                    )
-                    .unwrap();
-                    writeln!(output, "{}}}", indent).unwrap();
-                    writeln!(output, "{}_qb_data_ptr++;", indent).unwrap();
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn emit_restore(
-        &self,
-        indent: &str,
-        label: &Option<String>,
-        output: &mut String,
-    ) -> Result<(), CodeGenError> {
-        match label {
-            None => {
-                writeln!(output, "{}_qb_data_ptr = 0;", indent).unwrap();
-            }
-            Some(lbl) => {
-                let label_upper = lbl.to_uppercase();
-                if let Some(&index) = self.data_label_indices.get(&label_upper) {
-                    writeln!(
-                        output,
-                        "{}_qb_data_ptr = {}; /* RESTORE {} */",
-                        indent, index, lbl
-                    )
-                    .unwrap();
-                } else {
-                    writeln!(
-                        output,
-                        "{}/* Warning: RESTORE label '{}' not associated with DATA */",
-                        indent, lbl
-                    )
-                    .unwrap();
-                    writeln!(output, "{}_qb_data_ptr = 0;", indent).unwrap();
-                }
-            }
-        }
-        Ok(())
-    }
-
-    /// Emits a PRINT item.
-    fn emit_print_item(
-        &self,
-        item: &TypedPrintItem,
-        output: &mut String,
-    ) -> Result<(), CodeGenError> {
-        let indent = self.indent_str();
-        let expr_code = emit_expr(&item.expr)?;
-
-        if item.expr.basic_type.is_string() {
-            writeln!(output, "{}qb_print_string({});", indent, expr_code).unwrap();
-        } else if item.expr.basic_type.is_float() {
-            writeln!(output, "{}qb_print_float({});", indent, expr_code).unwrap();
-        } else {
-            writeln!(output, "{}qb_print_int({});", indent, expr_code).unwrap();
-        }
-
-        if let Some(sep) = &item.separator {
-            match sep {
-                PrintSeparator::Comma => {
-                    writeln!(output, "{}qb_print_tab();", indent).unwrap();
-                }
-                PrintSeparator::Semicolon => {
-                    // No separator - items print adjacent
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Emits a DO loop condition.
-    fn emit_do_condition(&self, cond: &TypedDoCondition) -> Result<String, CodeGenError> {
-        let cond_code = emit_expr(&cond.condition)?;
-        if cond.is_while {
-            Ok(cond_code)
-        } else {
-            Ok(format!("!({})", cond_code))
-        }
-    }
-
-    /// Emits CASE match conditions.
-    fn emit_case_condition(
-        &self,
-        test_var: &str,
-        matches: &[TypedCaseMatch],
-    ) -> Result<String, CodeGenError> {
-        let conditions: Result<Vec<_>, _> = matches
-            .iter()
-            .map(|m| self.emit_single_case_match(test_var, m))
-            .collect();
-        Ok(conditions?.join(" || "))
-    }
-
-    /// Emits a single CASE match.
-    fn emit_single_case_match(
-        &self,
-        test_var: &str,
-        case_match: &TypedCaseMatch,
-    ) -> Result<String, CodeGenError> {
-        match case_match {
-            TypedCaseMatch::Single(expr) => {
-                let val = emit_expr(expr)?;
-                Ok(format!("({} == {})", test_var, val))
-            }
-            TypedCaseMatch::Range { from, to } => {
-                let from_code = emit_expr(from)?;
-                let to_code = emit_expr(to)?;
-                Ok(format!(
-                    "({} >= {} && {} <= {})",
-                    test_var, from_code, test_var, to_code
-                ))
-            }
-            TypedCaseMatch::Comparison { op, value } => {
-                let val = emit_expr(value)?;
-                let c_op = match op {
-                    TypedCaseCompareOp::Equal => "==",
-                    TypedCaseCompareOp::NotEqual => "!=",
-                    TypedCaseCompareOp::LessThan => "<",
-                    TypedCaseCompareOp::LessEqual => "<=",
-                    TypedCaseCompareOp::GreaterThan => ">",
-                    TypedCaseCompareOp::GreaterEqual => ">=",
-                };
-                Ok(format!("({} {} {})", test_var, c_op, val))
-            }
-        }
-    }
-
-    // ==================== Error Handling Helper Methods ====================
-
-    /// Emits ON ERROR GOTO.
-    fn emit_on_error_goto(
-        &self,
-        indent: &str,
-        target: &str,
-        output: &mut String,
-    ) -> Result<(), CodeGenError> {
-        if target == "0" {
-            writeln!(output, "{}_qb_error_handler = NULL;", indent).unwrap();
-            writeln!(output, "{}_qb_error_resume_next = 0;", indent).unwrap();
-        } else {
-            let label = c_identifier(target);
-            writeln!(output, "{}_qb_error_handler = &&{};", indent, label).unwrap();
-            writeln!(output, "{}_qb_error_resume_next = 0;", indent).unwrap();
-        }
-        Ok(())
-    }
-
-    /// Emits ON ERROR RESUME NEXT.
-    fn emit_on_error_resume_next(
-        &self,
-        indent: &str,
-        output: &mut String,
-    ) -> Result<(), CodeGenError> {
-        writeln!(output, "{}_qb_error_resume_next = 1;", indent).unwrap();
-        writeln!(output, "{}_qb_error_handler = NULL;", indent).unwrap();
-        Ok(())
-    }
-
-    /// Emits RESUME statement.
-    fn emit_resume(
-        &self,
-        indent: &str,
-        target: &Option<crate::ast::ResumeTarget>,
-        output: &mut String,
-    ) -> Result<(), CodeGenError> {
-        match target {
-            None => {
-                // RESUME - retry the statement (complex, use goto)
-                writeln!(
-                    output,
-                    "{}if (_qb_error_line) goto *_qb_error_line;",
-                    indent
-                )
-                .unwrap();
-            }
-            Some(crate::ast::ResumeTarget::Next) => {
-                // RESUME NEXT - continue at next statement
-                writeln!(output, "{}_qb_err = 0;", indent).unwrap();
-                writeln!(output, "{}/* RESUME NEXT - continue execution */", indent).unwrap();
-            }
-            Some(crate::ast::ResumeTarget::Label(label)) => {
-                let c_label = c_identifier(label);
-                writeln!(output, "{}_qb_err = 0;", indent).unwrap();
-                writeln!(output, "{}goto {};", indent, c_label).unwrap();
-            }
-        }
-        Ok(())
-    }
-
-    /// Emits ERROR statement.
-    fn emit_error_stmt(
-        &self,
-        indent: &str,
-        code: &TypedExpr,
-        output: &mut String,
-    ) -> Result<(), CodeGenError> {
-        let code_expr = emit_expr(code)?;
-        writeln!(output, "{}qb_error({});", indent, code_expr).unwrap();
-        Ok(())
-    }
-
-    // ==================== Computed Control Flow Helper Methods ====================
-
-    /// Emits ON...GOTO.
-    fn emit_on_goto(
-        &self,
-        indent: &str,
-        selector: &TypedExpr,
-        targets: &[String],
-        output: &mut String,
-    ) -> Result<(), CodeGenError> {
-        let sel_code = emit_expr(selector)?;
-
-        writeln!(output, "{}switch ((int32_t)({}) - 1) {{", indent, sel_code).unwrap();
-        for (i, target) in targets.iter().enumerate() {
-            let c_label = c_identifier(target);
-            writeln!(output, "{}    case {}: goto {}; break;", indent, i, c_label).unwrap();
-        }
-        writeln!(output, "{}    default: break;", indent).unwrap();
-        writeln!(output, "{}}}", indent).unwrap();
-
-        Ok(())
-    }
-
-    /// Emits ON...GOSUB.
-    fn emit_on_gosub(
-        &mut self,
-        indent: &str,
-        selector: &TypedExpr,
-        targets: &[String],
-        output: &mut String,
-    ) -> Result<(), CodeGenError> {
-        let sel_code = emit_expr(selector)?;
-        let return_label = self.next_label("on_gosub_ret");
-
-        writeln!(output, "{}switch ((int32_t)({}) - 1) {{", indent, sel_code).unwrap();
-        for (i, target) in targets.iter().enumerate() {
-            let c_label = c_identifier(target);
-            writeln!(
-                output,
-                "{}    case {}: _gosub_stack[_gosub_sp++] = &&{}; goto {}; break;",
-                indent, i, return_label, c_label
-            )
-            .unwrap();
-        }
-        writeln!(output, "{}    default: break;", indent).unwrap();
-        writeln!(output, "{}}}", indent).unwrap();
-        writeln!(output, "{}{}:;", indent, return_label).unwrap();
-
-        Ok(())
-    }
-
-    // ==================== DEF FN Helper Methods ====================
-
-    /// Emits DEF FN as an inline function or macro.
-    fn emit_def_fn(
-        &self,
-        name: &str,
-        params: &[TypedParameter],
-        return_type: &BasicType,
-        body: &TypedExpr,
-        output: &mut String,
-    ) -> Result<(), CodeGenError> {
-        let fn_name = format!("_fn_{}", c_identifier(name));
-        let c_return_type = c_type(return_type);
-
-        // Emit as a static inline function
-        let param_list = if params.is_empty() {
-            "void".to_string()
-        } else {
-            params
-                .iter()
-                .map(|p| format!("{} {}", c_type(&p.basic_type), c_identifier(&p.name)))
-                .collect::<Vec<_>>()
-                .join(", ")
-        };
-
-        let body_code = emit_expr(body)?;
-
-        writeln!(
-            output,
-            "static inline {} {}({}) {{ return {}; }}",
-            c_return_type, fn_name, param_list, body_code
-        )
-        .unwrap();
-
-        Ok(())
-    }
-
-    /// Emits multi-line DEF FN as a static function.
-    ///
-    /// In multi-line DEF FN, the return value is set by assigning to the
-    /// function name (e.g., `FNSquare = x * x`). We emit a local variable
-    /// for the return value and return it at the end.
-    fn emit_def_fn_multiline(
-        &mut self,
-        name: &str,
-        params: &[TypedParameter],
-        return_type: &BasicType,
-        body: &[TypedStatement],
-        output: &mut String,
-    ) -> Result<(), CodeGenError> {
-        let fn_name = format!("_fn_{}", c_identifier(name));
-        let c_return_type = c_type(return_type);
-
-        // Parameter list
-        let param_list = if params.is_empty() {
-            "void".to_string()
-        } else {
-            params
-                .iter()
-                .map(|p| format!("{} {}", c_type(&p.basic_type), c_identifier(&p.name)))
-                .collect::<Vec<_>>()
-                .join(", ")
-        };
-
-        // Function header
-        writeln!(
-            output,
-            "static {} {}({}) {{",
-            c_return_type, fn_name, param_list
-        )
-        .unwrap();
-
-        // Return value variable (initialized to default)
-        let return_var = format!("_fn_{}", c_identifier(name));
-        let init = default_init(return_type);
-        writeln!(output, "    {} {} = {};", c_return_type, return_var, init).unwrap();
-
-        // Emit body statements
-        let old_indent = self.indent;
-        self.indent = 1;
-        for stmt in body {
-            self.emit_stmt(stmt, output)?;
-        }
-        self.indent = old_indent;
-
-        // Return the result
-        writeln!(output, "    return {};", return_var).unwrap();
-        writeln!(output, "}}").unwrap();
-
-        Ok(())
-    }
-
-    // ==================== REDIM Helper Methods ====================
-
-    /// Emits REDIM statement.
-    ///
-    /// REDIM with _PRESERVE keeps existing array values and zeros new elements.
-    /// Without _PRESERVE, the entire array is zeroed.
-    ///
-    /// Uses a static size-tracking variable to remember the array's byte size
-    /// across multiple REDIMs, enabling proper _PRESERVE behavior.
-    fn emit_redim(
-        &self,
-        indent: &str,
-        preserve: bool,
-        name: &str,
-        element_type: &BasicType,
-        dimensions: &[TypedArrayDimension],
-        output: &mut String,
-    ) -> Result<(), CodeGenError> {
-        let c_name = c_identifier(name);
-        let c_elem_type = c_type(element_type);
-        let size_var = format!("{}_sz__", c_name);
-
-        // Calculate total size
-        if dimensions.is_empty() {
-            writeln!(output, "{}/* REDIM {} - no dimensions */", indent, name).unwrap();
-            return Ok(());
-        }
-
-        // Calculate new size expression
-        let size_expr = dimensions
-            .iter()
-            .map(|d| format!("({} - {} + 1)", d.upper, d.lower))
-            .collect::<Vec<_>>()
-            .join(" * ");
-
-        if preserve {
-            // REDIM _PRESERVE: Keep existing values, zero only new elements
-            // We track the old byte size with a static variable
-            writeln!(output, "{}{{", indent).unwrap();
-            writeln!(output, "{}    static size_t {} = 0;", indent, size_var).unwrap();
-            writeln!(
-                output,
-                "{}    size_t new_sz__ = sizeof({}) * ({});",
-                indent, c_elem_type, size_expr
-            )
-            .unwrap();
-            writeln!(
-                output,
-                "{}    {} = realloc({}, new_sz__);",
-                indent, c_name, c_name
-            )
-            .unwrap();
-            // Zero only the new portion if array grew
-            writeln!(
-                output,
-                "{}    if (new_sz__ > {}) memset((char*){} + {}, 0, new_sz__ - {});",
-                indent, size_var, c_name, size_var, size_var
-            )
-            .unwrap();
-            writeln!(output, "{}    {} = new_sz__;", indent, size_var).unwrap();
-            writeln!(output, "{}}}", indent).unwrap();
-        } else {
-            // Regular REDIM: Reallocate and zero entire array
-            writeln!(output, "{}{{", indent).unwrap();
-            writeln!(
-                output,
-                "{}    size_t new_sz__ = sizeof({}) * ({});",
-                indent, c_elem_type, size_expr
-            )
-            .unwrap();
-            writeln!(
-                output,
-                "{}    {} = realloc({}, new_sz__);",
-                indent, c_name, c_name
-            )
-            .unwrap();
-            writeln!(output, "{}    memset({}, 0, new_sz__);", indent, c_name).unwrap();
-            writeln!(output, "{}}}", indent).unwrap();
-        }
-
-        Ok(())
-    }
-}
-
-/// Emits function/sub parameters.
-pub(super) fn emit_params(params: &[TypedParameter]) -> String {
-    if params.is_empty() {
-        return "void".to_string();
-    }
-
-    params
-        .iter()
-        .map(|p| {
-            let c_ty = c_type(&p.basic_type);
-            let c_name = c_identifier(&p.name);
-            if p.by_val {
-                format!("{} {}", c_ty, c_name)
-            } else {
-                format!("{}* {}", c_ty, c_name)
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(", ")
 }

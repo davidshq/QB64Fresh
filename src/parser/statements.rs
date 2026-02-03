@@ -582,20 +582,52 @@ impl<'a> Parser<'a> {
     pub(super) fn parse_identifier_statement(&mut self) -> Result<Statement, ()> {
         let start = self.peek().expect("identifier token").span.start;
 
-        // Check for label: identifier followed by colon (e.g., "myLabel:")
+        // Check for label: identifier followed by colon at end of statement (e.g., "myLabel:")
         // Labels can ONLY be defined at the start of a line, not after a colon separator.
-        // This distinguishes:
-        //   myLabel:           <- label definition at line start
-        //   CASE 1: MySub: x=1 <- MySub is a procedure call, not a label
+        // Additionally, to distinguish from SUB calls followed by statement separator:
+        //   myLabel:           <- label definition (colon at end of statement)
+        //   myLabel: IF x...   <- label definition followed by statement
+        //   myLabel: x = 1     <- label definition followed by assignment
+        //   MySub1: MySub2     <- Two SUB calls (first one is NOT a label)
+        // Heuristic: if followed by identifier + = (assignment) or keyword, it's a label.
+        // If followed by identifier + (not =), it could be a SUB call chain.
         if self.at_line_start
             && let Some(next) = self.peek_ahead(1)
             && next.kind == TokenKind::Colon
         {
-            let name_token = self.advance().expect("identifier");
-            let name = name_token.text.to_string();
-            self.advance(); // consume the colon
-            let span = self.span_from(start);
-            return Ok(Statement::new(StatementKind::Label { name }, span));
+            // Check what follows the colon
+            if let Some(after_colon) = self.peek_ahead(2) {
+                // If after the colon is an identifier, check if it's an assignment
+                if after_colon.kind == TokenKind::Identifier {
+                    // Look for "identifier = " pattern (assignment after colon)
+                    if let Some(after_ident) = self.peek_ahead(3)
+                        && after_ident.kind == TokenKind::Equals
+                    {
+                        // Pattern: "label: var = value" - this IS a label
+                        let name_token = self.advance().expect("identifier");
+                        let name = name_token.text.to_string();
+                        self.advance(); // consume the colon
+                        let span = self.span_from(start);
+                        return Ok(Statement::new(StatementKind::Label { name }, span));
+                    }
+                    // Pattern: "id1: id2" without = - likely two procedure calls
+                    // Fall through to treat as procedure call, not label
+                } else {
+                    // Followed by keyword or non-identifier - treat as label
+                    let name_token = self.advance().expect("identifier");
+                    let name = name_token.text.to_string();
+                    self.advance(); // consume the colon
+                    let span = self.span_from(start);
+                    return Ok(Statement::new(StatementKind::Label { name }, span));
+                }
+            } else {
+                // Nothing after colon (end of input) - treat as label
+                let name_token = self.advance().expect("identifier");
+                let name = name_token.text.to_string();
+                self.advance(); // consume the colon
+                let span = self.span_from(start);
+                return Ok(Statement::new(StatementKind::Label { name }, span));
+            }
         }
 
         // Look ahead to determine if this is assignment or call
@@ -1323,10 +1355,20 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses an END statement.
+    /// Syntax: END [exit_code]
+    /// QB64 supports an optional exit code: END 1 exits with code 1.
     pub(super) fn parse_end(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("END keyword").span.start; // consume END
+
+        // Check for optional exit code (e.g., END 1)
+        let exit_code = if !self.is_at_end_of_statement() {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+
         let span = self.span_from(start);
-        Ok(Statement::new(StatementKind::End, span))
+        Ok(Statement::new(StatementKind::End { exit_code }, span))
     }
 
     /// Parses a STOP statement.
@@ -1337,10 +1379,20 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses a SYSTEM statement (exit program immediately).
+    /// Syntax: SYSTEM [exit_code]
+    /// QB64 supports an optional exit code: SYSTEM 1 exits with code 1.
     pub(super) fn parse_system(&mut self) -> Result<Statement, ()> {
         let start = self.advance().expect("SYSTEM keyword").span.start; // consume SYSTEM
+
+        // Check for optional exit code (e.g., SYSTEM 1)
+        let exit_code = if !self.is_at_end_of_statement() {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+
         let span = self.span_from(start);
-        Ok(Statement::new(StatementKind::System, span))
+        Ok(Statement::new(StatementKind::System { exit_code }, span))
     }
 
     /// Parses a SLEEP statement.

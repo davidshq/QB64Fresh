@@ -881,6 +881,7 @@ mod tests {
             kind: TypedExprKind::FunctionCall {
                 name: "SIN".to_string(),
                 args: vec![float_lit(0.5)],
+                params: vec![],
             },
             basic_type: BasicType::Double,
             span: Span::new(0, 1),

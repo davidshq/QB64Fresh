@@ -18,9 +18,9 @@ This document lists what was added or changed in each commit starting January 22
 | `c5b3cd0` | Fix macro collisions and LEN() type sizing for QB64pe bootstrap |
 | `bdeb0ba` | Add suffix fallback for constant lookups in symbol table |
 | `c6cd917` | Fix variable scoping and declaration issues for QB64PE bootstrap |
-| `7d35e62` | Refactor(codegen): extract RESERVED_IDENTIFIERS constant |
-| `322d9dc` | Refactor(codegen): extract declare_scalar_var and declare_array_var helpers |
-| `503155b` | Refactor(codegen): extract implicit_vars module and fix function call names |
+| G`7d35e62` | Refactor(codegen): extract RESERVED_IDENTIFIERS constant |
+| G`322d9dc` | Refactor(codegen): extract declare_scalar_var and declare_array_var helpers |
+| G`503155b` | Refactor(codegen): extract implicit_vars module and fix function call names |
 
 ---
 

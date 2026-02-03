@@ -517,6 +517,23 @@ pub enum SemanticError {
     /// ```
     #[error("OPTION BASE must be 0 or 1, found {value}")]
     InvalidOptionBase { value: i64, span: Span },
+
+    // ========================================================================
+    // Unimplemented Feature Errors
+    // ========================================================================
+    /// Command is not implemented (matching QB64pe behavior).
+    ///
+    /// Some legacy BASIC commands are intentionally not implemented because they
+    /// have no meaningful function on modern systems. QB64pe also throws
+    /// "Command not implemented" for these functions.
+    ///
+    /// # BASIC Example
+    ///
+    /// ```basic
+    /// PRINT FRE(0)    ' Error: Command not implemented
+    /// ```
+    #[error("Command not implemented: `{name}`")]
+    CommandNotImplemented { name: String, span: Span },
 }
 
 impl SemanticError {
@@ -551,6 +568,7 @@ impl SemanticError {
             SemanticError::SharedOutsideProcedure { span } => *span,
             SemanticError::SharedVariableNotFound { span, .. } => *span,
             SemanticError::InvalidOptionBase { span, .. } => *span,
+            SemanticError::CommandNotImplemented { span, .. } => *span,
         }
     }
 

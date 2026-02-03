@@ -75,13 +75,16 @@ for raw OpenGL access. These are **intentionally excluded** from QB64Fresh becau
 If raw OpenGL is needed, users can use `DECLARE LIBRARY` to call OpenGL functions directly.
 
 ---
+## Phase 8: Class VB RAD Visual Designer
+
+---
 
 ## Known Issues / Technical Debt
 
 ### Low Priority
 
-- [ ] Unicode support: Currently ASCII-focused *(Large - 4-6 sessions for full Unicode)*
-- [ ] Windows-specific path handling in file I/O *(Small - 1 session)*
+- [ ] Unicode support: UCASE$/LCASE$ now UTF-8 safe, added char counting helpers. Full Unicode support still needed *(Large - 4-6 sessions)*
+- [x] Windows-specific path handling in file I/O (fixed type mismatch in declarations)
 
 ---
 
@@ -118,3 +121,15 @@ If raw OpenGL is needed, users can use `DECLARE LIBRARY` to call OpenGL function
 
 **Stub Functions:** Many graphics/audio/input functions are stubs returning safe defaults.
 This is intentional for compatibility. See runtime.rs for implementation guidance.
+
+It IS a genuine bug. Look at the results:
+
+IDEErrorColor (correct) - declared at cfg_global.bas:30 and used in 8 places
+IDEErrroColor (typo) - used in only 1 place, on the same line that uses the correct spelling twice!
+
+TempDarkerErrorColor~& = _RGB32(_RED32(IDEErrorColor) * .5, _GREEN32(IDEErrroColor) * .5, _BLUE32(IDEErrorColor) * .5)
+★ Insight ─────────────────────────────────────
+
+This is a real bug in QB64PE. The typo IDEErrroColor is never declared, so BASIC treats it as an implicit variable initialized to 0. This means the green component of TempDarkerErrorColor is always 0 * 0.5 = 0 instead of using the actual green value from IDEErrorColor. The darker error color ends up more purple/magenta than intended.
+
+QB64PE compiles it without error because BASIC allows undeclared variables - they're just implicitly created. Our compiler does the same, which is why this isn't causing a compilation error for us either.

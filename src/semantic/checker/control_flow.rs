@@ -467,7 +467,7 @@ impl<'a> TypeChecker<'a> {
             typed_args.push(self.check_expr(arg));
         }
 
-        if let Some(proc) = proc {
+        if let Some(ref proc) = proc {
             // Check argument count (considering optional parameters)
             let required_count = proc.required_param_count();
             let max_count = proc.params.len();
@@ -506,10 +506,26 @@ impl<'a> TypeChecker<'a> {
             });
         }
 
+        // Extract parameter info for codegen (to know byref vs byval)
+        let params = if let Some(ref p) = proc {
+            p.params
+                .iter()
+                .map(|param| crate::semantic::typed_ir::TypedParameter {
+                    name: param.name.clone(),
+                    basic_type: param.basic_type.clone(),
+                    by_val: param.by_val,
+                    is_array: param.is_array,
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+
         TypedStatement::new(
             TypedStatementKind::Call {
                 name: name.to_string(),
                 args: typed_args,
+                params,
             },
             span,
         )

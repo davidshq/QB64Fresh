@@ -62,7 +62,16 @@ pub enum TypedExprKind {
     Grouped(Box<TypedExpr>),
 
     /// Function call with typed arguments.
-    FunctionCall { name: String, args: Vec<TypedExpr> },
+    ///
+    /// For user-defined functions, params contains the parameter info needed
+    /// for BYREF argument passing. For built-in functions, params is empty
+    /// (all built-in args are BYVAL).
+    FunctionCall {
+        name: String,
+        args: Vec<TypedExpr>,
+        /// Parameter info for BYREF handling (empty for built-in functions).
+        params: Vec<TypedParameter>,
+    },
 
     /// Array access with typed indices.
     ///
@@ -398,14 +407,14 @@ pub enum TypedStatementKind {
     /// EXIT statement.
     Exit { exit_type: ExitType },
 
-    /// END statement.
-    End,
+    /// END statement with optional exit code.
+    End { exit_code: Option<TypedExpr> },
 
     /// STOP statement.
     Stop,
 
-    /// SYSTEM statement (exit immediately).
-    System,
+    /// SYSTEM statement (exit immediately) with optional exit code.
+    System { exit_code: Option<TypedExpr> },
 
     /// SLEEP statement (pause execution).
     Sleep {
@@ -445,7 +454,12 @@ pub enum TypedStatementKind {
     KeyClear,
 
     /// SUB procedure call.
-    Call { name: String, args: Vec<TypedExpr> },
+    /// `params` contains the parameter definitions so codegen knows which are byref.
+    Call {
+        name: String,
+        args: Vec<TypedExpr>,
+        params: Vec<TypedParameter>,
+    },
 
     /// SUB definition.
     SubDefinition {
@@ -1885,6 +1899,8 @@ pub struct TypedParameter {
     pub basic_type: BasicType,
     /// Whether BYVAL was specified.
     pub by_val: bool,
+    /// Whether this is an array parameter.
+    pub is_array: bool,
 }
 
 /// A typed array dimension.

@@ -154,11 +154,17 @@ impl<'a> TypeChecker<'a> {
     /// This handles both regular identifiers and dotted identifiers.
     /// For dotted identifiers (e.g., `id.field`), we check if the prefix is a UDT variable.
     /// If so, we treat it as field access. Otherwise, it's a dotted variable name.
+    ///
+    /// When a symbol is found via suffix fallback (e.g., `x$` matches `x AS STRING`),
+    /// we use the symbol's declared name to ensure consistent C code generation.
     fn check_identifier(&mut self, name: &str, span: crate::ast::Span) -> TypedExpr {
-        // Check if it's an existing variable (exact match)
+        // Check if it's an existing variable (exact match or suffix fallback)
         if let Some(symbol) = self.symbols.lookup_symbol(name) {
+            // Use the symbol's declared name, not the reference name.
+            // This ensures consistency when a suffixed reference (e.g., `x$`)
+            // matches an unsuffixed declaration (e.g., `DIM x AS STRING`).
             return TypedExpr::new(
-                TypedExprKind::Variable(name.to_string()),
+                TypedExprKind::Variable(symbol.name.clone()),
                 symbol.basic_type.clone(),
                 span,
             );
@@ -179,8 +185,10 @@ impl<'a> TypeChecker<'a> {
         {
             return TypedExpr::new(
                 TypedExprKind::FunctionCall {
-                    name: name.to_string(),
+                    // Use canonical procedure name with type suffix
+                    name: proc.name.clone(),
                     args: vec![],
+                    params: vec![],
                 },
                 proc.return_type.clone().unwrap(),
                 span,
@@ -511,18 +519,17 @@ impl<'a> TypeChecker<'a> {
         // This is critical for BASIC's dual namespace model where `x` (scalar) and
         // `x()` (array) can coexist.
         if let Some(symbol) = self.symbols.lookup_array(name) {
+            // Clone values upfront to release borrow before calling check_array_access
+            let resolved_name = symbol.name.clone();
+            let element_type = symbol.basic_type.clone();
             let dimensions = if let SymbolKind::ArrayVariable { dimensions } = &symbol.kind {
                 dimensions.clone()
             } else {
                 vec![]
             };
-            return self.check_array_access(
-                name,
-                args,
-                dimensions,
-                symbol.basic_type.clone(),
-                span,
-            );
+            // Use resolved_name (from symbol) instead of raw 'name' for consistent C code generation
+            // This handles suffix mismatch: separgslayout2$(i) -> separgslayout2[i] when array is STRING
+            return self.check_array_access(&resolved_name, args, dimensions, element_type, span);
         }
 
         // Check for external functions (these are stored as scalars but have special handling)
@@ -549,6 +556,21 @@ impl<'a> TypeChecker<'a> {
             return self.check_iif_call(args, span);
         }
 
+        // Check for unimplemented legacy functions (matching QB64pe behavior)
+        // These functions exist in classic BASIC but are meaningless in modern systems
+        // and QB64pe throws compile errors for them
+        let upper_name = name.to_uppercase();
+        if matches!(
+            upper_name.as_str(),
+            "FRE" | "IOCTL$" | "SETMEM" | "FILEATTR"
+        ) {
+            self.errors.push(SemanticError::CommandNotImplemented {
+                name: name.to_string(),
+                span,
+            });
+            return TypedExpr::new(TypedExprKind::IntegerLiteral(0), BasicType::Long, span);
+        }
+
         // Look up procedure
         let proc = match self.symbols.lookup_procedure(name) {
             Some(p) => p.clone(),
@@ -570,6 +592,7 @@ impl<'a> TypeChecker<'a> {
                         TypedExprKind::FunctionCall {
                             name: name.to_string(),
                             args: args.iter().map(|a| self.check_expr(a)).collect(),
+                            params: vec![],
                         },
                         basic_type,
                         span,
@@ -615,8 +638,9 @@ impl<'a> TypeChecker<'a> {
             });
             return TypedExpr::new(
                 TypedExprKind::FunctionCall {
-                    name: name.to_string(),
+                    name: proc.name.clone(),
                     args: args.iter().map(|a| self.check_expr(a)).collect(),
+                    params: vec![],
                 },
                 BasicType::Void,
                 span,
@@ -665,10 +689,25 @@ impl<'a> TypeChecker<'a> {
             typed_args.push(typed_arg);
         }
 
+        // Convert procedure parameters to typed parameters for BYREF handling
+        let typed_params: Vec<TypedParameter> = proc
+            .params
+            .iter()
+            .map(|p| TypedParameter {
+                name: p.name.clone(),
+                basic_type: p.basic_type.clone(),
+                by_val: p.by_val,
+                is_array: p.is_array,
+            })
+            .collect();
+
         TypedExpr::new(
             TypedExprKind::FunctionCall {
-                name: name.to_string(),
+                // Use proc.name (the canonical name with type suffix) instead of caller's name
+                // e.g., if caller uses "getelement" but function is "GETELEMENT$", use the latter
+                name: proc.name.clone(),
                 args: typed_args,
+                params: typed_params,
             },
             proc.return_type.unwrap_or(BasicType::Void),
             span,
@@ -694,6 +733,7 @@ impl<'a> TypeChecker<'a> {
                 TypedExprKind::FunctionCall {
                     name: "_IIF".to_string(),
                     args: args.iter().map(|a| self.check_expr(a)).collect(),
+                    params: vec![],
                 },
                 BasicType::Double,
                 span,
@@ -740,6 +780,7 @@ impl<'a> TypeChecker<'a> {
             TypedExprKind::FunctionCall {
                 name: "_IIF".to_string(),
                 args: vec![cond_typed, true_typed, false_typed],
+                params: vec![], // Built-in, all args are BYVAL
             },
             result_type,
             span,

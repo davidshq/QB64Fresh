@@ -162,11 +162,27 @@ impl<'a> TypeChecker<'a> {
 
             StatementKind::Exit { exit_type } => self.check_exit(*exit_type, stmt.span),
 
-            StatementKind::End => TypedStatement::new(TypedStatementKind::End, stmt.span),
+            StatementKind::End { exit_code } => {
+                let typed_exit_code = exit_code.as_ref().map(|e| self.check_expr(e));
+                TypedStatement::new(
+                    TypedStatementKind::End {
+                        exit_code: typed_exit_code,
+                    },
+                    stmt.span,
+                )
+            }
 
             StatementKind::Stop => TypedStatement::new(TypedStatementKind::Stop, stmt.span),
 
-            StatementKind::System => TypedStatement::new(TypedStatementKind::System, stmt.span),
+            StatementKind::System { exit_code } => {
+                let typed_exit_code = exit_code.as_ref().map(|e| self.check_expr(e));
+                TypedStatement::new(
+                    TypedStatementKind::System {
+                        exit_code: typed_exit_code,
+                    },
+                    stmt.span,
+                )
+            }
 
             StatementKind::Sleep { seconds } => {
                 let typed_seconds = seconds.as_ref().map(|s| self.check_expr(s));
@@ -951,35 +967,43 @@ impl<'a> TypeChecker<'a> {
                 let typed_position = position.as_ref().map(|e| self.check_expr(e));
 
                 // Convert InputTarget to TypedInputTarget, inferring types
+                // When a symbol is found via suffix fallback, use the symbol's declared name
                 let typed_target = match target {
                     InputTarget::Variable(name) => {
-                        let var_type = if let Some(symbol) = self.symbols.lookup_symbol(name) {
-                            symbol.basic_type.clone()
-                        } else {
-                            let inferred = type_from_suffix(name)
-                                .unwrap_or_else(|| self.symbols.default_type_for(name));
-                            let symbol = Symbol {
-                                name: name.clone(),
-                                kind: SymbolKind::Variable,
-                                basic_type: inferred.clone(),
-                                span: stmt.span,
-                                is_mutable: true,
+                        let (resolved_name, var_type) =
+                            if let Some(symbol) = self.symbols.lookup_symbol(name) {
+                                (symbol.name.clone(), symbol.basic_type.clone())
+                            } else {
+                                let inferred = type_from_suffix(name)
+                                    .unwrap_or_else(|| self.symbols.default_type_for(name));
+                                let symbol = Symbol {
+                                    name: name.clone(),
+                                    kind: SymbolKind::Variable,
+                                    basic_type: inferred.clone(),
+                                    span: stmt.span,
+                                    is_mutable: true,
+                                };
+                                let _ = self.symbols.define_symbol(symbol);
+                                (name.clone(), inferred)
                             };
-                            let _ = self.symbols.define_symbol(symbol);
-                            inferred
-                        };
                         TypedInputTarget::Variable {
-                            name: name.clone(),
+                            name: resolved_name,
                             basic_type: var_type,
                         }
                     }
                     InputTarget::ArrayElement { name, indices } => {
                         let typed_indices: Vec<_> =
                             indices.iter().map(|i| self.check_expr(i)).collect();
-                        let element_type = type_from_suffix(name)
-                            .unwrap_or_else(|| self.symbols.default_type_for(name));
+                        let (resolved_name, element_type) =
+                            if let Some(symbol) = self.symbols.lookup_array(name) {
+                                (symbol.name.clone(), symbol.basic_type.clone())
+                            } else {
+                                let element_type = type_from_suffix(name)
+                                    .unwrap_or_else(|| self.symbols.default_type_for(name));
+                                (name.clone(), element_type)
+                            };
                         TypedInputTarget::ArrayElement {
-                            name: name.clone(),
+                            name: resolved_name,
                             indices: typed_indices,
                             element_type,
                         }
@@ -991,18 +1015,28 @@ impl<'a> TypeChecker<'a> {
                     } => {
                         let typed_indices: Vec<_> =
                             indices.iter().map(|i| self.check_expr(i)).collect();
+                        let resolved_name = if let Some(symbol) = self.symbols.lookup_array(name) {
+                            symbol.name.clone()
+                        } else {
+                            name.clone()
+                        };
                         // Field type would need UDT lookup; use SINGLE as placeholder
                         TypedInputTarget::ArrayElementField {
-                            name: name.clone(),
+                            name: resolved_name,
                             indices: typed_indices,
                             fields: fields.clone(),
                             field_type: BasicType::Single,
                         }
                     }
                     InputTarget::Field { name, fields } => {
+                        let resolved_name = if let Some(symbol) = self.symbols.lookup_symbol(name) {
+                            symbol.name.clone()
+                        } else {
+                            name.clone()
+                        };
                         // Field type would need UDT lookup; use SINGLE as placeholder
                         TypedInputTarget::Field {
-                            name: name.clone(),
+                            name: resolved_name,
                             fields: fields.clone(),
                             field_type: BasicType::Single,
                         }
@@ -1031,35 +1065,43 @@ impl<'a> TypeChecker<'a> {
                 let typed_position = position.as_ref().map(|e| self.check_expr(e));
 
                 // Convert InputTarget to TypedInputTarget, inferring types
+                // When a symbol is found via suffix fallback, use the symbol's declared name
                 let typed_target = match target {
                     InputTarget::Variable(name) => {
-                        let var_type = if let Some(symbol) = self.symbols.lookup_symbol(name) {
-                            symbol.basic_type.clone()
-                        } else {
-                            let inferred = type_from_suffix(name)
-                                .unwrap_or_else(|| self.symbols.default_type_for(name));
-                            let symbol = Symbol {
-                                name: name.clone(),
-                                kind: SymbolKind::Variable,
-                                basic_type: inferred.clone(),
-                                span: stmt.span,
-                                is_mutable: true,
+                        let (resolved_name, var_type) =
+                            if let Some(symbol) = self.symbols.lookup_symbol(name) {
+                                (symbol.name.clone(), symbol.basic_type.clone())
+                            } else {
+                                let inferred = type_from_suffix(name)
+                                    .unwrap_or_else(|| self.symbols.default_type_for(name));
+                                let symbol = Symbol {
+                                    name: name.clone(),
+                                    kind: SymbolKind::Variable,
+                                    basic_type: inferred.clone(),
+                                    span: stmt.span,
+                                    is_mutable: true,
+                                };
+                                let _ = self.symbols.define_symbol(symbol);
+                                (name.clone(), inferred)
                             };
-                            let _ = self.symbols.define_symbol(symbol);
-                            inferred
-                        };
                         TypedInputTarget::Variable {
-                            name: name.clone(),
+                            name: resolved_name,
                             basic_type: var_type,
                         }
                     }
                     InputTarget::ArrayElement { name, indices } => {
                         let typed_indices: Vec<_> =
                             indices.iter().map(|i| self.check_expr(i)).collect();
-                        let element_type = type_from_suffix(name)
-                            .unwrap_or_else(|| self.symbols.default_type_for(name));
+                        let (resolved_name, element_type) =
+                            if let Some(symbol) = self.symbols.lookup_array(name) {
+                                (symbol.name.clone(), symbol.basic_type.clone())
+                            } else {
+                                let element_type = type_from_suffix(name)
+                                    .unwrap_or_else(|| self.symbols.default_type_for(name));
+                                (name.clone(), element_type)
+                            };
                         TypedInputTarget::ArrayElement {
-                            name: name.clone(),
+                            name: resolved_name,
                             indices: typed_indices,
                             element_type,
                         }
@@ -1071,18 +1113,28 @@ impl<'a> TypeChecker<'a> {
                     } => {
                         let typed_indices: Vec<_> =
                             indices.iter().map(|i| self.check_expr(i)).collect();
+                        let resolved_name = if let Some(symbol) = self.symbols.lookup_array(name) {
+                            symbol.name.clone()
+                        } else {
+                            name.clone()
+                        };
                         // Field type would need UDT lookup; use SINGLE as placeholder
                         TypedInputTarget::ArrayElementField {
-                            name: name.clone(),
+                            name: resolved_name,
                             indices: typed_indices,
                             fields: fields.clone(),
                             field_type: BasicType::Single,
                         }
                     }
                     InputTarget::Field { name, fields } => {
+                        let resolved_name = if let Some(symbol) = self.symbols.lookup_symbol(name) {
+                            symbol.name.clone()
+                        } else {
+                            name.clone()
+                        };
                         // Field type would need UDT lookup; use SINGLE as placeholder
                         TypedInputTarget::Field {
-                            name: name.clone(),
+                            name: resolved_name,
                             fields: fields.clone(),
                             field_type: BasicType::Single,
                         }
@@ -1210,6 +1262,7 @@ impl<'a> TypeChecker<'a> {
                             name: p.name.clone(),
                             basic_type: param_type,
                             by_val: p.by_val,
+                            is_array: false, // DEF FN doesn't support array params
                         }
                     })
                     .collect();
@@ -1263,6 +1316,7 @@ impl<'a> TypeChecker<'a> {
                             name: p.name.clone(),
                             basic_type: param_type,
                             by_val: p.by_val,
+                            is_array: p.is_array,
                         }
                     })
                     .collect();
@@ -2289,6 +2343,11 @@ impl<'a> TypeChecker<'a> {
             }
 
             StatementKind::Setmem { bytes } => {
+                // SETMEM is obsolete - throw compile error matching QB64pe behavior
+                self.errors.push(SemanticError::CommandNotImplemented {
+                    name: "SETMEM".to_string(),
+                    span: stmt.span,
+                });
                 let typed_bytes = self.check_expr(bytes);
                 TypedStatement::new(TypedStatementKind::Setmem { bytes: typed_bytes }, stmt.span)
             }
@@ -2446,9 +2505,15 @@ impl<'a> TypeChecker<'a> {
 
             StatementKind::Lset { variable, value } => {
                 let typed_value = self.check_expr(value);
+                // Resolve variable name through symbol lookup (handles suffix mismatch)
+                let resolved_name = if let Some(symbol) = self.symbols.lookup_symbol(variable) {
+                    symbol.name.clone()
+                } else {
+                    variable.clone()
+                };
                 TypedStatement::new(
                     TypedStatementKind::Lset {
-                        variable: variable.clone(),
+                        variable: resolved_name,
                         value: typed_value,
                     },
                     stmt.span,
@@ -2457,9 +2522,15 @@ impl<'a> TypeChecker<'a> {
 
             StatementKind::Rset { variable, value } => {
                 let typed_value = self.check_expr(value);
+                // Resolve variable name through symbol lookup (handles suffix mismatch)
+                let resolved_name = if let Some(symbol) = self.symbols.lookup_symbol(variable) {
+                    symbol.name.clone()
+                } else {
+                    variable.clone()
+                };
                 TypedStatement::new(
                     TypedStatementKind::Rset {
-                        variable: variable.clone(),
+                        variable: resolved_name,
                         value: typed_value,
                     },
                     stmt.span,
@@ -2643,6 +2714,8 @@ impl<'a> TypeChecker<'a> {
                 file_num,
                 control_string,
             } => {
+                // IOCTL is a stub (legacy DOS device control)
+                // QB64pe also stubs this, so we just compile it to a no-op
                 let typed_file_num = self.check_expr(file_num);
                 let typed_control_string = self.check_expr(control_string);
                 TypedStatement::new(

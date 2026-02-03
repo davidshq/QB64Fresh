@@ -1,0 +1,20 @@
+---
+description: Compiler pipeline, AST, and how to add features for QB64Fresh
+globs: "src/**/*.rs"
+alwaysApply: false
+---
+
+# Compiler Knowledge
+
+**At session start (or context recovery):** Read `src/ast/expr.rs`, `src/ast/stmt.rs` (lines 1–200), `src/semantic/typed_ir.rs` (1–250), and skim `src/lexer/token.rs` for `TokenKind` to avoid wrong variant names.
+
+**AST:** Array access uses `FunctionCall` (same syntax as `func(i)`). No separate `ArrayElement`. `MidAssignment` target is `Expr` (supports arrays).
+
+**Adding a language feature:**
+1. AST (`ast/expr.rs` or `ast/stmt.rs`)
+2. Parser (`parser/*.rs`)
+3. TypedIR (`semantic/typed_ir.rs`)
+4. Semantic checker (`semantic/checker/*.rs`)
+5. Codegen (`codegen/c_backend/stmt.rs` or `expr.rs`)
+
+**Parser:** `peek()`, `peek_ahead(n)`, `advance()`, `match_token`, `expect`. Semantic: `check_expr` / `check_statement` → push to `self.errors`.

@@ -3,6 +3,7 @@
 //! This module provides functions for collecting program-wide information
 //! needed for code generation, including:
 //!
+//! - TYPE definitions (must be emitted before global variables)
 //! - Global variable declarations
 //! - Forward declarations for SUBs and FUNCTIONs
 //! - DATA pool values and label indices for RESTORE
@@ -11,13 +12,18 @@
 //! information needed for the C output's structure.
 
 use std::collections::HashMap;
+use std::fmt::Write;
 
 use crate::semantic::typed_ir::{
     TypedDataValue, TypedParameter, TypedProgram, TypedStatement, TypedStatementKind,
 };
+use crate::semantic::types::BasicType;
 
 use super::expr::{c_function_name, escape_string};
-use super::types::{c_identifier, c_type, default_init};
+use super::types::{
+    add_reserved_identifiers, c_identifier, c_type, declare_array_var, declare_scalar_var,
+    infer_type_from_suffix,
+};
 
 /// Information collected from DATA statements for code generation.
 ///
@@ -45,6 +51,125 @@ impl DataPoolInfo {
     }
 }
 
+/// Collects TYPE definitions from the program (user-defined types).
+///
+/// TYPE definitions must be emitted before global variables that use those types.
+/// This function recursively scans all statements including those inside
+/// SUB/FUNCTION bodies (since TYPEs can be defined in $INCLUDE files that
+/// are processed at any point in the program).
+///
+/// Returns a vector of C typedef strings in definition order.
+pub(super) fn collect_type_definitions(program: &TypedProgram) -> Vec<String> {
+    use std::collections::HashSet;
+
+    let mut type_defs = Vec::new();
+    let mut defined_types: HashSet<String> = HashSet::new();
+
+    // Recursively collect TYPE definitions from all statements
+    fn collect_from_stmt(
+        stmt: &TypedStatement,
+        type_defs: &mut Vec<String>,
+        defined_types: &mut HashSet<String>,
+    ) {
+        match &stmt.kind {
+            TypedStatementKind::TypeDefinition {
+                name,
+                members,
+                custom_type,
+            } => {
+                let base_name = c_identifier(name);
+                // Prefix with qbt_ to avoid collision with variable names
+                // (QB64 allows TYPE and DIM to use the same name)
+                let c_name = format!("qbt_{}", base_name);
+                if !defined_types.contains(&c_name) {
+                    let mut def = String::new();
+
+                    // CUSTOMTYPE modifier indicates C-compatible (packed) memory layout
+                    if *custom_type {
+                        writeln!(def, "#pragma pack(push, 1)").unwrap();
+                    }
+
+                    writeln!(def, "typedef struct {} {{", c_name).unwrap();
+
+                    for member in members {
+                        let c_member_name = c_identifier(&member.name);
+                        if let BasicType::FixedString(len) = &member.basic_type {
+                            writeln!(def, "    char {}[{}];", c_member_name, len + 1).unwrap();
+                        } else {
+                            let c_member_type = c_type(&member.basic_type);
+                            writeln!(def, "    {} {};", c_member_type, c_member_name).unwrap();
+                        }
+                    }
+
+                    writeln!(def, "}} {};", c_name).unwrap();
+
+                    if *custom_type {
+                        writeln!(def, "#pragma pack(pop)").unwrap();
+                    }
+
+                    type_defs.push(def);
+                    defined_types.insert(c_name);
+                }
+            }
+
+            // Recurse into SUB/FUNCTION bodies since $INCLUDE files may define TYPEs there
+            TypedStatementKind::SubDefinition { body, .. }
+            | TypedStatementKind::FunctionDefinition { body, .. } => {
+                for s in body {
+                    collect_from_stmt(s, type_defs, defined_types);
+                }
+            }
+
+            // Recurse into control flow bodies
+            TypedStatementKind::If {
+                then_branch,
+                elseif_branches,
+                else_branch,
+                ..
+            } => {
+                for s in then_branch {
+                    collect_from_stmt(s, type_defs, defined_types);
+                }
+                for (_, branch_body) in elseif_branches {
+                    for s in branch_body {
+                        collect_from_stmt(s, type_defs, defined_types);
+                    }
+                }
+                if let Some(else_stmts) = else_branch {
+                    for s in else_stmts {
+                        collect_from_stmt(s, type_defs, defined_types);
+                    }
+                }
+            }
+
+            TypedStatementKind::For { body, .. }
+            | TypedStatementKind::While { body, .. }
+            | TypedStatementKind::DoLoop { body, .. } => {
+                for s in body {
+                    collect_from_stmt(s, type_defs, defined_types);
+                }
+            }
+
+            TypedStatementKind::SelectCase { cases, .. } => {
+                for case in cases {
+                    for s in &case.body {
+                        collect_from_stmt(s, type_defs, defined_types);
+                    }
+                }
+            }
+
+            _ => {}
+        }
+    }
+
+    // Collect from all top-level statements
+    for stmt in &program.statements {
+        collect_from_stmt(stmt, &mut type_defs, &mut defined_types);
+    }
+
+    type_defs
+}
+
 /// Collects global variables and procedure forward declarations from the program.
 ///
 /// Returns a tuple of:
@@ -60,38 +185,25 @@ impl DataPoolInfo {
 /// implicitly-declared variables are also collected by scanning Assignment
 /// and FOR loop statements to ensure all variables are properly declared
 /// in the generated C code.
+/// Returns (globals, forward_decls, string_const_inits)
+/// - globals: Global variable declarations
+/// - forward_decls: Forward declarations for SUBs/FUNCTIONs
+/// - string_const_inits: String constant initializations to run at program start
 pub(super) fn collect_globals(
     program: &TypedProgram,
     emit_params_fn: impl Fn(&[TypedParameter]) -> String,
-) -> (Vec<String>, Vec<String>) {
+) -> (Vec<String>, Vec<String>, Vec<String>) {
     use crate::semantic::types::BasicType;
     use std::collections::HashSet;
 
     let mut globals = Vec::new();
     let mut forward_decls = Vec::new();
+    let mut string_const_inits = Vec::new();
     // Track already-declared variable names to avoid duplicates
     let mut declared_vars: HashSet<String> = HashSet::new();
 
-    // Helper to add a global variable if not already declared
-    // Note: For strings, we initialize to NULL since qb_string_new() is not a constant
-    // expression in C. The generated code should handle NULL strings safely.
-    let add_global = |name: &str,
-                      basic_type: &BasicType,
-                      declared_vars: &mut HashSet<String>,
-                      globals: &mut Vec<String>| {
-        let c_name = c_identifier(name);
-        if !declared_vars.contains(&c_name) {
-            let c_ty = c_type(basic_type);
-            // For strings, use NULL as initial value since function calls can't be
-            // used as global initializers in C
-            let init = match basic_type {
-                BasicType::String => "NULL".to_string(),
-                _ => default_init(basic_type),
-            };
-            globals.push(format!("{} {} = {};", c_ty, c_name, init));
-            declared_vars.insert(c_name);
-        }
-    };
+    // Add built-in constants and runtime variables that should not be redeclared
+    add_reserved_identifiers(&mut declared_vars);
 
     // First pass: collect explicit DIM declarations and SUB/FUNCTION forward decls
     for stmt in &program.statements {
@@ -100,10 +212,46 @@ pub(super) fn collect_globals(
                 variables,
                 shared: _,
             } => {
-                // Simple global variables (non-array)
                 for var in variables {
                     if var.dimensions.is_empty() {
-                        add_global(&var.name, &var.basic_type, &mut declared_vars, &mut globals);
+                        // Simple global variables (non-array)
+                        declare_scalar_var(
+                            &var.name,
+                            &var.basic_type,
+                            &mut declared_vars,
+                            &mut globals,
+                        );
+                    } else {
+                        // Global arrays (declared as pointers)
+                        declare_array_var(
+                            &var.name,
+                            &var.basic_type,
+                            &mut declared_vars,
+                            &mut globals,
+                        );
+                    }
+                }
+            }
+
+            TypedStatementKind::Const { definitions } => {
+                // Emit CONST definitions as global constants
+                for (name, value_expr, _basic_type) in definitions {
+                    let c_name = c_identifier(name);
+                    if !declared_vars.contains(&c_name) {
+                        let c_ty = c_type(&value_expr.basic_type);
+                        // Try to evaluate as a constant expression
+                        let value_code =
+                            super::expr::emit_expr(value_expr).unwrap_or_else(|_| "0".to_string());
+
+                        // For string constants, we can't use function calls as initializers
+                        // in C. Declare without initializer and add initialization to run at start.
+                        if matches!(value_expr.basic_type, BasicType::String) {
+                            globals.push(format!("qb_string* {} = NULL;", c_name));
+                            string_const_inits.push(format!("{} = {};", c_name, value_code));
+                        } else {
+                            globals.push(format!("const {} {} = {};", c_ty, c_name, value_code));
+                        }
+                        declared_vars.insert(c_name);
                     }
                 }
             }
@@ -130,13 +278,159 @@ pub(super) fn collect_globals(
         }
     }
 
+    // Additional pass: collect REDIM SHARED arrays from within SUB/FUNCTION bodies
+    // In QB64, REDIM SHARED inside a procedure creates a global array
+    fn collect_redim_shared(
+        stmt: &TypedStatement,
+        declared_vars: &mut HashSet<String>,
+        globals: &mut Vec<String>,
+    ) {
+        match &stmt.kind {
+            TypedStatementKind::Redim {
+                variables, shared, ..
+            } if *shared => {
+                for var in variables {
+                    // REDIM SHARED creates a global array pointer
+                    declare_array_var(&var.name, &var.element_type, declared_vars, globals);
+                }
+            }
+            TypedStatementKind::SubDefinition { body, .. }
+            | TypedStatementKind::FunctionDefinition { body, .. } => {
+                // Recurse into procedure bodies to find REDIM SHARED
+                for s in body {
+                    collect_redim_shared(s, declared_vars, globals);
+                }
+            }
+            TypedStatementKind::If {
+                then_branch,
+                elseif_branches,
+                else_branch,
+                ..
+            } => {
+                for s in then_branch {
+                    collect_redim_shared(s, declared_vars, globals);
+                }
+                for (_, branch) in elseif_branches {
+                    for s in branch {
+                        collect_redim_shared(s, declared_vars, globals);
+                    }
+                }
+                if let Some(branch) = else_branch {
+                    for s in branch {
+                        collect_redim_shared(s, declared_vars, globals);
+                    }
+                }
+            }
+            TypedStatementKind::For { body, .. }
+            | TypedStatementKind::While { body, .. }
+            | TypedStatementKind::DoLoop { body, .. } => {
+                for s in body {
+                    collect_redim_shared(s, declared_vars, globals);
+                }
+            }
+            TypedStatementKind::SelectCase { cases, .. } => {
+                for case in cases {
+                    for s in &case.body {
+                        collect_redim_shared(s, declared_vars, globals);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    for stmt in &program.statements {
+        collect_redim_shared(stmt, &mut declared_vars, &mut globals);
+    }
+
+    // Additional pass: collect SHARED variables from within SUB/FUNCTION bodies
+    // In BASIC, SHARED inside a procedure declares access to a module-level variable.
+    // If the variable doesn't exist at module level, it's implicitly created.
+
+    fn collect_shared_vars(
+        stmt: &TypedStatement,
+        declared_vars: &mut HashSet<String>,
+        globals: &mut Vec<String>,
+    ) {
+        match &stmt.kind {
+            TypedStatementKind::SharedStmt { variables } => {
+                for var_name in variables {
+                    // Implicitly create module-level variable
+                    // Infer type from the variable name suffix
+                    let basic_type = infer_type_from_suffix(var_name);
+                    declare_scalar_var(var_name, &basic_type, declared_vars, globals);
+                }
+            }
+            TypedStatementKind::SubDefinition { body, .. }
+            | TypedStatementKind::FunctionDefinition { body, .. } => {
+                for s in body {
+                    collect_shared_vars(s, declared_vars, globals);
+                }
+            }
+            TypedStatementKind::If {
+                then_branch,
+                elseif_branches,
+                else_branch,
+                ..
+            } => {
+                for s in then_branch {
+                    collect_shared_vars(s, declared_vars, globals);
+                }
+                for (_, branch) in elseif_branches {
+                    for s in branch {
+                        collect_shared_vars(s, declared_vars, globals);
+                    }
+                }
+                if let Some(branch) = else_branch {
+                    for s in branch {
+                        collect_shared_vars(s, declared_vars, globals);
+                    }
+                }
+            }
+            TypedStatementKind::For { body, .. }
+            | TypedStatementKind::While { body, .. }
+            | TypedStatementKind::DoLoop { body, .. } => {
+                for s in body {
+                    collect_shared_vars(s, declared_vars, globals);
+                }
+            }
+            TypedStatementKind::SelectCase { cases, .. } => {
+                for case in cases {
+                    for s in &case.body {
+                        collect_shared_vars(s, declared_vars, globals);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    for stmt in &program.statements {
+        collect_shared_vars(stmt, &mut declared_vars, &mut globals);
+    }
+
     // Second pass: collect implicit variables from assignments and FOR loops
     // (only at module level, not inside SUB/FUNCTION definitions)
     for stmt in &program.statements {
         collect_implicit_vars_from_stmt(stmt, &mut declared_vars, &mut globals, false);
     }
 
-    (globals, forward_decls)
+    // Add initialization for all global string variables
+    // In BASIC, uninitialized strings are empty (""), not null.
+    // We can't initialize qb_string* at global scope in C, so we do it at program start.
+    for decl in &globals {
+        // Match declarations like "qb_string* name = NULL;" or "qb_string* name_str = NULL;"
+        if decl.starts_with("qb_string* ") && decl.ends_with(" = NULL;") {
+            // Extract variable name: "qb_string* foo = NULL;" -> "foo"
+            let after_type = &decl["qb_string* ".len()..];
+            if let Some(name) = after_type.strip_suffix(" = NULL;") {
+                // Add initialization: foo = qb_string_new("");
+                string_const_inits.push(format!("{} = qb_string_new(\"\");", name));
+            }
+        }
+    }
+
+    (globals, forward_decls, string_const_inits)
 }
 
 /// Recursively collects implicit variable declarations from a statement.
@@ -149,25 +443,6 @@ fn collect_implicit_vars_from_stmt(
     globals: &mut Vec<String>,
     inside_procedure: bool,
 ) {
-    // Helper to add a variable
-    // For strings, use NULL since function calls aren't valid global initializers in C
-    let add_var = |name: &str,
-                   basic_type: &crate::semantic::types::BasicType,
-                   declared_vars: &mut std::collections::HashSet<String>,
-                   globals: &mut Vec<String>| {
-        use crate::semantic::types::BasicType;
-        let c_name = c_identifier(name);
-        if !declared_vars.contains(&c_name) {
-            let c_ty = c_type(basic_type);
-            let init = match basic_type {
-                BasicType::String => "NULL".to_string(),
-                _ => default_init(basic_type),
-            };
-            globals.push(format!("{} {} = {};", c_ty, c_name, init));
-            declared_vars.insert(c_name);
-        }
-    };
-
     match &stmt.kind {
         // Skip SUB/FUNCTION bodies - local variables don't need global declarations
         TypedStatementKind::SubDefinition { .. }
@@ -180,7 +455,7 @@ fn collect_implicit_vars_from_stmt(
             name, target_type, ..
         } => {
             if !inside_procedure {
-                add_var(name, target_type, declared_vars, globals);
+                declare_scalar_var(name, target_type, declared_vars, globals);
             }
         }
 
@@ -192,7 +467,7 @@ fn collect_implicit_vars_from_stmt(
             ..
         } => {
             if !inside_procedure {
-                add_var(variable, var_type, declared_vars, globals);
+                declare_scalar_var(variable, var_type, declared_vars, globals);
             }
             // Recurse into body (still at module level if we're at module level)
             for s in body {
@@ -246,6 +521,63 @@ fn collect_implicit_vars_from_stmt(
             }
         }
 
+        // Print statement - scan for variables in expressions
+        TypedStatementKind::Print { items, .. } => {
+            if !inside_procedure {
+                for item in items {
+                    collect_vars_from_expr(&item.expr, declared_vars, globals);
+                }
+            }
+        }
+
+        // FilePrint statement - scan for variables in expressions
+        TypedStatementKind::FilePrint { items, .. } => {
+            if !inside_procedure {
+                for item in items {
+                    collect_vars_from_expr(&item.expr, declared_vars, globals);
+                }
+            }
+        }
+
+        _ => {}
+    }
+}
+
+/// Recursively collect variables from an expression and add as globals if not declared.
+fn collect_vars_from_expr(
+    expr: &crate::semantic::typed_ir::TypedExpr,
+    declared_vars: &mut std::collections::HashSet<String>,
+    globals: &mut Vec<String>,
+) {
+    use crate::semantic::typed_ir::TypedExprKind;
+
+    match &expr.kind {
+        TypedExprKind::Variable(name) => {
+            // Skip variables starting with _ (built-in constants)
+            if !name.starts_with('_') {
+                declare_scalar_var(name, &expr.basic_type, declared_vars, globals);
+            }
+        }
+        TypedExprKind::Binary { left, right, .. } => {
+            collect_vars_from_expr(left, declared_vars, globals);
+            collect_vars_from_expr(right, declared_vars, globals);
+        }
+        TypedExprKind::Unary { operand, .. } => {
+            collect_vars_from_expr(operand, declared_vars, globals);
+        }
+        TypedExprKind::Grouped(inner) => {
+            collect_vars_from_expr(inner, declared_vars, globals);
+        }
+        TypedExprKind::FunctionCall { args, .. } => {
+            for arg in args {
+                collect_vars_from_expr(arg, declared_vars, globals);
+            }
+        }
+        TypedExprKind::ArrayAccess { indices, .. } => {
+            for idx in indices {
+                collect_vars_from_expr(idx, declared_vars, globals);
+            }
+        }
         _ => {}
     }
 }

@@ -484,6 +484,29 @@ impl QbLanguageServer {
             .collect()
     }
 
+    /// Gets the identifier at the given position, returning its name and range.
+    ///
+    /// Used by prepare_rename to validate that the position is on a renameable identifier.
+    fn get_identifier_at_position(
+        &self,
+        source: &str,
+        position: Position,
+    ) -> Option<(String, Range)> {
+        let offset = position_to_offset(source, position)?;
+        let tokens = lex(source);
+
+        for token in &tokens {
+            if token.span.start <= offset
+                && offset < token.span.end
+                && token.kind == TokenKind::Identifier
+            {
+                let range = span_to_range(source, token.span.start, token.span.end);
+                return Some((token.text.clone(), range));
+            }
+        }
+        None
+    }
+
     /// Computes inlay hints for a document range.
     ///
     /// Currently provides:
@@ -576,6 +599,11 @@ impl LanguageServer for QbLanguageServer {
                 }),
                 // Inlay hints support (type annotations)
                 inlay_hint_provider: Some(OneOf::Left(true)),
+                // Rename symbol support
+                rename_provider: Some(OneOf::Right(RenameOptions {
+                    prepare_provider: Some(true),
+                    work_done_progress_options: Default::default(),
+                })),
                 // Diagnostics are published proactively (no explicit capability needed)
                 ..Default::default()
             },
@@ -773,6 +801,74 @@ impl LanguageServer for QbLanguageServer {
                 })
                 .collect();
             return Ok(Some(locations));
+        }
+
+        Ok(None)
+    }
+
+    async fn prepare_rename(
+        &self,
+        params: TextDocumentPositionParams,
+    ) -> Result<Option<PrepareRenameResponse>> {
+        let uri = &params.text_document.uri;
+        let position = params.position;
+
+        // Get document content
+        let content = {
+            let state = self.state.read().await;
+            state.documents.get(uri).map(|d| d.content.clone())
+        };
+
+        if let Some(content) = content {
+            // Check if there's a valid identifier at this position
+            if let Some((name, range)) = self.get_identifier_at_position(&content, position) {
+                // Return the range and placeholder text for the rename dialog
+                return Ok(Some(PrepareRenameResponse::RangeWithPlaceholder {
+                    range,
+                    placeholder: name,
+                }));
+            }
+        }
+
+        Ok(None)
+    }
+
+    async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
+        let uri = &params.text_document_position.text_document.uri;
+        let position = params.text_document_position.position;
+        let new_name = &params.new_name;
+
+        // Get document content
+        let content = {
+            let state = self.state.read().await;
+            state.documents.get(uri).map(|d| d.content.clone())
+        };
+
+        if let Some(content) = content {
+            // Find all references to rename
+            let ranges = self.find_references(&content, position);
+            if ranges.is_empty() {
+                return Ok(None);
+            }
+
+            // Create text edits for all occurrences
+            let edits: Vec<TextEdit> = ranges
+                .into_iter()
+                .map(|range| TextEdit {
+                    range,
+                    new_text: new_name.clone(),
+                })
+                .collect();
+
+            // Build workspace edit
+            let mut changes = HashMap::new();
+            changes.insert(uri.clone(), edits);
+
+            return Ok(Some(WorkspaceEdit {
+                changes: Some(changes),
+                document_changes: None,
+                change_annotations: None,
+            }));
         }
 
         Ok(None)

@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-QB64Fresh is a complete ground-up rewrite of QB64, a modern BASIC compiler. This is NOT a fork - it's a fresh implementation informed by analyzing the original QB64 Phoenix Edition.
+QB64Fresh is a complete ground-up rewrite of QB64, a modern BASIC compiler. This is NOT a fork—it's a fresh implementation aiming for full QB64pe parity.
 
 **Implementation Language:** Rust
 **Code Generation:** C intermediate (with trait-based abstraction for future backends)
@@ -11,7 +11,28 @@ QB64Fresh is a complete ground-up rewrite of QB64, a modern BASIC compiler. This
 ## Directory Context
 
 - **QB64pe/** - Original QB64 Phoenix Edition source (READ ONLY - for analysis)
+   - When compiling QB64pe YOU ALWAYS NEED TO COMPILE IT IN THIS DIRECTORY SO IT HAS ACCESS TO ITS FILES.
 - **QB64Fresh/** - New implementation (this project - WRITE HERE)
+
+---
+
+## Tooling
+- You do not need to request permission to use `sed` on files within the `QB64Contain` project or its children.
+- Dogfood our own tooling whenever you can - e.g., the debugger, linter, and formatter we built for QB64Fresh.
+
+## Safety: Memory Limits (CRITICAL)
+
+**ALWAYS use memory limits when running QB64Fresh or QB64pe.** Both compilers can consume 25GB+ memory and crash the system.
+
+```bash
+# REQUIRED: Set 4GB memory limit before running (see run_limited.sh)
+bash -c 'ulimit -v 4194304 && ./qb64fresh input.bas --emit-c -o output.c'
+bash -c 'ulimit -v 4194304 && ./qb64pe_fresh -x input.bas -o output'
+```
+
+**Note:** With 4GB limit, compiling very large files (e.g. full QB64pe) may still grow until OOM; the limit caps damage. See [docs/MEMORY_LIMITS.md](docs/MEMORY_LIMITS.md) for details.
+
+**Built-in source size limits:** QB64Fresh now enforces configurable limits (default 100MB) on preprocessed source and raw input file sizes. If exceeded, the compiler exits with a clear error instead of OOM. Override via `QB64FRESH_MAX_SOURCE_BYTES` and `QB64FRESH_MAX_INPUT_BYTES` environment variables. This provides an additional safety guardrail when `ulimit` is not set.
 
 ---
 ## Logging System (IMPORTANT)
@@ -499,6 +520,8 @@ pub trait CodeGenerator {
 | `src/codegen/c_backend/const_fold.rs` | Constant folding optimization | ✓ Complete |
 | `examples/hello.bas` | Test BASIC file for development | ✓ Complete |
 | `examples/simple.bas` | Simpler test BASIC file | ✓ Complete |
+| `tools/fmt/` | Code formatter for BASIC source files | ✓ Complete |
+| `tools/lint/` | Static analyzer/linter for BASIC programs | ✓ Complete |
 
 ### Configuration Files
 
@@ -517,7 +540,7 @@ pub trait CodeGenerator {
 |------|---------|
 | `CLAUDE.md` | AI assistant configuration (this file) |
 | `DEVELOPMENT.md` | Developer onboarding guide |
-| `docs/QB64PE_ARCHITECTURE_ANALYSIS.md` | Original QB64 architecture analysis |
+| `docs/archive/QB64PE_ARCHITECTURE_ANALYSIS.md` | Original QB64 architecture analysis and reference |
 | `docs/PARSER_PLAN.md` | Detailed parser implementation plan |
 | `docs/QB64_SYNTAX_REFERENCE.md` | QB64 language syntax quick reference |
 
@@ -598,6 +621,13 @@ QB64Fresh/                    # Main compiler workspace
 │   │       └── error.rs      # Audio errors
 │   └── include/
 │       └── qb64fresh_rt.h    # C header for FFI
+├── tools/                    # Auxiliary tools (workspace members)
+│   ├── README.md             # Tool documentation
+│   ├── fmt/                  # Code formatter
+│   │   └── src/lib.rs, main.rs
+│   ├── lint/                 # Static analyzer/linter
+│   │   └── src/lib.rs, main.rs
+│   └── fix_encoding.rs       # Legacy BASIC file encoding utility
 └── examples/                 # Test BASIC files
 
 vscode-qb64fresh/             # VSCode extension (sibling project)
@@ -610,14 +640,54 @@ vscode-qb64fresh/             # VSCode extension (sibling project)
 - `qb64fresh` - Compiler CLI (lexer → parser → semantic → codegen)
 - `qb64fresh-lsp` - Language server for IDE integration (stdio JSON-RPC)
 
+### Tools (Workspace Members)
+
+See `tools/README.md` for complete documentation of all tools.
+
+**Formatter (`tools/fmt`)** - Code formatter for BASIC source files
+- Keyword capitalization (UPPERCASE, lowercase, Title Case, preserve)
+- Operator spacing, indentation (spaces/tabs)
+- Style presets: default, minimal, qb64, pretty
+- Usage: `qb64fresh-fmt --check *.bas` or `qb64fresh-fmt --diff myfile.bas`
+
+**Linter (`tools/lint`)** - Static analysis for BASIC programs
+- Detects common issues and potential bugs
+- Integrates with the semantic analyzer
+
 ### Runtime Modes
 Code generation supports two modes via `--runtime` flag:
-- `inline` (default) - Self-contained C with embedded runtime
-- `external` - Links against `libqb64fresh_rt` static library
+- `inline` (default) - Self-contained C with embedded runtime (graphics are stubs)
+- `external` - Links against `libqb64fresh_rt` static library (full graphics support)
+
+**Inline Runtime:**
+```bash
+cargo run --bin qb64fresh -- program.bas --emit-c
+```
+Embeds all runtime functions directly in generated C. Graphics calls become no-ops with frame limiting to prevent infinite loops in game loops (default 1000 frames, configurable via `QB64FRESH_MAX_FRAMES` env var). See `docs/GRAPHICS.md` for details.
+
+**External Runtime:**
+```bash
+# Build runtime library
+cd runtime && cargo build --release --features graphics-sdl2
+
+# Compile BASIC to C
+cargo run --bin qb64fresh -- program.bas --emit-c --runtime external
+
+# Compile and link
+gcc -I runtime/include program.c -L target/release -lqb64fresh_rt \
+    $(pkg-config --libs sdl2) -lasound -lm -lpthread -ldl -o program
+```
+
+**Key files:**
+- `runtime/include/qb64fresh_rt.h` - C header with all FFI declarations
+- `runtime/src/graphics_ffi.rs` - Graphics FFI layer (100+ functions)
+- `runtime/src/lib.rs` - Runtime initialization functions
 
 ---
 
 ## Lessons Learned
+
+> **Note:** For a comprehensive, organized collection of key learnings, see [`docs/KEY_LEARNINGS.md`](docs/KEY_LEARNINGS.md). This section contains a brief summary of critical patterns.
 
 ### Tooling (Verified 2026-01)
 

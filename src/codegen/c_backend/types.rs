@@ -20,7 +20,145 @@
 //! BASIC allows type suffix characters in identifiers (`$`, `%`, `&`, etc.)
 //! which are invalid in C. These are converted to descriptive suffixes.
 
+use std::collections::HashSet;
+
 use crate::semantic::types::BasicType;
+
+/// Built-in constants and runtime variables that should never be redeclared.
+///
+/// These identifiers are either:
+/// - Defined as `#define` macros in the runtime header
+/// - Reserved for internal runtime use
+/// - Used as dummy variables for `LEN()` type sizing
+///
+/// When collecting implicit variable declarations, these names must be skipped
+/// to avoid redeclaration errors in the generated C code.
+pub(super) const RESERVED_IDENTIFIERS: &[&str] = &[
+    // Boolean constants (defined as macros)
+    "_TRUE",
+    "_FALSE",
+    // Comparison result constants (defined as macros)
+    "_EQUAL",
+    "_GREATER",
+    "_LESS",
+    // String constant macros
+    "_STR_EMPTY",
+    "_STR_CRLF",
+    "_STR_LF",
+    "_STR_CR",
+    "_CHR_QUOTE",
+    "_CHR_HT",
+    "_CHR_LF",
+    // Dummy variables for LEN() type sizing (defined in runtime)
+    "dummy",
+    "dummy_int_int",
+    "dummy_int",
+    "dummy_lng_lng",
+    "dummy_sng",
+    "dummy_dbl",
+    "dummy_dbl_dbl",
+    "dummy_int_lng",
+];
+
+/// Adds all reserved identifiers to a HashSet.
+///
+/// This should be called when building the set of "already declared" variables
+/// before collecting implicit declarations.
+///
+/// # Example
+///
+/// ```ignore
+/// let mut declared_vars: HashSet<String> = HashSet::new();
+/// add_reserved_identifiers(&mut declared_vars);
+/// // Now declared_vars contains all reserved names
+/// ```
+pub(super) fn add_reserved_identifiers(set: &mut HashSet<String>) {
+    for &name in RESERVED_IDENTIFIERS {
+        set.insert(name.to_string());
+    }
+}
+
+/// Declares a scalar variable if not already declared.
+///
+/// Returns `true` if the variable was newly declared, `false` if it already existed.
+///
+/// # Generated declarations
+///
+/// | Type | Declaration |
+/// |------|-------------|
+/// | `String` | `qb_string* name = NULL;` |
+/// | `FixedString(N)` | `char name[N+1] = "";` |
+/// | `UserDefined` | `type name = {0};` |
+/// | Others | `type name = default_init;` |
+pub(super) fn declare_scalar_var(
+    name: &str,
+    basic_type: &BasicType,
+    declared_vars: &mut HashSet<String>,
+    decls: &mut Vec<String>,
+) -> bool {
+    let c_name = c_identifier(name);
+    if declared_vars.contains(&c_name) {
+        return false;
+    }
+
+    let decl = match basic_type {
+        BasicType::FixedString(len) => format!("char {}[{}] = \"\";", c_name, len + 1),
+        BasicType::String => format!("qb_string* {} = NULL;", c_name),
+        BasicType::UserDefined(_) => {
+            let c_ty = c_type(basic_type);
+            format!("{} {} = {{0}};", c_ty, c_name)
+        }
+        _ => {
+            let c_ty = c_type(basic_type);
+            let init = default_init(basic_type);
+            format!("{} {} = {};", c_ty, c_name, init)
+        }
+    };
+
+    decls.push(decl);
+    declared_vars.insert(c_name);
+    true
+}
+
+/// Declares an array pointer variable if not already declared.
+///
+/// Arrays in C are declared as pointers initialized to NULL.
+/// They will be allocated with malloc/realloc at runtime.
+///
+/// Returns `true` if the variable was newly declared, `false` if it already existed.
+///
+/// # Generated declarations
+///
+/// | Element Type | Declaration |
+/// |--------------|-------------|
+/// | `FixedString(N)` | `char (*name)[N+1] = NULL;` |
+/// | Others | `type* name = NULL;` |
+pub(super) fn declare_array_var(
+    name: &str,
+    element_type: &BasicType,
+    declared_vars: &mut HashSet<String>,
+    decls: &mut Vec<String>,
+) -> bool {
+    let c_name = c_identifier(name);
+    if declared_vars.contains(&c_name) {
+        return false;
+    }
+
+    let decl = match element_type {
+        BasicType::FixedString(len) => {
+            // Array of fixed-length strings: char (*name)[len+1]
+            format!("char (*{})[{}] = NULL;", c_name, len + 1)
+        }
+        _ => {
+            let c_ty = c_type(element_type);
+            format!("{}* {} = NULL;", c_ty, c_name)
+        }
+    };
+
+    decls.push(decl);
+    declared_vars.insert(c_name);
+    true
+}
 
 /// Maps a BASIC type to its C representation.
 ///
@@ -52,7 +190,8 @@ pub(super) fn c_type(basic_type: &BasicType) -> String {
         BasicType::UnsignedInteger => "uint16_t".to_string(),
         BasicType::UnsignedLong => "uint32_t".to_string(),
         BasicType::UnsignedInteger64 => "uint64_t".to_string(),
-        BasicType::UserDefined(name) => format!("struct {}", name),
+        // Prefix with qbt_ to avoid collision with variable names
+        BasicType::UserDefined(name) => format!("qbt_{}", name),
         BasicType::Array { element_type, .. } => {
             format!("{}*", c_type(element_type))
         }
@@ -80,6 +219,7 @@ pub(super) fn default_init(basic_type: &BasicType) -> String {
         BasicType::FixedString(_) => "\"\"".to_string(),
         BasicType::Single | BasicType::Double | BasicType::Float => "0.0".to_string(),
         BasicType::Mem => "{0}".to_string(), // Zero-initialized struct
+        BasicType::UserDefined(_) => "{0}".to_string(), // User-defined TYPE - zero-initialized
         _ => "0".to_string(),
     }
 }
@@ -102,12 +242,87 @@ pub(super) fn default_init(basic_type: &BasicType) -> String {
 /// assert_eq!(c_identifier("myVar"), "myVar");
 /// ```
 pub(super) fn c_identifier(name: &str) -> String {
-    name.replace('$', "_str")
+    let result = name
+        .replace('$', "_str")
         .replace('%', "_int")
         .replace('&', "_lng")
         .replace('!', "_sng")
         .replace('#', "_dbl")
         .replace('`', "_bit")
+        .replace('.', "_") // QB64 allows dots in variable names; C doesn't
+        .replace('~', "_u"); // Unsigned type prefix
+
+    // Handle C reserved words and standard library conflicts by appending underscore
+    match result.to_lowercase().as_str() {
+        // C keywords
+        "default" | "switch" | "case" | "break" | "continue" | "return" | "void" | "int"
+        | "char" | "float" | "double" | "long" | "short" | "unsigned" | "signed" | "const"
+        | "static" | "extern" | "register" | "volatile" | "auto" | "struct" | "union" | "enum"
+        | "typedef" | "sizeof" | "goto" | "if" | "else" | "for" | "while" | "do"
+        // C standard library functions from <ctype.h>
+        | "isalpha" | "isdigit" | "isalnum" | "isspace" | "isupper" | "islower" | "isprint"
+        | "iscntrl" | "ispunct" | "isxdigit" | "isgraph" | "isblank" | "toupper" | "tolower"
+        // C standard library functions from <stdlib.h>
+        | "malloc" | "calloc" | "realloc" | "free" | "exit" | "abort" | "atoi" | "atol"
+        | "atof" | "strtol" | "strtod" | "rand" | "srand" | "qsort" | "bsearch" | "abs"
+        | "labs" | "div" | "ldiv" | "getenv" | "system"
+        // C standard library functions from <string.h>
+        | "memcpy" | "memmove" | "memset" | "memcmp" | "strlen" | "strcpy" | "strncpy"
+        | "strcat" | "strncat" | "strcmp" | "strncmp" | "strchr" | "strrchr" | "strstr"
+        | "strtok" | "sprintf" | "snprintf"
+        // C standard library functions from <stdio.h>
+        | "printf" | "fprintf" | "scanf" | "sscanf" | "fopen" | "fclose" | "fread" | "fwrite"
+        | "fgets" | "fputs" | "fgetc" | "fputc" | "fseek" | "ftell" | "rewind" | "feof"
+        | "ferror" | "clearerr" | "remove" | "rename" | "tmpfile" | "tmpnam"
+        // C standard library functions from <math.h>
+        | "sin" | "cos" | "tan" | "asin" | "acos" | "atan" | "atan2" | "sinh" | "cosh"
+        | "tanh" | "exp" | "log" | "log10" | "pow" | "sqrt" | "ceil" | "floor" | "fabs"
+        | "fmod" | "modf" | "frexp" | "ldexp" => {
+            format!("{}_", result)
+        }
+        _ => result,
+    }
+}
+
+/// Infers BASIC type from variable name suffix.
+///
+/// In BASIC, variable names can end with a type suffix character that
+/// determines the variable's type. This function extracts that information.
+///
+/// | Suffix | Type     |
+/// |--------|----------|
+/// | `$`    | String   |
+/// | `%`    | Integer  |
+/// | `&`    | Long     |
+/// | `!`    | Single   |
+/// | `#`    | Double   |
+/// | `` ` `` | Bit     |
+/// | (none) | Single   |
+///
+/// # Examples
+///
+/// ```ignore
+/// assert_eq!(infer_type_from_suffix("name$"), BasicType::String);
+/// assert_eq!(infer_type_from_suffix("count%"), BasicType::Integer);
+/// assert_eq!(infer_type_from_suffix("myVar"), BasicType::Single); // default
+/// ```
+pub(super) fn infer_type_from_suffix(name: &str) -> BasicType {
+    if name.ends_with('$') {
+        BasicType::String
+    } else if name.ends_with('%') {
+        BasicType::Integer
+    } else if name.ends_with('&') {
+        BasicType::Long
+    } else if name.ends_with('!') {
+        BasicType::Single
+    } else if name.ends_with('#') {
+        BasicType::Double
+    } else if name.ends_with('`') {
+        BasicType::Bit
+    } else {
+        // Default to Single (QB64's default without DEFINT/etc.)
+        BasicType::Single
+    }
 }
 
 #[cfg(test)]
@@ -125,7 +340,7 @@ mod tests {
         assert_eq!(c_type(&BasicType::UnsignedInteger), "uint16_t");
         assert_eq!(
             c_type(&BasicType::UserDefined("MyType".to_string())),
-            "struct MyType"
+            "qbt_MyType"
         );
     }
 
@@ -147,5 +362,16 @@ mod tests {
         assert_eq!(c_identifier("amount#"), "amount_dbl");
         assert_eq!(c_identifier("flag`"), "flag_bit");
         assert_eq!(c_identifier("myVar"), "myVar");
+    }
+
+    #[test]
+    fn test_infer_type_from_suffix() {
+        assert_eq!(infer_type_from_suffix("name$"), BasicType::String);
+        assert_eq!(infer_type_from_suffix("count%"), BasicType::Integer);
+        assert_eq!(infer_type_from_suffix("total&"), BasicType::Long);
+        assert_eq!(infer_type_from_suffix("value!"), BasicType::Single);
+        assert_eq!(infer_type_from_suffix("amount#"), BasicType::Double);
+        assert_eq!(infer_type_from_suffix("flag`"), BasicType::Bit);
+        assert_eq!(infer_type_from_suffix("myVar"), BasicType::Single); // default
     }
 }

@@ -48,6 +48,75 @@ pub extern "C" fn qb_gfx_shutdown() -> c_int {
     }
 }
 
+/// Set graphics mode using classic SCREEN mode numbers.
+///
+/// Maps traditional QBasic/QB64 SCREEN modes to appropriate dimensions
+/// and initializes the graphics system.
+///
+/// # Arguments
+/// - `mode`: SCREEN mode number (0-13 for classic, higher for QB64 extensions)
+/// - `color_switch`: Color switch parameter (ignored in 32-bit modes)
+/// - `active_page`: Active page number (default 0)
+/// - `visual_page`: Visual page number (default 0)
+///
+/// # Returns
+/// - `0` on success
+/// - Non-zero on failure
+///
+/// # Classic SCREEN Modes
+/// - 0: Text mode (80x25 or 40x25 characters)
+/// - 1: 320x200, 4 colors
+/// - 2: 640x200, 2 colors
+/// - 7: 320x200, 16 colors
+/// - 8: 640x200, 16 colors
+/// - 9: 640x350, 16 colors
+/// - 10: 640x350, 2 colors (monochrome)
+/// - 11: 640x480, 2 colors
+/// - 12: 640x480, 16 colors
+/// - 13: 320x200, 256 colors
+#[no_mangle]
+pub extern "C" fn qb_gfx_screen(
+    mode: i32,
+    _color_switch: i32,
+    _active_page: i32,
+    _visual_page: i32,
+) -> c_int {
+    // Map SCREEN mode to dimensions
+    let (width, height) = match mode {
+        0 => {
+            // Text mode - use 640x400 for 80x25 character display
+            (640, 400)
+        }
+        1 => (320, 200),  // CGA 4-color
+        2 => (640, 200),  // CGA 2-color
+        7 => (320, 200),  // EGA 16-color
+        8 => (640, 200),  // EGA 16-color
+        9 => (640, 350),  // EGA 16-color
+        10 => (640, 350), // EGA 2-color mono
+        11 => (640, 480), // VGA 2-color
+        12 => (640, 480), // VGA 16-color
+        13 => (320, 200), // VGA 256-color (popular for retro games)
+        // QB64 extended modes (custom resolutions)
+        // Negative modes in QB64 represent custom dimensions, but we don't support that here
+        // For now, default to 640x480 for unknown modes
+        _ => {
+            if mode > 13 {
+                // Treat large positive numbers as width hints
+                // QB64 uses SCREEN _NEWIMAGE(w, h, 32) for custom sizes
+                (640, 480)
+            } else {
+                // Invalid mode
+                return 1;
+            }
+        }
+    };
+
+    match crate::graphics::init_graphics(width, height) {
+        Ok(()) => 0,
+        Err(_) => 1,
+    }
+}
+
 /// Clear the screen with the current background color.
 ///
 /// # Returns

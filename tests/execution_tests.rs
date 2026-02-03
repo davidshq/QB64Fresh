@@ -41,6 +41,7 @@ fn compile_to_c(source: &str) -> Result<String, String> {
 }
 
 /// Build the runtime library if needed and return the path
+#[allow(dead_code)]
 fn ensure_runtime_built() -> Result<std::path::PathBuf, String> {
     // Build the runtime library
     let status = Command::new("cargo")
@@ -62,6 +63,7 @@ fn ensure_runtime_built() -> Result<std::path::PathBuf, String> {
 }
 
 /// Compile C code to an executable and run it, returning stdout
+#[allow(dead_code)]
 fn compile_and_run(c_code: &str, _runtime_path: &std::path::Path) -> Result<String, String> {
     let temp_dir = std::env::temp_dir();
     let unique_id = std::process::id();

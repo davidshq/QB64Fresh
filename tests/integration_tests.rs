@@ -4871,10 +4871,13 @@ KILL filename$
 
     #[test]
     fn setmem_statement() {
-        // SETMEM is a no-op in modern systems
+        // SETMEM throws compile error matching QB64pe behavior
         let source = "SETMEM 65536";
-        let code = compile_to_c(source).unwrap();
-        assert!(code.contains("SETMEM: no-op"));
+        let result = compile_to_c(source);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Command not implemented"));
+        assert!(err.contains("SETMEM"));
     }
 
     // Mouse statements

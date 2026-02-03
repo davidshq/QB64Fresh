@@ -55,17 +55,20 @@ mod analysis;
 mod const_fold;
 mod expr;
 mod file_io;
+mod implicit_vars;
 mod runtime;
 mod stmt;
 mod types;
 
+use std::collections::HashSet;
 use std::fmt::Write;
 
 use crate::codegen::error::CodeGenError;
 use crate::codegen::{CodeGenerator, GeneratedOutput};
-use crate::semantic::typed_ir::{TypedProgram, TypedStatementKind};
+use crate::semantic::typed_ir::{TypedProgram, TypedStatement, TypedStatementKind};
 
-use self::analysis::{collect_callback_wrappers, collect_data_values};
+use self::analysis::{collect_callback_wrappers, collect_data_values, collect_type_definitions};
+use self::implicit_vars::collect_implicit_locals;
 use self::runtime::emit_header;
 use self::stmt::{StmtEmitter, emit_params};
 
@@ -125,13 +128,24 @@ impl CodeGenerator for CBackend {
         // Header
         emit_header(&mut output, self.runtime_mode);
 
-        // Collect globals and forward declarations
-        let (globals, forward_decls) = analysis::collect_globals(program, emit_params);
+        // TYPE definitions (must come before global variables that use those types)
+        let type_defs = collect_type_definitions(program);
+        if !type_defs.is_empty() {
+            writeln!(output, "/* User-Defined Types */").unwrap();
+            for def in type_defs {
+                write!(output, "{}", def).unwrap();
+            }
+            writeln!(output).unwrap();
+        }
+
+        // Collect globals, forward declarations, and string constant initializations
+        let (globals, forward_decls, string_const_inits) =
+            analysis::collect_globals(program, emit_params);
 
         // Global variables
         if !globals.is_empty() {
             writeln!(output, "/* Global Variables */").unwrap();
-            for decl in globals {
+            for decl in &globals {
                 writeln!(output, "{}", decl).unwrap();
             }
             writeln!(output).unwrap();
@@ -176,6 +190,54 @@ impl CodeGenerator for CBackend {
             writeln!(output).unwrap();
         }
 
+        // Build set of global variable names for use by SUB/FUNCTION implicit local detection
+        // Global declarations look like "type name = init;" or "const type name = init;"
+        let global_var_names: HashSet<String> = globals
+            .iter()
+            .filter_map(|decl| {
+                // Parse various declaration forms:
+                // "type name = init;" -> parts[1] is name
+                // "type name[N];" -> parts[1] is name
+                // "const type name = init;" -> parts[2] is name
+                // "type (*name)[N]" -> fixed-length string arrays
+                let decl = decl.trim_end_matches(';');
+                let parts: Vec<&str> = decl.split_whitespace().collect();
+
+                // Handle "const type name" form (const is parts[0])
+                let name_idx = if parts.first() == Some(&"const") {
+                    2
+                } else {
+                    1
+                };
+
+                if parts.len() > name_idx {
+                    let raw_name = parts[name_idx];
+                    // Handle fixed-length string array: "char (*name)[N]"
+                    // Pattern: (*name) or (*name)[N] - extract name from parens
+                    if raw_name.starts_with("(*") {
+                        // Extract name between (* and )
+                        if let Some(end_paren) = raw_name.find(')') {
+                            let name = &raw_name[2..end_paren];
+                            if !name.is_empty() {
+                                return Some(name.to_string());
+                            }
+                        }
+                        return None;
+                    }
+
+                    // Get the name part (might have [N] or = suffix)
+                    let name = raw_name.split('[').next()?.split('=').next()?.trim();
+                    if !name.is_empty() && !name.starts_with('(') {
+                        return Some(name.to_string());
+                    }
+                }
+                None
+            })
+            .collect();
+
+        // Set global variable names on emitter for SUB/FUNCTION implicit local detection
+        emitter.global_var_names = global_var_names.clone();
+
         // SUB/FUNCTION definitions (emit before main)
         for stmt in &program.statements {
             match &stmt.kind {
@@ -214,8 +276,53 @@ impl CodeGenerator for CBackend {
 
         // Main function
         writeln!(output, "int main(int argc, char** argv) {{").unwrap();
-        writeln!(output, "    (void)argc; (void)argv;").unwrap();
+        // Initialize command-line argument access for COMMAND$ and _COMMANDCOUNT
+        writeln!(output, "    qb_init_args(argc, argv);").unwrap();
+        // Initialize start directory for _STARTDIR$
+        writeln!(output, "    qb_init_startdir();").unwrap();
+        // Initialize VGA palette for INP/OUT port emulation
+        writeln!(output, "    _qb_init_palette();").unwrap();
         writeln!(output).unwrap();
+
+        // Initialize string constants (can't be done at global scope in C)
+        if !string_const_inits.is_empty() {
+            writeln!(output, "    /* Initialize string constants */").unwrap();
+            for init in &string_const_inits {
+                writeln!(output, "    {};", init).unwrap();
+            }
+            writeln!(output).unwrap();
+        }
+
+        // Collect main-level statements (excluding SUB/FUNCTION definitions)
+        let main_stmts: Vec<&TypedStatement> = program
+            .statements
+            .iter()
+            .filter(|s| {
+                !matches!(
+                    s.kind,
+                    TypedStatementKind::SubDefinition { .. }
+                        | TypedStatementKind::FunctionDefinition { .. }
+                )
+            })
+            .collect();
+
+        // Collect implicit local declarations for main
+        // Convert Vec<&TypedStatement> to slice for collect_implicit_locals
+        let main_stmts_owned: Vec<TypedStatement> =
+            main_stmts.iter().map(|s| (*s).clone()).collect();
+        // Pass is_main_program=true so arrays with existing globals use the global
+        // (for cross-function sharing) instead of creating shadowing locals
+        let implicit_locals =
+            collect_implicit_locals(&main_stmts_owned, &[], &global_var_names, true);
+
+        // Emit implicit local declarations
+        if !implicit_locals.is_empty() {
+            writeln!(output, "    /* Implicit local variables */").unwrap();
+            for decl in &implicit_locals {
+                writeln!(output, "    {}", decl).unwrap();
+            }
+            writeln!(output).unwrap();
+        }
 
         emitter.indent = 1;
 
