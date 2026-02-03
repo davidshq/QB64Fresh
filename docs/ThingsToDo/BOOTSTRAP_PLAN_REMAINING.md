@@ -513,4 +513,32 @@ runtime/
 
 ---
 
+### Command-Line & String Fixes (2026-01-23)
+
+**Problem 1: Command-line arguments not working**
+- `_COMMANDCOUNT` returned 0, `COMMAND$(n)` returned empty strings
+- Cause: `qb_init_args(argc, argv)` was never called in main()
+- Fix: Added call in `mod.rs` main() generation
+
+**Problem 2: Module-level variables shadowed in main**
+- Variables like `NoIDEMode`, `ConsoleMode` declared as `DIM SHARED` at module level
+- Our code created local declarations that shadowed the globals
+- Result: Command-line parser set global `NoIDEMode=TRUE`, but main() read local `NoIDEMode=FALSE`
+- Fix: `implicit_vars.rs` - when `is_main_program` and global exists, don't create local
+
+**Problem 3: SELECT CASE string comparison used `==`**
+- Generated code: `if (_qb_select_3 == qb_string_new("-c"))` (pointer comparison!)
+- This always failed because `qb_string_new()` returns different pointer each time
+- Fix: `stmt/control_flow.rs` - use `qb_string_compare(_qb_select_3, qb_string_new("-c")) == 0`
+
+**Problem 4: NULL strings not equal to empty strings**
+- BASIC: uninitialized string variable equals ""
+- Our C code: `qb_string* PassedFileName_str = NULL;`
+- `qb_string_compare(NULL, "")` returned -1 instead of 0
+- Fix: `runtime/strings.rs` - treat NULL as "" in comparison: `const char* a_data = (a && a->data) ? a->data : "";`
+
+**Array scoping (2026-01-23):** DIM in main must allocate to existing globals so SUBs see the same array. `stmt/definitions.rs` `emit_dim` uses `use_global = current_proc.is_none() && self.global_var_names.contains(&c_name)` and emits `name = malloc(...)` instead of `type* name = malloc(...)` when true. REDIM SHARED always uses global if it exists (`implicit_vars.rs`).
+
+---
+
 *This plan will be updated as analysis progresses and more specific requirements are discovered.*

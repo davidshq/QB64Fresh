@@ -230,3 +230,55 @@ forest.bas
 - **--backup** - Automatic backup creation
 - **Binary detection** - Automatically skips non-text files
 - **DATA preservation** - Protects embedded sprite/image data from corruption
+
+---
+
+## qb64fresh-debug
+
+Debug adapter and CLI for QB64Fresh BASIC programs. Provides AST-level symbol extraction and a stub DAP (Debug Adapter Protocol) server for IDE integration. Runtime integration (breakpoints, variable access) is planned.
+
+### Features
+
+- **Config (TOML)** - Breakpoints, launch options, server settings (e.g. `.qb64debug` or `qb64debug.toml`)
+- **DAP server** - JSON-RPC over stdio for VS Code and other DAP clients (stub: `initialize` only)
+- **Symbols** - Extract procedure and global variable names from a .bas file
+- **Stack frames / values / watch** - Types and stubs for future runtime integration
+
+### Installation
+
+```bash
+cargo build --release -p qb64fresh-debug
+```
+
+Binary: `target/release/qb64fresh-debug`.
+
+### Usage
+
+```bash
+# Run DAP server (stdio) - for IDE debug adapter
+qb64fresh-debug server
+
+# Extract and print symbols from a .bas file
+qb64fresh-debug symbols program.bas
+
+# Validate config and print breakpoints
+qb64fresh-debug check
+
+# Use a specific config file
+qb64fresh-debug --config my.toml server
+```
+
+### Config file example
+
+```toml
+[breakpoints]
+source = "program.bas"
+lines = [10, 20, 50]
+
+[launch]
+program = "program.bas"
+cwd = "."
+
+[server]
+stdio = true
+```

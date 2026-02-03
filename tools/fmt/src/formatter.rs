@@ -67,6 +67,9 @@ impl Formatter {
         // Track if we're in a single-line IF context
         let mut single_line_if = false;
 
+        // Track if we just finished a procedure (for blank line insertion)
+        let mut just_ended_procedure = false;
+
         let mut i = 0;
         while i < tokens.len() {
             let token = &tokens[i];
@@ -124,6 +127,15 @@ impl Formatter {
 
                 // Block structure tokens
                 kind if ends_block(kind) || is_continuation(kind) => {
+                    // Check if this is END followed by SUB/FUNCTION (procedure end)
+                    let is_procedure_end = if *kind == TokenKind::End {
+                        tokens.get(i + 1).is_some_and(|next| {
+                            matches!(next.kind, TokenKind::Sub | TokenKind::Function)
+                        })
+                    } else {
+                        false
+                    };
+
                     // Check if this is END followed by IF/SUB/FUNCTION/etc.
                     let is_block_end = if *kind == TokenKind::End {
                         // Look ahead to see what follows END
@@ -142,6 +154,11 @@ impl Formatter {
                     } else {
                         ends_block(kind)
                     };
+
+                    // Track procedure endings for blank line insertion
+                    if is_procedure_end {
+                        just_ended_procedure = true;
+                    }
 
                     // Decrease indent for this line if it's a block end or continuation
                     if at_line_start && (is_block_end || is_continuation(kind)) && indent_level > 0
@@ -166,6 +183,34 @@ impl Formatter {
                 }
 
                 kind if starts_block(kind) => {
+                    // Check if this SUB/FUNCTION is part of "END SUB/FUNCTION" (not a new procedure)
+                    let is_end_part = (*kind == TokenKind::Sub || *kind == TokenKind::Function)
+                        && last_kind == Some(TokenKind::End);
+
+                    // Insert blank lines between procedures if configured
+                    if (*kind == TokenKind::Sub || *kind == TokenKind::Function)
+                        && !is_end_part
+                        && just_ended_procedure
+                        && self.config.blank_lines_between_procedures > 0
+                    {
+                        let existing_newlines =
+                            output.chars().rev().take_while(|&c| c == '\n').count();
+                        let target_newlines = self.config.blank_lines_between_procedures + 1;
+                        if existing_newlines < target_newlines {
+                            for _ in 0..(target_newlines - existing_newlines) {
+                                output.push('\n');
+                            }
+                        } else if existing_newlines > target_newlines {
+                            for _ in 0..(existing_newlines - target_newlines) {
+                                output.pop();
+                            }
+                        }
+                    }
+
+                    if !is_end_part {
+                        just_ended_procedure = false;
+                    }
+
                     if at_line_start && self.config.indent_blocks {
                         output.push_str(&self.config.indent_string(indent_level));
                     } else if pending_space {
@@ -190,20 +235,20 @@ impl Formatter {
                             || *kind == TokenKind::Do
                             || *kind == TokenKind::Select)
                     {
-                        // Increase indent after THEN for IF blocks
-                        // For other blocks, increase now
                         if *kind != TokenKind::If {
                             indent_level += 1;
                         }
                     }
 
+                    // Only increase indent for procedure START, not END SUB/FUNCTION
                     if (*kind == TokenKind::Sub || *kind == TokenKind::Function)
                         && self.config.indent_procedures
+                        && !is_end_part
                     {
                         indent_level += 1;
                     }
 
-                    if *kind == TokenKind::Type {
+                    if *kind == TokenKind::Type && !is_end_part {
                         indent_level += 1;
                     }
                 }
@@ -605,5 +650,32 @@ mod tests {
     fn test_function_call_no_space() {
         // No space between function name and opening paren
         assert_eq!(format("x = LEN(s$)"), "x = LEN(s$)\n");
+    }
+
+    #[test]
+    fn test_blank_lines_between_procedures() {
+        let source = "SUB First\nPRINT 1\nEND SUB\nSUB Second\nPRINT 2\nEND SUB\n";
+        let result = format(source);
+        assert!(
+            result.contains("END SUB\n\nSUB Second"),
+            "Expected blank line between procedures, got: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_blank_lines_preserves_existing() {
+        let source = "SUB First\nPRINT 1\nEND SUB\n\n\nSUB Second\nPRINT 2\nEND SUB\n";
+        let config = FormatterConfig {
+            blank_lines_between_procedures: 1,
+            max_blank_lines: 2,
+            ..Default::default()
+        };
+        let result = format_with(source, config);
+        assert!(
+            result.contains("END SUB\n\nSUB Second"),
+            "Expected single blank line between procedures, got: {}",
+            result
+        );
     }
 }

@@ -93,12 +93,22 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed documentation.
 
 ## VSCode Extension
 
-A companion VSCode extension is available in [vscode-qb64fresh/](../vscode-qb64fresh/):
-- Syntax highlighting
-- Real-time diagnostics
-- Go-to-definition
-- Hover information
-- Code completion
+A full-featured VSCode extension is available in [vscode-qb64fresh/](../vscode-qb64fresh/):
+
+| Feature | Description |
+|---------|-------------|
+| Syntax highlighting | Keywords, strings, numbers, comments |
+| Real-time diagnostics | Errors and warnings as you type |
+| Go-to-definition | Jump to variable, function, SUB definitions |
+| Find references | Find all usages of a symbol |
+| Hover information | View types and documentation |
+| Code completion | Keywords, 240+ built-in functions, user symbols |
+| Signature help | Parameter hints for 50+ functions |
+| Build & Run | F5 to compile and run, Ctrl+Shift+B to build |
+| Code formatting | qb64fresh-fmt integration with style presets |
+| Code linting | qb64fresh-lint integration with configurable rules |
+
+Build the tools: `cargo build -p qb64fresh-fmt -p qb64fresh-lint`
 
 ## Testing
 

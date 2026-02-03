@@ -12,10 +12,12 @@
 //! - **Complexity**: Overly complex code
 //! - **Deprecated**: Old constructs with better alternatives
 
+mod complexity;
 mod correctness;
 mod style;
 mod unused;
 
+pub use complexity::*;
 pub use correctness::*;
 pub use style::*;
 pub use unused::*;
@@ -124,6 +126,11 @@ impl RuleRegistry {
             Box::new(GosubUsageRule),
             Box::new(LineNumberRule),
             Box::new(ImplicitVariableRule),
+            Box::new(MagicNumberRule),
+            // Complexity rules
+            Box::new(DeepNestingRule),
+            Box::new(LongProcedureRule),
+            Box::new(TooManyParametersRule),
         ];
 
         Self { rules }
@@ -266,7 +273,16 @@ mod tests {
         let names = registry.rule_names();
 
         assert!(names.contains(&"unused_variable"));
+        assert!(names.contains(&"unused_label"));
+        assert!(names.contains(&"unreachable_code"));
         assert!(names.contains(&"goto_usage"));
+        assert!(names.contains(&"gosub_usage"));
+        assert!(names.contains(&"line_numbers"));
+        assert!(names.contains(&"implicit_variable"));
+        assert!(names.contains(&"magic_number"));
+        assert!(names.contains(&"deep_nesting"));
+        assert!(names.contains(&"long_procedure"));
+        assert!(names.contains(&"too_many_parameters"));
     }
 
     #[test]

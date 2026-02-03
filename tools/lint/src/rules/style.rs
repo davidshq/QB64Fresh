@@ -3,7 +3,7 @@
 //! These rules enforce coding conventions and best practices.
 //! They don't indicate bugs but suggest more maintainable patterns.
 
-use qb64fresh::ast::{Program, StatementKind};
+use qb64fresh::ast::{Expr, ExprKind, Program, StatementKind};
 
 use super::{collect_all_statements, LintDiagnostic, LintRule, RuleInfo};
 use crate::config::{LintCategory, LintConfig, Severity};
@@ -345,6 +345,127 @@ fn check_nesting_depth(
     }
 }
 
+/// Warns about "magic numbers" - numeric literals that should be named constants.
+///
+/// Magic numbers make code harder to understand and maintain. Named constants
+/// make the intent clear and allow easy changes.
+///
+/// # Example
+///
+/// ```basic
+/// IF status = 404 THEN  ' Warning: magic number
+///     PRINT "Not found"
+/// END IF
+///
+/// ' Better:
+/// CONST HTTP_NOT_FOUND = 404
+/// IF status = HTTP_NOT_FOUND THEN ...
+/// ```
+pub struct MagicNumberRule;
+
+impl LintRule for MagicNumberRule {
+    fn info(&self) -> RuleInfo {
+        RuleInfo {
+            name: "magic_number",
+            category: LintCategory::Style,
+            default_severity: Severity::Hint,
+            description: "Warns about numeric literals that should be named constants",
+        }
+    }
+
+    fn check(&self, program: &Program, _source: &str, config: &LintConfig) -> Vec<LintDiagnostic> {
+        let info = self.info();
+        let severity = config.severity_for(info.name, info.category);
+        if severity == Severity::Off {
+            return vec![];
+        }
+
+        let mut diagnostics = Vec::new();
+
+        // Common acceptable values that don't need constants
+        fn is_acceptable_number(n: i64) -> bool {
+            matches!(n, -1 | 0 | 1 | 2 | 10 | 100 | 1000)
+        }
+
+        fn check_expr(
+            expr: &Expr,
+            info: &RuleInfo,
+            severity: Severity,
+            diagnostics: &mut Vec<LintDiagnostic>,
+        ) {
+            match &expr.kind {
+                ExprKind::IntegerLiteral(n) => {
+                    if !is_acceptable_number(*n) {
+                        diagnostics.push(
+                            LintDiagnostic::new(
+                                info.name,
+                                info.category,
+                                severity,
+                                format!("Magic number '{}' should be a named constant", n),
+                                expr.span,
+                            )
+                            .with_suggestion("Define a CONST with a descriptive name"),
+                        );
+                    }
+                }
+                ExprKind::Binary { left, right, .. } => {
+                    check_expr(left, info, severity, diagnostics);
+                    check_expr(right, info, severity, diagnostics);
+                }
+                ExprKind::Unary { operand, .. } => {
+                    check_expr(operand, info, severity, diagnostics);
+                }
+                ExprKind::Grouped(inner) => {
+                    check_expr(inner, info, severity, diagnostics);
+                }
+                ExprKind::FunctionCall { args, .. } => {
+                    for arg in args {
+                        check_expr(arg, info, severity, diagnostics);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        // Check expressions in relevant statements
+        for stmt in collect_all_statements(program) {
+            match &stmt.kind {
+                // Skip DIM/CONST/DATA - array sizes and constant values are OK
+                StatementKind::Dim { .. }
+                | StatementKind::Const { .. }
+                | StatementKind::Data { .. } => continue,
+
+                // Skip FOR loops - loop bounds are usually OK
+                StatementKind::For { .. } => continue,
+
+                // Check conditions and expressions
+                StatementKind::If { condition, .. } | StatementKind::While { condition, .. } => {
+                    check_expr(condition, &info, severity, &mut diagnostics);
+                }
+
+                StatementKind::SelectCase { test_expr, .. }
+                | StatementKind::SelectEveryCase { test_expr, .. } => {
+                    check_expr(test_expr, &info, severity, &mut diagnostics);
+                }
+
+                StatementKind::Let { value, .. } => {
+                    check_expr(value, &info, severity, &mut diagnostics);
+                }
+
+                StatementKind::Call { args, .. } => {
+                    for arg in args {
+                        check_expr(arg, &info, severity, &mut diagnostics);
+                    }
+                }
+
+                _ => {}
+            }
+        }
+
+        diagnostics
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -357,6 +478,32 @@ mod tests {
         let program = parser.parse().expect("Parse failed");
         let config = LintConfig::pedantic();
         rule.check(&program, source, &config)
+    }
+
+    #[test]
+    fn test_magic_number_warning() {
+        let source = r#"
+IF status = 404 THEN
+    PRINT "not found"
+END IF
+"#;
+        let diagnostics = parse_and_check(&MagicNumberRule, source);
+        assert!(
+            !diagnostics.is_empty(),
+            "Should warn about magic number 404"
+        );
+    }
+
+    #[test]
+    fn test_acceptable_numbers() {
+        let source = r#"
+x = 0
+y = 1
+z = -1
+a = x + 2
+"#;
+        let diagnostics = parse_and_check(&MagicNumberRule, source);
+        assert!(diagnostics.is_empty(), "0, 1, -1, 2 should not warn");
     }
 
     #[test]

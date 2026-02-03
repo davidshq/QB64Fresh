@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "runtime", "tools", "tools/fmt", "tools/lint"]
+members = [".", "runtime", "tools", "tools/debug", "tools/fmt", "tools/lint"]
 resolver = "2"
 
 [package]

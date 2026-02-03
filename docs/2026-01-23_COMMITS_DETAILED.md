@@ -6,15 +6,13 @@ This document lists every commit made on January 23, 2026, in chronological orde
 
 ## Branch application status
 
-**Applied to this branch:** **Commits #1–#9** have been applied. For each applied commit, **Brought** and **Not brought** are listed in that commit’s section below so partial applies are explicit.
+**Applied to this branch:** **Commits #1–#12** have been applied. For each applied commit, **Brought** and **Not brought** are listed in that commit’s section below so partial applies are explicit.
 
-**Not brought into this branch (commits 10–25):** The following Jan 23 commits have *not* been applied; their details remain below for reference or future cherry-pick:
+**Not brought into this branch (commits 13–25):** The following Jan 23 commits have *not* been applied; their details remain below for reference or future cherry-pick:
 
 | # | Hash     | Summary |
 |---|----------|--------|
-| 10| faf81e5  | Docs: bootstrap plan fixes |
-| 11| a8d6bb0  | LSP workspace symbol search |
-| 12| 18560d1  | SELECT CASE string comparison |
+| 13| b8ecc12  | Lint complexity, formatter blank lines |
 | 13| b8ecc12  | Lint complexity, formatter blank lines |
 | 14| 0e6f494  | Docs: README and TODO status |
 | 15| d8c5f3e  | REDIM SHARED, STRING$, fixed-length strings |
@@ -224,15 +222,19 @@ Addresses the context recovery issue documented in CLAUDE.md.
 
 ---
 
-## 10. `faf81e5` — Docs: update bootstrap plan with today's critical fixes
+## 10. `faf81e5` — Docs: update bootstrap plan with today's critical fixes — **APPLIED**
 
 **Subject:** docs: update bootstrap plan with today's critical fixes
 
 **Stats:** 1 file changed, 32 insertions(+), 3 deletions(-)
 
+**Brought:** docs/ThingsToDo/BOOTSTRAP_PLAN_REMAINING.md: added section "Command-Line & String Fixes (2026-01-23)" documenting the four fixes (qb_init_args, module-level scoping, SELECT CASE qb_string_compare, NULL string semantics) and where they were fixed in our tree.
+
+**Not brought:** Nothing (commit only touched this doc).
+
 ---
 
-## 11. `a8d6bb0` — Feat(lsp): add workspace symbol search
+## 11. `a8d6bb0` — Feat(lsp): add workspace symbol search — **APPLIED**
 
 **Subject:** feat(lsp): add workspace symbol search
 
@@ -240,9 +242,13 @@ Addresses the context recovery issue documented in CLAUDE.md.
 
 **Stats:** 2 files changed, 46 insertions(+), 3 deletions(-)
 
+**Brought:** src/lsp/mod.rs: workspace_symbol_provider capability; symbol() method that iterates open documents, calls get_document_symbols(), filters by query (case-insensitive), sets location.uri per document; module doc updated to mention workspace symbols (Ctrl+T).
+
+**Not brought:** TODO.md checkbox updates from commit (we may not have matching items).
+
 ---
 
-## 12. `18560d1` — Fix(codegen): SELECT CASE string comparison and docs update
+## 12. `18560d1` — Fix(codegen): SELECT CASE string comparison and docs update — **APPLIED (codegen/runtime already present)**
 
 **Subject:** fix(codegen): SELECT CASE string comparison and docs update
 
@@ -254,11 +260,15 @@ Addresses the context recovery issue documented in CLAUDE.md.
 
 QB64pe now parses command-line arguments, recognizes -c/-x flags, enters compiler mode, attempts to compile BASIC source files.
 
-**Stats:** 1 file changed, 32 insertions(+), 3 deletions(-)
+**Stats:** 7 files changed, 512 insertions(+), 40 deletions(-)
+
+**Brought:** SELECT CASE string comparison (qb_string_compare for Single, Range, Comparison) and NULL-as-empty in qb_string_compare were already present: stmt/control_flow.rs has emit_case_condition(..., test_type), emit_single_case_match(..., test_type) with is_string branches; runtime/strings.rs has a_data/b_data NULL handling. No code changes applied (verified present).
+
+**Not brought:** CLAUDE.md debugger section; docs/DEBUGGING.md (354 lines); docs/ThingsToDo/FUTURE.md; commit’s implicit_vars.rs and mod.rs changes (module-level scoping / main context); commit’s monolithic runtime.rs delta (we use runtime/strings.rs).
 
 ---
 
-## 13. `b8ecc12` — Feat(tools): add complexity lint rules and formatter blank line normalization
+## 13. `b8ecc12` — Feat(tools): add complexity lint rules and formatter blank line normalization — **APPLIED**
 
 **Subject:** feat(tools): add complexity lint rules and formatter blank line normalization
 
@@ -266,17 +276,25 @@ QB64pe now parses command-line arguments, recognizes -c/-x flags, enters compile
 
 **Stats:** 5 files changed, 461 insertions(+), 1 deletion(-)
 
+**Brought:** New `tools/lint/src/rules/complexity.rs` (LongProcedureRule, TooManyParametersRule); MagicNumberRule and tests in style.rs; mod.rs: complexity module, MagicNumberRule, DeepNestingRule, LongProcedureRule, TooManyParametersRule; formatter config `blank_lines_between_procedures` and formatter logic (just_ended_procedure, is_procedure_end, is_end_part, blank line normalization between SUB/FUNCTION); formatter tests test_blank_lines_between_procedures, test_blank_lines_preserves_existing. Fixed correctness.rs End/System pattern to use `{ .. }` (struct variants).
+
+**Not brought:** Nothing.
+
 ---
 
-## 14. `0e6f494` — Docs: update README and TODO with current status
+## 14. `0e6f494` — Docs: update README and TODO with current status — **APPLIED**
 
 **Subject:** docs: update README and TODO with current status
 
 **Stats:** 2 files changed, 54 insertions(+), 25 deletions(-)
 
+**Brought:** README: expanded VSCode Extension section with feature table and build command for tools. TODO: last updated 2026-01-23; Phase 8 = VSCode Extension Enhancements (formatter, linter, format on save, workspace symbol, rename, etc. with checkmarks); Phase 9 = Future Visual Designer; debugging note for tools/debug; removed long “It IS a genuine bug” debug note at end.
+
+**Not brought:** Session number (044) kept; exact checkbox list aligned with current extension capabilities.
+
 ---
 
-## 15. `d8c5f3e` — Fix(codegen): REDIM SHARED, STRING$ numeric form, fixed-length strings
+## 15. `d8c5f3e` — Fix(codegen): REDIM SHARED, STRING$ numeric form, fixed-length strings — **ALREADY PRESENT**
 
 **Subject:** fix(codegen): REDIM SHARED, STRING$ numeric form, fixed-length strings
 
@@ -284,116 +302,99 @@ QB64pe now parses command-line arguments, recognizes -c/-x flags, enters compile
 
 **Stats:** 3 files changed, 67 insertions(+), 16 deletions(-)
 
+**Brought:** No code changes. Verified already in tree: expr.rs (FixedString wrap with qb_str_from_c, STRING$ two-arg numeric vs string, ByRef fixed-string not lvalue); implicit_vars.rs (REDIM uses existing global when existing_vars contains name, for both main and SUB); runtime/strings.rs (qb_string_fill_code).
+
+**Not brought:** N/A.
+
 ---
 
-## 16. `a438673` — Fix(codegen): array scoping — main uses globals, procedures use locals
+## 16. `a438673` — Fix(codegen): array scoping — main uses globals, procedures use locals — **ALREADY PRESENT**
 
 **Subject:** fix(codegen): array scoping - main uses globals, procedures use locals
 
-**What changed:**
+**What changed:** implicit_vars.rs is_main_program; stmt emit_dim use_global; mod.rs pass true for main. Plus BOOTSTRAP_PLAN_REMAINING.md.
 
-Arrays declared in main program allocate to existing globals instead of shadowing locals. Main vs SUB/FUNCTION: main allocates to globals for cross-function sharing; SUB/FUNCTION always create local for DIM inside procedure.
+**Brought:** Doc only: added “Array scoping (2026-01-23)” paragraph to BOOTSTRAP_PLAN_REMAINING.md. Code already present: implicit_vars.rs collect_implicit_locals(..., is_main_program), collect_dims(..., existing_vars, is_main_program); stmt/definitions.rs emit_dim use_global = current_proc.is_none() && global_var_names.contains(&c_name); mod.rs collect_implicit_locals(..., true) for main.
 
-- implicit_vars.rs: is_main_program parameter to collect_implicit_locals
-- stmt.rs: emit_dim checks current_proc.is_none() for main context
-- mod.rs: pass is_main_program=true for main
-
-Before: QB64pe crashed in IdeMakeFileMenu (NULL menu_str). After: runs past menu init (fails on 'internal' folder).
-
-**Stats:** 3 files changed (implicit_vars.rs, mod.rs, stmt.rs), plus BOOTSTRAP_PLAN_REMAINING.md
+**Not brought:** tools/debug additions from that commit (not applied).
 
 ---
 
-## 17. `04cec5a` — Feat(tools): add debugger scaffold for parallel development
+## 17. `04cec5a` — Feat(tools): add debugger scaffold for parallel development — **NOT BROUGHT**
 
 **Subject:** feat(tools): add debugger scaffold for parallel development
 
-**What changed:**
-
-Add qb64fresh-debug as workspace member (same pattern as linter/formatter). AST-level debugger for parallel development:
-- Source loading and parsing with line-to-statement mapping
-- Breakpoint management (line, function, label, conditional)
-- Interactive CLI with standard debugger commands
-- Configuration (TOML)
-- Stub execution control for future runtime integration
+**What changed:** qb64fresh-debug as workspace member; AST-level debugger (breakpoints, CLI, TOML, stub execution).
 
 **Stats:** 6 files changed, 1485 insertions(+), 1 deletion(-)
 
+**Brought:** Nothing (tools/debug not present on this branch; can be added in a later pass if desired).
+
+**Not brought:** Full debugger scaffold (tools/debug).
+
 ---
 
-## 18. `d4e02ed` — Docs: update STUB_FUNCTIONS.md with accurate line counts
+## 18. `d4e02ed` — Docs: update STUB_FUNCTIONS.md with accurate line counts — **NOT BROUGHT**
 
 **Subject:** docs: update STUB_FUNCTIONS.md with accurate line counts
 
-**What changed:** Sync docs with codebase: runtime.rs, string.rs, math.rs, io.rs, graphics_ffi.rs, audio_ffi.rs line counts; external runtime total; qb64fresh_rt.h reference; graphics/font.rs in table.
+**What changed:** Sync docs with codebase line counts (runtime split into runtime/*.rs; STUB_FUNCTIONS.md may not exist here).
 
-**Stats:** 1 file changed, 23 insertions(+), 18 deletions(-)
+**Brought:** Nothing (file/structure differs).
+
+**Not brought:** STUB_FUNCTIONS.md changes.
 
 ---
 
-## 19. `bbfe484` — Fix(codegen): handle variable argument count for built-in functions
+## 19. `bbfe484` — Fix(codegen): handle variable argument count for built-in functions — **ALREADY PRESENT**
 
 **Subject:** fix(codegen): handle variable argument count for built-in functions
 
-**What changed:**
+**What changed:** _CONSOLE, _MAPUNICODE, _ICON, _ACCEPTFILEDROP variants; Shell int32_t; qb_statuscode handle; logical_drives int32_t.
 
-Support for built-ins with optional/variable args:
-- _CONSOLE: qb_console_get() 0 args, qb_console(mode) 1 arg
-- _MAPUNICODE: qb__mapunicode1/2/3 for 1/2/3 args
-- _ICON: qb_icon/icon1/icon2 for 0/1/2 args
-- _ACCEPTFILEDROP: qb_acceptfiledrop/1 for 0/1 args
+**Brought:** No code changes. Verified: expr.rs has _CONSOLE (qb_console_get/0, qb_console/1), _MAPUNICODE (1/2/3), _ICON (0/1/2), _ACCEPTFILEDROP (0/1); system.rs has int32_t for shell/statuscode/logical_drives.
 
-Also: Shell functions return int32_t when used as functions; qb_statuscode takes handle; logical_drives returns int32_t.
-
-**Stats:** 3 files changed, 85 insertions(+), 13 deletions(-)
+**Not brought:** N/A.
 
 ---
 
-## 20. `f1a259f` — Fix: string initialization and stub forward declarations
+## 20. `f1a259f` — Fix: string initialization and stub forward declarations — **ALREADY PRESENT**
 
 **Subject:** fix: string initialization and stub forward declarations
 
-**What changed:**
+**What changed:** Global string init to "" at program start; forward declarations for stub functions.
 
-- Initialize global string variables to "" at program start (BASIC strings not NULL when uninitialized)
-- Forward declarations for external stub functions (avoid implicit int on 64-bit)
-- Declarations for: file system, console, shell, font, window, error, network, dialog, conversion
+**Brought:** No code changes. Verified: analysis.rs has the loop that pushes string_const_inits for "qb_string* X = NULL;" globals; runtime/mod.rs calls system::emit_stub_declarations(output).
 
-**Stats:** 2 files changed, 109 insertions(+)
+**Not brought:** N/A.
 
 ---
 
-## 21. `9e0d624` — Fix: support runtime expressions in REDIM dimensions
+## 21. `9e0d624` — Fix: support runtime expressions in REDIM dimensions — **NOT BROUGHT**
 
 **Subject:** fix: support runtime expressions in REDIM dimensions
 
-**What changed:**
+**What changed:** TypedRedimDimension with TypedExpr lower/upper; codegen emits expressions for REDIM bounds.
 
-- TypedRedimDimension struct with lower/upper as Option&lt;TypedExpr&gt;/TypedExpr
-- TypedRedimVariable uses Vec&lt;TypedRedimDimension&gt;
-- Codegen emits expressions for REDIM bounds; semantic checker produces TypedRedimDimension
+**Brought:** Nothing (would require typed_ir, semantic checker, codegen, implicit_vars changes; deferred).
 
-Enables REDIM arr(n) where n is a variable.
-
-**Stats:** 4 files changed, 75 insertions(+), 28 deletions(-)
+**Not brought:** TypedRedimDimension, REDIM arr(n) with variable n.
 
 ---
 
-## 22. `370120c` — Chore: reorganize docs and fix lint pattern matching
+## 22. `370120c` — Chore: reorganize docs and fix lint pattern matching — **PARTIALLY APPLIED**
 
 **Subject:** chore: reorganize docs and fix lint pattern matching
 
-**What changed:**
+**What changed:** Move FUTURE.md/OPENGL_SUPPORT.md to docs/ThingsToDo/; QB64PE_LANGUAGE_SPECIFICATION.md; lint End/System { .. }.
 
-- Move FUTURE.md and OPENGL_SUPPORT.md to docs/ThingsToDo/
-- Update QB64PE_LANGUAGE_SPECIFICATION.md
-- Fix lint correctness.rs: End/System use { .. } pattern (they have fields)
+**Brought:** Lint End/System fix was already applied in commit #13 (correctness.rs: StatementKind::End { .. } | StatementKind::System { .. }).
 
-**Stats:** 4 files changed, 516 insertions(+), 8 deletions(-)
+**Not brought:** Doc moves (FUTURE.md, OPENGL_SUPPORT.md); QB64PE_LANGUAGE_SPECIFICATION.md update.
 
 ---
 
-## 23. `cc43b8f` — Fix(codegen): fix memory bugs in MK* functions and EXIT FUNCTION
+## 23. `cc43b8f` — Fix(codegen): fix memory bugs in MK* functions and EXIT FUNCTION — **ALREADY PRESENT**
 
 **Subject:** fix(codegen): fix memory bugs in MK* functions and EXIT FUNCTION
 
@@ -407,41 +408,33 @@ Resolves segfaults when running QB64PE compiled by QB64Fresh.
 
 **Stats:** 2 files changed, 45 insertions(+), 9 deletions(-)
 
+**Brought:** No code changes. Verified: runtime/keyboard.rs MK* use separate malloc for result->data and result->capacity; runtime/keyboard.rs qb_trim same; runtime/strings.rs qb_string_concat has defensive a_valid/b_valid checks; stmt/control_flow.rs EXIT FUNCTION emits `return ret_var;`.
+
+**Not brought:** N/A.
+
 ---
 
-## 24. `ca65c3e` — Fix: resolve testing infrastructure failures
+## 24. `ca65c3e` — Fix: resolve testing infrastructure failures — **APPLIED (partial)**
 
 **Subject:** fix: resolve testing infrastructure failures
 
-**What changed:**
+**What changed:** _EXIT combine; required_param_count() == 0; _MAPUNICODE accept TO or ,; test_invalid_binary_op; golden update.
 
-- _EXIT: combine function (0 args) and sub (1 arg) into single function with optional parameter
-- Zero-arg calls: use required_param_count() == 0 instead of params.is_empty() (e.g. _STATUSCODE)
-- _MAPUNICODE parser: accept TO and , as separators (_MAPUNICODE 8364, 128)
-- test_invalid_binary_op: use STRING - INTEGER (invalid) instead of STRING + INTEGER (now valid)
-- Update golden test files for current codegen
+**Brought:** expressions.rs: parameterless function call now uses `required_param_count() == 0` instead of `params.is_empty()` (so _STATUSCODE etc. can be called with no args). graphics.rs: parse_mapunicode accepts TO or Comma as separator for QB64 compatibility (_MAPUNICODE 8364, 128).
 
-Test results: 718 integration, 10 golden, 388 unit tests passing.
-
-**Stats:** 12 files changed, 2208 insertions(+), 91 deletions(-)
+**Not brought:** _EXIT combined into single optional-param function (would need semantic + codegen; left as separate function + sub). test_invalid_binary_op (not found in tests). Golden files: run `UPDATE_GOLDEN=1 cargo test golden` to regenerate when desired.
 
 ---
 
-## 25. `efe10f3` — Docs: add bootstrap achievement documentation and test suite
+## 25. `efe10f3` — Docs: add bootstrap achievement documentation and test suite — **NOT BROUGHT**
 
 **Subject:** docs: add bootstrap achievement documentation and test suite
 
-**What changed:**
+**What changed:** BOOTSTRAP_ACHIEVEMENT.md, BEHAVIORAL_DIFFERENCES.md, MIGRATION_GUIDE/README bootstrap section, BOOTSTRAP_PLAN simplifications, bootstrap_tests.rs, test-bootstrap.sh.
 
-**Documentation:**
-- BOOTSTRAP_ACHIEVEMENT.md: technical summary (59K lines BASIC → 2.1MB exe in 800ms)
-- BEHAVIORAL_DIFFERENCES.md: QB64Fresh vs QB64pe semantics
-- MIGRATION_GUIDE.md, README.md bootstrap section and metrics
-- BOOTSTRAP_PLAN_REMAINING.md simplified; BOOTSTRAP_PLAN_FULL.md session history through Phase D
+**Brought:** Nothing (docs and test script can be added in a later pass).
 
-**Tests:** tests/bootstrap_tests.rs (compilation and regression); scripts/test-bootstrap.sh
-
-**Stats:** 8 files changed, 996 insertions(+), 516 deletions(-)
+**Not brought:** New docs and bootstrap test script.
 
 ---
 
@@ -461,16 +454,16 @@ Test results: 718 integration, 10 golden, 388 unit tests passing.
 | 10| faf81e5  | Docs: bootstrap plan fixes |
 | 11| a8d6bb0  | LSP workspace symbol search |
 | 12| 18560d1  | SELECT CASE string comparison |
-| 13| b8ecc12  | Lint complexity, formatter blank lines |
-| 14| 0e6f494  | Docs: README and TODO status |
-| 15| d8c5f3e  | REDIM SHARED, STRING$, fixed-length strings |
-| 16| a438673  | Array scoping (main=globals, procedures=locals) |
-| 17| 04cec5a  | Debugger scaffold (tools/debug) |
-| 18| d4e02ed  | STUB_FUNCTIONS.md line counts |
-| 19| bbfe484  | Variable-arg built-ins (_CONSOLE, _MAPUNICODE, etc.) |
-| 20| f1a259f  | String init, stub forward declarations |
-| 21| 9e0d624  | REDIM runtime expressions |
-| 22| 370120c  | Docs reorganize, lint End/System pattern |
-| 23| cc43b8f  | MK* memory bugs, EXIT FUNCTION return |
-| 24| ca65c3e  | Testing infrastructure (_EXIT, _MAPUNICODE, golden) |
-| 25| efe10f3  | Bootstrap achievement docs and test suite |
+| 13| b8ecc12  | Lint complexity, formatter blank lines — APPLIED |
+| 14| 0e6f494  | Docs: README and TODO status — APPLIED |
+| 15| d8c5f3e  | REDIM SHARED, STRING$, fixed-length strings — ALREADY PRESENT |
+| 16| a438673  | Array scoping (main=globals, procedures=locals) — ALREADY PRESENT + doc |
+| 17| 04cec5a  | Debugger scaffold (tools/debug) — NOT BROUGHT |
+| 18| d4e02ed  | STUB_FUNCTIONS.md line counts — NOT BROUGHT |
+| 19| bbfe484  | Variable-arg built-ins — ALREADY PRESENT |
+| 20| f1a259f  | String init, stub forwards — ALREADY PRESENT |
+| 21| 9e0d624  | REDIM runtime expressions — NOT BROUGHT |
+| 22| 370120c  | Docs reorganize, lint End/System — PARTIALLY (lint already fixed) |
+| 23| cc43b8f  | MK* memory bugs, EXIT FUNCTION — ALREADY PRESENT |
+| 24| ca65c3e  | Testing infra — APPLIED (required_param_count, _MAPUNICODE parser) |
+| 25| efe10f3  | Bootstrap achievement docs — NOT BROUGHT |
