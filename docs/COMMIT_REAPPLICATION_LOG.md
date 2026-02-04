@@ -125,3 +125,43 @@
 **Branch:** `fixing-reapply`  
 **Ready for:** Testing and merge into `fixing` branch
 
+---
+
+## Post-Application Cleanup
+
+### IDE Compatibility Code Removal
+
+**Issue Found:** Commit `d0d3586` included IDE compatibility code for QB64pe IDE runtime integration.
+
+**Action Taken:** Removed all IDE compatibility code:
+- ✅ Removed `ide_compat_enabled()` function
+- ✅ Removed IDE-specific CP437 conversion in `_PRINTSTRING`
+- ✅ Removed IDE-specific 1-based coordinate conversion in `_PRINTSTRING`
+- ✅ Removed IDE-specific `_SCREENHIDE` ignore behavior
+- ✅ Removed IDE-specific font scaling in SDL2 backend
+
+**Commit:** `[latest]` - Remove IDE compatibility code from runtime
+
+**Status:** ✅ Complete - All IDE integration code removed
+
+---
+
+## QB64pe Runtime Compatibility Analysis
+
+**Issue Found:** Commit `76ba389` added libqb-style compatibility modules. These are OUR implementations (not QB64pe's code), but some are only needed for QB64pe binary compatibility, not for QB64Fresh's own operation.
+
+**Analysis:**
+
+### ✅ Needed for QB64Fresh (Keep)
+- **`cmem.rs`** - Used by our codegen for PEEK/POKE operations
+- **`memory.rs`** - Used by our codegen for _MEM functions
+
+### ⚠️ QB64pe Compatibility Only (Not Used by QB64Fresh Codegen)
+- **`qbs_compat.rs`** - qbs struct wrapper (we use QbString directly)
+- **`mem_lock.rs`** - mem_lock API (we use qb_mem struct directly)
+- **Some `libqb_*` modules** - Need to audit which are actually used
+
+**Action:** Created analysis document: `docs/QB64PE_COMPATIBILITY_ANALYSIS.md`
+
+**Status:** ⚠️ Review needed - Determine if QB64pe-only compatibility modules should be removed or feature-flagged
+
