@@ -88,3 +88,40 @@
 
 ### Batch 3: Runtime and Language Features (Commits 51-100)
 
+51-99. ✅ All commits successfully applied (large batch including runtime tests, refactoring, language features)
+
+### Batch 4: More Features and Fixes (Commits 100-133)
+
+100. ⏭️ **`5f60d18`** - Code review findings (empty commit - skipped)
+101-133. ✅ All commits successfully applied
+
+### Batch 5: Mixed Commit Handling (Commit 134)
+
+134. ⚠️ **`6bf251e`** - Fix BYREF string codegen, IDE window visibility, add source size limits
+   - **Status**: Applied with manual editing
+   - **Action Taken**: Removed SUPPRESS_NEXT_SCREENHIDE GUI troubleshooting code
+   - **Kept**: BYREF string codegen fixes, source size limits
+   - **Removed**: IDE window visibility suppression logic
+
+### Batch 6: Final Commits (Commits 135-141)
+
+135-141. ✅ All commits successfully applied
+
+### Skipped Commits
+
+142. ❌ **`eed3d21`** - IDE disclaimer dismiss: push each key twice for getinput inkey+keyhit
+   - **Status**: Skipped (pure GUI troubleshooting)
+
+---
+
+## Final Summary
+
+**Total Commits Processed:** 142  
+**Successfully Applied:** 141 commits  
+**Skipped (GUI):** 1 commit (`eed3d21`)  
+**Manually Edited:** 1 commit (`6bf251e` - removed GUI parts)  
+**Empty Commits Skipped:** 1 commit (`5f60d18`)
+
+**Branch:** `fixing-reapply`  
+**Ready for:** Testing and merge into `fixing` branch
+
