@@ -1555,17 +1555,6 @@ pub unsafe extern "C" fn qb_gfx_printstring(x: i32, y: i32, text: *const c_char)
     }
 
     let bytes = CStr::from_ptr(text).to_bytes();
-    let mut mapped_bytes_storage = Vec::new();
-    let text_bytes: &[u8] = if ide_compat_enabled() {
-        if let Ok(utf8_text) = std::str::from_utf8(bytes) {
-            mapped_bytes_storage = crate::cp437::utf8_to_cp437_bytes(utf8_text);
-            mapped_bytes_storage.as_slice()
-        } else {
-            bytes
-        }
-    } else {
-        bytes
-    };
     if gfx_trace_enabled() {
         let preview_len = bytes.len().min(8);
         let mut preview = String::new();
@@ -1587,21 +1576,7 @@ pub unsafe extern "C" fn qb_gfx_printstring(x: i32, y: i32, text: *const c_char)
     }
 
     if let Some(ref mut backend) = crate::graphics::GRAPHICS_BACKEND {
-        let mut px = x;
-        let mut py = y;
-        if ide_compat_enabled() {
-            let fw = backend.get_font_width() as i32;
-            let fh = backend.get_font_height() as i32;
-            // Treat coordinates as 1-based character cells in IDE mode.
-            if px > 0 {
-                px = (px - 1) * fw;
-            }
-            if py > 0 {
-                py = (py - 1) * fh;
-            }
-        }
-
-        match backend.print_string_bytes(px, py, text_bytes) {
+        match backend.print_string_bytes(x, y, bytes) {
             Ok(()) => 0,
             Err(e) => log_ffi_error!("qb_gfx_printstring", e),
         }
@@ -2176,10 +2151,6 @@ fn screenhide_disabled() -> bool {
     std::env::var("QB64FRESH_DISABLE_SCREENHIDE").is_ok()
 }
 
-fn ide_compat_enabled() -> bool {
-    std::env::var("QB64FRESH_IDE_COMPAT").is_ok()
-}
-
 /// _SCREENSHOW - Show the window (make visible).
 ///
 /// If graphics haven't been initialized yet, initializes with default dimensions (640x400).
@@ -2209,13 +2180,6 @@ pub extern "C" fn qb_screenshow() {
 #[no_mangle]
 pub extern "C" fn qb_screenhide() {
     unsafe {
-        if ide_compat_enabled() {
-            if screen_trace_enabled() {
-                eprintln!("QB64Fresh: _SCREENHIDE ignored (IDE compat)");
-                let _ = std::io::Write::flush(&mut std::io::stderr());
-            }
-            return;
-        }
         if screenhide_disabled() {
             if screen_trace_enabled() {
                 eprintln!("QB64Fresh: _SCREENHIDE suppressed");

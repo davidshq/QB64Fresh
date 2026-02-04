@@ -377,17 +377,10 @@ impl SDL2Backend {
             text_font_height: FONT_HEIGHT,
             text_font_handle: 0,
             text_scale: {
-                let scale = std::env::var("QB64FRESH_TEXT_SCALE")
+                std::env::var("QB64FRESH_TEXT_SCALE")
                     .ok()
                     .and_then(|v| v.parse::<u32>().ok())
-                    .unwrap_or(0);
-                if scale > 0 {
-                    scale
-                } else if std::env::var("QB64FRESH_IDE_COMPAT").is_ok() {
-                    2
-                } else {
-                    1
-                }
+                    .unwrap_or(1)
             },
             // Keyboard state
             keyboard_state: HashMap::new(),
