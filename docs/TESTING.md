@@ -229,11 +229,11 @@ cargo test --test proptest_tests
 
 **Location:** `tests/compatibility.rs` and `tests/qb45_compat.rs`
 
-**Purpose:** Verify compatibility with QB64/QBasic programs.
+**Purpose:** Verify compatibility with QB64/QBasic programs. The compatibility suite is the **behavioral contract** for what “QB64/QB4.5 compatible” means; see [COMPATIBILITY_TEST_SUITE.md](COMPATIBILITY_TEST_SUITE.md) for the contract definition and coverage.
 
 **Types:**
 - **Local fixtures** (`tests/compatibility.rs`) - Small test cases in the repo
-- **QB64pe test suite** (`tests/qb45_compat.rs`) - Runs against 115 programs from QB64pe (99.1% pass rate - 114/115)
+- **QB64pe test suite** (`tests/qb45_compat.rs`) - Runs against programs from QB64pe `tests/qbasic_testcases/` (qb45com, misc, n54, pete, thebob); current pass rate in test output (e.g. 99.1% for qb45com when 114/115 pass)
 
 **Running:**
 ```bash

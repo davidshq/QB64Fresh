@@ -71,6 +71,7 @@ See [adrs/README.md](adrs/README.md) for the complete index. Key decisions:
 |----------|-------------|
 | [DEVELOPMENT.md](DEVELOPMENT.md) | Developer onboarding: setup, build, testing, contributing |
 | [TESTING.md](TESTING.md) | Testing guide: unit tests, integration tests, golden tests, fuzzing |
+| [COMPATIBILITY_TEST_SUITE.md](COMPATIBILITY_TEST_SUITE.md) | Compatibility test suite as behavioral contract; coverage and exclusions |
 | [DEBUGGING.md](DEBUGGING.md) | Debugging guide: using the debugger, DAP protocol, breakpoints, watch expressions |
 | [reference/HEADER_PARSER_API.md](reference/HEADER_PARSER_API.md) | Rust API reference for the C header parser (`header-parsing` feature) |
 
